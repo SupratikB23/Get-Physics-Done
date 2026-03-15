@@ -83,7 +83,7 @@ Error: Could not extract research context from the provided file.
 The file should contain at minimum:
 - A research question or objective
 
-It should ideally also name at least one decisive output, anchor, prior output, or explicit "anchor unknown / need grounding" note so any repair prompt can stay narrow.
+It should ideally also name at least one decisive output, anchor, prior output, or explicit "anchor unknown / need grounding / target not yet chosen" note so any repair prompt can stay narrow.
 
 Example structure:
   # Research Question
@@ -120,6 +120,7 @@ Build a canonical scoping contract from the extracted input.
 
 - Core question
 - At least one decisive output, claim, or deliverable
+- At least one anchor, reference/prior-output constraint, or an explicit "anchor unknown / must establish later / target not yet chosen" note
 - At least one anchor, reference/prior-output constraint, or an explicit "anchor unknown / must establish later" note
 
 **Fields to capture even if still uncertain:**
@@ -136,7 +137,7 @@ Build a canonical scoping contract from the extracted input.
 
 **Preservation rule:** If the user names a specific observable, figure, dataset, derivation, paper, benchmark, notebook, prior run, or stop condition, keep that wording recognizable in the contract. Do not generalize it away into a vague proxy.
 If the user does not know the anchor yet, preserve that explicitly in `scope.unresolved_questions`, `context_intake.context_gaps`, or `uncertainty_markers.weakest_anchors` rather than inventing a paper, benchmark, or baseline.
-Prefer explicit missing-anchor wording such as `Which reference should serve as the decisive benchmark anchor?`, `Benchmark reference not yet selected`, `still to identify the decisive anchor`, or `baseline comparison is TBD`.
+Prefer explicit missing-anchor wording such as `Which reference should serve as the decisive benchmark anchor?`, `Benchmark reference not yet selected`, `need grounding before the decisive anchor is chosen`, `decisive target not yet chosen`, or `baseline comparison is TBD`.
 Do not force a phase list just to make the scoping contract look complete. If decomposition is still unclear, record that uncertainty and let `ROADMAP.md` start with a single coarse phase or first grounded investigation chunk.
 
 If a blocking field is missing, ask exactly one repair prompt that targets only the missing field. Do not silently continue with placeholders.
@@ -751,7 +752,7 @@ When you could write a clear scoping contract, use ask_user:
 
 If "Keep exploring" — ask what they want to add, or identify gaps and probe naturally.
 
-Avoid rigid turn-counting. After several substantive exchanges, if you can state the core question, one decisive output or deliverable, and at least one anchor (or an explicit "anchor unknown" note), offer to proceed. If those blocking fields are still missing after roughly 6 follow-ups, summarize what is missing and ask whether to keep exploring or proceed with explicit open questions. A full phase breakdown is not required at this stage; if only the first grounded investigation chunk is clear, say so and carry later decomposition as an open question. Do not force closure just because a counter was hit, and do not imply certainty where there is still ambiguity.
+Avoid rigid turn-counting. After several substantive exchanges, if you can state the core question, one decisive output or deliverable, and at least one anchor (or an explicit "anchor unknown / need grounding / target not yet chosen" note), offer to proceed. If those blocking fields are still missing after roughly 6 follow-ups, summarize what is missing and ask whether to keep exploring or proceed with explicit open questions. A full phase breakdown is not required at this stage; if only the first grounded investigation chunk is clear, say so and carry later decomposition as an open question. Do not force closure just because a counter was hit, and do not imply certainty where there is still ambiguity.
 If you only have limiting cases, sanity checks, or generic benchmark language with no decisive smoking-gun observable, curve, or benchmark reproduction, keep exploring unless the user explicitly says that is the decisive standard.
 
 ## 4. Synthesize The Approved Project Contract And Write PROJECT.md
@@ -780,6 +781,7 @@ Before writing `PROJECT.md`, synthesize a canonical project contract with at lea
 
 If no must-read references are confirmed yet, record that explicitly in the contract rather than inventing one.
 If the user does not know the anchor yet, record that explicitly as an unresolved question or context gap rather than fabricating a paper, dataset, benchmark, or baseline.
+Accepted shorthand like `need grounding` or `target not yet chosen` is fine when it clearly refers to the missing decisive anchor.
 If the user supplied explicit observables, deliverables, prior outputs, or stop conditions, preserve them in the contract using wording the user would still recognize. Do not paraphrase them into generic "benchmark" or "artifact" language unless the user asked you to broaden them.
 If the user named a prior output, review checkpoint, or "come back to me before continuing" condition, carry it into `context_intake.must_include_prior_outputs` or `context_intake.crucial_inputs` rather than leaving it only in prose.
 Do not approve a scoping contract that strips decisive outputs, anchors, prior outputs, or review/stop triggers down to generic placeholders. The approved contract must preserve the user guidance that downstream planning needs.

@@ -6,6 +6,7 @@ Covers: conventions, errors, patterns, protocols, skills, state, verification.
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from unittest.mock import ANY, MagicMock, patch
@@ -1631,6 +1632,56 @@ class TestVerificationServer:
         assert "metadata.source_reference_id" in result["missing_inputs"]
         assert any("bound contract context" in issue for issue in result["automated_issues"])
 
+    def test_run_contract_check_rejects_conflicting_benchmark_binding_contexts(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        result = run_contract_check(
+            {
+                "check_key": "contract.benchmark_reproduction",
+                "contract": _multi_claim_contract_fixture(),
+                "binding": {
+                    "claim_ids": ["claim-b"],
+                    "acceptance_test_ids": ["test-b"],
+                    "reference_ids": ["ref-a"],
+                },
+                "metadata": {"source_reference_id": "ref-a"},
+                "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+            }
+        )
+
+        assert result["status"] == "insufficient_evidence"
+        assert "metadata.source_reference_id" in result["missing_inputs"]
+        assert any("binding contexts disagree on benchmark reference candidates" in issue for issue in result["automated_issues"])
+
+    def test_run_contract_check_rejects_explicit_benchmark_anchor_against_single_contract_default_without_binding(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        contract = copy.deepcopy(_load_project_contract_fixture())
+        contract["references"].append(
+            {
+                "id": "ref-background",
+                "kind": "paper",
+                "locator": "Background note",
+                "role": "background",
+                "why_it_matters": "Useful context but not the benchmark anchor",
+                "applies_to": ["claim-benchmark"],
+                "required_actions": ["read"],
+            }
+        )
+
+        result = run_contract_check(
+            {
+                "check_key": "contract.benchmark_reproduction",
+                "contract": contract,
+                "metadata": {"source_reference_id": "ref-background"},
+                "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+            }
+        )
+
+        assert result["status"] == "insufficient_evidence"
+        assert "metadata.source_reference_id" in result["missing_inputs"]
+        assert any("resolved contract context" in issue for issue in result["automated_issues"])
+
     def test_run_contract_check_limit_default_follows_bound_claim_context(self):
         from gpd.mcp.servers.verification_server import run_contract_check
 
@@ -1666,6 +1717,52 @@ class TestVerificationServer:
         assert result["status"] == "insufficient_evidence"
         assert "metadata.regime_label" in result["missing_inputs"]
         assert any("bound contract context" in issue for issue in result["automated_issues"])
+
+    def test_run_contract_check_rejects_conflicting_limit_binding_contexts(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        result = run_contract_check(
+            {
+                "check_key": "contract.limit_recovery",
+                "contract": _multi_claim_contract_fixture(),
+                "binding": {
+                    "claim_ids": ["claim-b"],
+                    "acceptance_test_ids": ["test-b"],
+                    "reference_ids": ["ref-a"],
+                },
+                "metadata": {
+                    "regime_label": "large-k",
+                    "expected_behavior": "approaches the contracted large-k family",
+                },
+                "observed": {"limit_passed": True, "observed_limit": "large-k"},
+            }
+        )
+
+        assert result["status"] == "insufficient_evidence"
+        assert "metadata.regime_label" in result["missing_inputs"]
+        assert any("binding contexts disagree on limit regime candidates" in issue for issue in result["automated_issues"])
+
+    def test_run_contract_check_rejects_explicit_regime_label_against_single_contract_default_without_binding(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        contract = copy.deepcopy(_load_project_contract_fixture())
+        contract["observables"][0]["regime"] = "large-k"
+
+        result = run_contract_check(
+            {
+                "check_key": "contract.limit_recovery",
+                "contract": contract,
+                "metadata": {
+                    "regime_label": "small-k",
+                    "expected_behavior": "approaches the contracted large-k family",
+                },
+                "observed": {"limit_passed": True, "observed_limit": "large-k"},
+            }
+        )
+
+        assert result["status"] == "insufficient_evidence"
+        assert "metadata.regime_label" in result["missing_inputs"]
+        assert any("resolved contract context" in issue for issue in result["automated_issues"])
 
     def test_run_contract_check_fit_family_pass_requires_declared_family(self):
         from gpd.mcp.servers.verification_server import run_contract_check
@@ -1756,6 +1853,26 @@ class TestVerificationServer:
 
         assert result == {"error": expected_error, "schema_version": 1}
 
+    def test_run_contract_check_salvages_mildly_drifted_contract_payload(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        contract = copy.deepcopy(_load_project_contract_fixture())
+        contract["context_intake"] = "not-a-dict"
+        contract["claims"][0]["notes"] = "legacy extra field"
+
+        result = run_contract_check(
+            {
+                "check_key": "contract.benchmark_reproduction",
+                "contract": contract,
+                "binding": {"claim_ids": ["claim-benchmark"], "reference_ids": ["ref-benchmark"]},
+                "metadata": {"source_reference_id": "ref-benchmark"},
+                "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+            }
+        )
+
+        assert result["status"] == "pass"
+        assert any("salvaged before verification" in issue for issue in result["automated_issues"])
+
     def test_suggest_contract_checks_from_contract(self):
         import json
         from pathlib import Path
@@ -1796,6 +1913,18 @@ class TestVerificationServer:
         fresh = next(entry for entry in second["suggested_checks"] if entry["check_key"] == "contract.benchmark_reproduction")
 
         assert fresh["request_template"]["metadata"]["source_reference_id"] == "ref-benchmark"
+
+    def test_suggest_contract_checks_salvages_mildly_drifted_contract_payload(self):
+        from gpd.mcp.servers.verification_server import suggest_contract_checks
+
+        contract = copy.deepcopy(_load_project_contract_fixture())
+        contract["context_intake"] = "not-a-dict"
+        contract["references"][0]["notes"] = "legacy extra field"
+
+        result = suggest_contract_checks(contract)
+
+        assert "error" not in result
+        assert any(entry["check_key"] == "contract.benchmark_reproduction" for entry in result["suggested_checks"])
 
     # --- get_checklist ---
 

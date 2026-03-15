@@ -1,0 +1,79 @@
+"""Focused regression tests for approved-mode anchor-gap phrasing."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from gpd.core.contract_validation import validate_project_contract
+
+FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
+WORKFLOW_SPEC = Path(__file__).resolve().parents[2] / "src" / "gpd" / "specs" / "workflows" / "new-project.md"
+STATE_SCHEMA_SPEC = (
+    Path(__file__).resolve().parents[2] / "src" / "gpd" / "specs" / "templates" / "state-json-schema.md"
+)
+
+
+def _load_contract_fixture() -> dict[str, object]:
+    return json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+
+
+def _remove_incidental_grounding(contract: dict[str, object]) -> None:
+    contract["references"] = []
+    contract["context_intake"] = {
+        "must_read_refs": [],
+        "must_include_prior_outputs": [],
+        "user_asserted_anchors": [],
+        "known_good_baselines": [],
+        "context_gaps": [],
+        "crucial_inputs": [],
+    }
+    contract["scope"]["unresolved_questions"] = []
+    for claim in contract.get("claims", []):
+        claim["references"] = []
+    for test in contract.get("acceptance_tests", []):
+        test["evidence_required"] = [item for item in test.get("evidence_required", []) if item != "ref-benchmark"]
+
+
+def test_approved_mode_accepts_need_grounding_phrase_without_other_anchor_tokens() -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["context_gaps"] = ["Need grounding before planning"]
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is True
+    assert result.mode == "approved"
+
+
+def test_approved_mode_accepts_target_not_yet_chosen_phrase_in_weakest_anchors() -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    contract["uncertainty_markers"]["weakest_anchors"] = ["Target not yet chosen"]
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is True
+    assert result.mode == "approved"
+
+
+def test_approved_mode_still_rejects_generic_open_gap_without_anchor_unknown_phrase() -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["context_gaps"] = ["Need more detail before planning"]
+    contract["uncertainty_markers"]["weakest_anchors"] = ["Open question"]
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is False
+    assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
+
+
+def test_specs_surface_anchor_gap_phrases_the_validator_accepts() -> None:
+    workflow_text = WORKFLOW_SPEC.read_text(encoding="utf-8")
+    state_schema_text = STATE_SCHEMA_SPEC.read_text(encoding="utf-8")
+
+    assert "need grounding" in workflow_text
+    assert "target not yet chosen" in workflow_text
+    assert "Need grounding before the decisive anchor is chosen." in state_schema_text
+    assert "Decisive target not yet chosen before planning can proceed." in state_schema_text

@@ -29,6 +29,10 @@ __all__ = ["ProjectContractValidationResult", "salvage_project_contract", "valid
 
 
 _APPROVED_REFERENCE_ROLES = frozenset({"benchmark", "definition", "method", "must_consider"})
+_ANCHOR_UNKNOWN_DIRECT_PATTERNS = (
+    re.compile(r"\bneed(?:s)? grounding\b"),
+    re.compile(r"\b(?:(?:decisive|benchmark|comparison)\s+)?target not (?:yet )?chosen\b"),
+)
 _ANCHOR_UNKNOWN_TOPIC_PATTERNS = (
     re.compile(r"\banchor\b"),
     re.compile(r"\bbenchmark\b"),
@@ -358,6 +362,8 @@ def _has_explicit_anchor_unknown(contract: ResearchContract) -> bool:
         if not isinstance(item, str):
             continue
         lowered = item.casefold()
+        if any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_DIRECT_PATTERNS):
+            return True
         if not any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_TOPIC_PATTERNS):
             continue
         if any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_BLOCKER_PATTERNS):

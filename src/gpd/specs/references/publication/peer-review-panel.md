@@ -157,6 +157,32 @@ Additionally:
 - The final adjudicator must emit `REVIEW-LEDGER{round_suffix}.json` and `REFEREE-DECISION{round_suffix}.json` (empty suffix on the first round).
 - The artifact should stay compact. It is a decision handoff, not a second manuscript.
 
+Stage 1 `CLAIMS.json` must follow this compact `ClaimIndex` shape:
+
+```json
+{
+  "version": 1,
+  "manuscript_path": "paper/main.tex",
+  "manuscript_sha256": "<sha256>",
+  "claims": [
+    {
+      "claim_id": "CLM-001",
+      "claim_type": "main_result | novelty | significance | physical_interpretation | generality | method",
+      "text": "Exact manuscript claim text or faithful paraphrase",
+      "artifact_path": "paper/main.tex",
+      "section": "Conclusion",
+      "equation_refs": ["paper/main.tex#eq:main"],
+      "figure_refs": ["paper/main.tex#fig:main"],
+      "supporting_artifacts": ["paper/figures/main-result.pdf"]
+    }
+  ]
+}
+```
+
+- `manuscript_path` and `manuscript_sha256` are required `ClaimIndex` metadata, not optional bookkeeping.
+- Keep `section` as an empty string and `equation_refs`, `figure_refs`, `supporting_artifacts` as empty lists when unavailable.
+- Do not invent locations, equations, figures, or supporting artifacts just to populate the schema.
+
 The final adjudicator JSON artifacts must follow these canonical schemas:
 
 - @{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md

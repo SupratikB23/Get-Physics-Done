@@ -1668,6 +1668,24 @@ Treat the contract as a typed checklist, not a prose hint:
 - `references` tell you which anchor actions must be completed
 - `forbidden_proxies` tell you what must not be mistaken for success
 
+**Canonical verification frontmatter/schema authority (required):**
+
+- `@{GPD_INSTALL_DIR}/templates/verification-report.md` is the canonical `VERIFICATION.md` frontmatter/body surface.
+- `@{GPD_INSTALL_DIR}/templates/contract-results-schema.md` is the canonical source of truth for `plan_contract_ref`, `contract_results`, `comparison_verdicts`, and verification-side `suggested_contract_checks`.
+- Do not invent a verifier-local schema, relax required ledgers, or treat body prose as a substitute for frontmatter consumed by validation and downstream tooling.
+
+**Validator-enforced ledger rules to keep visible while verifying:**
+
+- If the source PLAN has a `contract:` block, the report must include `plan_contract_ref` and `contract_results`, plus `comparison_verdicts` whenever a decisive comparison is required by the contract or decisive anchor context.
+- If `contract_results` or `comparison_verdicts` are present, `plan_contract_ref` is required.
+- `plan_contract_ref` must be a string ending with the exact `#/contract` fragment and it must resolve to the matching PLAN contract on disk.
+- `contract_results` must cover every declared claim, deliverable, acceptance test, reference, and forbidden proxy ID from the PLAN contract. Do not silently omit open work; use explicit incomplete statuses instead.
+- `comparison_verdicts` must use real contract IDs only. `subject_kind` must be `claim`, `deliverable`, `acceptance_test`, or `reference`, and it must match the actual contract ID kind. Do not invent `artifact` or other ad hoc subject kinds.
+- Only `subject_role: decisive` satisfies a required decisive comparison or participates in pass/fail consistency checks against `contract_results`; `supporting` and `supplemental` verdicts are context only.
+- If a decisive comparison was required or attempted but remains unresolved, record `verdict: inconclusive` or `verdict: tension` instead of omitting the entry.
+- For reference-backed decisive comparisons, only `comparison_kind: benchmark|prior_work|experiment|baseline|cross_method` satisfies the requirement; `comparison_kind: other` does not.
+- `suggested_contract_checks` entries in `VERIFICATION.md` may only use `check`, `reason`, `suggested_subject_kind`, `suggested_subject_id`, and `evidence_path`. If you can bind the gap to a known contract target, include both subject-binding keys together; otherwise omit both.
+
 Whenever a decisive benchmark, prior-work, experiment, baseline, or cross-method comparison is required, emit a `comparison_verdict` keyed to the relevant contract IDs. If the comparison was attempted but remains unresolved, record `inconclusive` or `tension` rather than omitting the verdict or upgrading the parent target to pass.
 Before freezing the verification plan, call `suggest_contract_checks(contract)` through the verification server and incorporate the returned contract-aware checks unless they are clearly inapplicable. If the contract still appears to miss a decisive check after that pass, record it as a structured `suggested_contract_check`.
 
@@ -3787,6 +3805,10 @@ See `@{GPD_INSTALL_DIR}/references/verification/core/computational-verification-
 
 Create `.gpd/phases/{phase_dir}/{phase}-VERIFICATION.md` with this structure:
 
+Before writing the frontmatter, load and follow `@{GPD_INSTALL_DIR}/templates/verification-report.md` and `@{GPD_INSTALL_DIR}/templates/contract-results-schema.md`. Those files are the canonical schema source of truth for `plan_contract_ref`, `contract_results`, `comparison_verdicts`, and `suggested_contract_checks`.
+
+Do not finish the report until the frontmatter satisfies the validator-visible rules above: contract-backed verification requires `plan_contract_ref` plus `contract_results`; any emitted `contract_results` or `comparison_verdicts` requires `plan_contract_ref`; decisive comparison gaps must stay explicit in `comparison_verdicts` and, when still missing decisive work, in structured `suggested_contract_checks`.
+
 ### Frontmatter Schema (YAML)
 
 ```yaml
@@ -3798,6 +3820,39 @@ score: N/M contract targets verified
 consistency_score: N/M physics checks passed
 independently_confirmed: K/M checks independently confirmed
 confidence: high | medium | low | unreliable
+plan_contract_ref: .gpd/phases/XX-name/{phase}-{plan}-PLAN.md#/contract
+# Required for contract-backed plans, and also required whenever `contract_results`
+# or `comparison_verdicts` are present. Must resolve to the matching PLAN contract.
+# Record only user-visible contract targets here. Do not encode internal tool/process milestones.
+contract_results:
+  # Every claim, deliverable, acceptance test, reference, and forbidden proxy ID
+  # declared in the PLAN contract must appear in its matching section below.
+  claims:
+    claim-id:
+      status: passed|partial|failed|blocked|not_attempted
+      summary: "[what verification established]"
+      linked_ids: [deliverable-id, acceptance-test-id, reference-id]
+  deliverables:
+    deliverable-id:
+      status: passed|partial|failed|blocked|not_attempted
+      path: path/to/artifact
+      summary: "[what artifact exists and why it matters]"
+      linked_ids: [claim-id, acceptance-test-id]
+  acceptance_tests:
+    acceptance-test-id:
+      status: passed|partial|failed|blocked|not_attempted
+      summary: "[what decisive test showed]"
+      linked_ids: [claim-id, deliverable-id, reference-id]
+  references:
+    reference-id:
+      status: completed|missing|not_applicable
+      completed_actions: [read, compare, cite]
+      missing_actions: []
+      summary: "[how the anchor was surfaced]"
+  forbidden_proxies:
+    forbidden-proxy-id:
+      status: rejected|violated|unresolved|not_applicable
+      notes: "[why this proxy was or was not allowed]"
 re_verification:        # Only if previous VERIFICATION.md existed
   previous_status: gaps_found
   previous_score: 2/5
@@ -3817,15 +3872,18 @@ gaps:                   # Only if status: gaps_found (same schema as Step 10)
     missing: ["..."]
     severity: blocker
     suggested_contract_checks: []
-comparison_verdicts:    # Optional but expected when decisive comparisons were required or attempted
-  - subject_kind: claim
+comparison_verdicts:    # Required when a decisive comparison was required or attempted
+  - subject_kind: claim|deliverable|acceptance_test|reference
     subject_id: "claim-id"
+    subject_role: decisive|supporting|supplemental|other
     reference_id: "ref-id"
-    comparison_kind: benchmark
-    verdict: pass
+    comparison_kind: benchmark|prior_work|experiment|cross_method|baseline|other
+    verdict: pass|tension|fail|inconclusive
     metric: "relative_error"
     threshold: "<= 0.01"
 suggested_contract_checks:
+  # Allowed keys are exactly `check`, `reason`, `suggested_subject_kind`,
+  # `suggested_subject_id`, and `evidence_path`.
   - check: "Add explicit benchmark comparison for decisive observable"
     reason: "Phase conclusion depends on agreement with prior work but the contract does not name the comparison"
     suggested_subject_kind: acceptance_test

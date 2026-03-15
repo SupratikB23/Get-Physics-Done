@@ -72,7 +72,7 @@ Fields marked **Authoritative** exist only in state.json (not representable in S
     "must_include_prior_outputs": [".gpd/phases/01-setup/01-01-SUMMARY.md"],
     "user_asserted_anchors": ["Recover known asymptotic limit"],
     "known_good_baselines": ["Baseline derivation in notebook X"],
-    "context_gaps": ["Benchmark reference not yet selected; still to identify the decisive anchor"],
+    "context_gaps": ["Need grounding; decisive target not yet chosen before planning"],
     "crucial_inputs": ["Figure 2 from prior work"]
   },
   "approach_policy": {
@@ -226,6 +226,8 @@ If the user does not know the decisive anchor yet, keep that uncertainty explici
 
 - `Which reference should serve as the decisive benchmark anchor?`
 - `Benchmark reference not yet selected; still to identify the decisive anchor.`
+- `Need grounding before the decisive anchor is chosen.`
+- `Decisive target not yet chosen before planning can proceed.`
 - `Baseline comparison is TBD before planning can proceed.`
 
 ### `position`

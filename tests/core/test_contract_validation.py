@@ -225,6 +225,17 @@ def test_validate_project_contract_rejects_must_surface_reference_without_requir
     assert "reference ref-benchmark is must_surface but missing required_actions" in result.errors
 
 
+def test_validate_project_contract_normalizes_reference_required_actions_whitespace_and_duplicates() -> None:
+    contract = _load_contract_fixture()
+    contract["references"][0]["required_actions"] = [" read ", "compare", "read", "  ", " cite "]
+
+    parsed = ResearchContract.model_validate(contract)
+    result = validate_project_contract(contract)
+
+    assert parsed.references[0].required_actions == ["read", "compare", "cite"]
+    assert result.valid is True
+
+
 def test_validate_project_contract_rejects_must_surface_reference_without_applies_to() -> None:
     contract = _load_contract_fixture()
     contract["references"][0]["must_surface"] = True

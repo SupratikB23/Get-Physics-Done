@@ -36,10 +36,13 @@ You are not the final referee. Do not decide accept/minor/major/reject. Your job
 <artifact_format>
 Before writing either JSON artifact, read `@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md` directly and use its stage artifact contract exactly.
 
-Required details for `CLAIMS.json`:
+Required schema for `CLAIMS.json` (`ClaimIndex`):
 
-- `claim_id`, `claim_type`, `text`, `artifact_path`, `section`
-- Claim types must distinguish at least: `main_result`, `novelty`, `significance`, `physical_interpretation`, `generality`, `method`
+- Top-level keys: `version`, `manuscript_path`, `manuscript_sha256`, `claims`
+- `manuscript_path` and `manuscript_sha256` are required metadata for the exact manuscript snapshot under review; do not omit them
+- Each entry in `claims` is a `ClaimRecord` with: `claim_id`, `claim_type`, `text`, `artifact_path`, `section`, `equation_refs`, `figure_refs`, `supporting_artifacts`
+- `claim_type` must use exactly: `main_result`, `novelty`, `significance`, `physical_interpretation`, `generality`, `method`
+- Use `section` as an empty string and the reference/artifact arrays as empty lists when a field is not applicable; do not invent locations or evidence
 
 Required details for `STAGE-reader.json`:
 

@@ -10,6 +10,16 @@ FIXTURES_STAGE0 = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
 FIXTURES_STAGE4 = Path(__file__).resolve().parents[1] / "fixtures" / "stage4"
 
 
+def _summary_with_reference_usage(*, status: str, completed_actions: str, missing_actions: str) -> str:
+    return (
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace("status: completed", f"status: {status}", 1)
+        .replace("completed_actions: [read, compare, cite]", f"completed_actions: {completed_actions}", 1)
+        .replace("missing_actions: []", f"missing_actions: {missing_actions}", 1)
+    )
+
+
 def test_validate_frontmatter_summary_accepts_contract_results() -> None:
     content = (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8")
 
@@ -528,6 +538,53 @@ def test_validate_frontmatter_summary_rejects_contradictory_comparison_verdict(t
 
     assert result.valid is False
     assert any("contradicts passed contract_results status" in error for error in result.errors)
+
+
+@pytest.mark.parametrize(
+    ("status", "completed_actions", "missing_actions", "message"),
+    [
+        ("completed", "[read]", "[compare]", "status=completed requires missing_actions to be empty"),
+        (
+            "not_applicable",
+            "[read]",
+            "[]",
+            "status=not_applicable requires completed_actions and missing_actions to be empty",
+        ),
+        (
+            "missing",
+            "[read, compare]",
+            "[compare]",
+            "completed_actions and missing_actions must not overlap: compare",
+        ),
+    ],
+)
+def test_validate_frontmatter_summary_rejects_contradictory_reference_action_ledger(
+    tmp_path: Path,
+    status: str,
+    completed_actions: str,
+    missing_actions: str,
+    message: str,
+) -> None:
+    phase_dir = tmp_path / ".gpd" / "phases" / "01-benchmark"
+    phase_dir.mkdir(parents=True)
+    (phase_dir / "01-01-PLAN.md").write_text(
+        (FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    summary_path = phase_dir / "01-SUMMARY.md"
+    summary_path.write_text(
+        _summary_with_reference_usage(
+            status=status,
+            completed_actions=completed_actions,
+            missing_actions=missing_actions,
+        ),
+        encoding="utf-8",
+    )
+
+    result = validate_frontmatter(summary_path.read_text(encoding="utf-8"), "summary", source_path=summary_path)
+
+    assert result.valid is False
+    assert any(message in error for error in result.errors)
 
 
 def test_validate_frontmatter_verification_with_source_path_requires_suggested_contract_checks_for_partial_decisive_checks(
@@ -1163,6 +1220,10 @@ def test_verify_summary_requires_must_surface_reference_actions(tmp_path: Path) 
     summary_content = (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
         "completed_actions: [read, compare, cite]",
         "completed_actions: [read]",
+        1,
+    ).replace(
+        "status: completed",
+        "status: missing",
         1,
     ).replace(
         "missing_actions: []",

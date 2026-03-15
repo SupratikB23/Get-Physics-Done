@@ -20,6 +20,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError as PydanticValidationError
 
 from gpd.contracts import ResearchContract
+from gpd.core.contract_validation import salvage_project_contract
 from gpd.core.observability import gpd_span
 from gpd.core.protocol_bundles import ResolvedProtocolBundle, get_protocol_bundle, render_protocol_bundle_context
 from gpd.core.verification_checks import (
@@ -563,12 +564,95 @@ def _unique_strings(values: Iterable[str]) -> list[str]:
     return unique
 
 
+def _claim_ids_by_deliverable(contract: ResearchContract) -> dict[str, list[str]]:
+    mapping: dict[str, list[str]] = {}
+    for claim in contract.claims:
+        for deliverable_id in claim.deliverables:
+            mapping.setdefault(deliverable_id, []).append(claim.id)
+    return mapping
+
+
+def _claim_ids_for_subject(
+    subject_id: str,
+    *,
+    claims_by_id: dict[str, object],
+    claims_by_deliverable: dict[str, list[str]],
+) -> list[str]:
+    claim_ids: list[str] = []
+    if subject_id in claims_by_id:
+        claim_ids.append(subject_id)
+    claim_ids.extend(claims_by_deliverable.get(subject_id, []))
+    return _unique_strings(claim_ids)
+
+
+def _resolve_binding_candidates(
+    *,
+    label: str,
+    context_candidates: dict[str, list[str]],
+) -> tuple[list[str], str | None]:
+    non_empty = [(context, candidates) for context, candidates in context_candidates.items() if candidates]
+    if not non_empty:
+        return [], None
+
+    intersection = set(non_empty[0][1])
+    for _, candidates in non_empty[1:]:
+        intersection.intersection_update(candidates)
+
+    if intersection:
+        agreed: list[str] = []
+        for _, candidates in non_empty:
+            for candidate in candidates:
+                if candidate in intersection and candidate not in agreed:
+                    agreed.append(candidate)
+        return agreed, None
+
+    details = "; ".join(f"{context} -> {', '.join(candidates)}" for context, candidates in non_empty)
+    return [], f"binding contexts disagree on {label}; {details}"
+
+
+def _benchmark_references_for_subject_ids(
+    subject_ids: Iterable[str],
+    *,
+    benchmark_refs: list[object],
+    benchmark_reference_ids: set[str],
+    claims_by_id: dict[str, object],
+    claims_by_deliverable: dict[str, list[str]],
+) -> list[str]:
+    candidate_reference_ids: list[str] = []
+    normalized_subject_ids = _unique_strings(subject_ids)
+    for reference in benchmark_refs:
+        if set(reference.applies_to).intersection(normalized_subject_ids):
+            candidate_reference_ids.append(reference.id)
+
+    claim_ids: list[str] = []
+    for subject_id in normalized_subject_ids:
+        claim_ids.extend(
+            _claim_ids_for_subject(
+                subject_id,
+                claims_by_id=claims_by_id,
+                claims_by_deliverable=claims_by_deliverable,
+            )
+        )
+
+    for claim_id in _unique_strings(claim_ids):
+        claim = claims_by_id.get(claim_id)
+        if claim is None:
+            continue
+        candidate_reference_ids.extend(
+            reference_id
+            for reference_id in claim.references
+            if reference_id in benchmark_reference_ids
+        )
+
+    return _unique_strings(candidate_reference_ids)
+
+
 def _benchmark_reference_candidates(
     contract: ResearchContract,
     binding_ids: dict[str, list[str]],
     *,
     binding_supplied: bool,
-) -> list[str]:
+) -> tuple[list[str], str | None]:
     benchmark_refs = [
         reference
         for reference in contract.references
@@ -577,74 +661,75 @@ def _benchmark_reference_candidates(
     references_by_id = {reference.id: reference for reference in benchmark_refs}
     claims_by_id = {claim.id: claim for claim in contract.claims}
     tests_by_id = {test.id: test for test in contract.acceptance_tests}
+    claims_by_deliverable = _claim_ids_by_deliverable(contract)
 
-    explicit_reference_ids = [
+    context_candidates: dict[str, list[str]] = {}
+    reference_candidates = [
         reference_id for reference_id in binding_ids.get("reference", []) if reference_id in references_by_id
     ]
-    if explicit_reference_ids:
-        return _unique_strings(explicit_reference_ids)
+    if reference_candidates:
+        context_candidates["reference"] = _unique_strings(reference_candidates)
 
-    candidate_claim_ids: set[str] = set(binding_ids.get("claim", []))
-    candidate_subject_ids: set[str] = set(binding_ids.get("deliverable", []))
-    candidate_subject_ids.update(candidate_claim_ids)
+    claim_candidates = _benchmark_references_for_subject_ids(
+        binding_ids.get("claim", []),
+        benchmark_refs=benchmark_refs,
+        benchmark_reference_ids=set(references_by_id),
+        claims_by_id=claims_by_id,
+        claims_by_deliverable=claims_by_deliverable,
+    )
+    if claim_candidates:
+        context_candidates["claim"] = claim_candidates
 
+    deliverable_candidates = _benchmark_references_for_subject_ids(
+        binding_ids.get("deliverable", []),
+        benchmark_refs=benchmark_refs,
+        benchmark_reference_ids=set(references_by_id),
+        claims_by_id=claims_by_id,
+        claims_by_deliverable=claims_by_deliverable,
+    )
+    if deliverable_candidates:
+        context_candidates["deliverable"] = deliverable_candidates
+
+    acceptance_test_candidates: list[str] = []
     for test_id in binding_ids.get("acceptance_test", []):
         test = tests_by_id.get(test_id)
         if test is None:
             continue
-        candidate_subject_ids.add(test.subject)
-        candidate_claim_ids.add(test.subject)
         for evidence_id in test.evidence_required:
             if evidence_id in references_by_id:
-                explicit_reference_ids.append(evidence_id)
-
-    if explicit_reference_ids:
-        return _unique_strings(explicit_reference_ids)
-
-    candidate_reference_ids: list[str] = []
-    for claim_id in candidate_claim_ids:
-        claim = claims_by_id.get(claim_id)
-        if claim is None:
-            continue
-        candidate_reference_ids.extend(
-            reference_id for reference_id in claim.references if reference_id in references_by_id
+                acceptance_test_candidates.append(evidence_id)
+        acceptance_test_candidates.extend(
+            _benchmark_references_for_subject_ids(
+                [test.subject],
+                benchmark_refs=benchmark_refs,
+                benchmark_reference_ids=set(references_by_id),
+                claims_by_id=claims_by_id,
+                claims_by_deliverable=claims_by_deliverable,
+            )
         )
+    if acceptance_test_candidates:
+        context_candidates["acceptance_test"] = _unique_strings(acceptance_test_candidates)
 
-    for reference in benchmark_refs:
-        if candidate_subject_ids and set(reference.applies_to).intersection(candidate_subject_ids):
-            candidate_reference_ids.append(reference.id)
-
-    if candidate_reference_ids:
-        return _unique_strings(candidate_reference_ids)
+    candidates, issue = _resolve_binding_candidates(
+        label="benchmark reference candidates",
+        context_candidates=context_candidates,
+    )
+    if candidates or issue:
+        return candidates, issue
 
     if not binding_supplied and not binding_ids and len(benchmark_refs) == 1:
-        return [benchmark_refs[0].id]
+        return [benchmark_refs[0].id], None
 
-    return []
+    return [], None
 
 
-def _limit_regime_candidates(
-    contract: ResearchContract,
-    binding_ids: dict[str, list[str]],
+def _regimes_for_claim_ids(
+    claim_ids: Iterable[str],
     *,
-    binding_supplied: bool,
+    claims_by_id: dict[str, object],
+    observables_by_id: dict[str, object],
 ) -> list[str]:
-    observables_by_id = {observable.id: observable for observable in contract.observables}
-    claims_by_id = {claim.id: claim for claim in contract.claims}
-    tests_by_id = {test.id: test for test in contract.acceptance_tests}
-
     candidate_regimes: list[str] = []
-    for observable_id in binding_ids.get("observable", []):
-        observable = observables_by_id.get(observable_id)
-        if observable is not None and observable.regime:
-            candidate_regimes.append(observable.regime)
-
-    claim_ids = list(binding_ids.get("claim", []))
-    for test_id in binding_ids.get("acceptance_test", []):
-        test = tests_by_id.get(test_id)
-        if test is not None:
-            claim_ids.append(test.subject)
-
     for claim_id in _unique_strings(claim_ids):
         claim = claims_by_id.get(claim_id)
         if claim is None:
@@ -653,17 +738,136 @@ def _limit_regime_candidates(
             observable = observables_by_id.get(observable_id)
             if observable is not None and observable.regime:
                 candidate_regimes.append(observable.regime)
+    return _unique_strings(candidate_regimes)
 
-    candidate_regimes = _unique_strings(candidate_regimes)
-    if candidate_regimes:
-        return candidate_regimes
+
+def _limit_regimes_for_subject_ids(
+    subject_ids: Iterable[str],
+    *,
+    claims_by_id: dict[str, object],
+    claims_by_deliverable: dict[str, list[str]],
+    observables_by_id: dict[str, object],
+) -> list[str]:
+    claim_ids: list[str] = []
+    for subject_id in _unique_strings(subject_ids):
+        claim_ids.extend(
+            _claim_ids_for_subject(
+                subject_id,
+                claims_by_id=claims_by_id,
+                claims_by_deliverable=claims_by_deliverable,
+            )
+        )
+    return _regimes_for_claim_ids(
+        claim_ids,
+        claims_by_id=claims_by_id,
+        observables_by_id=observables_by_id,
+    )
+
+
+def _limit_regime_candidates(
+    contract: ResearchContract,
+    binding_ids: dict[str, list[str]],
+    *,
+    binding_supplied: bool,
+) -> tuple[list[str], str | None]:
+    observables_by_id = {observable.id: observable for observable in contract.observables}
+    claims_by_id = {claim.id: claim for claim in contract.claims}
+    tests_by_id = {test.id: test for test in contract.acceptance_tests}
+    references_by_id = {reference.id: reference for reference in contract.references}
+    claims_by_deliverable = _claim_ids_by_deliverable(contract)
+
+    context_candidates: dict[str, list[str]] = {}
+    observable_candidates: list[str] = []
+    for observable_id in binding_ids.get("observable", []):
+        observable = observables_by_id.get(observable_id)
+        if observable is not None and observable.regime:
+            observable_candidates.append(observable.regime)
+    if observable_candidates:
+        context_candidates["observable"] = _unique_strings(observable_candidates)
+
+    claim_candidates = _limit_regimes_for_subject_ids(
+        binding_ids.get("claim", []),
+        claims_by_id=claims_by_id,
+        claims_by_deliverable=claims_by_deliverable,
+        observables_by_id=observables_by_id,
+    )
+    if claim_candidates:
+        context_candidates["claim"] = claim_candidates
+
+    deliverable_candidates = _limit_regimes_for_subject_ids(
+        binding_ids.get("deliverable", []),
+        claims_by_id=claims_by_id,
+        claims_by_deliverable=claims_by_deliverable,
+        observables_by_id=observables_by_id,
+    )
+    if deliverable_candidates:
+        context_candidates["deliverable"] = deliverable_candidates
+
+    acceptance_test_candidates: list[str] = []
+    for test_id in binding_ids.get("acceptance_test", []):
+        test = tests_by_id.get(test_id)
+        if test is not None:
+            acceptance_test_candidates.extend(
+                _limit_regimes_for_subject_ids(
+                    [test.subject],
+                    claims_by_id=claims_by_id,
+                    claims_by_deliverable=claims_by_deliverable,
+                    observables_by_id=observables_by_id,
+                )
+            )
+    if acceptance_test_candidates:
+        context_candidates["acceptance_test"] = _unique_strings(acceptance_test_candidates)
+
+    reference_candidates: list[str] = []
+    for reference_id in binding_ids.get("reference", []):
+        reference = references_by_id.get(reference_id)
+        if reference is None:
+            continue
+        reference_candidates.extend(
+            _limit_regimes_for_subject_ids(
+                reference.applies_to,
+                claims_by_id=claims_by_id,
+                claims_by_deliverable=claims_by_deliverable,
+                observables_by_id=observables_by_id,
+            )
+        )
+    if reference_candidates:
+        context_candidates["reference"] = _unique_strings(reference_candidates)
+
+    candidates, issue = _resolve_binding_candidates(
+        label="limit regime candidates",
+        context_candidates=context_candidates,
+    )
+    if candidates or issue:
+        return candidates, issue
 
     global_regimes = _unique_strings(
         observable.regime for observable in contract.observables if observable.regime
     )
     if not binding_supplied and not binding_ids and len(global_regimes) == 1:
-        return global_regimes
-    return []
+        return global_regimes, None
+    return [], None
+
+
+def _summarize_contract_salvage_errors(errors: list[str]) -> str:
+    if not errors:
+        return ""
+    summary = "; ".join(errors[:3])
+    if len(errors) > 3:
+        summary += f"; +{len(errors) - 3} more"
+    return summary
+
+
+def _parse_contract_payload(contract_raw: dict[str, object]) -> tuple[ResearchContract | None, list[str], dict | None]:
+    try:
+        return ResearchContract.model_validate(contract_raw), [], None
+    except Exception as exc:  # pragma: no cover - pydantic version specifics
+        contract, salvage_errors = salvage_project_contract(contract_raw)
+        if contract is not None:
+            return contract, salvage_errors, None
+        summary = _summarize_contract_salvage_errors(salvage_errors)
+        detail = summary or str(exc)
+        return None, [], _error_result(f"Invalid contract payload: {detail}")
 
 
 def _validate_benchmark_reference_binding(
@@ -683,11 +887,18 @@ def _validate_benchmark_reference_binding(
     if source_reference_id not in _contract_ids_for_target(contract, "reference"):
         return None, f"metadata.source_reference_id references unknown contract reference {source_reference_id}"
 
-    candidates = _benchmark_reference_candidates(contract, binding_ids, binding_supplied=binding_supplied)
-    if binding_ids and candidates and source_reference_id not in candidates:
+    candidates, candidate_issue = _benchmark_reference_candidates(
+        contract,
+        binding_ids,
+        binding_supplied=binding_supplied,
+    )
+    if candidate_issue:
+        return None, candidate_issue
+    if candidates and source_reference_id not in candidates:
         expected = ", ".join(candidates)
+        context_label = "bound contract context" if binding_ids else "resolved contract context"
         return None, (
-            "metadata.source_reference_id does not match the bound contract context; "
+            f"metadata.source_reference_id does not match the {context_label}; "
             f"expected one of {expected}"
         )
     return source_reference_id, None
@@ -708,11 +919,18 @@ def _validate_limit_regime_binding(
     if contract is None:
         return regime_label, None
 
-    candidates = _limit_regime_candidates(contract, binding_ids, binding_supplied=binding_supplied)
-    if binding_ids and candidates and regime_label not in candidates:
+    candidates, candidate_issue = _limit_regime_candidates(
+        contract,
+        binding_ids,
+        binding_supplied=binding_supplied,
+    )
+    if candidate_issue:
+        return None, candidate_issue
+    if candidates and regime_label not in candidates:
         expected = ", ".join(candidates)
+        context_label = "bound contract context" if binding_ids else "resolved contract context"
         return None, (
-            "metadata.regime_label does not match the bound contract context; "
+            f"metadata.regime_label does not match the {context_label}; "
             f"expected one of {expected}"
         )
     return regime_label, None
@@ -733,7 +951,7 @@ def _with_contract_policy_defaults(
 
     enriched = dict(metadata)
     if check_key == "contract.benchmark_reproduction" and not enriched.get("source_reference_id"):
-        candidates = _benchmark_reference_candidates(contract, binding_ids, binding_supplied=binding_supplied)
+        candidates, _ = _benchmark_reference_candidates(contract, binding_ids, binding_supplied=binding_supplied)
         if len(candidates) == 1:
             enriched["source_reference_id"] = candidates[0]
 
@@ -751,7 +969,7 @@ def _with_contract_policy_defaults(
 
     if check_key == "contract.limit_recovery":
         if not enriched.get("regime_label"):
-            candidates = _limit_regime_candidates(contract, binding_ids, binding_supplied=binding_supplied)
+            candidates, _ = _limit_regime_candidates(contract, binding_ids, binding_supplied=binding_supplied)
             if len(candidates) == 1:
                 enriched["regime_label"] = candidates[0]
 
@@ -788,11 +1006,11 @@ def run_contract_check(request: dict) -> dict:
                 return error
 
             contract = None
+            contract_salvage_errors: list[str] = []
             if contract_raw is not None:
-                try:
-                    contract = ResearchContract.model_validate(contract_raw)
-                except Exception as exc:  # pragma: no cover - pydantic version specifics
-                    return _error_result(f"Invalid contract payload: {exc}")
+                contract, contract_salvage_errors, error = _parse_contract_payload(contract_raw)
+                if error is not None:
+                    return error
 
             binding = binding_raw or {}
             binding_supplied = binding_raw is not None
@@ -818,6 +1036,11 @@ def run_contract_check(request: dict) -> dict:
             metrics: dict[str, object] = {}
             status = "insufficient_evidence"
             evidence_directness = "metadata_only"
+            if contract_salvage_errors:
+                automated_issues.append(
+                    "Contract payload was salvaged before verification: "
+                    + _summarize_contract_salvage_errors(contract_salvage_errors)
+                )
             automated_issues.extend(binding_issues)
 
             if check_meta.check_key == "contract.limit_recovery":
@@ -1029,7 +1252,9 @@ def suggest_contract_checks(contract: dict, active_checks: list[str] | None = No
 
     with gpd_span("mcp.verification.suggest_contract_checks"):
         try:
-            parsed = ResearchContract.model_validate(contract)
+            parsed, _, error = _parse_contract_payload(contract)
+            if error is not None or parsed is None:
+                return error or _error_result("Invalid contract payload")
             active = set(active_checks or [])
             suggestions: list[dict[str, object]] = []
 

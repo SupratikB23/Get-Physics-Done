@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic import ValidationError as PydanticValidationError
 
 __all__ = [
@@ -124,6 +124,7 @@ class VerificationEvidence(BaseModel):
 
 
 ContractEvidenceStatus = Literal["passed", "partial", "failed", "blocked", "not_attempted"]
+ContractReferenceAction = Literal["read", "use", "compare", "cite", "avoid"]
 
 
 class ContractEvidenceEntry(BaseModel):
@@ -158,10 +159,38 @@ class ContractReferenceUsage(BaseModel):
     model_config = ConfigDict(validate_assignment=True, extra="forbid")
 
     status: ContractReferenceActionStatus = "missing"
-    completed_actions: list[str] = Field(default_factory=list)
-    missing_actions: list[str] = Field(default_factory=list)
+    completed_actions: list[ContractReferenceAction] = Field(default_factory=list)
+    missing_actions: list[ContractReferenceAction] = Field(default_factory=list)
     summary: str | None = None
     evidence: list[VerificationEvidence] = Field(default_factory=list)
+
+    @field_validator("completed_actions", "missing_actions", mode="before")
+    @classmethod
+    def _normalize_action_lists(cls, value: object) -> object:
+        return _normalize_string_list(value)
+
+    @model_validator(mode="after")
+    def _validate_action_status(self) -> ContractReferenceUsage:
+        completed = set(self.completed_actions)
+        missing = set(self.missing_actions)
+        overlap = sorted(completed.intersection(missing))
+
+        if overlap:
+            raise ValueError(
+                "completed_actions and missing_actions must not overlap: " + ", ".join(overlap)
+            )
+        if self.status == "completed":
+            if not self.completed_actions:
+                raise ValueError("status=completed requires completed_actions")
+            if self.missing_actions:
+                raise ValueError("status=completed requires missing_actions to be empty")
+        elif self.status == "missing":
+            if not self.missing_actions:
+                raise ValueError("status=missing requires missing_actions")
+        elif self.completed_actions or self.missing_actions:
+            raise ValueError("status=not_applicable requires completed_actions and missing_actions to be empty")
+
+        return self
 
 
 ContractForbiddenProxyStatus = Literal["rejected", "violated", "unresolved", "not_applicable"]
@@ -482,7 +511,7 @@ class ContractReference(BaseModel):
     applies_to: list[str] = Field(default_factory=list)
     carry_forward_to: list[str] = Field(default_factory=list)
     must_surface: bool = False
-    required_actions: list[Literal["read", "use", "compare", "cite", "avoid"]] = Field(default_factory=list)
+    required_actions: list[ContractReferenceAction] = Field(default_factory=list)
 
     @field_validator("id", "locator", "why_it_matters", mode="before")
     @classmethod
@@ -492,6 +521,11 @@ class ContractReference(BaseModel):
     @field_validator("aliases", "applies_to", "carry_forward_to", mode="before")
     @classmethod
     def _normalize_reference_lists(cls, value: object) -> object:
+        return _normalize_string_list(value)
+
+    @field_validator("required_actions", mode="before")
+    @classmethod
+    def _normalize_required_actions(cls, value: object) -> object:
         return _normalize_string_list(value)
 
 
