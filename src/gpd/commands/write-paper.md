@@ -61,7 +61,7 @@ Routes to the write-paper workflow which handles all logic including:
 3. Scope establishment, artifact cataloging, and outline creation
 4. Figure generation before section drafting
 5. Wave-parallelized section drafting (Wave 1: Results+Methods, Wave 2: Introduction, Wave 3: Discussion, Wave 4: Conclusions, Wave 5: Abstract, Wave 6: Appendices)
-6. LaTeX compilation checks after each wave (if pdflatex available)
+6. LaTeX compilation checks after each wave (if pdflatex available; cross-platform detection including Windows MiKTeX/TeX Live)
 7. Consistency check, notation audit, and RESULT PENDING placeholder resolution
 8. Bibliography verification via gpd-bibliographer
 9. Pre-submission staged peer review via specialist panel plus final gpd-referee adjudication
@@ -99,7 +99,7 @@ cat .gpd/research-map/FORMALISM.md 2>/dev/null
 
 The workflow handles all logic including:
 
-1. **Init** — Load project context via `gpd init phase-op`, check pdflatex availability, verify conventions
+1. **Init** — Load project context via `gpd init phase-op`, check pdflatex availability (cross-platform, including Windows MiKTeX/TeX Live), verify conventions
 2. **Load research digest** — Check for RESEARCH-DIGEST.md from milestone completion; map digest sections to paper structure; fall back to raw phase data if no digest found. Supports `--from-phases` flag to select specific phases.
 3. **Establish scope** — Target journal, paper type, key result (ONE sentence), audience, available artifacts
 4. **Catalog artifacts** — Gather derivations, numerical results, figures, literature, verification results from phases
@@ -114,7 +114,7 @@ The workflow handles all logic including:
    - Wave 4: Conclusions
    - Wave 5: Abstract (write LAST)
    - Wave 6: Appendices
-   - LaTeX compilation check after each wave (if pdflatex available)
+   - LaTeX compilation check after each wave (if pdflatex available; Windows users: install MiKTeX or TeX Live)
    - Per-wave checkpointing: skip waves whose .tex outputs already exist
 10. **Consistency check** — Notation audit, cross-reference audit, placeholder resolution (RESULT PENDING markers), physics consistency, narrative flow
 11. **Notation audit** — Cross-reference all symbols against NOTATION_GLOSSARY.md (if exists)
