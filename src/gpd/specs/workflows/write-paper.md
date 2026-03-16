@@ -110,18 +110,43 @@ done
 
 If `PAPER_DIR` is set, the workflow is resuming or revising an existing paper. Otherwise, a new `paper/` directory will be created in `generate_files`.
 
-**Check pdflatex availability:**
+**Check pdflatex availability (cross-platform):**
 
 ```bash
-command -v pdflatex >/dev/null 2>&1 && PDFLATEX_AVAILABLE=true || PDFLATEX_AVAILABLE=false
+# Check standard PATH first, then platform-specific locations
+if command -v pdflatex >/dev/null 2>&1; then
+  PDFLATEX_AVAILABLE=true
+elif [ "$(uname -s 2>/dev/null)" = "MINGW"* ] || [ -n "$WINDIR" ]; then
+  # Windows: check common MiKTeX and TeX Live install paths
+  for DIR in \
+    "$LOCALAPPDATA/Programs/MiKTeX/miktex/bin/x64" \
+    "$PROGRAMFILES/MiKTeX/miktex/bin/x64" \
+    "$PROGRAMFILES/texlive"/*/bin/windows \
+    "$PROGRAMFILES/texlive"/*/bin/win64 \
+    "C:/texlive"/*/bin/windows \
+    "C:/texlive"/*/bin/win64; do
+    if [ -f "$DIR/pdflatex.exe" ]; then
+      export PATH="$DIR:$PATH"
+      PDFLATEX_AVAILABLE=true
+      break
+    fi
+  done
+  [ -z "$PDFLATEX_AVAILABLE" ] && PDFLATEX_AVAILABLE=false
+else
+  PDFLATEX_AVAILABLE=false
+fi
 ```
 
 If `PDFLATEX_AVAILABLE` is false, display a warning:
 
 ```
 ⚠ pdflatex not found. LaTeX compilation checks will be skipped.
-  Install TeX Live or MacTeX for compilation verification during drafting.
   The paper .tex files will still be generated correctly.
+
+  To enable compilation checks, install a LaTeX distribution:
+    - Windows:     MiKTeX (https://miktex.org/download) or TeX Live
+    - macOS:       brew install --cask mactex
+    - Linux:       sudo apt install texlive-latex-base  (Debian/Ubuntu)
 ```
 
 The workflow continues without compilation checks — .tex file generation does not require pdflatex.

@@ -83,7 +83,48 @@ SUBMISSION_DIR="arxiv-submission"
 </step>
 
 <step name="validate_latex">
-**Compile LaTeX and check for errors:**
+**Check LaTeX compiler availability then compile:**
+
+```bash
+# Cross-platform detection: PATH first, then Windows-specific locations
+if command -v pdflatex >/dev/null 2>&1; then
+  PDFLATEX_AVAILABLE=true
+elif [ -n "$WINDIR" ]; then
+  for DIR in \
+    "$LOCALAPPDATA/Programs/MiKTeX/miktex/bin/x64" \
+    "$PROGRAMFILES/MiKTeX/miktex/bin/x64" \
+    "$PROGRAMFILES/texlive"/*/bin/windows \
+    "$PROGRAMFILES/texlive"/*/bin/win64 \
+    "C:/texlive"/*/bin/windows \
+    "C:/texlive"/*/bin/win64; do
+    if [ -f "$DIR/pdflatex.exe" ]; then
+      export PATH="$DIR:$PATH"
+      PDFLATEX_AVAILABLE=true
+      break
+    fi
+  done
+  [ -z "$PDFLATEX_AVAILABLE" ] && PDFLATEX_AVAILABLE=false
+else
+  PDFLATEX_AVAILABLE=false
+fi
+```
+
+**If `PDFLATEX_AVAILABLE` is false:**
+
+```
+ERROR: pdflatex is required for arXiv submission but was not found.
+
+Install a LaTeX distribution:
+  - Windows: MiKTeX (https://miktex.org/download) or TeX Live
+  - macOS:   brew install --cask mactex
+  - Linux:   sudo apt install texlive-latex-base
+
+After installation, restart your terminal and re-run this command.
+```
+
+Ask user: "Would you like guidance on installing a LaTeX distribution?" or "Abort?"
+
+**If pdflatex is available, compile:**
 
 If `${PAPER_DIR}/PAPER-CONFIG.json` exists, refresh the manuscript and artifact manifest first:
 
@@ -524,7 +565,11 @@ Upload this file directly to https://arxiv.org/submit
 - **Missing .bbl file:** Re-run bibtex. If bibliography database missing, suggest running `/gpd:write-paper` first.
 - **Figures missing:** List missing figures with their `\includegraphics` paths. Check if they exist elsewhere in the project.
 - **Package too large (> 50MB):** Suggest reducing figure resolution, compressing images, or moving large data to ancillary files.
-- **pdflatex not available:** Suggest `brew install basictex` (macOS) or `apt install texlive-latex-base` (Linux). Cannot proceed without LaTeX installation.
+- **pdflatex not available:** LaTeX is required for arXiv submission. Suggest installing a distribution:
+  - **Windows:** MiKTeX (https://miktex.org/download) or TeX Live (https://tug.org/texlive/windows.html). After installation, restart the terminal so new PATH entries take effect.
+  - **macOS:** `brew install --cask mactex` or `brew install --cask basictex`
+  - **Linux:** `sudo apt install texlive-latex-base` (Debian/Ubuntu) or `sudo dnf install texlive-scheme-basic` (Fedora)
+  Cannot proceed without a LaTeX installation.
 
 </failure_handling>
 

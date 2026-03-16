@@ -8,7 +8,13 @@ from gpd.mcp.paper.bibliography import (
     build_bibliography_with_audit,
     write_bibliography_audit,
 )
-from gpd.mcp.paper.compiler import build_paper, compile_paper
+from gpd.mcp.paper.compiler import (
+    build_paper,
+    compile_paper,
+    detect_latex_toolchain,
+    find_latex_compiler,
+    get_latex_install_guidance,
+)
 from gpd.mcp.paper.journal_map import get_journal_for_domain, get_journal_spec, list_journals
 from gpd.mcp.paper.models import (
     ArtifactManifest,
@@ -77,6 +83,9 @@ __all__ = [
     "build_bibliography_with_audit",
     "build_paper",
     "compile_paper",
+    "detect_latex_toolchain",
+    "find_latex_compiler",
+    "get_latex_install_guidance",
     "get_journal_for_domain",
     "get_journal_spec",
     "list_journals",
