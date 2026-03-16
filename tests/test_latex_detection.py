@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import os
-import platform
-
 import pytest
 
 from gpd.mcp.paper.compiler import (
-    LatexToolchainStatus,
     detect_latex_toolchain,
     find_latex_compiler,
     get_latex_install_guidance,
