@@ -9,6 +9,7 @@ from gpd.core.constants import STATE_JSON_BACKUP_FILENAME, ProjectLayout
 from gpd.core.state import (
     VALID_STATUSES,
     ResearchState,
+    _normalize_state_schema,
     default_state_dict,
     ensure_state_schema,
     generate_state_markdown,
@@ -428,6 +429,20 @@ def test_ensure_state_schema_salvages_reference_optional_field_without_dropping_
             "required_actions": ["read", "compare", "cite"],
         }
     ]
+
+
+def test_normalize_state_schema_reports_coercive_project_contract_scalars():
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["schema_version"] = True
+    contract["references"][0]["must_surface"] = "yes"
+
+    normalized, issues = _normalize_state_schema({"project_contract": contract})
+
+    assert normalized["project_contract"] is not None
+    assert normalized["project_contract"]["schema_version"] == 1
+    assert normalized["project_contract"]["references"][0]["must_surface"] is False
+    assert any("schema_version must be the integer 1" in issue for issue in issues)
+    assert any("references.0.must_surface must be a boolean" in issue for issue in issues)
 
 
 def test_ensure_state_schema_strips_claim_extra_keys_without_dropping_claim():

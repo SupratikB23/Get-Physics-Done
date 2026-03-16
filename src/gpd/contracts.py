@@ -75,6 +75,45 @@ def _normalize_mapping_field(value: object) -> object:
     return value
 
 
+def _collect_contract_scalar_errors(
+    value: object,
+    *,
+    path_prefix: str = "",
+    errors: list[str] | None = None,
+) -> list[str]:
+    """Return explicit scalar drift that strict contract loaders must reject."""
+
+    sink = errors if errors is not None else []
+
+    if isinstance(value, dict):
+        for raw_key, raw_item in value.items():
+            key = str(raw_key)
+            location = f"{path_prefix}.{key}" if path_prefix else key
+
+            if key == "schema_version":
+                if type(raw_item) is not int:
+                    sink.append("schema_version must be the integer 1")
+                    continue
+                if raw_item != 1:
+                    sink.append("schema_version: Input should be 1")
+                    continue
+
+            if key == "must_surface":
+                if type(raw_item) is not bool:
+                    sink.append(f"{location} must be a boolean")
+                    continue
+
+            _collect_contract_scalar_errors(raw_item, path_prefix=location, errors=sink)
+        return sink
+
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            child_prefix = f"{path_prefix}.{index}" if path_prefix else str(index)
+            _collect_contract_scalar_errors(item, path_prefix=child_prefix, errors=sink)
+
+    return sink
+
+
 class ConventionLock(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
@@ -624,6 +663,8 @@ def contract_from_data(data: object) -> ResearchContract | None:
     """
 
     if not isinstance(data, dict):
+        return None
+    if _collect_contract_scalar_errors(data):
         return None
     try:
         return ResearchContract.model_validate(data)

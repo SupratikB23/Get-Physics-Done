@@ -8,6 +8,7 @@ resolution so that defaults and model profiles are defined in exactly one place.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import UTC, datetime
@@ -43,7 +44,9 @@ from gpd.core.constants import (
     TODOS_DIR_NAME,
     VALIDATION_SUFFIX,
     VERIFICATION_SUFFIX,
+    ProjectLayout,
 )
+from gpd.core.contract_validation import salvage_project_contract
 from gpd.core.errors import ValidationError
 from gpd.core.protocol_bundles import render_protocol_bundle_context, select_protocol_bundles
 from gpd.core.reference_ingestion import ingest_reference_artifacts
@@ -189,12 +192,54 @@ def _extract_frontmatter_field(content: str, field: str) -> str | None:
     return val or None
 
 
+def _load_raw_project_contract_payload(cwd: Path) -> tuple[Path, object] | None:
+    """Return the raw project_contract payload from state storage."""
+    layout = ProjectLayout(cwd)
+
+    try:
+        raw_state = json.loads(layout.state_json.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+        raw_state = None
+    else:
+        if isinstance(raw_state, dict):
+            return layout.state_json, raw_state.get("project_contract")
+        return None
+
+    try:
+        raw_backup = json.loads(layout.state_json_backup.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+    if not isinstance(raw_backup, dict):
+        return None
+    return layout.state_json_backup, raw_backup.get("project_contract")
+
+
 def _load_project_contract(cwd: Path) -> ResearchContract | None:
     """Load the canonical project contract from state.json when available."""
     state = _load_state_json(cwd)
     if not isinstance(state, dict):
         return None
-    return contract_from_data(state.get("project_contract"))
+
+    raw_payload = _load_raw_project_contract_payload(cwd)
+    if raw_payload is None:
+        return contract_from_data(state.get("project_contract"))
+
+    source_path, raw_contract = raw_payload
+    if raw_contract is None:
+        return None
+    if not isinstance(raw_contract, dict):
+        logger.warning("Skipping project_contract from %s because it is not a JSON object", source_path)
+        return None
+
+    normalized_contract, schema_errors = salvage_project_contract(raw_contract)
+    if schema_errors or normalized_contract is None:
+        logger.warning(
+            "Skipping project_contract from %s because schema normalization would be required: %s",
+            source_path,
+            "; ".join(schema_errors) if schema_errors else "validation failed",
+        )
+        return None
+    return normalized_contract
 
 
 def _sorted_markdown_files(directory: Path) -> list[Path]:

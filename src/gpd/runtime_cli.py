@@ -13,12 +13,13 @@ entrypoint can:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
 from gpd.adapters import get_adapter
-from gpd.adapters.install_utils import build_runtime_install_repair_command
+from gpd.adapters.install_utils import GPD_INSTALL_DIR_NAME, MANIFEST_NAME, build_runtime_install_repair_command
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_REEXEC
 
 
@@ -35,24 +36,66 @@ def _parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     return options, gpd_args
 
 
-def _resolve_local_config_dir(raw_value: str) -> Path:
+def _load_install_manifest(config_dir: Path) -> dict[str, object]:
+    """Return install metadata for *config_dir* when present."""
+    manifest_path = config_dir / MANIFEST_NAME
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _paths_equal(left: Path, right: Path) -> bool:
+    """Return whether two paths resolve to the same location when comparable."""
+    try:
+        return left.expanduser().resolve() == right.expanduser().resolve()
+    except OSError:
+        return left.expanduser() == right.expanduser()
+
+
+def _is_matching_local_install_candidate(candidate: Path, *, runtime: str) -> bool:
+    """Return whether *candidate* should satisfy a local bridge config-dir lookup."""
+    if not candidate.is_dir():
+        return False
+
+    adapter = get_adapter(runtime)
+    if _paths_equal(candidate, adapter.global_config_dir):
+        return False
+
+    manifest = _load_install_manifest(candidate)
+    manifest_scope = manifest.get("install_scope")
+    if manifest_scope == "global":
+        return False
+
+    manifest_runtime = manifest.get("runtime")
+    if isinstance(manifest_runtime, str) and manifest_runtime.strip() and manifest_runtime.strip() != runtime:
+        return False
+
+    if manifest_scope == "local":
+        return True
+
+    return (candidate / MANIFEST_NAME).is_file() and (candidate / GPD_INSTALL_DIR_NAME).is_dir()
+
+
+def _resolve_local_config_dir(raw_value: str, *, runtime: str) -> Path:
     """Resolve a local config dir reference against the nearest matching ancestor."""
     relative = Path(raw_value).expanduser()
     resolved_cwd = Path.cwd().resolve(strict=False)
     for base in (resolved_cwd, *resolved_cwd.parents):
         candidate = (base / relative).resolve(strict=False)
-        if candidate.exists():
+        if _is_matching_local_install_candidate(candidate, runtime=runtime):
             return candidate
     return (resolved_cwd / relative).resolve(strict=False)
 
 
-def _resolve_config_dir(raw_value: str, *, install_scope: str, explicit_target: bool) -> Path:
+def _resolve_config_dir(raw_value: str, *, runtime: str, install_scope: str, explicit_target: bool) -> Path:
     """Resolve the configured runtime dir from an absolute or local-workspace reference."""
     candidate = Path(raw_value).expanduser()
     if candidate.is_absolute():
         return candidate.resolve(strict=False)
     if install_scope == "local" and not explicit_target:
-        return _resolve_local_config_dir(raw_value)
+        return _resolve_local_config_dir(raw_value, runtime=runtime)
     return (Path.cwd() / candidate).resolve(strict=False)
 
 
@@ -102,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     options, gpd_args = _parse_args(raw_argv)
     config_dir = _resolve_config_dir(
         options.config_dir,
+        runtime=options.runtime,
         install_scope=options.install_scope,
         explicit_target=bool(options.explicit_target),
     )

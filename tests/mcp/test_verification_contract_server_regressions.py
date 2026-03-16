@@ -87,6 +87,32 @@ def test_contract_tools_reject_invalid_schema_versions(schema_version: object, e
     assert suggest_result == {"error": expected_error, "schema_version": 1}
 
 
+def test_contract_tools_reject_coercive_contract_scalars() -> None:
+    from gpd.mcp.servers.verification_server import run_contract_check, suggest_contract_checks
+
+    contract = _load_project_contract_fixture()
+    contract["references"][0]["must_surface"] = "yes"
+
+    run_result = run_contract_check(
+        {
+            "check_key": "contract.benchmark_reproduction",
+            "contract": contract,
+            "binding": {"claim_ids": ["claim-benchmark"]},
+            "metadata": {"source_reference_id": "ref-benchmark"},
+            "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+        }
+    )
+
+    suggest_result = suggest_contract_checks(contract)
+
+    expected = {
+        "error": "Invalid contract payload: references.0.must_surface must be a boolean",
+        "schema_version": 1,
+    }
+    assert run_result == expected
+    assert suggest_result == expected
+
+
 def test_suggest_contract_checks_derives_request_templates_from_contract() -> None:
     from gpd.mcp.servers.verification_server import suggest_contract_checks
 

@@ -71,6 +71,17 @@ def _write_project_contract_state(tmp_path: Path) -> None:
     (tmp_path / ".gpd" / "state.json").write_text(json.dumps(state), encoding="utf-8")
 
 
+def _write_coercive_project_contract_state(tmp_path: Path) -> None:
+    """Persist a contract payload that should require schema normalization."""
+    from gpd.core.state import default_state_dict
+
+    state = default_state_dict()
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["references"][0]["must_surface"] = "yes"
+    state["project_contract"] = contract
+    (tmp_path / ".gpd" / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+
 def _write_stat_mech_project(tmp_path: Path) -> None:
     project = tmp_path / ".gpd" / "PROJECT.md"
     project.write_text(
@@ -1232,6 +1243,17 @@ class TestInitProgress:
 
         assert ctx["project_contract"]["references"][0]["must_surface"] is True
         assert "Recover known limiting behavior" in ctx["active_reference_context"]
+
+    def test_progress_hides_project_contract_when_raw_state_requires_contract_scalar_normalization(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_project(tmp_path)
+        _write_coercive_project_contract_state(tmp_path)
+
+        ctx = init_progress(tmp_path)
+
+        assert ctx["project_contract"] is None
+        assert "None confirmed in `state.json.project_contract.references` yet." in ctx["active_reference_context"]
 
 
 # ─── _extract_frontmatter_field ──────────────────────────────────────────────

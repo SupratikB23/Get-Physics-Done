@@ -355,3 +355,22 @@ class TestContractFromDataDefensiveGuard:
 
     def test_contract_from_data_returns_none_for_invalid_mapping(self):
         assert contract_from_data({"scope": {"question": ""}}) is None
+
+    def test_contract_from_data_returns_none_for_coercive_scalars(self):
+        assert contract_from_data({"schema_version": True, "scope": {"question": "q"}}) is None
+        assert (
+            contract_from_data(
+                {
+                    "scope": {"question": "q"},
+                    "references": [
+                        {
+                            "id": "ref-1",
+                            "locator": "paper.pdf",
+                            "why_it_matters": "anchor",
+                            "must_surface": "yes",
+                        }
+                    ],
+                }
+            )
+            is None
+        )

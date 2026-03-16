@@ -20,7 +20,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError as PydanticValidationError
 
 from gpd.contracts import ResearchContract
-from gpd.core.contract_validation import salvage_project_contract
+from gpd.core.contract_validation import _sanitize_contract_scalars, salvage_project_contract
 from gpd.core.observability import gpd_span
 from gpd.core.protocol_bundles import ResolvedProtocolBundle, get_protocol_bundle, render_protocol_bundle_context
 from gpd.core.verification_checks import (
@@ -1003,10 +1003,23 @@ def _validate_contract_schema_version(raw: object) -> dict[str, object] | None:
     return None
 
 
+def _validate_contract_scalar_fields(contract_raw: dict[str, object]) -> dict[str, object] | None:
+    """Reject coercive scalar contract fields before Pydantic can canonicalize them."""
+
+    errors: list[str] = []
+    _sanitize_contract_scalars(contract_raw, errors=errors)
+    if not errors:
+        return None
+    return _error_result(f"Invalid contract payload: {_summarize_contract_salvage_errors(errors)}")
+
+
 def _parse_contract_payload(contract_raw: dict[str, object]) -> tuple[ResearchContract | None, list[str], dict | None]:
     schema_error = _validate_contract_schema_version(contract_raw.get("schema_version"))
     if schema_error is not None:
         return None, [], schema_error
+    scalar_error = _validate_contract_scalar_fields(contract_raw)
+    if scalar_error is not None:
+        return None, [], scalar_error
     try:
         return ResearchContract.model_validate(contract_raw), [], None
     except Exception as exc:  # pragma: no cover - pydantic version specifics

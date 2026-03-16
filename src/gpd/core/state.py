@@ -1020,12 +1020,13 @@ def _normalize_project_contract_section(
     if value is None or not isinstance(value, dict):
         return value
 
-    try:
-        return ResearchContract.model_validate(value).model_dump()
-    except PydanticValidationError:
-        pass
-
     normalized_contract, errors = salvage_project_contract(value)
+    if not errors:
+        return normalized_contract.model_dump() if normalized_contract is not None else None
+
+    # Run contract salvage before any direct Pydantic acceptance so coercive
+    # scalar drift is surfaced as an integrity issue instead of silently
+    # canonicalized by field validators or bool/int coercion.
     integrity_issues.extend(_integrity_issue_from_contract_error(error) for error in errors)
     if not allow_project_contract_salvage:
         integrity_issues.append(
