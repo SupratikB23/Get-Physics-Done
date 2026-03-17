@@ -561,7 +561,7 @@ GPD takes its name in explicit analogy with [GSD (Get Shit Done)](https://github
 
 If GPD contributes to published research, please cite the software using [`CITATION.cff`](https://github.com/psi-oss/get-physics-done/blob/main/CITATION.cff). Copy-ready formats:
 
-```bibtex
+```bib
 @software{physical_superintelligence_2026_gpd,
   author = {{Physical Superintelligence PBC}},
   title = {Get Physics Done (GPD)},
