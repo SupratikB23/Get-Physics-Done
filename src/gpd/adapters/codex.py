@@ -103,7 +103,8 @@ _CODEX_QUESTION_RUNTIME_NOTE = (
     "</codex_questioning>\n\n"
 )
 _CODEX_ASK_USER_PLATFORM_NOTE_RE = re.compile(
-    r"(?m)^\s*>\s+\*\*Platform note:\*\* If `ask_user` is not available,[^\n]*\n(?:\s*\n)?"
+    r"^\s*>\s+\*\*Platform note:\*\* If `ask_user` is not available,[^\n]*\n(?:\s*\n)?",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 
@@ -360,23 +361,49 @@ def _rewrite_codex_gpd_cli_invocations(content: str, launcher: str) -> str:
 
 def _normalize_codex_questioning(content: str) -> str:
     """Rewrite mixed ask_user/freeform guidance into a single Codex style."""
-    if not any(marker in content for marker in _CODEX_QUESTION_MARKERS):
+    lowered = content.casefold()
+    if not any(marker.casefold() in lowered for marker in _CODEX_QUESTION_MARKERS):
         return content
 
     rewritten = _CODEX_ASK_USER_PLATFORM_NOTE_RE.sub("", content)
-    rewritten = rewritten.replace(
-        "Ask ONE question inline (freeform, NOT ask_user):",
-        "Ask exactly one inline freeform question with no preamble or restatement:",
-    )
-    rewritten = rewritten.replace(
-        "Ask inline (freeform, NOT ask_user):",
-        "Ask one inline freeform question with no preamble or restatement:",
-    )
     rewritten = re.sub(
-        r"\bUse ask_user\b(?!\s*\()",
-        "Ask the user once using a single compact prompt block",
+        r"(?im)^(\s*)ask one question inline \(freeform, not ask_user\):",
+        r"\1Ask exactly one inline freeform question with no preamble or restatement:",
         rewritten,
     )
+    rewritten = re.sub(
+        r"(?im)^(\s*)ask inline \(freeform, not ask_user\):",
+        r"\1Ask one inline freeform question with no preamble or restatement:",
+        rewritten,
+    )
+    rewritten = re.sub(
+        r"(?im)^(\s*)use ask_user with current values pre-selected:\s*$",
+        r"\1Present these options in plain text with current values pre-selected:",
+        rewritten,
+    )
+    rewritten = re.sub(
+        r"(?im)^(\s*)if overlapping, use ask_user:\s*$",
+        r"\1If overlapping, present the duplicate choices in plain text:",
+        rewritten,
+    )
+    rewritten = re.sub(
+        r"(?im)^(\s*)use ask_user:\s*$",
+        r"\1Ask the user once using a single compact prompt block:",
+        rewritten,
+    )
+    rewritten = re.sub(
+        r"(?im)^(\s*)based on what they said, ask follow-up questions that dig into their response\.\s*use ask_user with options that probe what they mentioned — interpretations, clarifications, concrete examples\.\s*$",
+        r"\1Based on what they said, ask follow-up questions that dig into their response. Keep the options in plain text and probe what they mentioned - interpretations, clarifications, concrete examples.",
+        rewritten,
+    )
+    rewritten = re.sub(
+        r"(?im)^(\s*)when you could write a clear scoping contract, use ask_user:\s*$",
+        r"\1When you could write a clear scoping contract, ask the user inline:",
+        rewritten,
+    )
+
+    if "use ask_user with current values pre-selected:" in lowered:
+        rewritten = re.sub(r"(?im)^(\s*)ask_user\(", r"\1plain_text_prompt(", rewritten)
 
     preamble, frontmatter, separator, body = split_markdown_frontmatter(rewritten)
     if _CODEX_QUESTION_RUNTIME_NOTE in body:

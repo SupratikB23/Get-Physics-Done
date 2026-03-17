@@ -728,7 +728,10 @@ def contract_from_data(data: object) -> ResearchContract | None:
     from gpd.core.contract_validation import _split_project_contract_schema_findings, salvage_project_contract
 
     contract, schema_findings = salvage_project_contract(data)
-    _schema_warnings, schema_errors = _split_project_contract_schema_findings(schema_findings)
+    _schema_warnings, schema_errors = _split_project_contract_schema_findings(
+        schema_findings,
+        allow_singleton_defaults=False,
+    )
     if schema_errors or contract is None:
         return None
     if collect_contract_integrity_errors(contract):

@@ -90,6 +90,17 @@ def test_approved_mode_accepts_comparison_source_still_undecided_phrase() -> Non
     assert result.mode == "approved"
 
 
+def test_approved_mode_does_not_treat_placeholder_user_asserted_anchor_as_grounding() -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["user_asserted_anchors"] = ["Benchmark TBD"]
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is False
+    assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
+
+
 def test_approved_mode_still_rejects_generic_open_gap_without_anchor_unknown_phrase() -> None:
     contract = _load_contract_fixture()
     _remove_incidental_grounding(contract)

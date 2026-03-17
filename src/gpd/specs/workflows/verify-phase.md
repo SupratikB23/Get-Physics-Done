@@ -3,7 +3,7 @@ Verify research phase goal achievement through computational verification. Check
 
 Executed by a verification subagent spawned from execute-phase.md.
 
-Can also be invoked directly via `/gpd:verify-work` for re-verification after manual fixes. When invoked standalone, the workflow runs identically but returns results to the user instead of to the execute-phase orchestrator.
+The standalone `/gpd:verify-work` workflow reuses the same verification criteria through `verify-work.md`; this file itself is executed by the execute-phase orchestrator.
 </purpose>
 
 <core_principle>
@@ -508,7 +508,9 @@ Format each as: Check Name -> What to verify -> Expected result -> Why cannot ve
 
 **gaps_found:** Any decisive contract target FAILED, artifact MISSING/INCOMPLETE/INCORRECT, required comparison verdict missing/FAIL/TENSION without resolution, required reference action missing, forbidden proxy VIOLATED/UNRESOLVED, physics check NOT_PERFORMED/FAILED, blocker anti-pattern found, cross-phase blocker found, or an omitted decisive check is recorded in `suggested_contract_checks` without an equivalent closing check elsewhere.
 
-**human_needed:** All automated and computational checks pass but expert verification items remain.
+**expert_needed:** All automated and computational checks pass but domain-expert verification items remain.
+
+**human_needed:** All automated and computational checks pass but non-expert human review or user decision remains.
 
 **Score:** `verified_contract_targets / total_contract_targets`
 **Independently confirmed:** `independently_confirmed_checks / total_applicable_checks`
@@ -545,7 +547,7 @@ Scan the written VERIFICATION.md for evidence of actual code execution:
 
 ```bash
 # Check for code output blocks in VERIFICATION.md
-VERIFICATION_FILE="${phase_dir}/${phase}-VERIFICATION.md"
+VERIFICATION_FILE="${phase_dir}/${phase_number}-VERIFICATION.md"
 if [ -f "$VERIFICATION_FILE" ]; then
   # Look for output blocks (```output or **Output:** followed by ```)
   HAS_OUTPUT=$(grep -cE '(^\*\*Output:?\*\*|^```(output|text)|computed=|PASS|FAIL|match=True|match=False)' "$VERIFICATION_FILE")
@@ -565,12 +567,13 @@ This gate enforces the principle that verification must involve external computa
 </step>
 
 <step name="return_to_orchestrator">
-Return status (`passed` | `gaps_found` | `human_needed`), score (N/M contract targets), independently confirmed count (K/M), report path.
+Return status (`passed` | `gaps_found` | `expert_needed` | `human_needed`), score (N/M contract targets), independently confirmed count (K/M), report path.
 
 If gaps_found: list gaps with contract IDs, computation evidence, comparison verdict failures or forbidden-proxy violations, and recommended fix plan names.
-If human_needed: list items requiring expert review with explanation of why computational verification was insufficient.
+If expert_needed: list items requiring expert review with explanation of why computational verification was insufficient.
+If human_needed: list items requiring non-expert human review with explanation of why computational verification was insufficient.
 
-Orchestrator routes: `passed` -> update_roadmap | `gaps_found` -> create/execute fixes, re-verify | `human_needed` -> present to researcher.
+Orchestrator routes: `passed` -> update_roadmap | `gaps_found` -> create/execute fixes, re-verify | `expert_needed` -> present to researcher/expert review | `human_needed` -> present to researcher.
 </step>
 
 </process>

@@ -2267,12 +2267,6 @@ def _resolve_review_preflight_manuscript(cwd: Path, subject: str | None) -> tupl
 
         if target.is_dir():
             candidate = _first_existing_path(target / "main.tex", target / "main.md")
-            if candidate is None:
-                direct_files = sorted(
-                    path for path in target.iterdir() if path.is_file() and path.suffix in {".tex", ".md"}
-                )
-                if direct_files:
-                    candidate = direct_files[0]
             if candidate is not None:
                 return candidate, f"{_format_display_path(target)} resolved to {_format_display_path(candidate)}"
             return None, f"no manuscript entry point found under {_format_display_path(target)}"

@@ -69,6 +69,11 @@ _ANCHOR_UNKNOWN_SELECTION_PATTERNS = (
     re.compile(r"\bpick\b"),
     re.compile(r"\bdecisive\b"),
 )
+_USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS = (
+    re.compile(r"^\s*(?:tbd|todo|unknown|unclear|none|n/?a|placeholder)\s*$"),
+    re.compile(r"\bplaceholder\b"),
+    re.compile(r"\bto be determined\b"),
+)
 _RECOVERABLE_SCHEMA_WARNING_PATTERNS = (
     re.compile(r"^.+: Extra inputs are not permitted$"),
     re.compile(r"^references\.\d+\.aliases: Input should be a valid list$"),
@@ -479,6 +484,28 @@ def _has_explicit_anchor_unknown(contract: ResearchContract) -> bool:
     return False
 
 
+def _is_concrete_user_asserted_anchor(value: str) -> bool:
+    """Return whether a user_asserted_anchors entry is real grounding."""
+
+    lowered = value.casefold().strip()
+    if not lowered:
+        return False
+    if any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_DIRECT_PATTERNS):
+        return False
+    if any(pattern.search(lowered) for pattern in _USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS):
+        return False
+    if not any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_TOPIC_PATTERNS):
+        return True
+    if any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_BLOCKER_PATTERNS):
+        return False
+    if (
+        all(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_QUESTION_PATTERNS)
+        and any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_SELECTION_PATTERNS)
+    ):
+        return False
+    return True
+
+
 def _has_anchor_like_reference(contract: ResearchContract) -> bool:
     """Return whether the contract includes a reference that can ground approved mode."""
 
@@ -520,7 +547,7 @@ def _has_approved_grounding_signal(contract: ResearchContract) -> bool:
         (
             _has_anchor_like_reference(contract),
             contract.context_intake.must_include_prior_outputs,
-            contract.context_intake.user_asserted_anchors,
+            any(_is_concrete_user_asserted_anchor(anchor) for anchor in contract.context_intake.user_asserted_anchors),
             contract.context_intake.known_good_baselines,
         )
     )
@@ -532,7 +559,7 @@ def _has_non_reference_grounding_signal(contract: ResearchContract) -> bool:
     return any(
         (
             contract.context_intake.must_include_prior_outputs,
-            contract.context_intake.user_asserted_anchors,
+            any(_is_concrete_user_asserted_anchor(anchor) for anchor in contract.context_intake.user_asserted_anchors),
             contract.context_intake.known_good_baselines,
         )
     )

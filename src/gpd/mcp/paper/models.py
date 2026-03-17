@@ -257,6 +257,7 @@ class ReviewPanelBundle(BaseModel):
     final_confidence: ReviewConfidence
     final_report_path: str
     final_report_tex_path: str = ""
+    consistency_report_path: str = ""
 
 
 class JournalSpec(BaseModel):

@@ -274,6 +274,46 @@ def test_contract_tools_preserve_stable_error_envelopes_at_mcp_boundary(
     assert _call_verification_tool(tool_name, arguments) == expected
 
 
+@pytest.mark.parametrize(
+    ("mutator", "expected_error"),
+    [
+        (
+            lambda contract: contract["claims"][0]["observables"].append(" "),
+            "claims.0.observables[1] must be a non-empty string",
+        ),
+        (
+            lambda contract: contract["references"][0]["required_actions"].append(17),
+            "references.0.required_actions[3] must be a non-empty string",
+        ),
+    ],
+)
+def test_contract_tools_reject_blank_or_malformed_contract_list_members_at_mcp_boundary(
+    mutator,
+    expected_error: str,
+) -> None:
+    contract = _load_project_contract_fixture()
+    mutator(contract)
+
+    expected = {"error": f"Invalid contract payload: {expected_error}", "schema_version": 1}
+
+    assert (
+        _call_verification_tool(
+            "run_contract_check",
+            {
+                "request": {
+                    "check_key": "contract.benchmark_reproduction",
+                    "contract": contract,
+                    "binding": {"claim_ids": ["claim-benchmark"]},
+                    "metadata": {"source_reference_id": "ref-benchmark"},
+                    "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+                }
+            },
+        )
+        == expected
+    )
+    assert _call_verification_tool("suggest_contract_checks", {"contract": contract}) == expected
+
+
 @pytest.mark.parametrize("payload", ["not-a-dict", ["claim-benchmark"], 3])
 def test_run_contract_check_rejects_non_mapping_payloads(payload: object) -> None:
     from gpd.mcp.servers.verification_server import run_contract_check
@@ -590,6 +630,22 @@ def test_verification_server_success_responses_keep_stable_envelope_equality() -
     checklist_expected = dict(checklist_result)
     checklist_expected.pop("schema_version")
     assert checklist_result == checklist_expected
+
+
+def test_checklist_helpers_return_defensive_copies() -> None:
+    from gpd.mcp.servers.verification_server import get_bundle_checklist, get_checklist
+
+    checklist = get_checklist("qft")
+    checklist["domain_checks"][0]["check"] = "poisoned"
+
+    fresh_checklist = get_checklist("qft")
+    assert fresh_checklist["domain_checks"][0]["check"] != "poisoned"
+
+    bundle_checklist = get_bundle_checklist(["stat-mech-simulation"])
+    bundle_checklist["bundle_checks"][0]["check_ids"].append("poisoned")
+
+    fresh_bundle_checklist = get_bundle_checklist(["stat-mech-simulation"])
+    assert "poisoned" not in fresh_bundle_checklist["bundle_checks"][0]["check_ids"]
 
 
 def test_run_contract_check_surfaces_machine_readable_contract_salvage_findings() -> None:

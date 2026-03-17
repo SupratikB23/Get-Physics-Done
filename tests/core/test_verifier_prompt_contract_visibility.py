@@ -39,7 +39,7 @@ def test_verifier_prompt_surfaces_validator_enforced_contract_ledger_rules() -> 
 def test_verifier_prompt_frontmatter_example_includes_contract_ledgers() -> None:
     verifier = _read_verifier_prompt()
 
-    assert "plan_contract_ref: .gpd/phases/XX-name/{phase}-{plan}-PLAN.md#/contract" in verifier
+    assert "plan_contract_ref: .gpd/phases/{phase_number}-{phase_name}/{phase_number}-{plan}-PLAN.md#/contract" in verifier
     assert "contract_results:" in verifier
     assert "comparison_verdicts:    # Required when a decisive comparison was required or attempted" in verifier
     assert "subject_kind: claim|deliverable|acceptance_test|reference" in verifier

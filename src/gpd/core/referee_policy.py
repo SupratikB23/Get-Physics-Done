@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from enum import StrEnum
 from pathlib import Path
@@ -83,6 +84,10 @@ _ADEQUACY_ORDER: dict[ReviewAdequacy, int] = {
 }
 
 _HIGH_IMPACT_JOURNALS = {"prl", "nature", "nature_physics"}
+_STRICT_STAGE_ARTIFACT_IDS = ("reader", "literature", "math", "physics", "interestingness")
+_STRICT_STAGE_ARTIFACT_RE = re.compile(
+    r"^STAGE-(reader|literature|math|physics|interestingness)(-R\d+)?\.json$"
+)
 
 
 def _worse_recommendation(left: ReviewRecommendation, right: ReviewRecommendation) -> ReviewRecommendation:
@@ -111,6 +116,31 @@ def _missing_stage_artifacts(stage_artifacts: list[str], *, project_root: Path |
         if not resolved_target.is_relative_to(resolved_root) or not target.exists():
             missing.append(artifact_path)
     return missing
+
+
+def _strict_stage_artifact_errors(stage_artifacts: list[str]) -> list[str]:
+    """Return strict-mode errors for the canonical staged peer-review artifact set."""
+
+    seen_stage_ids: set[str] = set()
+    round_suffixes: set[str] = set()
+
+    for artifact_path in stage_artifacts:
+        match = _STRICT_STAGE_ARTIFACT_RE.fullmatch(Path(artifact_path.strip()).name)
+        if match is None:
+            continue
+        seen_stage_ids.add(match.group(1))
+        round_suffixes.add(match.group(2) or "")
+
+    missing_stage_ids = [stage_id for stage_id in _STRICT_STAGE_ARTIFACT_IDS if stage_id not in seen_stage_ids]
+    errors: list[str] = []
+    if missing_stage_ids:
+        errors.append(
+            "Strict staged peer review requires the canonical five specialist stage artifacts: missing "
+            + ", ".join(f"STAGE-{stage_id}.json" for stage_id in missing_stage_ids)
+        )
+    if len(round_suffixes) > 1:
+        errors.append("Strict staged peer review requires all specialist stage artifacts to use the same round suffix.")
+    return errors
 
 
 def _normalize_path_label(path_text: str) -> str:
@@ -189,9 +219,11 @@ def evaluate_referee_decision(
     high_impact = _is_high_impact(data.target_journal)
     consistency_errors: list[str] = []
 
-    if strict and len(data.stage_artifacts) < 5:
-        consistency_errors.append("Strict staged peer review requires at least five specialist stage artifacts before adjudication.")
-        allowed = _worse_recommendation(allowed, ReviewRecommendation.major_revision)
+    if strict:
+        strict_stage_errors = _strict_stage_artifact_errors(data.stage_artifacts)
+        if strict_stage_errors:
+            consistency_errors.extend(strict_stage_errors)
+            allowed = _worse_recommendation(allowed, ReviewRecommendation.major_revision)
     elif not data.stage_artifacts:
         warnings.append("No staged review artifacts were listed in the final decision input.")
 

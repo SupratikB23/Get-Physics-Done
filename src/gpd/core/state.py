@@ -1771,12 +1771,16 @@ def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
 
     with _state_lock(cwd):
         _recover_intent_locked(cwd)
-        allow_project_contract_salvage = integrity_mode != "review"
+        # Read paths must not silently default malformed singleton contract sections.
+        allow_project_contract_salvage = False
 
         try:
             raw = json_path.read_text(encoding="utf-8")
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                raise TypeError(f"state root must be an object, got {type(parsed).__name__}")
             normalized, integrity_issues = _normalize_state_schema(
-                json.loads(raw),
+                parsed,
                 allow_project_contract_salvage=allow_project_contract_salvage,
                 retain_blocking_project_contract_errors=False,
             )
@@ -1786,7 +1790,7 @@ def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
             return normalized
         except FileNotFoundError:
             pass
-        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        except (TypeError, json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
             if os.environ.get(ENV_GPD_DEBUG):
                 logger.debug("state.json parse error: %s", e)
             if integrity_mode == "review":
@@ -1795,8 +1799,11 @@ def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
             # Try backup
             try:
                 bak_raw = bak_path.read_text(encoding="utf-8")
+                bak_parsed = json.loads(bak_raw)
+                if not isinstance(bak_parsed, dict):
+                    raise TypeError(f"state root must be an object, got {type(bak_parsed).__name__}")
                 restored, integrity_issues = _normalize_state_schema(
-                    json.loads(bak_raw),
+                    bak_parsed,
                     allow_project_contract_salvage=allow_project_contract_salvage,
                     retain_blocking_project_contract_errors=False,
                 )
@@ -1805,7 +1812,7 @@ def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
                     return None
                 atomic_write(json_path, json.dumps(restored, indent=2) + "\n")
                 return restored
-            except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+            except (FileNotFoundError, TypeError, json.JSONDecodeError, OSError, UnicodeDecodeError):
                 if os.environ.get(ENV_GPD_DEBUG):
                     logger.debug("state.json.bak restore failed")
 
@@ -2443,7 +2450,11 @@ def state_validate(cwd: Path, integrity_mode: str = "standard") -> StateValidate
             issues.append(
                 f"state.json root must be an object, got {type(raw_state_json).__name__}; validating normalized fallback"
             )
-        state_json, normalization_issues = _normalize_state_schema(raw_state_json)
+        state_json, normalization_issues = _normalize_state_schema(
+            raw_state_json,
+            allow_project_contract_salvage=False,
+            retain_blocking_project_contract_errors=False,
+        )
         if normalization_issues:
             target = issues if integrity_mode == "review" else warnings
             target.extend(normalization_issues)

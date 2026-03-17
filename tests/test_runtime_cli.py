@@ -12,33 +12,22 @@ import pytest
 import gpd.cli as cli_module
 import gpd.runtime_cli as runtime_cli
 from gpd.adapters import get_adapter
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_REEXEC
 from gpd.runtime_cli import _parse_args, _resolve_cli_cwd_from_argv, main
 
+_RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
+_RUNTIME_NAMES = tuple(descriptor.runtime_name for descriptor in _RUNTIME_DESCRIPTORS)
+GPD_ROOT = Path(__file__).resolve().parent.parent / "src" / "gpd"
+
 
 def _mark_complete_install(config_dir: Path, *, runtime: str, install_scope: str = "local") -> None:
+    adapter = get_adapter(runtime)
     config_dir.mkdir(parents=True, exist_ok=True)
-    (config_dir / "get-physics-done").mkdir(parents=True, exist_ok=True)
-    (config_dir / "gpd-file-manifest.json").write_text(
-        json.dumps({"runtime": runtime, "install_scope": install_scope}),
-        encoding="utf-8",
-    )
-    if runtime == "codex":
-        skills_dir = config_dir.parent / ".agents" / "skills" / "gpd-dummy"
-        skills_dir.mkdir(parents=True, exist_ok=True)
-        (skills_dir / "SKILL.md").write_text(
-            "---\nname: gpd-dummy\ndescription: dummy\n---\n",
-            encoding="utf-8",
-        )
-        (config_dir / "config.toml").write_text("[agents]\n", encoding="utf-8")
-    elif runtime == "gemini":
-        (config_dir / "settings.json").write_text(
-            json.dumps({"experimental": {"enableAgents": True}}),
-            encoding="utf-8",
-        )
-        policy_dir = config_dir / "policies"
-        policy_dir.mkdir(parents=True, exist_ok=True)
-        (policy_dir / "gpd-auto-edit.toml").write_text("[[rule]]\n", encoding="utf-8")
+    result = adapter.install(GPD_ROOT, config_dir, is_global=install_scope == "global")
+    finalize_install = getattr(adapter, "finalize_install", None)
+    if callable(finalize_install):
+        finalize_install(result)
 
 
 def _mark_incomplete_install(config_dir: Path, *, runtime: str, install_scope: str = "local") -> None:
@@ -54,7 +43,7 @@ def _run_runtime_cli_with_recording(
     *,
     cwd: Path,
     argv: list[str],
-    runtime: str = "codex",
+    runtime: str = _RUNTIME_NAMES[0],
 ) -> tuple[int, dict[str, object]]:
     observed: dict[str, object] = {}
     adapter = get_adapter(runtime)
@@ -80,16 +69,16 @@ def _run_runtime_cli_with_recording(
     return main(argv), observed
 
 
-@pytest.mark.parametrize("runtime", ["codex", "gemini"])
-def test_runtime_cli_fails_cleanly_for_incomplete_install(tmp_path: Path, capsys, runtime: str) -> None:
-    adapter = get_adapter(runtime)
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_fails_cleanly_for_incomplete_install(tmp_path: Path, capsys, descriptor) -> None:
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / adapter.config_dir_name
     config_dir.mkdir()
 
     exit_code = main(
         [
             "--runtime",
-            runtime,
+            descriptor.runtime_name,
             "--config-dir",
             str(config_dir),
             "--install-scope",
@@ -104,19 +93,19 @@ def test_runtime_cli_fails_cleanly_for_incomplete_install(tmp_path: Path, capsys
     assert f"GPD runtime install incomplete for {adapter.display_name}" in captured.err
     assert "`gpd-file-manifest.json`" in captured.err
     assert "`get-physics-done`" in captured.err
-    assert f"npx -y get-physics-done --{runtime} --local" in captured.err
+    assert f"npx -y get-physics-done {adapter.install_flag} --local" in captured.err
 
 
-@pytest.mark.parametrize("runtime", ["codex", "gemini"])
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_ancestor_local_repair_command_targets_resolved_install(
     monkeypatch,
     tmp_path: Path,
     capsys,
-    runtime: str,
+    descriptor,
 ) -> None:
-    adapter = get_adapter(runtime)
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / adapter.config_dir_name
-    _mark_incomplete_install(config_dir, runtime=runtime)
+    _mark_incomplete_install(config_dir, runtime=descriptor.runtime_name)
     nested_cwd = tmp_path / "research" / "notes"
     nested_cwd.mkdir(parents=True)
     monkeypatch.chdir(nested_cwd)
@@ -124,7 +113,7 @@ def test_runtime_cli_ancestor_local_repair_command_targets_resolved_install(
     exit_code = main(
         [
             "--runtime",
-            runtime,
+            descriptor.runtime_name,
             "--config-dir",
             f"./{adapter.config_dir_name}",
             "--install-scope",
@@ -137,14 +126,14 @@ def test_runtime_cli_ancestor_local_repair_command_targets_resolved_install(
     captured = capsys.readouterr()
     assert exit_code == 127
     assert f"--target-dir {config_dir}" in captured.err
-    assert f"npx -y get-physics-done --{runtime} --local" in captured.err
+    assert f"npx -y get-physics-done {adapter.install_flag} --local" in captured.err
 
 
-@pytest.mark.parametrize("runtime", ["codex", "gemini"])
-def test_runtime_cli_dispatches_with_runtime_pin(monkeypatch, tmp_path: Path, runtime: str) -> None:
-    adapter = get_adapter(runtime)
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_dispatches_with_runtime_pin(monkeypatch, tmp_path: Path, descriptor) -> None:
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / adapter.config_dir_name
-    _mark_complete_install(config_dir, runtime=runtime)
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
 
@@ -161,7 +150,7 @@ def test_runtime_cli_dispatches_with_runtime_pin(monkeypatch, tmp_path: Path, ru
     exit_code = main(
         [
             "--runtime",
-            runtime,
+            descriptor.runtime_name,
             "--config-dir",
             f"./{adapter.config_dir_name}",
             "--install-scope",
@@ -173,22 +162,23 @@ def test_runtime_cli_dispatches_with_runtime_pin(monkeypatch, tmp_path: Path, ru
 
     assert exit_code == 0
     assert observed["argv"] == ["gpd", "state", "load"]
-    assert observed["runtime"] == runtime
+    assert observed["runtime"] == descriptor.runtime_name
     assert observed["disable_reexec"] == "1"
 
 
-@pytest.mark.parametrize("runtime", ["codex", "gemini"])
-def test_runtime_cli_preserves_subcommand_runtime_flags(monkeypatch, tmp_path: Path, runtime: str) -> None:
-    adapter = get_adapter(runtime)
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_preserves_subcommand_runtime_flags(monkeypatch, tmp_path: Path, descriptor) -> None:
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / adapter.config_dir_name
-    _mark_complete_install(config_dir, runtime=runtime)
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
+    foreign_runtime = next(name for name in _RUNTIME_NAMES if name != descriptor.runtime_name)
 
     exit_code, observed = _run_runtime_cli_with_recording(
         monkeypatch,
         cwd=tmp_path,
         argv=[
             "--runtime",
-            runtime,
+            descriptor.runtime_name,
             "--config-dir",
             str(config_dir),
             "--install-scope",
@@ -196,23 +186,24 @@ def test_runtime_cli_preserves_subcommand_runtime_flags(monkeypatch, tmp_path: P
             "resolve-model",
             "gpd-executor",
             "--runtime",
-            "gemini",
+            foreign_runtime,
         ],
-        runtime=runtime,
+        runtime=descriptor.runtime_name,
     )
 
     assert exit_code == 0
-    assert observed["argv"] == ["gpd", "resolve-model", "gpd-executor", "--runtime", "gemini"]
-    assert observed["runtime"] == runtime
+    assert observed["argv"] == ["gpd", "resolve-model", "gpd-executor", "--runtime", foreign_runtime]
+    assert observed["runtime"] == descriptor.runtime_name
 
 
 def test_runtime_cli_bridge_parse_preserves_passthrough_after_double_dash() -> None:
+    descriptor = _RUNTIME_DESCRIPTORS[0]
     options, gpd_args = _parse_args(
         [
             "--runtime",
-            "codex",
+            descriptor.runtime_name,
             "--config-dir",
-            "./.codex",
+            f"./{descriptor.config_dir_name}",
             "--install-scope",
             "local",
             "--",
@@ -222,7 +213,7 @@ def test_runtime_cli_bridge_parse_preserves_passthrough_after_double_dash() -> N
         ]
     )
 
-    assert options.runtime == "codex"
+    assert options.runtime == descriptor.runtime_name
     assert gpd_args == ["--raw", "state", "load"]
 
 
@@ -250,15 +241,15 @@ def test_cli_resolves_cli_cwd_from_last_repeated_flag(monkeypatch, tmp_path: Pat
     ) == final_cwd
 
 
-@pytest.mark.parametrize("runtime", ["codex", "gemini"])
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_preserves_root_global_flags_before_subcommand(
     monkeypatch,
     tmp_path: Path,
-    runtime: str,
+    descriptor,
 ) -> None:
-    adapter = get_adapter(runtime)
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / adapter.config_dir_name
-    _mark_complete_install(config_dir, runtime=runtime)
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
     forwarded_cwd = tmp_path / "workspace"
     forwarded_cwd.mkdir()
 
@@ -267,7 +258,7 @@ def test_runtime_cli_preserves_root_global_flags_before_subcommand(
         cwd=tmp_path,
         argv=[
             "--runtime",
-            runtime,
+            descriptor.runtime_name,
             "--config-dir",
             str(config_dir),
             "--install-scope",
@@ -278,28 +269,29 @@ def test_runtime_cli_preserves_root_global_flags_before_subcommand(
             "state",
             "load",
         ],
+        runtime=descriptor.runtime_name,
     )
 
     assert exit_code == 0
     assert observed["argv"] == ["gpd", "--raw", "--cwd", str(forwarded_cwd), "state", "load"]
 
 
-@pytest.mark.parametrize("runtime", ["codex", "gemini"])
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_keeps_double_dash_passthrough_arguments_verbatim(
     monkeypatch,
     tmp_path: Path,
-    runtime: str,
+    descriptor,
 ) -> None:
-    adapter = get_adapter(runtime)
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / adapter.config_dir_name
-    _mark_complete_install(config_dir, runtime=runtime)
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
 
     exit_code, observed = _run_runtime_cli_with_recording(
         monkeypatch,
         cwd=tmp_path,
         argv=[
             "--runtime",
-            runtime,
+            descriptor.runtime_name,
             "--config-dir",
             str(config_dir),
             "--install-scope",
@@ -311,17 +303,23 @@ def test_runtime_cli_keeps_double_dash_passthrough_arguments_verbatim(
             "--cwd",
             "literal",
         ],
+        runtime=descriptor.runtime_name,
     )
 
     assert exit_code == 0
     assert observed["argv"] == ["gpd", "state", "load", "--", "--raw", "--cwd", "literal"]
 
 
-def test_runtime_cli_reexecs_from_installed_package_using_forwarded_cli_cwd(monkeypatch, tmp_path: Path) -> None:
-    runtime_cwd = tmp_path / "runtime"
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_reexecs_from_installed_package_using_forwarded_cli_cwd(
+    monkeypatch,
+    tmp_path: Path,
+    descriptor,
+) -> None:
+    runtime_cwd = tmp_path / descriptor.runtime_name
     runtime_cwd.mkdir()
-    config_dir = runtime_cwd / ".codex"
-    _mark_complete_install(config_dir, runtime="codex")
+    config_dir = runtime_cwd / descriptor.config_dir_name
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
 
     checkout_root = tmp_path / "checkout"
     checkout_src = checkout_root / "src"
@@ -356,9 +354,9 @@ def test_runtime_cli_reexecs_from_installed_package_using_forwarded_cli_cwd(monk
         main(
             [
                 "--runtime",
-                "codex",
+                descriptor.runtime_name,
                 "--config-dir",
-                "./.codex",
+                f"./{descriptor.config_dir_name}",
                 "--install-scope",
                 "local",
                 "state",
@@ -375,9 +373,9 @@ def test_runtime_cli_reexecs_from_installed_package_using_forwarded_cli_cwd(monk
         "-m",
         "gpd.runtime_cli",
         "--runtime",
-        "codex",
+        descriptor.runtime_name,
         "--config-dir",
-        "./.codex",
+        f"./{descriptor.config_dir_name}",
         "--install-scope",
         "local",
         "state",
@@ -392,9 +390,14 @@ def test_runtime_cli_reexecs_from_installed_package_using_forwarded_cli_cwd(monk
     ]
 
 
-def test_runtime_cli_resolves_local_config_dir_from_ancestor_workspace(monkeypatch, tmp_path: Path) -> None:
-    config_dir = tmp_path / ".codex"
-    _mark_complete_install(config_dir, runtime="codex")
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_resolves_local_config_dir_from_ancestor_workspace(
+    monkeypatch,
+    tmp_path: Path,
+    descriptor,
+) -> None:
+    config_dir = tmp_path / descriptor.config_dir_name
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
     nested_cwd = tmp_path / "research" / "notes"
     nested_cwd.mkdir(parents=True)
     monkeypatch.chdir(nested_cwd)
@@ -412,9 +415,9 @@ def test_runtime_cli_resolves_local_config_dir_from_ancestor_workspace(monkeypat
     exit_code = main(
         [
             "--runtime",
-            "codex",
+            descriptor.runtime_name,
             "--config-dir",
-            "./.codex",
+            f"./{descriptor.config_dir_name}",
             "--install-scope",
             "local",
             "state",
@@ -424,15 +427,20 @@ def test_runtime_cli_resolves_local_config_dir_from_ancestor_workspace(monkeypat
 
     assert exit_code == 0
     assert observed["argv"] == ["gpd", "state", "load"]
-    assert observed["runtime"] == "codex"
+    assert observed["runtime"] == descriptor.runtime_name
 
 
-def test_runtime_cli_resolves_local_config_dir_from_forwarded_cli_cwd(monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_resolves_local_config_dir_from_forwarded_cli_cwd(
+    monkeypatch,
+    tmp_path: Path,
+    descriptor,
+) -> None:
     launcher_cwd = tmp_path / "runtime"
     launcher_cwd.mkdir()
     workspace_root = tmp_path / "project"
-    config_dir = workspace_root / ".codex"
-    _mark_complete_install(config_dir, runtime="codex")
+    config_dir = workspace_root / descriptor.config_dir_name
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
     forwarded_cwd = workspace_root / "research" / "notes"
     forwarded_cwd.mkdir(parents=True)
 
@@ -441,9 +449,9 @@ def test_runtime_cli_resolves_local_config_dir_from_forwarded_cli_cwd(monkeypatc
         cwd=launcher_cwd,
         argv=[
             "--runtime",
-            "codex",
+            descriptor.runtime_name,
             "--config-dir",
-            "./.codex",
+            f"./{descriptor.config_dir_name}",
             "--install-scope",
             "local",
             "state",
@@ -451,26 +459,29 @@ def test_runtime_cli_resolves_local_config_dir_from_forwarded_cli_cwd(monkeypatc
             "--cwd",
             str(forwarded_cwd),
         ],
+        runtime=descriptor.runtime_name,
     )
 
     assert exit_code == 0
     assert observed["config_dir"] == config_dir
     assert observed["argv"] == ["gpd", "state", "load", "--cwd", str(forwarded_cwd)]
-    assert observed["runtime"] == "codex"
+    assert observed["runtime"] == descriptor.runtime_name
     assert observed["disable_reexec"] == "1"
 
 
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_uses_last_repeated_forwarded_cli_cwd_for_bridge_resolution(
     monkeypatch,
     tmp_path: Path,
+    descriptor,
 ) -> None:
     launcher_cwd = tmp_path / "runtime"
     launcher_cwd.mkdir()
     ignored_cwd = tmp_path / "ignored" / "notes"
     ignored_cwd.mkdir(parents=True)
     workspace_root = tmp_path / "project"
-    config_dir = workspace_root / ".codex"
-    _mark_complete_install(config_dir, runtime="codex")
+    config_dir = workspace_root / descriptor.config_dir_name
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
     final_cwd = workspace_root / "research" / "notes"
     final_cwd.mkdir(parents=True)
 
@@ -489,9 +500,9 @@ def test_runtime_cli_uses_last_repeated_forwarded_cli_cwd_for_bridge_resolution(
     exit_code = main(
         [
             "--runtime",
-            "codex",
+            descriptor.runtime_name,
             "--config-dir",
-            "./.codex",
+            f"./{descriptor.config_dir_name}",
             "--install-scope",
             "local",
             "state",
@@ -505,20 +516,23 @@ def test_runtime_cli_uses_last_repeated_forwarded_cli_cwd_for_bridge_resolution(
 
     assert exit_code == 0
     assert observed["argv"] == ["gpd", "state", "load", "--cwd", str(ignored_cwd), "--cwd", str(final_cwd)]
-    assert observed["runtime"] == "codex"
+    assert observed["runtime"] == descriptor.runtime_name
     assert observed["disable_reexec"] == "1"
 
 
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_forwarded_cli_cwd_drives_local_repair_guidance(
     monkeypatch,
     tmp_path: Path,
     capsys,
+    descriptor,
 ) -> None:
     launcher_cwd = tmp_path / "runtime"
     launcher_cwd.mkdir()
     workspace_root = tmp_path / "project"
-    config_dir = workspace_root / ".codex"
-    _mark_incomplete_install(config_dir, runtime="codex")
+    adapter = get_adapter(descriptor.runtime_name)
+    config_dir = workspace_root / descriptor.config_dir_name
+    _mark_incomplete_install(config_dir, runtime=descriptor.runtime_name)
     forwarded_cwd = workspace_root / "research" / "notes"
     forwarded_cwd.mkdir(parents=True)
 
@@ -528,9 +542,9 @@ def test_runtime_cli_forwarded_cli_cwd_drives_local_repair_guidance(
     exit_code = main(
         [
             "--runtime",
-            "codex",
+            descriptor.runtime_name,
             "--config-dir",
-            "./.codex",
+            f"./{descriptor.config_dir_name}",
             "--install-scope",
             "local",
             "state",
@@ -543,18 +557,18 @@ def test_runtime_cli_forwarded_cli_cwd_drives_local_repair_guidance(
     captured = capsys.readouterr()
     assert exit_code == 127
     assert f"--target-dir {config_dir}" in captured.err
-    assert "npx -y get-physics-done --codex --local" in captured.err
+    assert f"npx -y get-physics-done {adapter.install_flag} --local" in captured.err
 
 
-@pytest.mark.parametrize("runtime, foreign_runtime", [("codex", "claude-code"), ("gemini", "opencode")])
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_fails_when_resolved_local_config_dir_manifest_runtime_mismatches(
     monkeypatch,
     tmp_path: Path,
     capsys,
-    runtime: str,
-    foreign_runtime: str,
+    descriptor,
 ) -> None:
-    adapter = get_adapter(runtime)
+    foreign_runtime = next(name for name in _RUNTIME_NAMES if name != descriptor.runtime_name)
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / adapter.config_dir_name
     _mark_complete_install(config_dir, runtime=foreign_runtime)
     monkeypatch.chdir(tmp_path)
@@ -563,7 +577,7 @@ def test_runtime_cli_fails_when_resolved_local_config_dir_manifest_runtime_misma
     exit_code = main(
         [
             "--runtime",
-            runtime,
+            descriptor.runtime_name,
             "--config-dir",
             f"./{adapter.config_dir_name}",
             "--install-scope",
@@ -577,19 +591,19 @@ def test_runtime_cli_fails_when_resolved_local_config_dir_manifest_runtime_misma
     assert exit_code == 127
     assert f"GPD runtime bridge mismatch for {adapter.display_name}" in captured.err
     assert f"{get_adapter(foreign_runtime).display_name} (`{foreign_runtime}`)" in captured.err
-    assert f"npx -y get-physics-done --{runtime} --local" in captured.err
+    assert f"npx -y get-physics-done {adapter.install_flag} --local" in captured.err
 
 
-@pytest.mark.parametrize("runtime, foreign_runtime", [("codex", "claude-code"), ("gemini", "opencode")])
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_fails_when_explicit_target_manifest_runtime_mismatches(
     monkeypatch,
     tmp_path: Path,
     capsys,
-    runtime: str,
-    foreign_runtime: str,
+    descriptor,
 ) -> None:
-    adapter = get_adapter(runtime)
-    config_dir = tmp_path / f"custom-{runtime}-dir"
+    foreign_runtime = next(name for name in _RUNTIME_NAMES if name != descriptor.runtime_name)
+    adapter = get_adapter(descriptor.runtime_name)
+    config_dir = tmp_path / f"custom-{descriptor.runtime_name}-dir"
     _mark_complete_install(config_dir, runtime=foreign_runtime)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("gpd.runtime_cli._maybe_reexec_from_checkout", lambda *_args, **_kwargs: None)
@@ -597,7 +611,7 @@ def test_runtime_cli_fails_when_explicit_target_manifest_runtime_mismatches(
     exit_code = main(
         [
             "--runtime",
-            runtime,
+            descriptor.runtime_name,
             "--config-dir",
             str(config_dir),
             "--install-scope",
@@ -615,14 +629,21 @@ def test_runtime_cli_fails_when_explicit_target_manifest_runtime_mismatches(
     assert f"--target-dir {config_dir}" in captured.err
 
 
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_ignores_unrelated_nested_runtime_dirs_when_resolving_ancestor_local_install(
     monkeypatch,
     tmp_path: Path,
+    descriptor,
 ) -> None:
-    config_dir = tmp_path / ".codex"
-    _mark_complete_install(config_dir, runtime="codex")
-    _mark_complete_install(tmp_path / "research" / ".claude", runtime="claude-code")
-    _mark_complete_install(tmp_path / "research" / "notes" / ".gemini", runtime="gemini")
+    config_dir = tmp_path / descriptor.config_dir_name
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
+    for other_descriptor in _RUNTIME_DESCRIPTORS:
+        if other_descriptor.runtime_name == descriptor.runtime_name:
+            continue
+        _mark_complete_install(
+            tmp_path / "research" / other_descriptor.config_dir_name,
+            runtime=other_descriptor.runtime_name,
+        )
     nested_cwd = tmp_path / "research" / "notes" / "drafts"
     nested_cwd.mkdir(parents=True)
 
@@ -631,52 +652,60 @@ def test_runtime_cli_ignores_unrelated_nested_runtime_dirs_when_resolving_ancest
         cwd=nested_cwd,
         argv=[
             "--runtime",
-            "codex",
+            descriptor.runtime_name,
             "--config-dir",
-            "./.codex",
+            f"./{descriptor.config_dir_name}",
             "--install-scope",
             "local",
             "state",
             "load",
         ],
+        runtime=descriptor.runtime_name,
     )
 
     assert exit_code == 0
     assert observed["config_dir"] == config_dir
     assert observed["argv"] == ["gpd", "state", "load"]
-    assert observed["runtime"] == "codex"
+    assert observed["runtime"] == descriptor.runtime_name
     assert observed["disable_reexec"] == "1"
 
 
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_ignores_global_scope_candidates_when_resolving_ancestor_local_install(
     monkeypatch,
     tmp_path: Path,
+    descriptor,
 ) -> None:
-    config_dir = tmp_path / ".codex"
-    _mark_complete_install(config_dir, runtime="codex")
-    global_dir = tmp_path / "home" / ".codex"
-    _mark_complete_install(global_dir, runtime="codex", install_scope="global")
+    config_dir = tmp_path / descriptor.config_dir_name
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
+    global_dir = tmp_path / "home" / descriptor.config_dir_name
+    _mark_complete_install(global_dir, runtime=descriptor.runtime_name, install_scope="global")
     nested_cwd = tmp_path / "research" / "notes"
     nested_cwd.mkdir(parents=True)
-    monkeypatch.setenv("CODEX_CONFIG_DIR", str(global_dir))
+    global_config = get_adapter(descriptor.runtime_name).runtime_descriptor.global_config
+    env_var = global_config.env_var or global_config.env_dir_var or global_config.env_file_var
+    assert env_var is not None
+    env_value = str(global_dir / "config.json") if env_var == global_config.env_file_var else str(global_dir)
+    monkeypatch.setenv(env_var, env_value)
 
     exit_code, observed = _run_runtime_cli_with_recording(
         monkeypatch,
         cwd=nested_cwd,
         argv=[
             "--runtime",
-            "codex",
+            descriptor.runtime_name,
             "--config-dir",
-            "./.codex",
+            f"./{descriptor.config_dir_name}",
             "--install-scope",
             "local",
             "state",
             "load",
         ],
+        runtime=descriptor.runtime_name,
     )
 
     assert exit_code == 0
     assert observed["config_dir"] == config_dir
     assert observed["argv"] == ["gpd", "state", "load"]
-    assert observed["runtime"] == "codex"
+    assert observed["runtime"] == descriptor.runtime_name
     assert observed["disable_reexec"] == "1"

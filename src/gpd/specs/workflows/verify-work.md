@@ -319,7 +319,7 @@ Create file (or extend existing):
 ---
 phase: {phase_number}-{phase_name}
 verified: [ISO timestamp]
-status: human_needed
+status: passed | gaps_found | expert_needed | human_needed
 score: 0/{total contract targets} contract targets verified
 plan_contract_ref: .gpd/phases/{phase_number}-{phase_name}/{phase_number}-{plan}-PLAN.md#/contract
 contract_results:
@@ -428,7 +428,7 @@ forbidden_proxies_rejected: 0
 [none yet]
 ```
 
-Write to `${phase_dir}/{phase}-VERIFICATION.md`
+Write to `${phase_dir}/${phase_number}-VERIFICATION.md`
 
 Proceed to `present_check`.
 </step>
@@ -592,7 +592,7 @@ If the check passed AND the check name or expected outcome corresponds to a requ
 2. Search for the matching REQ-ID in the requirements table
 3. Update the requirement row's validation status:
    - Change status cell to `Validated`
-   - Append ` (Phase {phase}, Check {N})` to the evidence/notes cell
+   - Append ` (Phase {phase_number}, Check {N})` to the evidence/notes cell
 4. Write back the updated REQUIREMENTS.md
 
 **Matching logic:**
@@ -617,7 +617,7 @@ Find first check with `result: [pending]`.
 Announce:
 
 ```
-Resuming: Phase {phase} Research Validation
+Resuming: Phase {phase_number} Research Validation
 Progress: {passed + issues + skipped}/{total}
 Issues found so far: {issues count}
 
@@ -743,18 +743,18 @@ Clear Current Check section:
 Commit the verification file:
 
 ```bash
-gpd validate verification-contract "${phase_dir}/{phase}-VERIFICATION.md"
+gpd validate verification-contract "${phase_dir}/${phase_number}-VERIFICATION.md"
 
-PRE_CHECK=$(gpd pre-commit-check --files "${phase_dir}/{phase}-VERIFICATION.md" 2>&1) || true
+PRE_CHECK=$(gpd pre-commit-check --files "${phase_dir}/${phase_number}-VERIFICATION.md" 2>&1) || true
 echo "$PRE_CHECK"
 
-gpd commit "verify({phase}): complete research validation - {passed} passed, {issues} issues" --files "${phase_dir}/{phase}-VERIFICATION.md"
+gpd commit "verify(${phase_number}): complete research validation - {passed} passed, {issues} issues" --files "${phase_dir}/${phase_number}-VERIFICATION.md"
 ```
 
 Present summary:
 
 ```
-## Research Validation Complete: Phase {phase}
+## Research Validation Complete: Phase {phase_number}
 
 | Result | Count |
 |--------|-------|
@@ -900,7 +900,7 @@ task(
 
 <files_to_read>
 Read these files using the file_read tool:
-- Validation with diagnoses: .gpd/phases/{phase_dir}/{phase}-VERIFICATION.md
+- Validation with diagnoses: ${phase_dir}/${phase_number}-VERIFICATION.md
 - State: .gpd/STATE.md
 - Roadmap: .gpd/ROADMAP.md
 </files_to_read>
@@ -915,7 +915,7 @@ Plans must be executable prompts.
   subagent_type="gpd-planner",
   model="{planner_model}",
   readonly=false,
-  description="Plan gap fixes for Phase {phase}"
+  description="Plan gap fixes for Phase {phase_number}"
 )
 ```
 
@@ -956,7 +956,7 @@ task(
 **Phase Goal:** Close diagnosed gaps from research validation
 
 <files_to_read>
-Read all PLAN.md files in .gpd/phases/{phase_dir}/ using the file_read tool.
+Read all PLAN.md files in ${phase_dir}/ using the file_read tool.
 </files_to_read>
 
 </verification_context>
@@ -970,7 +970,7 @@ Return one of:
   subagent_type="gpd-plan-checker",
   model="{checker_model}",
   readonly=false,
-  description="Verify Phase {phase} fix plans"
+  description="Verify Phase {phase_number} fix plans"
 )
 ```
 
@@ -1003,7 +1003,7 @@ task(
 **Mode:** revision
 
 <files_to_read>
-Read all PLAN.md files in .gpd/phases/{phase_dir}/ using the file_read tool.
+Read all PLAN.md files in ${phase_dir}/ using the file_read tool.
 </files_to_read>
 
 **Checker issues:**
@@ -1019,7 +1019,7 @@ Do NOT replan from scratch unless issues are fundamental.
   subagent_type="gpd-planner",
   model="{planner_model}",
   readonly=false,
-  description="Revise Phase {phase} plans"
+  description="Revise Phase {phase_number} plans"
 )
 ```
 
@@ -1053,8 +1053,8 @@ Wait for researcher response.
 
 | Contract Target | Root Cause | Computation Evidence | Fix Plan |
 |-----------------|------------|---------------------|----------|
-| {subject-id or expected check 1} | {root_cause} | {what test showed} | {phase}-04 |
-| {subject-id or expected check 2} | {root_cause} | {what test showed} | {phase}-04 |
+| {subject-id or expected check 1} | {root_cause} | {what test showed} | {phase_number}-04 |
+| {subject-id or expected check 2} | {root_cause} | {what test showed} | {phase_number}-04 |
 
 Plans verified and ready for execution.
 
@@ -1064,7 +1064,7 @@ Plans verified and ready for execution.
 
 **Execute fixes** -- run fix plans
 
-`/clear` then `/gpd:execute-phase {phase} --gaps-only`
+`/clear` then `/gpd:execute-phase {phase_number} --gaps-only`
 
 ---------------------------------------------------------------
 ```

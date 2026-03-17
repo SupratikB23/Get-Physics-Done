@@ -1825,6 +1825,8 @@ Display stage banner:
 NOTATION_MODEL=$(gpd resolve-model gpd-notation-coordinator)
 ```
 
+If `NOTATION_MODEL` is empty or null, omit `model=` entirely in the spawn call. If it has a concrete value, include `model="$NOTATION_MODEL"`.
+
 Spawn gpd-notation-coordinator:
 
 ```
@@ -1853,7 +1855,7 @@ Interactive mode: Present suggested conventions, wait for user confirmation/over
 2. Lock conventions via: gpd convention set
 3. Return CONVENTIONS ESTABLISHED with summary
 </output>
-", subagent_type="gpd-notation-coordinator", model="{notation_model}", readonly=false, description="Establish project conventions")
+", subagent_type="gpd-notation-coordinator", readonly=false, description="Establish project conventions")
 ```
 
 **Handle notation-coordinator return:**

@@ -185,6 +185,33 @@ def test_validate_project_contract_approved_mode_accepts_non_reference_grounding
     assert "references must include at least one must_surface=true anchor" in result.warnings
 
 
+def test_validate_project_contract_approved_mode_rejects_placeholder_user_asserted_anchor() -> None:
+    contract = _load_contract_fixture()
+    contract["references"] = []
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["user_asserted_anchors"] = ["Need grounding before planning"]
+    contract["scope"]["unresolved_questions"] = []
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is False
+    assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
+
+
+def test_validate_project_contract_approved_mode_accepts_placeholder_user_asserted_anchor_only_with_explicit_blocker() -> None:
+    contract = _load_contract_fixture()
+    contract["references"] = []
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["user_asserted_anchors"] = ["Benchmark TBD"]
+    contract["context_intake"]["context_gaps"] = ["Anchor unknown; must establish later before planning"]
+    contract["scope"]["unresolved_questions"] = []
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is True
+    assert result.mode == "approved"
+
+
 def test_validate_project_contract_approved_mode_rejects_carry_forward_contract_id_as_grounding() -> None:
     contract = _load_contract_fixture()
     _remove_incidental_grounding(contract)

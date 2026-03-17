@@ -245,36 +245,59 @@ class RunContractCheckRequest(_ContractRequestBase):
     artifact_content: str | None = None
 
 
-_STRING_OR_STRING_LIST_OR_NULL_SCHEMA: dict[str, object] = {
-    "anyOf": [
-        {"type": "string"},
-        {
-            "type": "array",
-            "items": {"type": "string"},
-        },
-        {"type": "null"},
-    ]
-}
-_STRING_LIST_OR_NULL_SCHEMA: dict[str, object] = {
-    "anyOf": [
-        {
-            "type": "array",
-            "items": {"type": "string"},
-        },
-        {"type": "null"},
-    ]
-}
-_BOOLEAN_OR_NULL_SCHEMA: dict[str, object] = {
-    "anyOf": [{"type": "boolean"}, {"type": "null"}]
-}
-_NUMBER_OR_NULL_SCHEMA: dict[str, object] = {
-    "anyOf": [{"type": "number"}, {"type": "null"}]
-}
-_CONTRACT_BINDING_INPUT_SCHEMA: dict[str, object] = {
-    "type": "object",
-    "additionalProperties": True,
-    "properties": {
-        field_name: dict(_STRING_OR_STRING_LIST_OR_NULL_SCHEMA)
+def _non_empty_string_schema() -> dict[str, object]:
+    return {"type": "string", "minLength": 1}
+
+
+def _string_or_null_schema() -> dict[str, object]:
+    return {"anyOf": [dict(_non_empty_string_schema()), {"type": "null"}]}
+
+
+def _string_list_schema(*, min_items: int | None = None) -> dict[str, object]:
+    schema: dict[str, object] = {"type": "array", "items": _non_empty_string_schema()}
+    if min_items is not None:
+        schema["minItems"] = min_items
+    return schema
+
+
+def _string_or_string_list_or_null_schema(*, min_items: int | None = None) -> dict[str, object]:
+    return {
+        "anyOf": [
+            dict(_non_empty_string_schema()),
+            _string_list_schema(min_items=min_items),
+            {"type": "null"},
+        ]
+    }
+
+
+def _boolean_or_null_schema() -> dict[str, object]:
+    return {"anyOf": [{"type": "boolean"}, {"type": "null"}]}
+
+
+def _number_or_null_schema() -> dict[str, object]:
+    return {"anyOf": [{"type": "number"}, {"type": "null"}]}
+
+
+def _object_schema(
+    properties: dict[str, object],
+    *,
+    required: Iterable[str] = (),
+    additional_properties: bool = True,
+) -> dict[str, object]:
+    schema: dict[str, object] = {
+        "type": "object",
+        "additionalProperties": additional_properties,
+        "properties": properties,
+    }
+    required_list = list(required)
+    if required_list:
+        schema["required"] = required_list
+    return schema
+
+
+_CONTRACT_BINDING_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        field_name: _string_or_string_list_or_null_schema(min_items=1)
         for field_name in (
             "observable_id",
             "observable_ids",
@@ -289,56 +312,187 @@ _CONTRACT_BINDING_INPUT_SCHEMA: dict[str, object] = {
             "forbidden_proxy_id",
             "forbidden_proxy_ids",
         )
+    }
+)
+_CONTRACT_METADATA_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "regime_label": _string_or_null_schema(),
+        "expected_behavior": _string_or_null_schema(),
+        "source_reference_id": _string_or_null_schema(),
+        "declared_family": _string_or_null_schema(),
+        "allowed_families": _string_list_schema(),
+        "forbidden_families": _string_list_schema(),
+    }
+)
+_CONTRACT_OBSERVED_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "limit_passed": _boolean_or_null_schema(),
+        "observed_limit": _string_or_null_schema(),
+        "metric_value": _number_or_null_schema(),
+        "threshold_value": _number_or_null_schema(),
+        "proxy_only": _boolean_or_null_schema(),
+        "direct_available": _boolean_or_null_schema(),
+        "proxy_available": _boolean_or_null_schema(),
+        "consistency_passed": _boolean_or_null_schema(),
+        "selected_family": _string_or_null_schema(),
+        "competing_family_checked": _boolean_or_null_schema(),
+        "bias_checked": _boolean_or_null_schema(),
+        "calibration_checked": _boolean_or_null_schema(),
+    }
+)
+_CONTRACT_SCOPE_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "question": _non_empty_string_schema(),
+        "in_scope": _string_list_schema(),
+        "out_of_scope": _string_list_schema(),
+        "unresolved_questions": _string_list_schema(),
     },
-}
-_CONTRACT_METADATA_INPUT_SCHEMA: dict[str, object] = {
-    "type": "object",
-    "additionalProperties": True,
-    "properties": {
-        "regime_label": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "expected_behavior": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "source_reference_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "declared_family": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "allowed_families": dict(_STRING_LIST_OR_NULL_SCHEMA),
-        "forbidden_families": dict(_STRING_LIST_OR_NULL_SCHEMA),
+    required=("question",),
+)
+_CONTRACT_CONTEXT_INTAKE_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "must_read_refs": _string_list_schema(),
+        "must_include_prior_outputs": _string_list_schema(),
+        "user_asserted_anchors": _string_list_schema(),
+        "known_good_baselines": _string_list_schema(),
+        "context_gaps": _string_list_schema(),
+        "crucial_inputs": _string_list_schema(),
+    }
+)
+_CONTRACT_APPROACH_POLICY_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "formulations": _string_list_schema(),
+        "allowed_estimator_families": _string_list_schema(),
+        "forbidden_estimator_families": _string_list_schema(),
+        "allowed_fit_families": _string_list_schema(),
+        "forbidden_fit_families": _string_list_schema(),
+        "stop_and_rethink_conditions": _string_list_schema(),
+    }
+)
+_CONTRACT_OBSERVABLE_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "id": _non_empty_string_schema(),
+        "name": _non_empty_string_schema(),
+        "kind": {"type": "string"},
+        "definition": _non_empty_string_schema(),
+        "regime": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "units": {"anyOf": [{"type": "string"}, {"type": "null"}]},
     },
-}
-_CONTRACT_OBSERVED_INPUT_SCHEMA: dict[str, object] = {
-    "type": "object",
-    "additionalProperties": True,
-    "properties": {
-        "limit_passed": dict(_BOOLEAN_OR_NULL_SCHEMA),
-        "observed_limit": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "metric_value": dict(_NUMBER_OR_NULL_SCHEMA),
-        "threshold_value": dict(_NUMBER_OR_NULL_SCHEMA),
-        "proxy_only": dict(_BOOLEAN_OR_NULL_SCHEMA),
-        "direct_available": dict(_BOOLEAN_OR_NULL_SCHEMA),
-        "proxy_available": dict(_BOOLEAN_OR_NULL_SCHEMA),
-        "consistency_passed": dict(_BOOLEAN_OR_NULL_SCHEMA),
-        "selected_family": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "competing_family_checked": dict(_BOOLEAN_OR_NULL_SCHEMA),
-        "bias_checked": dict(_BOOLEAN_OR_NULL_SCHEMA),
-        "calibration_checked": dict(_BOOLEAN_OR_NULL_SCHEMA),
+    required=("id", "name", "definition"),
+)
+_CONTRACT_CLAIM_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "id": _non_empty_string_schema(),
+        "statement": _non_empty_string_schema(),
+        "observables": _string_list_schema(),
+        "deliverables": _string_list_schema(),
+        "acceptance_tests": _string_list_schema(),
+        "references": _string_list_schema(),
     },
-}
-_CONTRACT_PAYLOAD_INPUT_SCHEMA: dict[str, object] = {
-    "type": "object",
-    "additionalProperties": True,
-    "properties": {
+    required=("id", "statement"),
+)
+_CONTRACT_DELIVERABLE_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "id": _non_empty_string_schema(),
+        "kind": {"type": "string"},
+        "path": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "description": _non_empty_string_schema(),
+        "must_contain": _string_list_schema(),
+    },
+    required=("id", "description"),
+)
+_CONTRACT_ACCEPTANCE_TEST_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "id": _non_empty_string_schema(),
+        "subject": _non_empty_string_schema(),
+        "kind": {"type": "string"},
+        "procedure": _non_empty_string_schema(),
+        "pass_condition": _non_empty_string_schema(),
+        "evidence_required": _string_list_schema(),
+        "automation": {"type": "string"},
+    },
+    required=("id", "subject", "procedure", "pass_condition"),
+)
+_CONTRACT_REFERENCE_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "id": _non_empty_string_schema(),
+        "kind": {"type": "string"},
+        "locator": _non_empty_string_schema(),
+        "aliases": _string_list_schema(),
+        "role": {"type": "string"},
+        "why_it_matters": _non_empty_string_schema(),
+        "applies_to": _string_list_schema(),
+        "carry_forward_to": _string_list_schema(),
+        "must_surface": {"type": "boolean"},
+        "required_actions": _string_list_schema(),
+    },
+    required=("id", "locator", "why_it_matters"),
+)
+_CONTRACT_FORBIDDEN_PROXY_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "id": _non_empty_string_schema(),
+        "subject": _non_empty_string_schema(),
+        "proxy": _non_empty_string_schema(),
+        "reason": _non_empty_string_schema(),
+    },
+    required=("id", "subject", "proxy", "reason"),
+)
+_CONTRACT_LINK_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "id": _non_empty_string_schema(),
+        "source": _non_empty_string_schema(),
+        "target": _non_empty_string_schema(),
+        "relation": {"type": "string"},
+        "verified_by": _string_list_schema(),
+    },
+    required=("id", "source", "target"),
+)
+_CONTRACT_UNCERTAINTY_MARKERS_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
+        "weakest_anchors": _string_list_schema(),
+        "unvalidated_assumptions": _string_list_schema(),
+        "competing_explanations": _string_list_schema(),
+        "disconfirming_observations": _string_list_schema(),
+    }
+)
+_CONTRACT_PAYLOAD_INPUT_SCHEMA: dict[str, object] = _object_schema(
+    {
         "schema_version": {"type": "integer", "const": 1},
-        "scope": {"type": "object"},
-        "context_intake": {"type": "object"},
-        "approach_policy": {"type": "object"},
-        "observables": {"type": "array", "items": {"type": "object"}},
-        "claims": {"type": "array", "items": {"type": "object"}},
-        "deliverables": {"type": "array", "items": {"type": "object"}},
-        "acceptance_tests": {"type": "array", "items": {"type": "object"}},
-        "references": {"type": "array", "items": {"type": "object"}},
-        "forbidden_proxies": {"type": "array", "items": {"type": "object"}},
-        "links": {"type": "array", "items": {"type": "object"}},
-        "uncertainty_markers": {"type": "object"},
+        "scope": dict(_CONTRACT_SCOPE_INPUT_SCHEMA),
+        "context_intake": dict(_CONTRACT_CONTEXT_INTAKE_INPUT_SCHEMA),
+        "approach_policy": dict(_CONTRACT_APPROACH_POLICY_INPUT_SCHEMA),
+        "observables": {
+            "type": "array",
+            "items": dict(_CONTRACT_OBSERVABLE_INPUT_SCHEMA),
+        },
+        "claims": {
+            "type": "array",
+            "items": dict(_CONTRACT_CLAIM_INPUT_SCHEMA),
+        },
+        "deliverables": {
+            "type": "array",
+            "items": dict(_CONTRACT_DELIVERABLE_INPUT_SCHEMA),
+        },
+        "acceptance_tests": {
+            "type": "array",
+            "items": dict(_CONTRACT_ACCEPTANCE_TEST_INPUT_SCHEMA),
+        },
+        "references": {
+            "type": "array",
+            "items": dict(_CONTRACT_REFERENCE_INPUT_SCHEMA),
+        },
+        "forbidden_proxies": {
+            "type": "array",
+            "items": dict(_CONTRACT_FORBIDDEN_PROXY_INPUT_SCHEMA),
+        },
+        "links": {
+            "type": "array",
+            "items": dict(_CONTRACT_LINK_INPUT_SCHEMA),
+        },
+        "uncertainty_markers": dict(_CONTRACT_UNCERTAINTY_MARKERS_INPUT_SCHEMA),
     },
-}
+    required=("scope",),
+)
 _RUN_CONTRACT_CHECK_REQUEST_SCHEMA: dict[str, object] = {
     "type": "object",
     "additionalProperties": True,
@@ -355,7 +509,10 @@ _RUN_CONTRACT_CHECK_REQUEST_SCHEMA: dict[str, object] = {
 
 RunContractCheckPayload = Annotated[object, WithJsonSchema(_RUN_CONTRACT_CHECK_REQUEST_SCHEMA)]
 SuggestContractPayload = Annotated[object, WithJsonSchema(_CONTRACT_PAYLOAD_INPUT_SCHEMA)]
-StringListPayload = Annotated[object | None, WithJsonSchema(_STRING_LIST_OR_NULL_SCHEMA)]
+StringListPayload = Annotated[
+    object | None,
+    WithJsonSchema({"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}),
+]
 
 
 def _contract_check_request_hint(check_key: str, *, contract: ResearchContract | None = None) -> dict[str, object]:
@@ -1365,6 +1522,99 @@ def _validate_contract_scalar_fields(contract_raw: dict[str, object]) -> dict[st
     return _error_result(f"Invalid contract payload: {_summarize_contract_salvage_errors(errors)}")
 
 
+def _validate_contract_list_members(contract_raw: dict[str, object]) -> dict[str, object] | None:
+    """Reject blank or malformed string-list members before contract salvage can hide them."""
+
+    errors: list[str] = []
+
+    def _validate_list_field(container: object, field_name: str) -> None:
+        error = _validate_string_list_members(container, field_name=field_name)
+        if error is not None:
+            errors.append(error)
+
+    def _validate_object_lists(container: object, prefix: str, fields: Iterable[str]) -> None:
+        if not isinstance(container, dict):
+            return
+        for field_name in fields:
+            if field_name in container:
+                _validate_list_field(container[field_name], f"{prefix}.{field_name}")
+
+    _validate_object_lists(contract_raw.get("scope"), "scope", ("in_scope", "out_of_scope", "unresolved_questions"))
+    _validate_object_lists(
+        contract_raw.get("context_intake"),
+        "context_intake",
+        (
+            "must_read_refs",
+            "must_include_prior_outputs",
+            "user_asserted_anchors",
+            "known_good_baselines",
+            "context_gaps",
+            "crucial_inputs",
+        ),
+    )
+    _validate_object_lists(
+        contract_raw.get("approach_policy"),
+        "approach_policy",
+        (
+            "formulations",
+            "allowed_estimator_families",
+            "forbidden_estimator_families",
+            "allowed_fit_families",
+            "forbidden_fit_families",
+            "stop_and_rethink_conditions",
+        ),
+    )
+
+    claims = contract_raw.get("claims")
+    if isinstance(claims, list):
+        for index, claim in enumerate(claims):
+            _validate_object_lists(
+                claim,
+                f"claims.{index}",
+                ("observables", "deliverables", "acceptance_tests", "references"),
+            )
+
+    deliverables = contract_raw.get("deliverables")
+    if isinstance(deliverables, list):
+        for index, deliverable in enumerate(deliverables):
+            _validate_object_lists(deliverable, f"deliverables.{index}", ("must_contain",))
+
+    acceptance_tests = contract_raw.get("acceptance_tests")
+    if isinstance(acceptance_tests, list):
+        for index, acceptance_test in enumerate(acceptance_tests):
+            _validate_object_lists(acceptance_test, f"acceptance_tests.{index}", ("evidence_required",))
+
+    references = contract_raw.get("references")
+    if isinstance(references, list):
+        for index, reference in enumerate(references):
+            _validate_object_lists(
+                reference,
+                f"references.{index}",
+                ("aliases", "applies_to", "carry_forward_to", "required_actions"),
+            )
+
+    links = contract_raw.get("links")
+    if isinstance(links, list):
+        for index, link in enumerate(links):
+            _validate_object_lists(link, f"links.{index}", ("verified_by",))
+
+    uncertainty_markers = contract_raw.get("uncertainty_markers")
+    _validate_object_lists(
+        uncertainty_markers,
+        "uncertainty_markers",
+        (
+            "weakest_anchors",
+            "unvalidated_assumptions",
+            "competing_explanations",
+            "disconfirming_observations",
+        ),
+    )
+
+    if not errors:
+        return None
+    return _error_result(f"Invalid contract payload: {_summarize_contract_salvage_errors(errors)}")
+
+
 def _validate_contract_integrity(contract: ResearchContract) -> dict[str, object] | None:
     """Reject semantically ambiguous contracts after structural validation."""
 
@@ -1381,6 +1631,9 @@ def _parse_contract_payload(contract_raw: dict[str, object]) -> tuple[ResearchCo
     scalar_error = _validate_contract_scalar_fields(contract_raw)
     if scalar_error is not None:
         return None, [], scalar_error
+    list_member_error = _validate_contract_list_members(contract_raw)
+    if list_member_error is not None:
+        return None, [], list_member_error
     try:
         contract = ResearchContract.model_validate(contract_raw)
         integrity_error = _validate_contract_integrity(contract)
@@ -2113,9 +2366,9 @@ def get_checklist(domain: str) -> dict:
                 {
                 "found": True,
                 "domain": domain,
-                "domain_checks": checklist,
+                "domain_checks": copy.deepcopy(checklist),
                 "domain_check_count": len(checklist),
-                "universal_checks": universal,
+                "universal_checks": copy.deepcopy(universal),
                 "universal_check_count": len(universal),
                 }
             )
@@ -2174,19 +2427,19 @@ def get_bundle_checklist(bundle_ids: list[str]) -> dict:
                             "bundle_title": bundle.title,
                             "name": extension.name,
                             "rationale": extension.rationale,
-                            "check_ids": extension.check_ids,
+                            "check_ids": list(extension.check_ids),
                         }
                     )
 
             return stable_mcp_response(
                 {
-                "found": bool(bundles),
-                "bundle_count": len(bundles),
-                "bundles": bundles,
-                "protocol_bundle_context": render_protocol_bundle_context(resolved_bundles),
-                "bundle_check_count": len(checklist),
-                "bundle_checks": checklist,
-                "missing_bundle_ids": missing_bundle_ids,
+                    "found": bool(bundles),
+                    "bundle_count": len(bundles),
+                    "bundles": copy.deepcopy(bundles),
+                    "protocol_bundle_context": render_protocol_bundle_context(resolved_bundles),
+                    "bundle_check_count": len(checklist),
+                    "bundle_checks": copy.deepcopy(checklist),
+                    "missing_bundle_ids": missing_bundle_ids,
                 }
             )
         except Exception as exc:  # pragma: no cover - defensive envelope

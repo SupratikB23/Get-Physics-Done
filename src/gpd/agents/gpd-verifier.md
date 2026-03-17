@@ -1,7 +1,7 @@
 ---
 name: gpd-verifier
 description: Verifies phase goal achievement through computational verification. Does not grep for mentions of physics — actually checks the physics by substituting test values, re-deriving limits, parsing dimensions, and cross-checking by alternative methods. Creates VERIFICATION.md report with equations checked, limits re-derived, numerical tests executed, and confidence assessment.
-tools: file_read, file_write, shell, search_files, find_files, web_search, web_fetch, mcp__gpd_verification__suggest_contract_checks, mcp__gpd_verification__run_contract_check
+tools: file_read, file_write, shell, search_files, find_files, web_search, web_fetch, mcp__gpd_verification__get_bundle_checklist, mcp__gpd_verification__suggest_contract_checks, mcp__gpd_verification__run_contract_check
 commit_authority: orchestrator
 surface: internal
 role_family: verification
@@ -452,7 +452,7 @@ gpd validate consistency
 
 ## gpd CLI Execution Trace Logging
 
-Used during plan execution to create a post-mortem debugging trail. Trace files are JSONL at `.gpd/traces/{phase}-{plan}.jsonl`.
+Used during plan execution to create a post-mortem debugging trail. Trace files are JSONL at `.gpd/traces/{phase_number}-{plan}.jsonl`.
 
 ```bash
 # Start a trace for a plan execution
@@ -3761,7 +3761,9 @@ For each item, document: what to verify, expected result, domain expertise neede
 
 **Status: gaps_found** -- One or more decisive contract targets FAILED, artifacts MISSING/STUB, required comparisons failed or remain unresolved, required reference actions missing, forbidden proxies violated, blocker anti-patterns found, or a missing decisive check has to be recorded in `suggested_contract_checks`.
 
-**Status: human_needed** -- All automated checks pass but items flagged for expert verification. This is common for novel theoretical results.
+**Status: expert_needed** -- All automated checks pass but domain-expert verification items remain. This is common for novel theoretical results that are computationally consistent but still need specialist judgment.
+
+**Status: human_needed** -- All automated checks pass but non-expert human review or user decision remains.
 
 **Score:** `verified_contract_targets / total_contract_targets` and `key_links_verified / total_applicable_links`
 
@@ -3776,7 +3778,7 @@ For each item, document: what to verify, expected result, domain expertise neede
 
 ## Step 10: Structure Gap Output (If Gaps Found)
 
-Structure gaps in YAML frontmatter for `/gpd:plan-phase --gaps`. Each gap has: `subject_kind`, `subject_id`, `expectation` (what failed), `expected_check`, `status` (failed|partial), `category` (which check: dimensional_analysis, limiting_case, symmetry, conservation, math_consistency, convergence, literature_agreement, plausibility, statistical_rigor, thermodynamic_consistency, spectral_analytic, anomalies_topological, spot_check, cross_check, intermediate_spot_check, forbidden_proxy, comparison_verdict), `reason`, `computation_evidence` (what you computed that revealed the error), `artifacts` (path + issue), `missing` (specific fixes), `severity` (blocker|significant|minor), and `suggested_contract_checks` when the contract is missing a decisive target.
+Structure gaps in YAML frontmatter for `/gpd:plan-phase --gaps`. Each gap has: `gap_subject_kind`, `subject_id`, `expectation` (what failed), `expected_check`, `status` (failed|partial), `category` (which check: dimensional_analysis, limiting_case, symmetry, conservation, math_consistency, convergence, literature_agreement, plausibility, statistical_rigor, thermodynamic_consistency, spectral_analytic, anomalies_topological, spot_check, cross_check, intermediate_spot_check, forbidden_proxy, comparison_verdict), `reason`, `computation_evidence` (what you computed that revealed the error), `artifacts` (path + issue), `missing` (specific fixes), `severity` (blocker|significant|minor), and `suggested_contract_checks` when the contract is missing a decisive target.
 
 **Group related gaps by root cause** — if multiple contract targets fail from the same physics error, note this for focused remediation.
 
@@ -3808,7 +3810,7 @@ See `@{GPD_INSTALL_DIR}/references/verification/core/computational-verification-
 
 ## Create VERIFICATION.md
 
-Create `.gpd/phases/{phase_dir}/{phase}-VERIFICATION.md` with this structure:
+Create `${phase_dir}/${phase_number}-VERIFICATION.md` with this structure:
 
 Canonical frontmatter/schema includes to load immediately before writing:
 
@@ -3825,12 +3827,12 @@ Do not finish the report until the frontmatter satisfies the validator-visible r
 ---
 phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
-status: passed | gaps_found | human_needed
+status: passed | gaps_found | expert_needed | human_needed
 score: N/M contract targets verified
 consistency_score: N/M physics checks passed
 independently_confirmed: K/M checks independently confirmed
 confidence: high | medium | low | unreliable
-plan_contract_ref: .gpd/phases/XX-name/{phase}-{plan}-PLAN.md#/contract
+plan_contract_ref: .gpd/phases/{phase_number}-{phase_name}/{phase_number}-{plan}-PLAN.md#/contract
 # Required for contract-backed plans, and also required whenever `contract_results`
 # or `comparison_verdicts` are present. Must resolve to the matching PLAN contract.
 # Record only user-visible contract targets here. Do not encode internal tool/process milestones.
@@ -3870,7 +3872,7 @@ re_verification:        # Only if previous VERIFICATION.md existed
   gaps_remaining: []
   regressions: []
 gaps:                   # Only if status: gaps_found (same schema as Step 10)
-  - subject_kind: "claim"
+  - gap_subject_kind: "claim"
     subject_id: "claim-id"
     expectation: "..."
     expected_check: "..."
@@ -3899,7 +3901,7 @@ suggested_contract_checks:
     suggested_subject_kind: acceptance_test
     suggested_subject_id: "test-benchmark"
     evidence_path: "path/to/artifact"
-expert_verification:    # Only if status: human_needed
+expert_verification:    # Only if status: expert_needed | human_needed
   - check: "..."
     expected: "..."
     domain: "..."
@@ -3939,7 +3941,7 @@ expert_verification:    # Only if status: human_needed
 
 Return with status `completed | checkpoint | blocked | failed`:
 
-- **completed** — All checks finished, VERIFICATION.md written. Report verification status (passed/gaps_found/human_needed).
+- **completed** — All checks finished, VERIFICATION.md written. Report verification status (passed/gaps_found/expert_needed/human_needed).
 - **checkpoint** — Context pressure forced early stop. Partial VERIFICATION.md with deferred checks listed.
 - **blocked** — Cannot proceed (missing artifacts, unreadable files, no convention lock, ambiguous phase goal).
 - **failed** — Verification process itself encountered an error (not physics failure — that's gaps_found).
@@ -3950,17 +3952,18 @@ Return message format:
 ## Verification Complete
 
 **Return Status:** {completed | checkpoint | blocked | failed}
-**Verification Status:** {passed | gaps_found | human_needed}
+**Verification Status:** {passed | gaps_found | expert_needed | human_needed}
 **Score:** {N}/{M} contract targets verified
 **Consistency:** {N}/{M} physics checks passed ({K}/{M} independently confirmed)
 **Confidence:** {HIGH | MEDIUM | LOW | UNRELIABLE}
-**Report:** .gpd/phases/{phase_dir}/{phase}-VERIFICATION.md
+**Report:** ${phase_dir}/${phase_number}-VERIFICATION.md
 
 {Brief summary: what passed, what failed, what needs expert review, or what is blocking/deferred}
 ```
 
 For gaps_found: list each gap with category, severity, computation evidence, and fix.
-For human_needed: list each item with domain and why expert is required.
+For expert_needed: list each item with domain and why expert is required.
+For human_needed: list each item with domain and why human review is required.
 For checkpoint: list completed and deferred checks.
 
 ### Machine-Readable Return Envelope
@@ -3970,10 +3973,10 @@ Append this YAML block after the markdown return. Required per agent-infrastruct
 ```yaml
 gpd_return:
   status: completed | checkpoint | blocked | failed
-  files_written: [.gpd/phases/{phase_dir}/{phase}-VERIFICATION.md]
+  files_written: [${phase_dir}/${phase_number}-VERIFICATION.md]
   issues: [list of gaps or issues found, if any]
   next_actions: [list of recommended follow-up actions]
-  verification_status: passed | gaps_found | human_needed
+  verification_status: passed | gaps_found | expert_needed | human_needed
   score: "{N}/{M}"
   confidence: HIGH | MEDIUM | LOW | UNRELIABLE
 ```

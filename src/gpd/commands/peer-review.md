@@ -9,17 +9,16 @@ review-contract:
   review_mode: publication
   schema_version: 1
   required_outputs:
-    - ".gpd/review/CLAIMS.json"
-    - ".gpd/review/STAGE-reader.json"
-    - ".gpd/review/STAGE-literature.json"
-    - ".gpd/review/STAGE-math.json"
-    - ".gpd/review/STAGE-physics.json"
-    - ".gpd/review/STAGE-interestingness.json"
-    - ".gpd/review/REVIEW-LEDGER.json"
-    - ".gpd/review/REFEREE-DECISION.json"
-    - ".gpd/REFEREE-REPORT.md"
-    - ".gpd/REFEREE-REPORT.tex"
-    - ".gpd/CONSISTENCY-REPORT.md"
+    - ".gpd/review/CLAIMS{round_suffix}.json"
+    - ".gpd/review/STAGE-reader{round_suffix}.json"
+    - ".gpd/review/STAGE-literature{round_suffix}.json"
+    - ".gpd/review/STAGE-math{round_suffix}.json"
+    - ".gpd/review/STAGE-physics{round_suffix}.json"
+    - ".gpd/review/STAGE-interestingness{round_suffix}.json"
+    - ".gpd/review/REVIEW-LEDGER{round_suffix}.json"
+    - ".gpd/review/REFEREE-DECISION{round_suffix}.json"
+    - ".gpd/REFEREE-REPORT{round_suffix}.md"
+    - ".gpd/REFEREE-REPORT{round_suffix}.tex"
   required_evidence:
     - "existing manuscript"
     - "phase summaries or milestone digest"
@@ -51,15 +50,15 @@ review-contract:
     - "interestingness"
     - "meta"
   stage_artifacts:
-    - ".gpd/review/CLAIMS.json"
-    - ".gpd/review/STAGE-reader.json"
-    - ".gpd/review/STAGE-literature.json"
-    - ".gpd/review/STAGE-math.json"
-    - ".gpd/review/STAGE-physics.json"
-    - ".gpd/review/STAGE-interestingness.json"
-    - ".gpd/review/REVIEW-LEDGER.json"
-    - ".gpd/review/REFEREE-DECISION.json"
-  final_decision_output: ".gpd/review/REFEREE-DECISION.json"
+    - ".gpd/review/CLAIMS{round_suffix}.json"
+    - ".gpd/review/STAGE-reader{round_suffix}.json"
+    - ".gpd/review/STAGE-literature{round_suffix}.json"
+    - ".gpd/review/STAGE-math{round_suffix}.json"
+    - ".gpd/review/STAGE-physics{round_suffix}.json"
+    - ".gpd/review/STAGE-interestingness{round_suffix}.json"
+    - ".gpd/review/REVIEW-LEDGER{round_suffix}.json"
+    - ".gpd/review/REFEREE-DECISION{round_suffix}.json"
+  final_decision_output: ".gpd/review/REFEREE-DECISION{round_suffix}.json"
   requires_fresh_context_per_stage: true
   max_review_rounds: 3
 allowed-tools:
@@ -118,7 +117,7 @@ fi
 
 **Follow the peer-review workflow** from `@{GPD_INSTALL_DIR}/workflows/peer-review.md`.
 
-The workflow forwards the resolved `$ARGUMENTS` manuscript target into review preflight so explicit files or paper directories do not get lost during validation.
+The workflow forwards the resolved `$ARGUMENTS` manuscript target into review preflight and keeps manuscript-root-relative support artifacts anchored to that same explicit root instead of falling back to `paper/...`.
 
 When announcing the panel to the user, say what each stage does in one concise sentence, for example:
 

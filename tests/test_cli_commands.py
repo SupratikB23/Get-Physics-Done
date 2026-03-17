@@ -618,11 +618,12 @@ class TestReviewValidationCommands:
         assert payload["command"] == "gpd:peer-review"
         assert payload["context_mode"] == "project-required"
         assert payload["review_contract"]["review_mode"] == "publication"
-        assert ".gpd/REFEREE-REPORT.md" in payload["review_contract"]["required_outputs"]
-        assert ".gpd/REFEREE-REPORT.tex" in payload["review_contract"]["required_outputs"]
-        assert ".gpd/review/CLAIMS.json" in payload["review_contract"]["required_outputs"]
-        assert ".gpd/review/STAGE-interestingness.json" in payload["review_contract"]["required_outputs"]
-        assert ".gpd/review/REFEREE-DECISION.json" in payload["review_contract"]["required_outputs"]
+        assert ".gpd/REFEREE-REPORT{round_suffix}.md" in payload["review_contract"]["required_outputs"]
+        assert ".gpd/REFEREE-REPORT{round_suffix}.tex" in payload["review_contract"]["required_outputs"]
+        assert ".gpd/review/CLAIMS{round_suffix}.json" in payload["review_contract"]["required_outputs"]
+        assert ".gpd/review/STAGE-interestingness{round_suffix}.json" in payload["review_contract"]["required_outputs"]
+        assert ".gpd/review/REFEREE-DECISION{round_suffix}.json" in payload["review_contract"]["required_outputs"]
+        assert ".gpd/CONSISTENCY-REPORT.md" not in payload["review_contract"]["required_outputs"]
         assert payload["review_contract"]["preflight_checks"] == [
             "project_state",
             "roadmap",
@@ -646,16 +647,16 @@ class TestReviewValidationCommands:
             "meta",
         ]
         assert payload["review_contract"]["stage_artifacts"] == [
-            ".gpd/review/CLAIMS.json",
-            ".gpd/review/STAGE-reader.json",
-            ".gpd/review/STAGE-literature.json",
-            ".gpd/review/STAGE-math.json",
-            ".gpd/review/STAGE-physics.json",
-            ".gpd/review/STAGE-interestingness.json",
-            ".gpd/review/REVIEW-LEDGER.json",
-            ".gpd/review/REFEREE-DECISION.json",
+            ".gpd/review/CLAIMS{round_suffix}.json",
+            ".gpd/review/STAGE-reader{round_suffix}.json",
+            ".gpd/review/STAGE-literature{round_suffix}.json",
+            ".gpd/review/STAGE-math{round_suffix}.json",
+            ".gpd/review/STAGE-physics{round_suffix}.json",
+            ".gpd/review/STAGE-interestingness{round_suffix}.json",
+            ".gpd/review/REVIEW-LEDGER{round_suffix}.json",
+            ".gpd/review/REFEREE-DECISION{round_suffix}.json",
         ]
-        assert payload["review_contract"]["final_decision_output"] == ".gpd/review/REFEREE-DECISION.json"
+        assert payload["review_contract"]["final_decision_output"] == ".gpd/review/REFEREE-DECISION{round_suffix}.json"
         assert payload["review_contract"]["requires_fresh_context_per_stage"] is True
 
     def test_review_contract_accepts_public_command_label(self) -> None:
@@ -1215,7 +1216,7 @@ class TestReviewValidationCommands:
         assert checks["manuscript"]["passed"] is True
         assert "resolved to" in checks["manuscript"]["detail"]
 
-    def test_review_preflight_peer_review_directory_uses_lexicographic_fallback_without_main_file(
+    def test_review_preflight_peer_review_directory_rejects_missing_main_entrypoint(
         self,
         gpd_project: Path,
     ) -> None:
@@ -1230,11 +1231,11 @@ class TestReviewValidationCommands:
             catch_exceptions=False,
         )
 
-        assert result.exit_code == 0, result.output
+        assert result.exit_code == 1, result.output
         payload = json.loads(result.output)
         checks = {check["name"]: check for check in payload["checks"]}
-        assert checks["manuscript"]["passed"] is True
-        assert "a-appendix.md" in checks["manuscript"]["detail"]
+        assert checks["manuscript"]["passed"] is False
+        assert "no manuscript entry point found under ./paper" == checks["manuscript"]["detail"]
 
     def test_review_preflight_peer_review_strict_blocks_dirty_bibliography_audit(self, gpd_project: Path) -> None:
         paper_dir = gpd_project / "paper"
@@ -1407,6 +1408,36 @@ class TestReviewValidationCommands:
         assert checks["manuscript"]["passed"] is True
         assert "submission/main.tex" in checks["manuscript"]["detail"]
         assert checks["compiled_manuscript"]["passed"] is True
+
+    def test_review_preflight_arxiv_submission_rejects_explicit_directory_without_main_entrypoint(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        paper_dir = gpd_project / "paper"
+        submission_dir = gpd_project / "submission"
+        submission_dir.mkdir()
+        (submission_dir / "alt.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\nSubmission manuscript.\n\\end{document}\n",
+            encoding="utf-8",
+        )
+        (submission_dir / "alt.pdf").write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
+        for artifact_name in ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"):
+            (submission_dir / artifact_name).write_text(
+                (paper_dir / artifact_name).read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "arxiv-submission", "submission", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["manuscript"]["passed"] is False
+        assert "no manuscript entry point found under ./submission" in checks["manuscript"]["detail"]
 
     def test_validate_paper_quality_command(self, gpd_project: Path) -> None:
         quality_path = gpd_project / "paper-quality.json"
@@ -1695,6 +1726,87 @@ class TestReviewValidationCommands:
         payload = json.loads(result.output)
         assert payload["valid"] is True
         assert payload["most_positive_allowed_recommendation"] == "major_revision"
+
+    def test_validate_referee_decision_command_accepts_round_suffixed_stage_artifacts(self, gpd_project: Path) -> None:
+        _write_review_stage_artifacts(
+            gpd_project,
+            artifact_names=(
+                "STAGE-reader-R2.json",
+                "STAGE-literature-R2.json",
+                "STAGE-math-R2.json",
+                "STAGE-physics-R2.json",
+                "STAGE-interestingness-R2.json",
+            ),
+        )
+        decision_path = gpd_project / "referee-decision-r2.json"
+        decision_path.write_text(
+            json.dumps(
+                {
+                    "manuscript_path": "submission/main.tex",
+                    "target_journal": "jhep",
+                    "final_recommendation": "major_revision",
+                    "stage_artifacts": [
+                        ".gpd/review/STAGE-reader-R2.json",
+                        ".gpd/review/STAGE-literature-R2.json",
+                        ".gpd/review/STAGE-math-R2.json",
+                        ".gpd/review/STAGE-physics-R2.json",
+                        ".gpd/review/STAGE-interestingness-R2.json",
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["valid"] is True
+
+    def test_validate_referee_decision_command_rejects_wrong_existing_artifact_set(self, gpd_project: Path) -> None:
+        _write_review_stage_artifacts(
+            gpd_project,
+            artifact_names=(
+                "CLAIMS.json",
+                "REVIEW-LEDGER.json",
+                "REFEREE-DECISION.json",
+                "STAGE-meta.json",
+                "STAGE-summary.json",
+            ),
+        )
+        decision_path = gpd_project / "referee-decision-wrong-artifacts.json"
+        decision_path.write_text(
+            json.dumps(
+                {
+                    "manuscript_path": "paper/main.tex",
+                    "target_journal": "jhep",
+                    "final_recommendation": "major_revision",
+                    "stage_artifacts": [
+                        ".gpd/review/CLAIMS.json",
+                        ".gpd/review/REVIEW-LEDGER.json",
+                        ".gpd/review/REFEREE-DECISION.json",
+                        ".gpd/review/STAGE-meta.json",
+                        ".gpd/review/STAGE-summary.json",
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        assert payload["valid"] is False
+        assert any("canonical five specialist stage artifacts" in reason for reason in payload["reasons"])
 
     def test_validate_referee_decision_command_blocks_overly_positive_prl_decision(self, gpd_project: Path) -> None:
         _write_review_stage_artifacts(gpd_project)

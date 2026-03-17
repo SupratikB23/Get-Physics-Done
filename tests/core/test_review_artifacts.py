@@ -108,6 +108,7 @@ def test_review_artifact_round_trip(tmp_path: Path) -> None:
         final_confidence=ReviewConfidence.high,
         final_report_path=".gpd/REFEREE-REPORT.md",
         final_report_tex_path=".gpd/REFEREE-REPORT.tex",
+        consistency_report_path=".gpd/CONSISTENCY-REPORT.md",
     )
 
     claims_path = tmp_path / "CLAIMS.json"
@@ -127,6 +128,42 @@ def test_review_artifact_round_trip(tmp_path: Path) -> None:
     assert read_review_ledger(ledger_path) == ledger
     assert read_referee_decision(decision_path) == decision
     assert read_review_panel_bundle(bundle_path) == bundle
+
+
+def test_review_panel_bundle_accepts_round_aware_reports_without_consistency_report(tmp_path: Path) -> None:
+    bundle_path = tmp_path / "PANEL-BUNDLE-R2.json"
+    bundle_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "round": 2,
+                "manuscript_path": "submission/main.tex",
+                "target_journal": "jhep",
+                "claim_index_path": ".gpd/review/CLAIMS-R2.json",
+                "stage_reports": [
+                    ".gpd/review/STAGE-reader-R2.json",
+                    ".gpd/review/STAGE-literature-R2.json",
+                    ".gpd/review/STAGE-math-R2.json",
+                    ".gpd/review/STAGE-physics-R2.json",
+                    ".gpd/review/STAGE-interestingness-R2.json",
+                ],
+                "review_ledger_path": ".gpd/review/REVIEW-LEDGER-R2.json",
+                "decision_path": ".gpd/review/REFEREE-DECISION-R2.json",
+                "final_recommendation": "major_revision",
+                "final_confidence": "medium",
+                "final_report_path": ".gpd/REFEREE-REPORT-R2.md",
+                "final_report_tex_path": ".gpd/REFEREE-REPORT-R2.tex",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    bundle = read_review_panel_bundle(bundle_path)
+
+    assert bundle.round == 2
+    assert bundle.final_report_path == ".gpd/REFEREE-REPORT-R2.md"
+    assert bundle.final_report_tex_path == ".gpd/REFEREE-REPORT-R2.tex"
+    assert bundle.consistency_report_path == ""
 
 
 def test_claim_index_rejects_invalid_sha256(tmp_path: Path) -> None:

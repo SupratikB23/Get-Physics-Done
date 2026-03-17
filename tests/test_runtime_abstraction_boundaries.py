@@ -35,6 +35,26 @@ def _runtime_env_prefix_patterns() -> list[str]:
     return sorted(patterns)
 
 
+def _runtime_literal_patterns() -> list[str]:
+    patterns: set[str] = set()
+    for descriptor in _RUNTIME_DESCRIPTORS:
+        for value in (
+            descriptor.display_name,
+            descriptor.runtime_name,
+            descriptor.config_dir_name,
+            descriptor.launch_command,
+            descriptor.install_flag,
+        ):
+            patterns.add(re.escape(value))
+        for value in descriptor.selection_flags:
+            patterns.add(re.escape(value))
+        for value in descriptor.selection_aliases:
+            patterns.add(re.escape(value))
+            if descriptor.command_prefix == "$gpd-":
+                patterns.add(re.escape(descriptor.command_prefix))
+    return sorted(patterns)
+
+
 def _runtime_owned_path_patterns() -> list[str]:
     patterns: set[str] = set()
     for descriptor in _RUNTIME_DESCRIPTORS:
@@ -48,9 +68,7 @@ _RUNTIME_PATTERN = (
     "("
     + "|".join(
         [
-            *(re.escape(descriptor.display_name) for descriptor in _RUNTIME_DESCRIPTORS),
-            *(re.escape(descriptor.runtime_name) for descriptor in _RUNTIME_DESCRIPTORS),
-            *(re.escape(descriptor.config_dir_name) for descriptor in _RUNTIME_DESCRIPTORS),
+            *_runtime_literal_patterns(),
             *_runtime_env_prefix_patterns(),
             r"codex_notify\.py",
         ]
@@ -99,7 +117,7 @@ _RUNTIME_INSTALL_ARTIFACT_PATTERN = re.compile(
     )
     + ")"
 )
-_SHARED_COMMAND_SURFACE_PATTERN = re.compile(r"/gpd:")
+_SHARED_COMMAND_SURFACE_PATTERN = re.compile(r"(?:/gpd:|\\$gpd-)")
 _SHARED_BOOTSTRAP_COMMAND_PATTERN = re.compile(
     r"(\bnpx\b|\bnpm\b|\buvx\b|\bpip\b|\bpipx\b|\bbunx\b|get-physics-done)"
 )

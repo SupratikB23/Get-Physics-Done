@@ -189,7 +189,7 @@ def test_strict_review_requires_at_least_five_stage_artifacts() -> None:
     )
 
     assert report.valid is False
-    assert any("at least five specialist stage artifacts" in reason for reason in report.reasons)
+    assert any("canonical five specialist stage artifacts" in reason for reason in report.reasons)
 
 
 @pytest.mark.parametrize("field_name", ["unresolved_major_issues", "unresolved_minor_issues"])

@@ -459,11 +459,11 @@ def test_review_commands_expose_typed_contracts() -> None:
 
     assert peer_review.review_contract is not None
     assert peer_review.review_contract.review_mode == "publication"
-    assert ".gpd/REFEREE-REPORT.md" in peer_review.review_contract.required_outputs
-    assert ".gpd/REFEREE-REPORT.tex" in peer_review.review_contract.required_outputs
-    assert ".gpd/review/CLAIMS.json" in peer_review.review_contract.required_outputs
-    assert ".gpd/review/STAGE-interestingness.json" in peer_review.review_contract.required_outputs
-    assert ".gpd/review/REFEREE-DECISION.json" in peer_review.review_contract.required_outputs
+    assert ".gpd/REFEREE-REPORT{round_suffix}.md" in peer_review.review_contract.required_outputs
+    assert ".gpd/REFEREE-REPORT{round_suffix}.tex" in peer_review.review_contract.required_outputs
+    assert ".gpd/review/CLAIMS{round_suffix}.json" in peer_review.review_contract.required_outputs
+    assert ".gpd/review/STAGE-interestingness{round_suffix}.json" in peer_review.review_contract.required_outputs
+    assert ".gpd/review/REFEREE-DECISION{round_suffix}.json" in peer_review.review_contract.required_outputs
     assert "manuscript" in peer_review.review_contract.preflight_checks
     assert peer_review.review_contract.stage_ids == [
         "reader",
@@ -475,16 +475,16 @@ def test_review_commands_expose_typed_contracts() -> None:
     ]
     assert peer_review.review_contract.requires_fresh_context_per_stage is True
     assert peer_review.review_contract.stage_artifacts == [
-        ".gpd/review/CLAIMS.json",
-        ".gpd/review/STAGE-reader.json",
-        ".gpd/review/STAGE-literature.json",
-        ".gpd/review/STAGE-math.json",
-        ".gpd/review/STAGE-physics.json",
-        ".gpd/review/STAGE-interestingness.json",
-        ".gpd/review/REVIEW-LEDGER.json",
-        ".gpd/review/REFEREE-DECISION.json",
+        ".gpd/review/CLAIMS{round_suffix}.json",
+        ".gpd/review/STAGE-reader{round_suffix}.json",
+        ".gpd/review/STAGE-literature{round_suffix}.json",
+        ".gpd/review/STAGE-math{round_suffix}.json",
+        ".gpd/review/STAGE-physics{round_suffix}.json",
+        ".gpd/review/STAGE-interestingness{round_suffix}.json",
+        ".gpd/review/REVIEW-LEDGER{round_suffix}.json",
+        ".gpd/review/REFEREE-DECISION{round_suffix}.json",
     ]
-    assert peer_review.review_contract.final_decision_output == ".gpd/review/REFEREE-DECISION.json"
+    assert peer_review.review_contract.final_decision_output == ".gpd/review/REFEREE-DECISION{round_suffix}.json"
 
     assert verify_work.review_contract is not None
     assert verify_work.review_contract.required_state == "phase_executed"
@@ -908,7 +908,7 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "claim_id" in research_verification
     assert "acceptance_test_id" in research_verification
     assert "frontmatter contract compatible with `@{GPD_INSTALL_DIR}/templates/verification-report.md`" in verify_workflow
-    assert "status: human_needed" in verify_workflow
+    assert "status: passed | gaps_found | expert_needed | human_needed" in verify_workflow
     assert "session_status: validating" in verify_workflow
     assert "Mirror decisive verdicts into frontmatter `comparison_verdicts`." in verify_workflow
     assert "structured `suggested_contract_checks` entry before final validation" in verify_workflow
@@ -916,6 +916,11 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "required_request_fields" in verify_workflow
     assert "supported_binding_fields" in verify_workflow
     assert "run_contract_check(request=...)" in verify_workflow
+    assert "Return status (`passed` | `gaps_found` | `expert_needed` | `human_needed`)" in verify_phase
+    assert "gap_subject_kind" in verifier_agent
+    assert "Each gap has: `gap_subject_kind`" in verifier_agent
+    assert "Each gap has: `subject_kind`" not in verifier_agent
+    assert "Verification Status:** {passed | gaps_found | expert_needed | human_needed}" in verifier_agent
     assert "`contract_results` is authoritative." in execute_plan
     assert "Autonomy mode (`supervised` / `balanced` / `yolo`) and profile may change cadence or verbosity, but they do NOT relax contract-result emission." in execute_plan
     assert "contract_results" in verify_phase
@@ -956,6 +961,10 @@ def test_verification_prompts_keep_suggested_contract_check_bindings_schema_tigh
     assert "omit both keys instead of leaving one blank" in research_verification
     assert "omit both keys instead of leaving one blank" in verify_workflow
     assert "omit both keys instead of leaving one blank" in verifier_agent
+    assert "gap_subject_kind" in verifier_agent
+    assert "Each gap has: `gap_subject_kind`" in verifier_agent
+    assert "Each gap has: `subject_kind`" not in verifier_agent
+    assert "Verification Status:** {passed | gaps_found | expert_needed | human_needed}" in verifier_agent
 
 
 def test_verifier_entry_points_expose_contract_check_tools() -> None:
@@ -966,6 +975,7 @@ def test_verifier_entry_points_expose_contract_check_tools() -> None:
     verifier_tools = _parse_tools(verifier_meta.get("tools"))
 
     for tool_name in (
+        "mcp__gpd_verification__get_bundle_checklist",
         "mcp__gpd_verification__suggest_contract_checks",
         "mcp__gpd_verification__run_contract_check",
     ):
@@ -1105,6 +1115,12 @@ def test_verify_work_workflow_uses_body_only_subject_kind_fields() -> None:
     assert 'gap_subject_kind: "{check_subject_kind}"' in verify_work
     assert "Use `forbidden_proxy_id` for explicit proxy-rejection checks" in verify_work
     assert "instead of inventing extra body subject kinds" in verify_work
+    assert "{phase}" not in verify_work
+    assert ".gpd/phases/{phase_dir}" not in verify_work
+    assert 'Write to `${phase_dir}/${phase_number}-VERIFICATION.md`' in verify_work
+    assert 'gpd validate verification-contract "${phase_dir}/${phase_number}-VERIFICATION.md"' in verify_work
+    assert 'gpd commit "verify(${phase_number}): complete research validation - {passed} passed, {issues} issues" --files "${phase_dir}/${phase_number}-VERIFICATION.md"' in verify_work
+    assert "Read all PLAN.md files in ${phase_dir}/ using the file_read tool." in verify_work
     assert "\nsubject_kind: [claim | deliverable | acceptance_test | reference | forbidden_proxy | suggested_contract_check]" not in verify_work
     assert "check_subject_kind: `claim | deliverable | acceptance_test | reference | forbidden_proxy | suggested_contract_check`" not in verify_work
     assert "check_subject_kind: [claim | deliverable | acceptance_test | reference | forbidden_proxy | suggested_contract_check]" not in verify_work
@@ -1179,6 +1195,9 @@ def test_verification_and_agent_reference_prompts_expand_required_reference_bodi
     assert "@ include not resolved:" not in verify_phase.lower()
     assert "@ include not resolved:" not in phase_researcher.lower()
     assert "@ include not resolved:" not in planner.lower()
+    assert "The standalone `/gpd:verify-work` workflow reuses the same verification criteria through `verify-work.md`; this file itself is executed by the execute-phase orchestrator." in verify_phase
+    assert "VERIFICATION_FILE=\"${phase_dir}/${phase_number}-VERIFICATION.md\"" in verify_phase
+    assert "Return status (`passed` | `gaps_found` | `expert_needed` | `human_needed`)" in verify_phase
 
 
 def test_planner_and_summary_prompt_surfaces_expand_contract_schema_bodies() -> None:

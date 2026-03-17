@@ -98,19 +98,42 @@ def test_contract_tools_list_tools_expose_structured_request_schemas() -> None:
 
     binding = _schema_anyof_object(run_request["properties"]["binding"])
     assert {"claim_ids", "reference_ids", "forbidden_proxy_ids"} <= set(binding["properties"])
+    assert binding["properties"]["claim_ids"]["anyOf"][1]["type"] == "array"
+    assert binding["properties"]["claim_ids"]["anyOf"][1]["minItems"] == 1
+    assert binding["properties"]["claim_ids"]["anyOf"][1]["items"]["type"] == "string"
+    assert binding["properties"]["claim_ids"]["anyOf"][1]["items"]["minLength"] == 1
 
     metadata = _schema_anyof_object(run_request["properties"]["metadata"])
     assert {"source_reference_id", "allowed_families", "forbidden_families"} <= set(metadata["properties"])
+    assert metadata["properties"]["allowed_families"]["type"] == "array"
+    assert metadata["properties"]["allowed_families"]["items"]["type"] == "string"
+    assert metadata["properties"]["allowed_families"]["items"]["minLength"] == 1
 
     observed = _schema_anyof_object(run_request["properties"]["observed"])
     assert {"metric_value", "threshold_value", "selected_family", "bias_checked"} <= set(observed["properties"])
 
     contract_schema = _schema_anyof_object(run_request["properties"]["contract"])
     assert {"schema_version", "scope", "claims", "references"} <= set(contract_schema["properties"])
+    scope = _schema_object(contract_schema, contract_schema["properties"]["scope"])
+    assert scope["required"] == ["question"]
+    assert scope["properties"]["question"]["minLength"] == 1
+    assert scope["properties"]["in_scope"]["type"] == "array"
+    assert scope["properties"]["in_scope"]["items"]["minLength"] == 1
+
+    claims = contract_schema["properties"]["claims"]["items"]
+    assert claims["required"] == ["id", "statement"]
+    assert claims["properties"]["id"]["minLength"] == 1
+    assert claims["properties"]["observables"]["items"]["minLength"] == 1
+
+    references = contract_schema["properties"]["references"]["items"]
+    assert references["required"] == ["id", "locator", "why_it_matters"]
+    assert references["properties"]["carry_forward_to"]["items"]["minLength"] == 1
 
     suggest_schema = _tool_input_schema(mcp, "suggest_contract_checks")
     contract_schema = _schema_anyof_object(suggest_schema["properties"]["contract"])
     assert {"schema_version", "scope", "claims", "references"} <= set(contract_schema["properties"])
+    assert contract_schema["properties"]["scope"]["required"] == ["question"]
+    assert contract_schema["properties"]["references"]["items"]["properties"]["required_actions"]["items"]["minLength"] == 1
     active_checks = suggest_schema["properties"]["active_checks"]
     assert active_checks["anyOf"][0]["type"] == "array"
     assert active_checks["anyOf"][0]["items"]["type"] == "string"

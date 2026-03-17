@@ -11,7 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from gpd.adapters.codex import CodexAdapter, _convert_codex_tool_name, _convert_to_codex_skill
+from gpd.adapters.codex import (
+    CodexAdapter,
+    _convert_codex_tool_name,
+    _convert_to_codex_skill,
+    _normalize_codex_questioning,
+)
 from gpd.adapters.install_utils import build_runtime_cli_bridge_command
 from gpd.registry import load_agents_from_dir
 
@@ -551,6 +556,42 @@ description: Nested command include expansion regression
         assert "> **Platform note:** If `ask_user` is not available" not in content
         assert "Use ask_user:" not in content
         assert "Ask the user once using a single compact prompt block:" in content
+
+    @pytest.mark.parametrize(
+        ("content", "expected"),
+        [
+            (
+                "> **Platform note:** if `ask_user` is not available, present these options in plain text and wait for the user's freeform response.\n\n"
+                "use ask_user with current values pre-selected:\n\n"
+                "```\n"
+                "ask_user([\n"
+                "  {\"question\": \"How much autonomy should the AI have?\"}\n"
+                "])\n"
+                "```\n",
+                "plain_text_prompt([",
+            ),
+            (
+                "> **Platform note:** if `ask_user` is not available, present these options in plain text and wait for the user's freeform response.\n\n"
+                "if overlapping, use ask_user:\n",
+                "If overlapping, present the duplicate choices in plain text:",
+            ),
+            (
+                "ask inline (freeform, not ask_user):\n\n"
+                "based on what they said, ask follow-up questions that dig into their response. use ask_user with options that probe what they mentioned — interpretations, clarifications, concrete examples.\n\n"
+                "when you could write a clear scoping contract, use ask_user:\n",
+                "When you could write a clear scoping contract, ask the user inline:",
+            ),
+        ],
+    )
+    def test_normalize_codex_questioning_rewrites_lowercase_fallback_variants(
+        self,
+        content: str,
+        expected: str,
+    ) -> None:
+        normalized = _normalize_codex_questioning(content)
+
+        assert "ask_user" not in normalized.lower()
+        assert expected.lower() in normalized.lower()
 
     def test_new_project_workflow_normalizes_codex_questioning(
         self,

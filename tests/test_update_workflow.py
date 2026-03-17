@@ -38,8 +38,11 @@ def test_reapply_patches_workflow_uses_runtime_config_placeholders() -> None:
 
     assert "{GPD_CONFIG_DIR}" in content
     assert "{GPD_GLOBAL_CONFIG_DIR}" in content
-    assert "~/.claude/gpd-local-patches" not in content
-    assert "./.claude/gpd-local-patches" not in content
+    for descriptor in _RUNTIME_DESCRIPTORS:
+        runtime_patch_path = f"~/{descriptor.config_dir_name}/gpd-local-patches"
+        workspace_patch_path = f"./{descriptor.config_dir_name}/gpd-local-patches"
+        assert runtime_patch_path not in content
+        assert workspace_patch_path not in content
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
@@ -129,5 +132,8 @@ def test_explicit_target_local_install_reapply_patches_uses_runtime_paths(tmp_pa
     assert f'PATCHES_DIR="{target.as_posix()}/gpd-local-patches"' in content
     assert "{GPD_CONFIG_DIR}" not in content
     assert "{GPD_GLOBAL_CONFIG_DIR}" not in content
-    assert "~/.claude/gpd-local-patches" not in content
-    assert "./.claude/gpd-local-patches" not in content
+    for descriptor in _RUNTIME_DESCRIPTORS:
+        runtime_patch_path = f"~/{descriptor.config_dir_name}/gpd-local-patches"
+        workspace_patch_path = f"./{descriptor.config_dir_name}/gpd-local-patches"
+        assert runtime_patch_path not in content
+        assert workspace_patch_path not in content

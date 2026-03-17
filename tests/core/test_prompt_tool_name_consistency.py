@@ -19,7 +19,6 @@ SHARED_SPEC_ROOTS = (REPO_ROOT / "src/gpd/specs",)
 AMBIGUOUS_RUNTIME_ALIAS_NAMES = frozenset({"question", "replace", "skill", "todo"})
 FORBIDDEN_CONTEXTUAL_RUNTIME_ALIAS_PATTERNS = (
     re.compile(r"\*\*Read:\*\*"),
-    re.compile(r"(?m)^\s*Read:"),
     re.compile(r"\bthe Read\b"),
     re.compile(r"\bnot Edit\b"),
     re.compile(r"\bthe Edit\b"),
@@ -34,6 +33,9 @@ _INLINE_CODE_RE = re.compile(r"`[^`]*`")
 _PATHLIKE_TOKEN_RE = re.compile(r"(?<!\w)(?:\S*/\S+\b)")
 _AMBIGUOUS_RUNTIME_ALIAS_TOOL_CONTEXT_RE = re.compile(
     r"`(?:question|replace|skill|todo)(?:\([^`]*\))?`|\b(?:question|replace|skill|todo)\(",
+)
+_AMBIGUOUS_RUNTIME_ALIAS_PROSE_RE = re.compile(
+    r"(?i)\b(?:use|using|call|invoke|run|spawn|ask|present|select|choose)\s+(?:the\s+)?(?:question|replace|skill|todo)\b(?:\s*[\(:][^`\n]*)?"
 )
 _FENCED_CODE_SEGMENT_RE = re.compile(r"```(?P<info>[^\n`]*)\n(?P<body>[\s\S]*?)```")
 _NON_TOOL_FENCE_LANGUAGES = frozenset({"bash", "sh", "shell", "zsh", "python", "json", "yaml", "toml"})
@@ -117,6 +119,7 @@ def _body_contains_runtime_alias_leaks(body: str) -> bool:
     return (
         convert_tool_references_in_body(sanitized, _STRICT_RUNTIME_ALIAS_MAP) != sanitized
         or _AMBIGUOUS_RUNTIME_ALIAS_TOOL_CONTEXT_RE.search(sanitized) is not None
+        or _AMBIGUOUS_RUNTIME_ALIAS_PROSE_RE.search(sanitized) is not None
     )
 
 
@@ -134,6 +137,15 @@ search_file_content
 def test_body_alias_scan_flags_ambiguous_aliases_only_in_tool_like_contexts() -> None:
     assert _body_contains_runtime_alias_leaks("Apply `replace(old, new)` to the artifact.") is True
     assert _body_contains_runtime_alias_leaks("The open question is still unresolved.") is False
+
+
+def test_body_alias_scan_flags_realistic_alias_invocations_and_prose_instructions() -> None:
+    assert _body_contains_runtime_alias_leaks('Use question(header="Ready?") before proceeding.') is True
+    assert _body_contains_runtime_alias_leaks("Use question with options before proceeding.") is True
+
+
+def test_body_alias_scan_does_not_flag_ordinary_imperative_read_prose() -> None:
+    assert _body_contains_runtime_alias_leaks("Read: the next section carefully before continuing.") is False
 
 
 def test_primary_prompt_frontmatter_uses_canonical_tool_names() -> None:
@@ -170,6 +182,18 @@ def test_shared_specs_use_canonical_tool_references() -> None:
             invalid.append(str(path.relative_to(REPO_ROOT)))
 
     assert invalid == []
+
+
+def test_new_project_notation_delegate_omits_model_argument_when_model_is_empty() -> None:
+    content = (REPO_ROOT / "src/gpd/specs/workflows/new-project.md").read_text(encoding="utf-8")
+    marker = 'NOTATION_MODEL=$(gpd resolve-model gpd-notation-coordinator)'
+    start = content.index(marker)
+    task_start = content.index('task(prompt="First, read {GPD_AGENTS_DIR}/gpd-notation-coordinator.md', start)
+    task_end = content.index('", subagent_type="gpd-notation-coordinator"', task_start)
+    notation_block = content[task_start:task_end]
+
+    assert 'model="{notation_model}"' not in notation_block
+    assert "If `NOTATION_MODEL` is empty or null, omit `model=` entirely in the spawn call." in content
 
 
 def test_prompt_sources_avoid_contextual_runtime_alias_spellings() -> None:

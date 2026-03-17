@@ -42,8 +42,8 @@ def test_verify_work_review_contract_uses_phase_scoped_output_path() -> None:
     contract = registry.get_command("verify-work").review_contract
 
     assert contract is not None
-    assert contract.required_outputs == [".gpd/phases/XX-name/{phase}-VERIFICATION.md"]
-    assert ".gpd/phases/XX-name/{phase}-VERIFICATION.md" in _read_command("verify-work")
+    assert contract.required_outputs == [".gpd/phases/XX-name/XX-VERIFICATION.md"]
+    assert ".gpd/phases/XX-name/XX-VERIFICATION.md" in _read_command("verify-work")
 
 
 def test_summary_template_surfaces_plan_contract_ref_rule_for_contract_ledgers() -> None:

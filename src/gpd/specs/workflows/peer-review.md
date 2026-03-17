@@ -50,6 +50,16 @@ fi
    - `manuscript/main.tex`
    - `draft/main.tex`
 
+After resolution, keep all manuscript-local support artifacts rooted at the same explicit manuscript directory:
+
+- `RESOLVED_MANUSCRIPT` = resolved `.tex` or `.md` entry point
+- `MANUSCRIPT_ROOT` = parent directory of `RESOLVED_MANUSCRIPT`
+- `ARTIFACT_MANIFEST_PATH` = `${MANUSCRIPT_ROOT}/ARTIFACT-MANIFEST.json`
+- `BIBLIOGRAPHY_AUDIT_PATH` = `${MANUSCRIPT_ROOT}/BIBLIOGRAPHY-AUDIT.json`
+- `REPRODUCIBILITY_MANIFEST_PATH` = first existing of `${MANUSCRIPT_ROOT}/reproducibility-manifest.json` or `${MANUSCRIPT_ROOT}/REPRODUCIBILITY-MANIFEST.json`
+- `PAPER_CONFIG_PATH` = `${MANUSCRIPT_ROOT}/PAPER-CONFIG.json`
+- `LOCAL_BIB_FILES` = all `*.bib` files under `${MANUSCRIPT_ROOT}`
+
 **If no manuscript found:**
 
 ```
@@ -106,13 +116,13 @@ Load the following files:
 - All `.gpd/phases/*/*VERIFICATION.md` files
 - `.gpd/comparisons/*-COMPARISON.md` if present
 - `.gpd/paper/FIGURE_TRACKER.md` if present
-- `paper/ARTIFACT-MANIFEST.json` if present
-- `paper/BIBLIOGRAPHY-AUDIT.json` if present
-- `paper/reproducibility-manifest.json` if present
-- `paper/PAPER-CONFIG.json` if present
-- `paper/references.bib` or `references/references.bib` if present
+- `${ARTIFACT_MANIFEST_PATH}` if present
+- `${BIBLIOGRAPHY_AUDIT_PATH}` if present
+- `${REPRODUCIBILITY_MANIFEST_PATH}` if present
+- `${PAPER_CONFIG_PATH}` if present
+- All `*.bib` files under `${MANUSCRIPT_ROOT}`, plus `references/references.bib` if present
 
-Infer the target journal from `PAPER-CONFIG.json` when available; otherwise use `unspecified`.
+Infer the target journal from `${PAPER_CONFIG_PATH}` when available; otherwise use `unspecified`.
 
 If bundle context is present, compare its decisive-artifact and reference expectations against the actual comparison artifacts and figure tracker. Missing bundle-suggested coverage is a warning unless the manuscript has narrowed the claim honestly; missing contract-backed decisive evidence remains a blocker.
 
@@ -244,8 +254,8 @@ Files to read:
 - `.gpd/review/STAGE-reader{round_suffix}.json`
 - `.gpd/comparisons/*-COMPARISON.md` if present
 - `.gpd/paper/FIGURE_TRACKER.md` if present
-- `paper/BIBLIOGRAPHY-AUDIT.json` if present
-- `paper/references.bib` or `references/references.bib` if present
+- `${BIBLIOGRAPHY_AUDIT_PATH}` if present
+- All `*.bib` files under `${MANUSCRIPT_ROOT}`, plus `references/references.bib` if present
 
 Use targeted web search when novelty, significance, or prior-work positioning is uncertain. Treat novelty-heavy claims as requiring external comparison, not trust. Use bundle reference prompts only as additive hints about which prior-work or benchmark framing should be visible; do not infer novelty or correctness from bundle presence alone.
 Return STAGE 2 COMPLETE with assessment, blocker count, and major concern count.",
@@ -275,8 +285,8 @@ Files to read:
 - `.gpd/review/STAGE-reader{round_suffix}.json`
 - Summary artifacts matching `.gpd/phases/*/SUMMARY.md` or `.gpd/phases/*/*-SUMMARY.md`
 - `.gpd/phases/*/*VERIFICATION.md`
-- `paper/ARTIFACT-MANIFEST.json` if present
-- `paper/reproducibility-manifest.json` if present
+- `${ARTIFACT_MANIFEST_PATH}` if present
+- `${REPRODUCIBILITY_MANIFEST_PATH}` if present
 
 Focus on key equations, limits, internal consistency, and approximation validity.
 Return STAGE 3 COMPLETE with assessment, blocker count, and major concern count.",
@@ -371,7 +381,7 @@ Files to read:
 - `.gpd/review/STAGE-reader{round_suffix}.json`
 - `.gpd/review/STAGE-literature{round_suffix}.json`
 - `.gpd/review/STAGE-physics{round_suffix}.json`
-- `paper/PAPER-CONFIG.json` if present
+- `${PAPER_CONFIG_PATH}` if present
 
 You must explicitly decide whether the paper is:
 1. Scientifically interesting enough for the venue
@@ -425,9 +435,9 @@ Files to read:
 - `.gpd/review/STAGE-interestingness{round_suffix}.json`
 - `.gpd/comparisons/*-COMPARISON.md` if present
 - `.gpd/paper/FIGURE_TRACKER.md` if present
-- `paper/ARTIFACT-MANIFEST.json` if present
-- `paper/BIBLIOGRAPHY-AUDIT.json` if present
-- `paper/reproducibility-manifest.json` if present
+- `${ARTIFACT_MANIFEST_PATH}` if present
+- `${BIBLIOGRAPHY_AUDIT_PATH}` if present
+- `${REPRODUCIBILITY_MANIFEST_PATH}` if present
 - `.gpd/STATE.md`
 - `.gpd/ROADMAP.md`
 - Summary artifacts matching `.gpd/phases/*/SUMMARY.md` or `.gpd/phases/*/*-SUMMARY.md`

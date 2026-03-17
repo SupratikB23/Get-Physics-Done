@@ -17,10 +17,12 @@ import pytest
 from typer.testing import CliRunner
 
 from gpd.adapters import get_adapter
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.cli import app
 from gpd.core.state import default_state_dict, generate_state_markdown
 
 runner = CliRunner()
+_RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
 
 _RUNTIME_ENV_PREFIXES = ("CLAUDE_CODE", "CODEX", "GEMINI", "OPENCODE")
 _RUNTIME_ENV_VARS_TO_CLEAR = {"GPD_ACTIVE_RUNTIME", "XDG_CONFIG_HOME"}
@@ -149,10 +151,6 @@ def _mark_complete_runtime_install(config_dir: Path, *, runtime: str, install_sc
         else:
             artifact.mkdir(parents=True, exist_ok=True)
     manifest: dict[str, object] = {"runtime": runtime, "install_scope": install_scope}
-    if runtime == "codex":
-        skills_dir = config_dir.parent / ".agents" / "skills"
-        (skills_dir / "gpd-help").mkdir(parents=True, exist_ok=True)
-        manifest["codex_skills_dir"] = str(skills_dir)
     (config_dir / "gpd-file-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 
@@ -773,30 +771,43 @@ class TestResolveModelCommand:
         parsed = json.loads(result.output)
         assert parsed["error"] == "Unknown agent 'not-an-agent'"
 
-    def test_resolve_model_prefers_installed_runtime_override(self, gpd_project: Path) -> None:
+    @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+    def test_resolve_model_prefers_installed_runtime_override(self, gpd_project: Path, descriptor) -> None:
         config_path = gpd_project / ".gpd" / "config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
-        config["model_overrides"] = {"codex": {"tier-1": "gpt-5.4"}}
+        config["model_overrides"] = {
+            descriptor.runtime_name: {
+                "tier-1": f"{descriptor.runtime_name}-planner-model",
+                "tier-2": f"{descriptor.runtime_name}-executor-model",
+            }
+        }
         config_path.write_text(json.dumps(config), encoding="utf-8")
-        (gpd_project / ".claude").mkdir()
-        _mark_complete_runtime_install(gpd_project / ".codex", runtime="codex")
-
+        _mark_complete_runtime_install(gpd_project / descriptor.config_dir_name, runtime=descriptor.runtime_name)
         fake_home = gpd_project / "_fake_home"
         fake_home.mkdir()
         with patch("pathlib.Path.home", return_value=fake_home):
             result = _invoke("resolve-model", "gpd-executor")
-            assert result.output.strip() == ""
+            assert result.output.strip() == f"{descriptor.runtime_name}-executor-model"
 
             planner_result = _invoke("resolve-model", "gpd-planner")
-            assert planner_result.output.strip() == "gpt-5.4"
+            assert planner_result.output.strip() == f"{descriptor.runtime_name}-planner-model"
 
-    def test_init_execute_phase_prefers_installed_runtime_for_model_fields(self, gpd_project: Path) -> None:
+    @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+    def test_init_execute_phase_prefers_installed_runtime_for_model_fields(
+        self,
+        gpd_project: Path,
+        descriptor,
+    ) -> None:
         config_path = gpd_project / ".gpd" / "config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
-        config["model_overrides"] = {"codex": {"tier-1": "gpt-5.4", "tier-2": "gpt-5.4-mini"}}
+        config["model_overrides"] = {
+            descriptor.runtime_name: {
+                "tier-1": f"{descriptor.runtime_name}-planner-model",
+                "tier-2": f"{descriptor.runtime_name}-executor-model",
+            }
+        }
         config_path.write_text(json.dumps(config), encoding="utf-8")
-        (gpd_project / ".claude").mkdir()
-        _mark_complete_runtime_install(gpd_project / ".codex", runtime="codex")
+        _mark_complete_runtime_install(gpd_project / descriptor.config_dir_name, runtime=descriptor.runtime_name)
 
         fake_home = gpd_project / "_fake_home"
         fake_home.mkdir()
@@ -804,10 +815,17 @@ class TestResolveModelCommand:
             result = _invoke("--raw", "init", "execute-phase", "1")
             payload = json.loads(result.output)
 
-            assert payload["executor_model"] == "gpt-5.4-mini"
-            assert payload["verifier_model"] == "gpt-5.4"
+            assert payload["executor_model"] == f"{descriptor.runtime_name}-executor-model"
+            assert payload["verifier_model"] == f"{descriptor.runtime_name}-planner-model"
 
     def test_resolve_model_rejects_unknown_agent(self) -> None:
-        result = _invoke("--raw", "resolve-model", "not-an-agent", "--runtime", "codex", expect_ok=False)
+        result = _invoke(
+            "--raw",
+            "resolve-model",
+            "not-an-agent",
+            "--runtime",
+            _RUNTIME_DESCRIPTORS[0].runtime_name,
+            expect_ok=False,
+        )
         parsed = json.loads(result.output)
         assert parsed["error"] == "Unknown agent 'not-an-agent'"

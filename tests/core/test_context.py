@@ -1324,6 +1324,36 @@ class TestInitProgress:
         assert loaded.references[0].id == "ref-benchmark"
         assert loaded.references[0].must_surface is True
 
+    def test_load_project_contract_rejects_duplicate_contract_ids_from_raw_state(self, tmp_path: Path) -> None:
+        _setup_project(tmp_path)
+
+        from gpd.core.state import default_state_dict
+
+        state = default_state_dict()
+        contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+        contract["claims"].append(dict(contract["claims"][0]))
+        state["project_contract"] = contract
+        (tmp_path / ".gpd" / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+        loaded = _load_project_contract(tmp_path)
+
+        assert loaded is None
+
+    def test_load_project_contract_rejects_whole_singleton_defaulting_from_raw_state(self, tmp_path: Path) -> None:
+        _setup_project(tmp_path)
+
+        from gpd.core.state import default_state_dict
+
+        state = default_state_dict()
+        contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+        contract["context_intake"] = "not-a-dict"
+        state["project_contract"] = contract
+        (tmp_path / ".gpd" / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+        loaded = _load_project_contract(tmp_path)
+
+        assert loaded is None
+
 
 # ─── _extract_frontmatter_field ──────────────────────────────────────────────
 

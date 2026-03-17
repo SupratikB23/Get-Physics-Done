@@ -16,7 +16,7 @@ from pathlib import Path
 
 from gpd.adapters import iter_adapters
 from gpd.adapters.install_utils import AGENTS_DIR_NAME, FLAT_COMMANDS_DIR_NAME, GPD_INSTALL_DIR_NAME, HOOKS_DIR_NAME
-from gpd.contracts import ResearchContract, contract_from_data
+from gpd.contracts import ResearchContract, collect_contract_integrity_errors, contract_from_data
 from gpd.core.config import GPDProjectConfig
 from gpd.core.config import load_config as _load_config_structured
 from gpd.core.config import resolve_model as _resolve_model_canonical
@@ -232,12 +232,23 @@ def _load_project_contract(cwd: Path) -> ResearchContract | None:
         return None
 
     normalized_contract, schema_findings = salvage_project_contract(raw_contract)
-    schema_warnings, schema_errors = _split_project_contract_schema_findings(schema_findings)
+    schema_warnings, schema_errors = _split_project_contract_schema_findings(
+        schema_findings,
+        allow_singleton_defaults=False,
+    )
     if schema_errors or normalized_contract is None:
         logger.warning(
             "Skipping project_contract from %s because blocking schema normalization would be required: %s",
             source_path,
             "; ".join(schema_errors) if schema_errors else "validation failed",
+        )
+        return None
+    integrity_errors = collect_contract_integrity_errors(normalized_contract)
+    if integrity_errors:
+        logger.warning(
+            "Skipping project_contract from %s because semantic integrity checks failed: %s",
+            source_path,
+            "; ".join(integrity_errors),
         )
         return None
     if schema_warnings:
