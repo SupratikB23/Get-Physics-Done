@@ -26,7 +26,6 @@ It is designed for long-horizon projects that require rigorous verification, str
 
 We welcome contributions and feedback via GitHub issues or pull requests; if GPD is useful in your work, please star the repo, and share it with colleagues who might benefit.
 
-
 ## Quick Start
 
 Install GPD:
