@@ -15,7 +15,9 @@ from unittest.mock import patch
 import pytest
 
 from gpd.adapters import get_adapter
-from gpd.hooks.runtime_detect import TodoCandidate
+from gpd.adapters.install_utils import build_runtime_install_repair_command
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
+from gpd.hooks.runtime_detect import TodoCandidate, update_command_for_runtime
 from gpd.hooks.statusline import (
     _check_update,
     _context_bar,
@@ -28,7 +30,28 @@ from gpd.hooks.statusline import (
     main,
 )
 
-_RUNTIME_ENV_PREFIXES = ("CLAUDE_CODE", "CODEX", "GEMINI", "OPENCODE")
+_RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
+
+
+def _runtime_env_prefixes() -> tuple[str, ...]:
+    prefixes: set[str] = set()
+    for descriptor in _RUNTIME_DESCRIPTORS:
+        for env_var in descriptor.activation_env_vars:
+            prefixes.add(env_var)
+            prefixes.add(env_var.rsplit("_", 1)[0] if "_" in env_var else env_var)
+    return tuple(sorted(prefixes, key=len, reverse=True))
+
+
+def _repair_command(runtime: str, *, install_scope: str, target_dir: Path, explicit_target: bool) -> str:
+    return build_runtime_install_repair_command(
+        runtime,
+        install_scope=install_scope,
+        target_dir=target_dir,
+        explicit_target=explicit_target,
+    )
+
+
+_RUNTIME_ENV_PREFIXES = _runtime_env_prefixes()
 _RUNTIME_ENV_VARS_TO_CLEAR = {"GPD_ACTIVE_RUNTIME", "XDG_CONFIG_HOME"}
 
 
@@ -490,7 +513,8 @@ class TestCheckUpdateHook:
             patch("gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install", return_value="claude-code"),
         ):
             result = _check_update()
-            assert "npx -y get-physics-done --claude" in result
+            expected = update_command_for_runtime("claude-code")
+            assert expected in result
 
     def test_cache_with_no_update(self, tmp_path: Path) -> None:
         gpd_cache = tmp_path / ".gpd" / "cache"
@@ -546,7 +570,8 @@ class TestCheckUpdateHook:
         ):
             result = _check_update()
 
-        assert "npx -y get-physics-done --claude" in result
+        expected = update_command_for_runtime("claude-code")
+        assert expected in result
 
     def test_local_runtime_cache_uses_cache_runtime_when_install_exists(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
@@ -573,7 +598,13 @@ class TestCheckUpdateHook:
         ):
             result = _check_update()
 
-        assert "npx -y get-physics-done --codex --local" in result
+        expected = _repair_command(
+            "codex",
+            install_scope="local",
+            target_dir=local_runtime_dir,
+            explicit_target=False,
+        )
+        assert expected in result
 
     def test_active_runtime_cache_beats_newer_unrelated_runtime_cache(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
@@ -603,7 +634,13 @@ class TestCheckUpdateHook:
         ):
             result = _check_update()
 
-        assert "npx -y get-physics-done --codex --local" in result
+        expected = _repair_command(
+            "codex",
+            install_scope="local",
+            target_dir=local_runtime_dir,
+            explicit_target=False,
+        )
+        assert expected in result
         assert "/gpd:update" not in result
 
     def test_installed_global_scope_cache_beats_stale_local_scope_cache(self, tmp_path: Path) -> None:
@@ -652,7 +689,13 @@ class TestCheckUpdateHook:
         ):
             result = _check_update(str(workspace))
 
-        assert "npx -y get-physics-done --codex --local" in result
+        expected = _repair_command(
+            "codex",
+            install_scope="local",
+            target_dir=workspace / ".codex",
+            explicit_target=False,
+        )
+        assert expected in result
 
     def test_explicit_target_hook_cache_uses_target_dir_update_command(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
@@ -669,7 +712,13 @@ class TestCheckUpdateHook:
         with patch("gpd.hooks.statusline.__file__", str(hook_path)):
             result = _check_update(str(workspace))
 
-        assert "--codex --local --target-dir" in result
+        expected = _repair_command(
+            "codex",
+            install_scope="local",
+            target_dir=explicit_target,
+            explicit_target=True,
+        )
+        assert expected in result
         assert str(explicit_target) in result
 
     def test_explicit_target_hook_without_runtime_metadata_uses_runtime_neutral_command(self, tmp_path: Path) -> None:

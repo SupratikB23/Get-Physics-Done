@@ -125,6 +125,7 @@ _SHARED_RUNTIME_AGNOSTIC_PATHS = (
     REPO_ROOT / "src/gpd/agents",
     REPO_ROOT / "src/gpd/commands",
     REPO_ROOT / "src/gpd/specs",
+    REPO_ROOT / "infra",
     REPO_ROOT / "src/gpd/registry.py",
     REPO_ROOT / "src/gpd/mcp/servers/skills_server.py",
 )
@@ -134,7 +135,7 @@ _SHARED_TEST_RUNTIME_SURFACE_PATHS = (
     REPO_ROOT / "tests/core/test_prompt_tool_name_consistency.py",
     REPO_ROOT / "tests/test_update_workflow.py",
 )
-_TEXT_SURFACE_SUFFIXES = {".md", ".py"}
+_TEXT_SURFACE_SUFFIXES = {".json", ".md", ".py"}
 
 
 def _git_grep(pattern: str) -> list[tuple[Path, int, str]]:

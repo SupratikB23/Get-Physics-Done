@@ -24,7 +24,16 @@ from gpd.core.state import default_state_dict, generate_state_markdown
 runner = CliRunner()
 _RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
 
-_RUNTIME_ENV_PREFIXES = ("CLAUDE_CODE", "CODEX", "GEMINI", "OPENCODE")
+def _runtime_env_prefixes() -> tuple[str, ...]:
+    prefixes: set[str] = set()
+    for descriptor in _RUNTIME_DESCRIPTORS:
+        for env_var in descriptor.activation_env_vars:
+            prefixes.add(env_var)
+            prefixes.add(env_var.rsplit("_", 1)[0] if "_" in env_var else env_var)
+    return tuple(sorted(prefixes, key=len, reverse=True))
+
+
+_RUNTIME_ENV_PREFIXES = _runtime_env_prefixes()
 _RUNTIME_ENV_VARS_TO_CLEAR = {"GPD_ACTIVE_RUNTIME", "XDG_CONFIG_HOME"}
 
 

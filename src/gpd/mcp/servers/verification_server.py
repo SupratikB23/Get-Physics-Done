@@ -291,7 +291,7 @@ def _object_schema(
     properties: dict[str, object],
     *,
     required: Iterable[str] = (),
-    additional_properties: bool = True,
+    additional_properties: bool = False,
 ) -> dict[str, object]:
     schema: dict[str, object] = {
         "type": "object",

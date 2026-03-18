@@ -13,9 +13,32 @@ from unittest.mock import patch
 import pytest
 
 from gpd.adapters import get_adapter
+from gpd.adapters.install_utils import build_runtime_install_repair_command
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.hooks.notify import _check_and_notify_update, _emit_execution_notification, _hook_payload_policy, main
 
-_RUNTIME_ENV_PREFIXES = ("CLAUDE_CODE", "CODEX", "GEMINI", "OPENCODE")
+_RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
+
+
+def _runtime_env_prefixes() -> tuple[str, ...]:
+    prefixes: set[str] = set()
+    for descriptor in _RUNTIME_DESCRIPTORS:
+        for env_var in descriptor.activation_env_vars:
+            prefixes.add(env_var)
+            prefixes.add(env_var.rsplit("_", 1)[0] if "_" in env_var else env_var)
+    return tuple(sorted(prefixes, key=len, reverse=True))
+
+
+def _repair_command(runtime: str, *, install_scope: str, target_dir: Path, explicit_target: bool) -> str:
+    return build_runtime_install_repair_command(
+        runtime,
+        install_scope=install_scope,
+        target_dir=target_dir,
+        explicit_target=explicit_target,
+    )
+
+
+_RUNTIME_ENV_PREFIXES = _runtime_env_prefixes()
 _RUNTIME_ENV_VARS_TO_CLEAR = {"GPD_ACTIVE_RUNTIME", "XDG_CONFIG_HOME"}
 
 
@@ -94,7 +117,8 @@ def test_notify_uses_latest_local_cache_and_scoped_codex_install_command(tmp_pat
     output = stderr.getvalue()
     assert "Update available: v1.2.3" in output
     assert "v1.3.0" in output
-    assert "Run: npx -y get-physics-done --codex --local" in output
+    expected = _repair_command("codex", install_scope="local", target_dir=tmp_path / ".codex", explicit_target=False)
+    assert f"Run: {expected}" in output
 
 
 def test_notify_prefers_active_runtime_cache_over_newer_unrelated_runtime_cache(tmp_path: Path) -> None:
@@ -144,7 +168,8 @@ def test_notify_prefers_active_runtime_cache_over_newer_unrelated_runtime_cache(
     output = stderr.getvalue()
     assert "Update available: v1.2.3" in output
     assert "v9.0.0" not in output
-    assert "Run: npx -y get-physics-done --codex --local" in output
+    expected = _repair_command("codex", install_scope="local", target_dir=local_runtime_dir, explicit_target=False)
+    assert f"Run: {expected}" in output
 
 
 def test_notify_prefers_installed_global_scope_cache_over_stale_local_scope_cache(tmp_path: Path) -> None:
@@ -259,8 +284,8 @@ def test_notify_prefers_explicit_target_hook_cache_and_target_dir_command(tmp_pa
 
     output = stderr.getvalue()
     assert "Update available: v3.0.0" in output
-    assert "--codex --local --target-dir" in output
-    assert str(explicit_target) in output
+    expected = _repair_command("codex", install_scope="local", target_dir=explicit_target, explicit_target=True)
+    assert expected in output
 
 
 def test_notify_keeps_target_dir_for_default_named_explicit_target(tmp_path: Path) -> None:
@@ -304,8 +329,8 @@ def test_notify_keeps_target_dir_for_default_named_explicit_target(tmp_path: Pat
         _check_and_notify_update(str(workspace))
 
     output = stderr.getvalue()
-    assert "--codex --local --target-dir" in output
-    assert str(explicit_target) in output
+    expected = _repair_command("codex", install_scope="local", target_dir=explicit_target, explicit_target=True)
+    assert expected in output
 
 
 def test_notify_explicit_target_without_runtime_metadata_falls_back_to_runtime_neutral_command(tmp_path: Path) -> None:
