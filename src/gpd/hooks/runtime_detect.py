@@ -18,6 +18,7 @@ from gpd.adapters.install_utils import (
     MANIFEST_NAME,
     UPDATE_CACHE_FILENAME,
 )
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, PLANNING_DIR_NAME, TODOS_DIR_NAME
 
 RUNTIME_UNKNOWN = "unknown"
@@ -66,14 +67,7 @@ def _adapter(runtime: str):
         return None
 
 
-def _paths_equal(left: Path, right: Path) -> bool:
-    try:
-        return left.expanduser().resolve() == right.expanduser().resolve()
-    except OSError:
-        return left.expanduser() == right.expanduser()
-
-
-def _normalize_runtime_name(value: str | None) -> str | None:
+def normalize_runtime_name(value: str | None) -> str | None:
     """Resolve a runtime id, display name, or alias to a canonical runtime name."""
     if not isinstance(value, str):
         return None
@@ -82,22 +76,26 @@ def _normalize_runtime_name(value: str | None) -> str | None:
     if not normalized:
         return None
 
-    for runtime in ALL_RUNTIMES:
-        adapter = _adapter(runtime)
-        if adapter is None:
-            continue
+    for descriptor in iter_runtime_descriptors():
         if normalized in {
-            runtime.casefold(),
-            adapter.display_name.casefold(),
-            *(alias.casefold() for alias in adapter.selection_aliases),
+            descriptor.runtime_name.casefold(),
+            descriptor.display_name.casefold(),
+            *(alias.casefold() for alias in descriptor.selection_aliases),
         }:
-            return runtime
+            return descriptor.runtime_name
     return None
+
+
+def _paths_equal(left: Path, right: Path) -> bool:
+    try:
+        return left.expanduser().resolve() == right.expanduser().resolve()
+    except OSError:
+        return left.expanduser() == right.expanduser()
 
 
 def _explicit_runtime_override() -> str | None:
     """Return an explicit runtime override supplied by GPD-owned shell surfaces."""
-    return _normalize_runtime_name(os.environ.get(ENV_GPD_ACTIVE_RUNTIME))
+    return normalize_runtime_name(os.environ.get(ENV_GPD_ACTIVE_RUNTIME))
 
 
 def _prioritized_runtimes(preferred_runtime: str | None = None) -> list[str]:
@@ -160,14 +158,14 @@ def _manifest_runtime_value(config_dir: Path) -> str | None:
 
     runtime = manifest.get("runtime")
     if not isinstance(runtime, str):
-        return RUNTIME_UNKNOWN
+        return None
 
     normalized = runtime.strip()
     if not normalized:
-        return RUNTIME_UNKNOWN
+        return None
     if normalized in ALL_RUNTIMES:
         return normalized
-    return RUNTIME_UNKNOWN
+    return None
 
 
 def _runtime_from_manifest_or_path(config_dir: Path, *, home: Path | None = None) -> str | None:
@@ -759,6 +757,7 @@ __all__ = [
     "get_todo_candidates",
     "get_todo_dirs",
     "get_update_cache_files",
+    "normalize_runtime_name",
     "should_consider_todo_candidate",
     "should_consider_update_cache_candidate",
     "resolve_effective_runtime",

@@ -612,6 +612,48 @@ def test_install_single_runtime_marks_explicit_target(tmp_path: Path):
     assert captured_calls[0]["target_dir"] == target
 
 
+def test_install_target_dir_preserves_explicit_global_scope(tmp_path: Path) -> None:
+    """A global install should stay global even when a target dir is explicit."""
+    captured_calls: list[dict[str, object]] = []
+    target = tmp_path / "custom-runtime-dir"
+
+    def mock_install_single(runtime_name, *, is_global, target_dir_override=None):
+        captured_calls.append(
+            {
+                "runtime": runtime_name,
+                "is_global": is_global,
+                "target_dir_override": target_dir_override,
+            }
+        )
+        return {"runtime": runtime_name, "commands": 5, "agents": 3, "target": str(target)}
+
+    mock_adapter = MagicMock(
+        display_name="Claude Code",
+        help_command="/gpd:help",
+        launch_command="claude",
+        new_project_command="/gpd:new-project",
+        map_research_command="/gpd:map-research",
+    )
+
+    with (
+        patch("gpd.cli._install_single_runtime", side_effect=mock_install_single),
+        patch("gpd.adapters.get_adapter", return_value=mock_adapter),
+    ):
+        result = runner.invoke(
+            app,
+            ["install", "Claude Code", "--global", "--target-dir", str(target)],
+        )
+
+    assert result.exit_code == 0
+    assert captured_calls == [
+        {
+            "runtime": "claude-code",
+            "is_global": True,
+            "target_dir_override": str(target),
+        }
+    ]
+
+
 def test_install_single_runtime_resolves_relative_target_dir_against_cli_cwd(tmp_path: Path):
     """Relative --target-dir should be anchored to --cwd, not the process cwd."""
     from gpd.cli import _install_single_runtime
@@ -827,6 +869,64 @@ def test_install_interactive_accepts_unique_fuzzy_runtime_name(tmp_path: Path):
             "target_dir_override": None,
         }
     ]
+
+
+def test_install_accepts_runtime_display_name_alias(tmp_path: Path) -> None:
+    """Non-interactive install should accept runtime display-name aliases."""
+    captured_calls: list[dict[str, object]] = []
+
+    def mock_install_single(runtime_name, *, is_global, target_dir_override=None):
+        captured_calls.append(
+            {
+                "runtime": runtime_name,
+                "is_global": is_global,
+                "target_dir_override": target_dir_override,
+            }
+        )
+        return {"runtime": runtime_name, "commands": 5, "agents": 3, "target": str(tmp_path / runtime_name)}
+
+    mock_adapter = MagicMock(
+        display_name="Claude Code",
+        help_command="/gpd:help",
+        launch_command="claude",
+        new_project_command="/gpd:new-project",
+        map_research_command="/gpd:map-research",
+    )
+
+    with (
+        patch("gpd.cli._install_single_runtime", side_effect=mock_install_single),
+        patch("gpd.adapters.get_adapter", return_value=mock_adapter),
+    ):
+        result = runner.invoke(app, ["install", "Claude Code", "--local"])
+
+    assert result.exit_code == 0
+    assert captured_calls == [
+        {
+            "runtime": "claude-code",
+            "is_global": False,
+            "target_dir_override": None,
+        }
+    ]
+
+
+def test_uninstall_accepts_runtime_selection_alias(tmp_path: Path) -> None:
+    """Non-interactive uninstall should accept runtime selection aliases."""
+    target = tmp_path / ".opencode"
+    target.mkdir()
+    captured_targets: list[Path] = []
+
+    class SpyAdapter:
+        display_name = "OpenCode"
+
+        def uninstall(self, target_dir):
+            captured_targets.append(target_dir)
+            return {"runtime": "opencode", "removed": []}
+
+    with patch("gpd.adapters.get_adapter", return_value=SpyAdapter()):
+        result = runner.invoke(app, ["uninstall", "open code", "--target-dir", str(target)])
+
+    assert result.exit_code == 0
+    assert captured_targets == [target]
 
 
 def test_install_interactive_rejects_invalid_location_choice(tmp_path: Path):

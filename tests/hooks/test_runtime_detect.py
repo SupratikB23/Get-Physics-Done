@@ -35,6 +35,7 @@ from gpd.hooks.runtime_detect import (
     get_todo_dirs,
     get_update_cache_candidates,
     get_update_cache_files,
+    normalize_runtime_name,
     resolve_effective_runtime,
     should_consider_todo_candidate,
     should_consider_update_cache_candidate,
@@ -310,6 +311,30 @@ class TestResolveEffectiveRuntime:
         assert result.source == SOURCE_GLOBAL
         assert result.has_gpd_install is False
 
+    def test_invalid_manifest_runtime_falls_back_to_path_inference(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        home = tmp_path / "home"
+        workspace.mkdir()
+        runtime_dir = workspace / ".codex"
+        _mark_gpd_install(runtime_dir)
+        _write_install_manifest(runtime_dir, install_scope=SCOPE_LOCAL)
+        manifest_path = runtime_dir / "gpd-file-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["runtime"] = "not-a-runtime"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        env = _clean_runtime_env()
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("gpd.hooks.runtime_detect.Path.home", return_value=home),
+            patch("gpd.hooks.runtime_detect.Path.cwd", return_value=workspace),
+        ):
+            result = resolve_effective_runtime()
+
+        assert result.runtime == RUNTIME_CODEX
+        assert result.source == SOURCE_LOCAL
+        assert result.has_gpd_install is True
+
     def test_require_gpd_install_returns_unknown_when_runtime_has_no_install(self, tmp_path: Path) -> None:
         (tmp_path / ".codex").mkdir()
 
@@ -322,6 +347,19 @@ class TestResolveEffectiveRuntime:
             result = resolve_effective_runtime(require_gpd_install=True)
 
         assert result.runtime == RUNTIME_UNKNOWN
+
+
+class TestNormalizeRuntimeName:
+    """Tests for the shared runtime-name normalizer."""
+
+    def test_accepts_runtime_ids_display_names_and_aliases(self) -> None:
+        assert normalize_runtime_name("claude-code") == RUNTIME_CLAUDE
+        assert normalize_runtime_name("Claude Code") == RUNTIME_CLAUDE
+        assert normalize_runtime_name("claude") == RUNTIME_CLAUDE
+        assert normalize_runtime_name("open code") == RUNTIME_OPENCODE
+
+    def test_rejects_unknown_runtime_names(self) -> None:
+        assert normalize_runtime_name("not-a-runtime") is None
 
 
 class TestDetectActiveRuntimeWithInstall:

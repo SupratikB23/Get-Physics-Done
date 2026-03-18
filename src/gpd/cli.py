@@ -34,6 +34,7 @@ from rich.text import Text
 from gpd.command_labels import canonical_command_label
 from gpd.core.constants import ENV_GPD_DISABLE_CHECKOUT_REEXEC
 from gpd.core.errors import ConfigError, GPDError
+from gpd.hooks.runtime_detect import normalize_runtime_name
 
 if TYPE_CHECKING:
     from gpd.mcp.paper.models import PaperConfig
@@ -343,6 +344,24 @@ def _get_adapter_or_error(runtime_name: str, *, action: str):
     except Exception as exc:
         _error(f"Runtime adapter unavailable for {runtime_name!r} during {action}: {exc}")
         return None  # unreachable
+
+
+def _normalize_runtime_selection(runtimes: list[str], *, action: str) -> list[str]:
+    """Resolve runtime aliases to canonical runtime ids for non-interactive flows."""
+    supported = _list_runtimes_or_error(action=action)
+    supported_set = set(supported)
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_runtime in runtimes:
+        canonical_runtime = normalize_runtime_name(raw_runtime) or raw_runtime.strip()
+        if canonical_runtime not in supported_set:
+            _error(f"Unknown runtime {raw_runtime!r}. Supported: {', '.join(supported)}")
+        if canonical_runtime in seen:
+            continue
+        seen.add(canonical_runtime)
+        normalized.append(canonical_runtime)
+    return normalized
 
 
 def _print_version(*, ctx: typer.Context | None = None) -> None:
@@ -4144,13 +4163,7 @@ def install(
     if install_all:
         selected = _list_runtimes_or_error(action="install")
     elif runtimes:
-        # Validate all runtime names
-        supported = _list_runtimes_or_error(action="install")
-        for rt in runtimes:
-            if rt not in supported:
-                _error(f"Unknown runtime {rt!r}. Supported: {', '.join(supported)}")
-                return  # unreachable
-        selected = _unique_preserving_order(list(runtimes))
+        selected = _normalize_runtime_selection(list(runtimes), action="install")
     else:
         # Interactive mode
         from gpd.version import resolve_active_version
@@ -4168,7 +4181,12 @@ def install(
 
     # Resolve location
     if target_dir:
-        is_global = False  # --target-dir implies a specific path
+        if global_install:
+            is_global = True
+        elif local_install:
+            is_global = False
+        else:
+            is_global = False
     elif global_install:
         is_global = True
     elif local_install:
@@ -4254,12 +4272,7 @@ def uninstall(
     if uninstall_all:
         selected = _list_runtimes_or_error(action="uninstall")
     elif runtimes:
-        supported = _list_runtimes_or_error(action="uninstall")
-        for rt in runtimes:
-            if rt not in supported:
-                _error(f"Unknown runtime {rt!r}. Supported: {', '.join(supported)}")
-                return
-        selected = _unique_preserving_order(list(runtimes))
+        selected = _normalize_runtime_selection(list(runtimes), action="uninstall")
     else:
         selected = _prompt_runtimes(action="uninstall")
 
@@ -4267,7 +4280,12 @@ def uninstall(
 
     # Resolve location (skip prompts when --target-dir is explicit)
     if target_dir:
-        is_global = True  # irrelevant when target_dir is set
+        if global_uninstall:
+            is_global = True
+        elif local_uninstall:
+            is_global = False
+        else:
+            is_global = False
     elif not global_uninstall and not local_uninstall:
         is_global = _prompt_location(selected, action="uninstall")
     else:
