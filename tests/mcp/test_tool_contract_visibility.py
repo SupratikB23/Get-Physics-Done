@@ -61,8 +61,11 @@ def test_run_contract_check_tool_description_surfaces_request_requirements() -> 
 
     assert "``request.check_key`` or ``request.check_id`` is required" in description
     assert "``request.contract`` is optional" in description
-    assert "``schema_version: 1``" in description
+    assert "``schema_version`` defaults to ``1`` when omitted" in description
     assert "``request.binding``, ``request.metadata``, and ``request.observed`` are each" in description
+    assert "Singular/plural binding" in description
+    assert "aliases (for example ``claim_id`` / ``claim_ids``) must match when both are" in description
+    assert "``request.check_key`` and ``request.check_id`` are sent" in description
     assert "``request.artifact_content``" in description
     assert "must be a string when present" in description
     assert "``required_request_fields``" in description
@@ -78,7 +81,7 @@ def test_suggest_contract_checks_tool_description_surfaces_contract_requirements
 
     description = _tool_description(mcp, "suggest_contract_checks")
 
-    assert "``contract`` must be an object with ``schema_version: 1``" in description
+    assert "``schema_version`` defaults to ``1`` when omitted" in description
     assert "``active_checks`` is optional and must be ``list[str]``" in description
     assert "``already_active``" in description
     assert "``supported_binding_fields``" in description
@@ -92,12 +95,19 @@ def test_contract_tools_list_tools_expose_structured_request_schemas() -> None:
     run_schema = _tool_input_schema(mcp, "run_contract_check")
     run_request = _schema_object(run_schema, run_schema["properties"]["request"])
 
+    assert run_request["additionalProperties"] is False
+    assert {"required": ["check_key"]} in run_request["anyOf"]
+    assert {"required": ["check_id"]} in run_request["anyOf"]
     assert {"check_key", "check_id", "contract", "binding", "metadata", "observed", "artifact_content"} <= set(
         run_request["properties"]
     )
+    assert run_request["properties"]["check_key"]["minLength"] == 1
+    assert run_request["properties"]["check_id"]["minLength"] == 1
 
     binding = _schema_anyof_object(run_request["properties"]["binding"])
+    assert binding["additionalProperties"] is False
     assert {"claim_ids", "reference_ids", "forbidden_proxy_ids"} <= set(binding["properties"])
+    assert len(binding["properties"]["claim_ids"]["anyOf"]) == 2
     assert binding["properties"]["claim_ids"]["anyOf"][1]["type"] == "array"
     assert binding["properties"]["claim_ids"]["anyOf"][1]["minItems"] == 1
     assert binding["properties"]["claim_ids"]["anyOf"][1]["items"]["type"] == "string"
@@ -125,15 +135,91 @@ def test_contract_tools_list_tools_expose_structured_request_schemas() -> None:
     assert claims["properties"]["id"]["minLength"] == 1
     assert claims["properties"]["observables"]["items"]["minLength"] == 1
 
+    observables = contract_schema["properties"]["observables"]["items"]
+    assert observables["properties"]["kind"]["enum"] == [
+        "scalar",
+        "curve",
+        "map",
+        "classification",
+        "proof_obligation",
+        "other",
+    ]
+
+    deliverables = contract_schema["properties"]["deliverables"]["items"]
+    assert deliverables["properties"]["kind"]["enum"] == [
+        "figure",
+        "table",
+        "dataset",
+        "data",
+        "derivation",
+        "code",
+        "note",
+        "report",
+        "other",
+    ]
+
+    acceptance_tests = contract_schema["properties"]["acceptance_tests"]["items"]
+    assert acceptance_tests["properties"]["kind"]["enum"] == [
+        "existence",
+        "schema",
+        "benchmark",
+        "consistency",
+        "cross_method",
+        "limiting_case",
+        "symmetry",
+        "dimensional_analysis",
+        "convergence",
+        "oracle",
+        "proxy",
+        "reproducibility",
+        "human_review",
+        "other",
+    ]
+    assert acceptance_tests["properties"]["automation"]["enum"] == ["automated", "hybrid", "human"]
+
     references = contract_schema["properties"]["references"]["items"]
     assert references["required"] == ["id", "locator", "why_it_matters"]
+    assert references["properties"]["kind"]["enum"] == [
+        "paper",
+        "dataset",
+        "prior_artifact",
+        "spec",
+        "user_anchor",
+        "other",
+    ]
+    assert references["properties"]["role"]["enum"] == [
+        "definition",
+        "benchmark",
+        "method",
+        "must_consider",
+        "background",
+        "other",
+    ]
     assert references["properties"]["carry_forward_to"]["items"]["minLength"] == 1
+    assert references["properties"]["required_actions"]["items"]["enum"] == ["read", "use", "compare", "cite", "avoid"]
+
+    links = contract_schema["properties"]["links"]["items"]
+    assert links["properties"]["relation"]["enum"] == [
+        "supports",
+        "computes",
+        "visualizes",
+        "benchmarks",
+        "depends_on",
+        "evaluated_by",
+        "other",
+    ]
 
     suggest_schema = _tool_input_schema(mcp, "suggest_contract_checks")
     contract_schema = _schema_anyof_object(suggest_schema["properties"]["contract"])
     assert {"schema_version", "scope", "claims", "references"} <= set(contract_schema["properties"])
     assert contract_schema["properties"]["scope"]["required"] == ["question"]
-    assert contract_schema["properties"]["references"]["items"]["properties"]["required_actions"]["items"]["minLength"] == 1
+    assert contract_schema["properties"]["references"]["items"]["properties"]["required_actions"]["items"]["enum"] == [
+        "read",
+        "use",
+        "compare",
+        "cite",
+        "avoid",
+    ]
     active_checks = suggest_schema["properties"]["active_checks"]
     assert active_checks["anyOf"][0]["type"] == "array"
     assert active_checks["anyOf"][0]["items"]["type"] == "string"

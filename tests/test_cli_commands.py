@@ -291,6 +291,23 @@ class TestStateCommands:
         state = json.loads((gpd_project / ".gpd" / "state.json").read_text(encoding="utf-8"))
         assert state["project_contract"]["scope"]["question"] == "What benchmark must the project recover?"
 
+    def test_set_project_contract_raw_surfaces_warnings_on_success(self, gpd_project: Path) -> None:
+        contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+        contract["references"][0]["must_surface"] = False
+        contract_path = gpd_project / "warning-contract.json"
+        contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+        result = runner.invoke(
+            app,
+            ["--cwd", str(gpd_project), "--raw", "state", "set-project-contract", str(contract_path)],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["updated"] is True
+        assert any("references must include at least one must_surface=true anchor" in warning for warning in payload["warnings"])
+
     def test_set_project_contract_rejects_semantically_invalid_contract(self, gpd_project: Path) -> None:
         contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
         contract["uncertainty_markers"]["weakest_anchors"] = []

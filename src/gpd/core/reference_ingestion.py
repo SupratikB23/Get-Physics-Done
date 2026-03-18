@@ -250,6 +250,18 @@ def _normalize_actions(value: object) -> list[str]:
     return result
 
 
+def _normalize_optional_bool(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "yes", "y", "required"}:
+            return True
+        if normalized in {"false", "no", "n", "optional", "advisory"}:
+            return False
+    return None
+
+
 def _normalize_multi_value(value: object) -> list[str]:
     if isinstance(value, list):
         tokens = [_clean_text(item) for item in value]
@@ -419,6 +431,7 @@ def _parse_reference_block(
         kind=_mapping_value(detail_map, "kind", "artifact kind"),
         role=_mapping_value(detail_map, "type", "role", "kind"),
         why_it_matters=why,
+        must_surface_hint=_mapping_value(detail_map, "must surface", "must_surface"),
         actions=_mapping_value(detail_map, "required action", "required actions", "action"),
         downstream=_mapping_value(detail_map, "downstream use", "carry forward to", "applies to"),
         source_path=source_path,
@@ -565,6 +578,7 @@ def _reference_from_active_anchor(
     kind: str | None,
     role: str | None,
     why_it_matters: str | None,
+    must_surface_hint: object | None = None,
     actions: object,
     downstream: object,
     source_path: str,
@@ -582,8 +596,10 @@ def _reference_from_active_anchor(
     for alias in {_clean_text(label), _clean_text(locator), _clean_text(anchor_id)}:
         if alias and alias not in {locator_value, _clean_text(anchor_id)}:
             alias_values.append(alias)
-    must_surface = normalized_role in {"benchmark", "definition", "method", "must_consider"} or bool(
-        {"use", "compare", "avoid"} & set(normalized_actions)
+    explicit_must_surface = _normalize_optional_bool(must_surface_hint)
+    must_surface = explicit_must_surface if explicit_must_surface is not None else (
+        normalized_role in {"benchmark", "definition", "method", "must_consider"}
+        or bool({"use", "compare", "avoid"} & set(normalized_actions))
     )
     return ArtifactReference(
         id=_clean_text(anchor_id) or _reference_id(label, locator_value, prefix),
@@ -619,6 +635,7 @@ def _ingest_reference_registry_section(
             kind=_mapping_value(canonical_row, "kind", "artifact kind"),
             role=_mapping_value(canonical_row, "type", "role", "kind"),
             why_it_matters=_mapping_value(canonical_row, "why it matters", "what it constrains", "description"),
+            must_surface_hint=_mapping_value(canonical_row, "must surface", "must_surface"),
             actions=_mapping_value(canonical_row, "required action", "required actions", "action"),
             downstream=_mapping_value(canonical_row, "downstream use", "carry forward to", "applies to"),
             source_path=source_path,

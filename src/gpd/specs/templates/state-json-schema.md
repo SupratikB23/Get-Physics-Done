@@ -198,9 +198,17 @@ The following fields always store arrays of objects, never arrays of plain strin
 
 If a project-contract reference sets `must_surface: true`, `required_actions[]` must not be empty.
 
-If a project contract has any `references[]`, at least one reference must set `must_surface: true`.
+If a project contract has any `references[]` and does not already carry concrete prior-output, user-anchor, or baseline grounding, at least one reference must set `must_surface: true`. When that other grounding exists, a missing `must_surface: true` reference is still a warning that should be repaired, not a silent ignore.
 
 If a project-contract reference sets `must_surface: true`, `applies_to[]` must not be empty.
+
+#### Approved-Mode Grounding Rule
+
+The approved-mode gate uses the exact rule:
+
+`approved project contract requires at least one concrete anchor/reference/prior-output/baseline or an explicit 'anchor unknown' blocker`
+
+Placeholder or `TBD` text does not count as concrete grounding. That includes generic filler such as `TBD`, `TODO`, `unknown`, `unclear`, `none`, `n/a`, and `placeholder` when they are not attached to a real anchor.
 
 #### Project Contract ID Linkage Rules
 
@@ -230,6 +238,8 @@ If the user does not know the decisive anchor yet, keep that uncertainty explici
 - `Need grounding before the decisive anchor is chosen.`
 - `Decisive target not yet chosen before planning can proceed.`
 - `Baseline comparison is TBD before planning can proceed.`
+
+These phrases are valid only when they point to a genuinely missing decisive anchor; placeholder-only wording does not satisfy approved-mode grounding.
 
 ### `position`
 

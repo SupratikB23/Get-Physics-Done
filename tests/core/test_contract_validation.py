@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from pydantic import ValidationError
 
 from gpd.contracts import ContractResults, ResearchContract
@@ -184,9 +183,9 @@ def test_validate_project_contract_approved_mode_accepts_non_reference_grounding
 
     result = validate_project_contract(contract, mode="approved")
 
-    assert result.valid is False
+    assert result.valid is True
     assert result.mode == "approved"
-    assert "references must include at least one must_surface=true anchor" in result.errors
+    assert "references must include at least one must_surface=true anchor" in result.warnings
 
 
 @pytest.mark.parametrize("field_name", ["must_include_prior_outputs", "known_good_baselines"])

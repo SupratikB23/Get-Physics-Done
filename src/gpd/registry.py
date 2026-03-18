@@ -14,6 +14,8 @@ from pathlib import Path
 
 import yaml
 
+from gpd.command_labels import canonical_command_label, canonical_skill_label, command_slug_from_label
+
 # ─── Package layout ──────────────────────────────────────────────────────────
 
 _PKG_ROOT = Path(__file__).resolve().parent  # gpd/
@@ -1001,13 +1003,14 @@ def get_command(name: str) -> CommandDef:
     Raises KeyError if not found.
     """
     commands = _cache.commands()
-    normalized = name.strip()
-    if normalized.startswith("/"):
-        normalized = normalized[1:]
-
-    candidates = [normalized]
-    if normalized.startswith("gpd:"):
-        candidates.append(normalized.replace("gpd:", "", 1))
+    slug = command_slug_from_label(name)
+    candidates = []
+    for candidate in (
+        canonical_command_label(name),
+        slug,
+    ):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
 
     for candidate in candidates:
         command = commands.get(candidate)
@@ -1030,16 +1033,15 @@ def list_skills() -> list[str]:
 def get_skill(name: str) -> SkillDef:
     """Get a canonical skill definition by canonical name or registry key."""
     skills = _cache.skills()
-    normalized = name.strip()
-    if normalized.startswith("/"):
-        normalized = normalized[1:]
+    slug = command_slug_from_label(name)
 
     candidates: list[str] = []
     for candidate in (
-        normalized,
-        normalized.replace("gpd:", "gpd-", 1) if normalized.startswith("gpd:") else None,
-        normalized.replace("gpd-", "gpd:", 1) if normalized.startswith("gpd-") else None,
-        f"gpd-{normalized}" if normalized and not normalized.startswith(("gpd-", "gpd:")) else None,
+        name.strip(),
+        canonical_skill_label(name),
+        canonical_command_label(name),
+        slug,
+        f"gpd-{slug}" if slug else None,
     ):
         if candidate and candidate not in candidates:
             candidates.append(candidate)

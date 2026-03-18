@@ -432,6 +432,158 @@ class TestQueryDeps:
         assert len(result.required_by) == 1
         assert result.required_by[0].phase in ("2", "02")
 
+    def test_deps_matches_exact_normalized_identifier(self, tmp_path: Path) -> None:
+        phase1 = tmp_path / ".gpd" / "phases" / "01-setup"
+        phase1.mkdir(parents=True)
+        (phase1 / "01-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            provides: bare-hamiltonian
+            ---
+            # Summary
+            """)
+        )
+
+        phase2 = tmp_path / ".gpd" / "phases" / "02-core"
+        phase2.mkdir(parents=True)
+        (phase2 / "02-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            requires: bare-hamiltonian
+            ---
+            # Summary
+            """)
+        )
+
+        result = query_deps(tmp_path, "bare hamiltonian")
+
+        assert result.provides_by is not None
+        assert result.provides_by.phase in ("1", "01")
+        assert len(result.required_by) == 1
+        assert result.required_by[0].phase in ("2", "02")
+        assert result.required_by[0].value == "bare-hamiltonian"
+
+    def test_deps_does_not_match_prefix_identifiers(self, tmp_path: Path) -> None:
+        phase1 = tmp_path / ".gpd" / "phases" / "01-setup"
+        phase1.mkdir(parents=True)
+        (phase1 / "01-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            provides: phase-10
+            ---
+            # Summary
+            """)
+        )
+
+        phase2 = tmp_path / ".gpd" / "phases" / "02-core"
+        phase2.mkdir(parents=True)
+        (phase2 / "02-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            requires: phase-10
+            ---
+            # Summary
+            """)
+        )
+
+        result = query_deps(tmp_path, "phase-1")
+
+        assert result.provides_by is None
+        assert result.required_by == []
+
+    def test_deps_ignores_requires_phase_locators_when_tracing_result_ids(self, tmp_path: Path) -> None:
+        phase1 = tmp_path / ".gpd" / "phases" / "01-setup"
+        phase1.mkdir(parents=True)
+        (phase1 / "01-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            provides: alpha
+            ---
+            # Summary
+            """)
+        )
+
+        phase2 = tmp_path / ".gpd" / "phases" / "02-core"
+        phase2.mkdir(parents=True)
+        (phase2 / "02-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            requires:
+              - provides: alpha
+                phase: phase-01-plan-01
+            ---
+            # Summary
+            """)
+        )
+
+        result = query_deps(tmp_path, "phase-01-plan-01")
+
+        assert result.provides_by is None
+        assert result.required_by == []
+
+    def test_deps_matches_requires_strings_with_phase_plan_prefix(self, tmp_path: Path) -> None:
+        phase1 = tmp_path / ".gpd" / "phases" / "01-setup"
+        phase1.mkdir(parents=True)
+        (phase1 / "01-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            provides:
+              - QED Feynman rules and conventions
+            ---
+            # Summary
+            """)
+        )
+
+        phase2 = tmp_path / ".gpd" / "phases" / "02-core"
+        phase2.mkdir(parents=True)
+        (phase2 / "02-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            requires:
+              - "01-01: QED Feynman rules and conventions"
+            ---
+            # Summary
+            """)
+        )
+
+        result = query_deps(tmp_path, "QED Feynman rules and conventions")
+
+        assert result.provides_by is not None
+        assert result.provides_by.phase in ("1", "01")
+        assert len(result.required_by) == 1
+        assert result.required_by[0].phase in ("2", "02")
+        assert result.required_by[0].value == "QED Feynman rules and conventions"
+
+    def test_deps_surfaces_duplicate_providers_and_prefers_latest_provider(self, tmp_path: Path) -> None:
+        phase1 = tmp_path / ".gpd" / "phases" / "01-setup"
+        phase1.mkdir(parents=True)
+        (phase1 / "01-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            provides: alpha
+            ---
+            # Summary
+            """)
+        )
+
+        phase3 = tmp_path / ".gpd" / "phases" / "03-update"
+        phase3.mkdir(parents=True)
+        (phase3 / "03-01-SUMMARY.md").write_text(
+            dedent("""\
+            ---
+            provides: alpha
+            ---
+            # Summary
+            """)
+        )
+
+        result = query_deps(tmp_path, "alpha")
+
+        assert result.provides_by is not None
+        assert result.provides_by.phase in ("3", "03")
+        assert len(result.provider_conflicts) == 1
+        assert result.provider_conflicts[0].phase in ("1", "01")
+
 
 # ─── query_assumptions ───────────────────────────────────────────────────────────
 

@@ -229,7 +229,8 @@ plan: "01"
 physics-area: QED, renormalization
 tags: [self-energy, one-loop, dimensional-regularization, MS-bar]
 requires:
-  - "01-01: QED Feynman rules and conventions"
+  - provides: "QED Feynman rules and conventions"
+    phase: "01-01"
 provides:
   - "δZ₂ = -(α/4π)(1/ε̄) — electron wave function renormalization"
   - "δm = -(3α/4π)(m/ε̄) — electron mass counterterm"

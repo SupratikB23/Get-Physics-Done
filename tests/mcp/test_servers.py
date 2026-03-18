@@ -1583,9 +1583,16 @@ class TestVerificationServer:
             "schema_version": 1,
         }
 
-    def test_run_contract_check_requires_valid_bound_ids_when_binding_is_supplied(self):
+    def test_run_contract_check_treats_empty_binding_like_omitted_binding(self):
         from gpd.mcp.servers.verification_server import run_contract_check
 
+        omitted = run_contract_check(
+            {
+                "check_key": "contract.benchmark_reproduction",
+                "contract": _load_project_contract_fixture(),
+                "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+            }
+        )
         result = run_contract_check(
             {
                 "check_key": "contract.benchmark_reproduction",
@@ -1595,10 +1602,8 @@ class TestVerificationServer:
             }
         )
 
-        assert result["status"] == "insufficient_evidence"
-        assert result["contract_impacts"] == []
-        assert "metadata.source_reference_id" in result["missing_inputs"]
-        assert any("at least one valid bound ID" in issue for issue in result["automated_issues"])
+        assert result == omitted
+        assert result["status"] == "pass"
 
     def test_run_contract_check_requires_limit_metadata_for_decisive_pass(self):
         from gpd.mcp.servers.verification_server import run_contract_check

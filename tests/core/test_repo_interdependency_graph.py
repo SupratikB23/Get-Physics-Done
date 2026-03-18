@@ -9,6 +9,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from scripts.repo_graph_contract import (
     CONTRACT_PATH,
     GENERATED_ON_END,
@@ -220,7 +221,8 @@ def test_live_repo_file_count_ignores_deleted_tracked_files(tmp_path: Path) -> N
 
 
 def test_live_repo_file_count_ignores_runtime_mirror_dirs(tmp_path: Path) -> None:
-    for rel_path in (".claude/a.txt", ".codex/b.txt", ".gemini/c.txt", ".opencode/d.txt"):
+    for config_dir_name in {descriptor.config_dir_name for descriptor in iter_runtime_descriptors()}:
+        rel_path = f"{config_dir_name}/sentinel.txt"
         path = tmp_path / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("runtime mirror sentinel\n", encoding="utf-8")

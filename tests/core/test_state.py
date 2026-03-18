@@ -519,6 +519,7 @@ def test_state_set_project_contract_persists_contract_and_unresolved_questions(t
     result = state_set_project_contract(tmp_path, contract)
 
     assert result.updated is True
+    assert result.warnings == []
     saved = load_state_json(tmp_path)
     assert saved is not None
     assert saved["project_contract"]["scope"]["question"] == "What benchmark must the project recover?"
@@ -589,12 +590,24 @@ def test_state_set_project_contract_accepts_recoverable_schema_normalization(tmp
     result = state_set_project_contract(tmp_path, contract)
 
     assert result.updated is True
+    assert any("references.0.aliases" in warning for warning in result.warnings)
     saved = load_state_json(tmp_path)
     assert saved is not None
     assert saved["project_contract"] is not None
     assert saved["project_contract"]["claims"][0]["id"] == "claim-benchmark"
     assert "notes" not in saved["project_contract"]["claims"][0]
     assert saved["project_contract"]["references"][0]["aliases"] == []
+
+
+def test_state_set_project_contract_surfaces_approved_mode_warnings_on_success(tmp_path: Path):
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["references"][0]["must_surface"] = False
+    save_state_json(tmp_path, default_state_dict())
+
+    result = state_set_project_contract(tmp_path, contract)
+
+    assert result.updated is True
+    assert any("references must include at least one must_surface=true anchor" in warning for warning in result.warnings)
 
 
 def test_state_set_project_contract_rejects_whole_singleton_defaulting(tmp_path: Path):
@@ -883,7 +896,9 @@ def test_state_validate_standard_warns_for_verified_result_without_records(tmp_p
     assert any("verified=true but no verification_records present" in warning for warning in result.warnings)
 
 
-def test_state_validate_standard_blocks_project_contract_approved_scoping_failure(tmp_path):
+def test_state_validate_standard_warns_when_project_contract_lacks_must_surface_anchor_but_has_other_grounding(
+    tmp_path,
+):
     state = default_state_dict()
     contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
     contract["references"][0]["must_surface"] = False
@@ -892,9 +907,61 @@ def test_state_validate_standard_blocks_project_contract_approved_scoping_failur
 
     result = state_validate(tmp_path)
 
-    assert result.valid is False
+    assert result.valid is True
     assert result.integrity_mode == "standard"
-    assert result.integrity_status == "degraded"
+    assert result.integrity_status == "warning"
+    assert any(
+        "project_contract: references must include at least one must_surface=true anchor" in warning
+        for warning in result.warnings
+    )
+
+
+def test_state_validate_standard_warns_for_project_contract_approval_blockers(tmp_path):
+    state = default_state_dict()
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["context_intake"] = {
+        "must_read_refs": [],
+        "must_include_prior_outputs": [],
+        "user_asserted_anchors": [],
+        "known_good_baselines": [],
+        "context_gaps": [],
+        "crucial_inputs": [],
+    }
+    contract["references"][0]["must_surface"] = False
+    state["project_contract"] = contract
+    save_state_json(tmp_path, state)
+
+    result = state_validate(tmp_path)
+
+    assert result.valid is True
+    assert result.integrity_mode == "standard"
+    assert result.integrity_status == "warning"
+    assert any(
+        "project_contract: references must include at least one must_surface=true anchor" in warning
+        for warning in result.warnings
+    )
+
+
+def test_state_validate_review_blocks_project_contract_without_non_reference_grounding(tmp_path):
+    state = default_state_dict()
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["context_intake"] = {
+        "must_read_refs": [],
+        "must_include_prior_outputs": [],
+        "user_asserted_anchors": [],
+        "known_good_baselines": [],
+        "context_gaps": [],
+        "crucial_inputs": [],
+    }
+    contract["references"][0]["must_surface"] = False
+    state["project_contract"] = contract
+    save_state_json(tmp_path, state)
+
+    result = state_validate(tmp_path, integrity_mode="review")
+
+    assert result.valid is False
+    assert result.integrity_mode == "review"
+    assert result.integrity_status == "blocked"
     assert any(
         "project_contract: references must include at least one must_surface=true anchor" in issue
         for issue in result.issues

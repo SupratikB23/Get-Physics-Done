@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from gpd.adapters.runtime_catalog import list_runtime_names
+
 
 @pytest.mark.parametrize(
     "cache_content",
@@ -147,7 +149,7 @@ def test_installed_update_command_ignores_process_cwd_for_nested_default_local_i
     assert command == "npx -y get-physics-done --codex --local"
 
 
-@pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+@pytest.mark.parametrize("runtime", list_runtime_names())
 @pytest.mark.parametrize("scope", ["local", "global"])
 def test_installed_update_command_preserves_explicit_target_named_like_runtime_default(
     tmp_path: Path,

@@ -55,10 +55,13 @@ def test_state_and_context_hide_project_contract_when_raw_singleton_section_is_i
 
     assert loaded.state["project_contract"] is None
     assert ctx["project_contract"] is None
+    assert ctx["project_contract_load_info"]["status"] == "blocked_schema"
+    assert any("context_intake" in error for error in ctx["project_contract_load_info"]["errors"])
+    assert "## Project Contract Intake" in ctx["active_reference_context"]
     assert "None confirmed in `state.json.project_contract.references` yet." in ctx["active_reference_context"]
 
 
-def test_state_contract_is_hidden_from_runtime_context_until_approved(tmp_path: Path) -> None:
+def test_state_contract_remains_visible_in_runtime_context_with_approval_blockers(tmp_path: Path) -> None:
     _setup_project(tmp_path)
     save_state_json(tmp_path, default_state_dict())
 
@@ -83,5 +86,8 @@ def test_state_contract_is_hidden_from_runtime_context_until_approved(tmp_path: 
 
     assert loaded.state["project_contract"] is not None
     assert loaded.state["project_contract"]["references"][0]["role"] == "background"
-    assert ctx["project_contract"] is None
-    assert "None confirmed in `state.json.project_contract.references` yet." in ctx["active_reference_context"]
+    assert ctx["project_contract"] is not None
+    assert ctx["project_contract"]["references"][0]["role"] == "background"
+    assert ctx["project_contract_load_info"]["status"] == "loaded_with_approval_blockers"
+    assert ctx["project_contract_validation"]["valid"] is False
+    assert "Approval status: blocked" in ctx["active_reference_context"]

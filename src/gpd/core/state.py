@@ -266,6 +266,7 @@ class StateUpdateResult(BaseModel):
 
     updated: bool
     reason: str | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class StatePatchResult(BaseModel):
@@ -2010,12 +2011,13 @@ def state_set_project_contract(cwd: Path, contract_data: dict[str, object] | Res
     drift, but it accepts a small class of recoverable normalization fixes
     (for example harmless extra keys) and persists the canonicalized contract.
     """
+    warning_messages: list[str] = []
     try:
         if isinstance(contract_data, ResearchContract):
             parsed = contract_data
         else:
             normalized_contract, schema_findings = salvage_project_contract(contract_data)
-            _, schema_errors = _split_project_contract_schema_findings(
+            schema_warnings, schema_errors = _split_project_contract_schema_findings(
                 schema_findings,
                 allow_singleton_defaults=False,
             )
@@ -2024,6 +2026,7 @@ def state_set_project_contract(cwd: Path, contract_data: dict[str, object] | Res
                     updated=False,
                     reason="Invalid project contract schema: " + "; ".join(schema_errors),
                 )
+            warning_messages.extend(schema_warnings)
             if normalized_contract is None:
                 parsed = ResearchContract.model_validate(contract_data)
             else:
@@ -2040,11 +2043,18 @@ def state_set_project_contract(cwd: Path, contract_data: dict[str, object] | Res
             updated=False,
             reason="Project contract failed scoping validation: " + "; ".join(validation.errors),
         )
+    for warning in validation.warnings:
+        if warning not in warning_messages:
+            warning_messages.append(warning)
 
     state_obj = load_state_json(cwd) or default_state_dict()
     contract_payload = parsed.model_dump()
     if state_obj.get("project_contract") == contract_payload:
-        return StateUpdateResult(updated=False, reason="Project contract already matches requested value")
+        return StateUpdateResult(
+            updated=False,
+            reason="Project contract already matches requested value",
+            warnings=warning_messages,
+        )
 
     state_obj["project_contract"] = contract_payload
 
@@ -2061,7 +2071,7 @@ def state_set_project_contract(cwd: Path, contract_data: dict[str, object] | Res
                 existing_questions.add(question)
 
     save_state_json(cwd, state_obj)
-    return StateUpdateResult(updated=True)
+    return StateUpdateResult(updated=True, warnings=warning_messages)
 
 
 @instrument_gpd_function("state.advance_plan")
@@ -2489,11 +2499,23 @@ def state_validate(cwd: Path, integrity_mode: str = "standard") -> StateValidate
         )
 
     if isinstance(state_json, dict) and state_json.get("project_contract") is not None:
-        contract_validation = validate_project_contract(state_json.get("project_contract"), mode="approved")
+        contract_payload = state_json.get("project_contract")
+        contract_validation_mode = "approved" if integrity_mode == "review" else "draft"
+        contract_validation = validate_project_contract(contract_payload, mode=contract_validation_mode)
         if contract_validation.errors:
             issues.extend(f"project_contract: {error}" for error in contract_validation.errors)
         if contract_validation.warnings:
             warnings.extend(f"project_contract: {warning}" for warning in contract_validation.warnings)
+        if integrity_mode != "review":
+            approval_validation = validate_project_contract(contract_payload, mode="approved")
+            for error in approval_validation.errors:
+                warning = f"project_contract: {error}"
+                if warning not in warnings and warning not in issues:
+                    warnings.append(warning)
+            for warning_text in approval_validation.warnings:
+                warning = f"project_contract: {warning_text}"
+                if warning not in warnings:
+                    warnings.append(warning)
 
     # Cross-check position fields
     json_pos = state_json.get("position") if isinstance(state_json, dict) else None

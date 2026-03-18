@@ -668,7 +668,7 @@ class TestInitPlanPhase:
         assert ".gpd/research-map/REFERENCES.md" in ctx["active_reference_context"]
         assert "unresolved reference token" not in ctx["active_reference_context"]
 
-    def test_surfaces_derived_reference_fields_without_mutating_project_contract(self, tmp_path: Path) -> None:
+    def test_surfaces_canonicalized_reference_fields_in_project_contract_context(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)
         _create_phase_dir(tmp_path, "02-analysis")
         _write_project_contract_state(tmp_path)
@@ -679,12 +679,13 @@ class TestInitPlanPhase:
         project_references = {ref["id"]: ref for ref in ctx["project_contract"]["references"]}
         active_references = {ref["id"]: ref for ref in ctx["active_references"]}
 
-        assert project_references["ref-benchmark"].get("aliases", []) == []
+        assert project_references["ref-benchmark"].get("aliases", []) == ["benchmark-paper"]
         assert project_references["ref-benchmark"].get("applies_to", []) == ["claim-benchmark"]
-        assert project_references["ref-benchmark"].get("carry_forward_to", []) == []
+        assert project_references["ref-benchmark"].get("carry_forward_to", []) == ["verification", "writing"]
         assert project_references["ref-benchmark"]["required_actions"] == ["read", "compare", "cite"]
         assert project_references["ref-benchmark"]["must_surface"] is True
         assert "prior-baseline" not in project_references
+        assert ctx["project_contract_validation"]["valid"] is True
 
         assert active_references["ref-benchmark"]["aliases"] == ["benchmark-paper"]
         assert active_references["ref-benchmark"]["applies_to"] == ["claim-benchmark"]
@@ -1337,9 +1338,10 @@ class TestInitProgress:
         monkeypatch.setattr("gpd.core.context._load_state_json", lambda cwd: normalized_state)
         monkeypatch.setattr("gpd.core.context._load_raw_project_contract_payload", lambda cwd: None)
 
-        loaded = _load_project_contract(tmp_path)
+        loaded, load_info = _load_project_contract(tmp_path)
 
         assert loaded is not None
+        assert load_info["status"] == "loaded"
         assert loaded.references[0].id == "ref-benchmark"
         assert loaded.references[0].must_surface is True
 
@@ -1354,9 +1356,10 @@ class TestInitProgress:
         state["project_contract"] = contract
         (tmp_path / ".gpd" / "state.json").write_text(json.dumps(state), encoding="utf-8")
 
-        loaded = _load_project_contract(tmp_path)
+        loaded, load_info = _load_project_contract(tmp_path)
 
         assert loaded is None
+        assert load_info["status"] == "blocked_integrity"
 
     def test_load_project_contract_rejects_whole_singleton_defaulting_from_raw_state(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)
@@ -1369,9 +1372,10 @@ class TestInitProgress:
         state["project_contract"] = contract
         (tmp_path / ".gpd" / "state.json").write_text(json.dumps(state), encoding="utf-8")
 
-        loaded = _load_project_contract(tmp_path)
+        loaded, load_info = _load_project_contract(tmp_path)
 
         assert loaded is None
+        assert load_info["status"] == "blocked_schema"
 
 
 # ─── _extract_frontmatter_field ──────────────────────────────────────────────

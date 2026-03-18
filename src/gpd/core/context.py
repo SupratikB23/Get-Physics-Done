@@ -14,8 +14,8 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-from gpd.adapters import iter_adapters
 from gpd.adapters.install_utils import AGENTS_DIR_NAME, FLAT_COMMANDS_DIR_NAME, GPD_INSTALL_DIR_NAME, HOOKS_DIR_NAME
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.contracts import ResearchContract, collect_contract_integrity_errors, contract_from_data
 from gpd.core.config import GPDProjectConfig
 from gpd.core.config import load_config as _load_config_structured
@@ -69,7 +69,7 @@ logger = logging.getLogger(__name__)
 
 # Research file extensions for project detection.
 _RESEARCH_EXTENSIONS = frozenset({".tex", ".ipynb", ".py", ".jl", ".f90"})
-_RUNTIME_CONFIG_DIRS = frozenset(adapter.local_config_dir_name for adapter in iter_adapters())
+_RUNTIME_CONFIG_DIRS = frozenset(descriptor.config_dir_name for descriptor in iter_runtime_descriptors())
 _LITERATURE_DIR_NAME = "literature"
 _REFERENCE_MAP_DOCS = ("REFERENCES.md", "VALIDATION.md")
 _LITERATURE_INCLUDE_LIMIT = 2
@@ -218,26 +218,59 @@ def _load_raw_project_contract_payload(cwd: Path) -> tuple[Path, object] | None:
     return layout.state_json_backup, raw_backup.get("project_contract")
 
 
-def _load_project_contract(cwd: Path) -> ResearchContract | None:
-    """Load the canonical project contract from state.json when available."""
+def _project_contract_source_path(cwd: Path, source_path: Path) -> str:
+    """Return a stable display path for project-contract diagnostics."""
+
+    try:
+        return source_path.relative_to(cwd).as_posix()
+    except ValueError:
+        return str(source_path)
+
+
+def _project_contract_load_payload(
+    *,
+    status: str,
+    source_path: str,
+    errors: list[str] | None = None,
+    warnings: list[str] | None = None,
+) -> dict[str, object]:
+    """Build structured project-contract load diagnostics for init payloads."""
+
+    return {
+        "status": status,
+        "source_path": source_path,
+        "errors": list(errors or []),
+        "warnings": list(warnings or []),
+    }
+
+
+def _load_project_contract(cwd: Path) -> tuple[ResearchContract | None, dict[str, object]]:
+    """Load the canonical project contract and return load diagnostics."""
     layout = ProjectLayout(cwd)
     state = _load_state_json(cwd)
+    default_source = _project_contract_source_path(cwd, layout.state_json)
     if not isinstance(state, dict):
-        return None
+        return None, _project_contract_load_payload(status="missing", source_path=default_source)
 
     raw_payload = _load_raw_project_contract_payload(cwd)
     source_path = raw_payload[0] if raw_payload is not None else layout.state_json
+    source_label = _project_contract_source_path(cwd, source_path)
     if raw_payload is None:
         contract = contract_from_data(state.get("project_contract"))
         if contract is None:
-            return None
+            return None, _project_contract_load_payload(status="missing", source_path=source_label)
     else:
         source_path, raw_contract = raw_payload
+        source_label = _project_contract_source_path(cwd, source_path)
         if raw_contract is None:
-            return None
+            return None, _project_contract_load_payload(status="missing", source_path=source_label)
         if not isinstance(raw_contract, dict):
             logger.warning("Skipping project_contract from %s because it is not a JSON object", source_path)
-            return None
+            return None, _project_contract_load_payload(
+                status="blocked_type",
+                source_path=source_label,
+                errors=["project contract must be a JSON object"],
+            )
 
         normalized_contract, schema_findings = salvage_project_contract(raw_contract)
         schema_warnings, schema_errors = _split_project_contract_schema_findings(
@@ -250,7 +283,12 @@ def _load_project_contract(cwd: Path) -> ResearchContract | None:
                 source_path,
                 "; ".join(schema_errors) if schema_errors else "validation failed",
             )
-            return None
+            return None, _project_contract_load_payload(
+                status="blocked_schema",
+                source_path=source_label,
+                errors=schema_errors or ["blocking schema normalization would be required"],
+                warnings=schema_warnings,
+            )
         integrity_errors = collect_contract_integrity_errors(normalized_contract)
         if integrity_errors:
             logger.warning(
@@ -258,7 +296,12 @@ def _load_project_contract(cwd: Path) -> ResearchContract | None:
                 source_path,
                 "; ".join(integrity_errors),
             )
-            return None
+            return None, _project_contract_load_payload(
+                status="blocked_integrity",
+                source_path=source_label,
+                errors=integrity_errors,
+                warnings=schema_warnings,
+            )
         if schema_warnings:
             logger.warning(
                 "Loaded project_contract from %s after recoverable schema normalization: %s",
@@ -266,16 +309,31 @@ def _load_project_contract(cwd: Path) -> ResearchContract | None:
                 "; ".join(schema_warnings),
             )
         contract = normalized_contract
+        load_info = _project_contract_load_payload(
+            status="loaded",
+            source_path=source_label,
+            warnings=schema_warnings,
+        )
+    if raw_payload is None:
+        load_info = _project_contract_load_payload(status="loaded", source_path=source_label)
 
     approval_validation = validate_project_contract(contract, mode="approved")
     if not approval_validation.valid:
         logger.warning(
-            "Skipping project_contract from %s because approved-mode validation failed: %s",
+            "Loaded project_contract from %s with approval blockers: %s",
             source_path,
             "; ".join(approval_validation.errors) if approval_validation.errors else "validation failed",
         )
+        load_info["status"] = "loaded_with_approval_blockers"
+    return contract, load_info
+
+
+def _project_contract_validation_payload(contract: ResearchContract | None) -> dict[str, object] | None:
+    """Return approval-mode validation metadata for a loaded project contract."""
+
+    if contract is None:
         return None
-    return contract
+    return validate_project_contract(contract, mode="approved").model_dump(mode="json")
 
 
 def _sorted_markdown_files(directory: Path) -> list[Path]:
@@ -550,18 +608,9 @@ def _canonical_contract_intake(
 ) -> dict[str, list[str]]:
     """Return additive canonical intake with canonicalized reference IDs."""
 
-    intake = {
-        "must_read_refs": [],
-        "must_include_prior_outputs": [],
-        "user_asserted_anchors": [],
-        "known_good_baselines": [],
-        "context_gaps": [],
-        "crucial_inputs": [],
-    }
-    contract_intake = contract.context_intake.model_dump(mode="json")
-    for key in intake:
-        _append_unique_strings(intake[key], list(contract_intake.get(key) or []))
-        _append_unique_strings(intake[key], list(effective_reference_intake.get(key) or []))
+    del effective_reference_intake  # Artifact-derived intake stays in ``effective_reference_intake`` only.
+
+    intake = contract.context_intake.model_dump(mode="json")
     _, token_to_id = _build_active_reference_lookup(active_references)
     canonical_must_read_refs: list[str] = []
     for token in list(intake.get("must_read_refs") or []):
@@ -626,12 +675,6 @@ def _canonicalize_project_contract(
             seen_ids.add(ref_id)
         if locator_key:
             seen_locators.add(locator_key)
-    for derived in canonical_refs:
-        ref_id = str(derived.get("id") or "").strip()
-        locator_key = str(derived.get("locator") or "").strip().casefold()
-        if ref_id in seen_ids or (locator_key and locator_key in seen_locators):
-            continue
-        merged_references.append(derived)
     payload["references"] = merged_references
     try:
         return ResearchContract.model_validate(payload)
@@ -644,6 +687,8 @@ def _render_active_reference_context(
     effective_intake: dict[str, list[str]],
     literature_review_files: list[str],
     research_map_reference_files: list[str],
+    contract_validation: dict[str, object] | None = None,
+    contract_load_info: dict[str, object] | None = None,
 ) -> str:
     """Render a compact text block of anchors and carry-forward inputs."""
     lines: list[str] = ["## Active Reference Registry"]
@@ -669,6 +714,32 @@ def _render_active_reference_context(
             lines.append("- No structured anchors parsed yet; raw reference artifacts are available below.")
         else:
             lines.append("- None confirmed in `state.json.project_contract.references` yet.")
+
+    if contract_load_info is not None:
+        load_status = str(contract_load_info.get("status") or "").strip()
+        load_warnings = list(contract_load_info.get("warnings") or [])
+        load_errors = list(contract_load_info.get("errors") or [])
+        if load_status.startswith("blocked") or load_warnings:
+            lines.extend(["", "## Project Contract Intake"])
+            lines.append(f"- Load status: {load_status.replace('_', ' ')}")
+            source_path = str(contract_load_info.get("source_path") or "").strip()
+            if source_path:
+                lines.append(f"- Source: {source_path}")
+            for error in load_errors:
+                lines.append(f"- Blocker: {error}")
+            for warning in load_warnings:
+                lines.append(f"- Warning: {warning}")
+
+    if contract_validation is not None:
+        lines.extend(["", "## Project Contract Validation"])
+        if contract_validation.get("valid") is True:
+            lines.append("- Approval status: ready")
+        else:
+            lines.append("- Approval status: blocked")
+        for error in list(contract_validation.get("errors") or []):
+            lines.append(f"- Blocker: {error}")
+        for warning in list(contract_validation.get("warnings") or []):
+            lines.append(f"- Warning: {warning}")
 
     lines.extend(
         [
@@ -758,7 +829,7 @@ def _reference_artifact_payload(cwd: Path) -> dict[str, object]:
 
 def _build_reference_runtime_context(cwd: Path) -> dict[str, object]:
     """Build shared reference/anchor context for workflow init payloads."""
-    contract = _load_project_contract(cwd)
+    contract, project_contract_load_info = _load_project_contract(cwd)
     artifact_payload = _reference_artifact_payload(cwd)
     artifact_ingestion = ingest_reference_artifacts(
         cwd,
@@ -772,8 +843,14 @@ def _build_reference_runtime_context(cwd: Path) -> dict[str, object]:
         artifact_ingestion.intake.to_dict(),
         active_references,
     )
+    canonical_contract = _canonicalize_project_contract(
+        contract,
+        active_references=active_references,
+        effective_reference_intake=effective_reference_intake,
+    )
+    project_contract_validation = _project_contract_validation_payload(canonical_contract)
     project_text = _safe_read_file(cwd / PLANNING_DIR_NAME / PROJECT_FILENAME)
-    selected_protocol_bundles = select_protocol_bundles(project_text, contract)
+    selected_protocol_bundles = select_protocol_bundles(project_text, canonical_contract)
 
     bundle_verifier_extensions: list[dict[str, object]] = []
     for bundle in selected_protocol_bundles:
@@ -787,7 +864,9 @@ def _build_reference_runtime_context(cwd: Path) -> dict[str, object]:
             )
 
     return {
-        "project_contract": contract.model_dump(mode="json") if contract is not None else None,
+        "project_contract": canonical_contract.model_dump(mode="json") if canonical_contract is not None else None,
+        "project_contract_validation": project_contract_validation,
+        "project_contract_load_info": project_contract_load_info,
         "contract_intake": contract.context_intake.model_dump(mode="json") if contract is not None else None,
         "effective_reference_intake": effective_reference_intake,
         "derived_active_references": derived_references,
@@ -803,6 +882,8 @@ def _build_reference_runtime_context(cwd: Path) -> dict[str, object]:
             effective_reference_intake,
             artifact_payload["literature_review_files"],
             artifact_payload["research_map_reference_files"],
+            project_contract_validation,
+            project_contract_load_info,
         ),
         **artifact_payload,
     }

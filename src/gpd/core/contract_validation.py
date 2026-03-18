@@ -640,9 +640,11 @@ def validate_project_contract(
 
     errors.extend(_light_contract_consistency_errors(parsed))
 
+    has_non_reference_grounding = _has_non_reference_grounding_signal(parsed)
+
     if parsed.references and not any(reference.must_surface for reference in parsed.references):
         finding = "references must include at least one must_surface=true anchor"
-        if mode == "approved":
+        if mode == "approved" and not has_non_reference_grounding:
             errors.append(finding)
         else:
             warnings.append(finding)

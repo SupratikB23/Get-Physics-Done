@@ -270,6 +270,15 @@ def _string_or_string_list_or_null_schema(*, min_items: int | None = None) -> di
     }
 
 
+def _string_or_string_list_schema(*, min_items: int | None = None) -> dict[str, object]:
+    return {
+        "anyOf": [
+            dict(_non_empty_string_schema()),
+            _string_list_schema(min_items=min_items),
+        ]
+    }
+
+
 def _boolean_or_null_schema() -> dict[str, object]:
     return {"anyOf": [{"type": "boolean"}, {"type": "null"}]}
 
@@ -295,9 +304,66 @@ def _object_schema(
     return schema
 
 
+def _enum_string_schema(values: Iterable[str]) -> dict[str, object]:
+    return {
+        "type": "string",
+        "enum": list(values),
+    }
+
+
+_CONTRACT_OBSERVABLE_KIND_VALUES = (
+    "scalar",
+    "curve",
+    "map",
+    "classification",
+    "proof_obligation",
+    "other",
+)
+_CONTRACT_DELIVERABLE_KIND_VALUES = (
+    "figure",
+    "table",
+    "dataset",
+    "data",
+    "derivation",
+    "code",
+    "note",
+    "report",
+    "other",
+)
+_CONTRACT_ACCEPTANCE_TEST_KIND_VALUES = (
+    "existence",
+    "schema",
+    "benchmark",
+    "consistency",
+    "cross_method",
+    "limiting_case",
+    "symmetry",
+    "dimensional_analysis",
+    "convergence",
+    "oracle",
+    "proxy",
+    "reproducibility",
+    "human_review",
+    "other",
+)
+_CONTRACT_ACCEPTANCE_AUTOMATION_VALUES = ("automated", "hybrid", "human")
+_CONTRACT_REFERENCE_KIND_VALUES = ("paper", "dataset", "prior_artifact", "spec", "user_anchor", "other")
+_CONTRACT_REFERENCE_ROLE_VALUES = ("definition", "benchmark", "method", "must_consider", "background", "other")
+_CONTRACT_REFERENCE_ACTION_VALUES = ("read", "use", "compare", "cite", "avoid")
+_CONTRACT_LINK_RELATION_VALUES = (
+    "supports",
+    "computes",
+    "visualizes",
+    "benchmarks",
+    "depends_on",
+    "evaluated_by",
+    "other",
+)
+
+
 _CONTRACT_BINDING_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
-        field_name: _string_or_string_list_or_null_schema(min_items=1)
+        field_name: _string_or_string_list_schema(min_items=1)
         for field_name in (
             "observable_id",
             "observable_ids",
@@ -312,7 +378,8 @@ _CONTRACT_BINDING_INPUT_SCHEMA: dict[str, object] = _object_schema(
             "forbidden_proxy_id",
             "forbidden_proxy_ids",
         )
-    }
+    },
+    additional_properties=False,
 )
 _CONTRACT_METADATA_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
@@ -322,7 +389,8 @@ _CONTRACT_METADATA_INPUT_SCHEMA: dict[str, object] = _object_schema(
         "declared_family": _string_or_null_schema(),
         "allowed_families": _string_list_schema(),
         "forbidden_families": _string_list_schema(),
-    }
+    },
+    additional_properties=False,
 )
 _CONTRACT_OBSERVED_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
@@ -338,7 +406,8 @@ _CONTRACT_OBSERVED_INPUT_SCHEMA: dict[str, object] = _object_schema(
         "competing_family_checked": _boolean_or_null_schema(),
         "bias_checked": _boolean_or_null_schema(),
         "calibration_checked": _boolean_or_null_schema(),
-    }
+    },
+    additional_properties=False,
 )
 _CONTRACT_SCOPE_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
@@ -373,7 +442,7 @@ _CONTRACT_OBSERVABLE_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
         "id": _non_empty_string_schema(),
         "name": _non_empty_string_schema(),
-        "kind": {"type": "string"},
+        "kind": _enum_string_schema(_CONTRACT_OBSERVABLE_KIND_VALUES),
         "definition": _non_empty_string_schema(),
         "regime": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "units": {"anyOf": [{"type": "string"}, {"type": "null"}]},
@@ -394,7 +463,7 @@ _CONTRACT_CLAIM_INPUT_SCHEMA: dict[str, object] = _object_schema(
 _CONTRACT_DELIVERABLE_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
         "id": _non_empty_string_schema(),
-        "kind": {"type": "string"},
+        "kind": _enum_string_schema(_CONTRACT_DELIVERABLE_KIND_VALUES),
         "path": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "description": _non_empty_string_schema(),
         "must_contain": _string_list_schema(),
@@ -405,26 +474,29 @@ _CONTRACT_ACCEPTANCE_TEST_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
         "id": _non_empty_string_schema(),
         "subject": _non_empty_string_schema(),
-        "kind": {"type": "string"},
+        "kind": _enum_string_schema(_CONTRACT_ACCEPTANCE_TEST_KIND_VALUES),
         "procedure": _non_empty_string_schema(),
         "pass_condition": _non_empty_string_schema(),
         "evidence_required": _string_list_schema(),
-        "automation": {"type": "string"},
+        "automation": _enum_string_schema(_CONTRACT_ACCEPTANCE_AUTOMATION_VALUES),
     },
     required=("id", "subject", "procedure", "pass_condition"),
 )
 _CONTRACT_REFERENCE_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
         "id": _non_empty_string_schema(),
-        "kind": {"type": "string"},
+        "kind": _enum_string_schema(_CONTRACT_REFERENCE_KIND_VALUES),
         "locator": _non_empty_string_schema(),
         "aliases": _string_list_schema(),
-        "role": {"type": "string"},
+        "role": _enum_string_schema(_CONTRACT_REFERENCE_ROLE_VALUES),
         "why_it_matters": _non_empty_string_schema(),
         "applies_to": _string_list_schema(),
         "carry_forward_to": _string_list_schema(),
         "must_surface": {"type": "boolean"},
-        "required_actions": _string_list_schema(),
+        "required_actions": {
+            "type": "array",
+            "items": _enum_string_schema(_CONTRACT_REFERENCE_ACTION_VALUES),
+        },
     },
     required=("id", "locator", "why_it_matters"),
 )
@@ -442,7 +514,7 @@ _CONTRACT_LINK_INPUT_SCHEMA: dict[str, object] = _object_schema(
         "id": _non_empty_string_schema(),
         "source": _non_empty_string_schema(),
         "target": _non_empty_string_schema(),
-        "relation": {"type": "string"},
+        "relation": _enum_string_schema(_CONTRACT_LINK_RELATION_VALUES),
         "verified_by": _string_list_schema(),
     },
     required=("id", "source", "target"),
@@ -495,10 +567,14 @@ _CONTRACT_PAYLOAD_INPUT_SCHEMA: dict[str, object] = _object_schema(
 )
 _RUN_CONTRACT_CHECK_REQUEST_SCHEMA: dict[str, object] = {
     "type": "object",
-    "additionalProperties": True,
+    "additionalProperties": False,
+    "anyOf": [
+        {"required": ["check_key"]},
+        {"required": ["check_id"]},
+    ],
     "properties": {
-        "check_key": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "check_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "check_key": _non_empty_string_schema(),
+        "check_id": _non_empty_string_schema(),
         "contract": {"anyOf": [dict(_CONTRACT_PAYLOAD_INPUT_SCHEMA), {"type": "null"}]},
         "binding": {"anyOf": [dict(_CONTRACT_BINDING_INPUT_SCHEMA), {"type": "null"}]},
         "metadata": {"anyOf": [dict(_CONTRACT_METADATA_INPUT_SCHEMA), {"type": "null"}]},
@@ -875,6 +951,33 @@ DOMAIN_CHECKLISTS: dict[str, list[dict[str, str]]] = {
 def _error_result(message: object) -> dict[str, object]:
     """Return a stable MCP error envelope for verification tools."""
     return stable_mcp_error(message)
+
+
+def _validate_run_contract_check_request_keys(request: dict[str, object]) -> str | None:
+    """Reject unknown keys in the run_contract_check request sections."""
+
+    request_fields = tuple(RunContractCheckRequest.model_fields)
+    unknown_request_keys = sorted(str(key) for key in request if key not in request_fields)
+    if unknown_request_keys:
+        supported = ", ".join(request_fields)
+        joined = ", ".join(unknown_request_keys)
+        return f"request contains unsupported keys: {joined}; supported keys are {supported}"
+
+    for section_name, model in (
+        ("metadata", ContractMetadataRequest),
+        ("observed", ContractObservedRequest),
+    ):
+        section = request.get(section_name)
+        if not isinstance(section, dict):
+            continue
+        section_fields = tuple(model.model_fields)
+        unknown_section_keys = sorted(str(key) for key in section if key not in section_fields)
+        if unknown_section_keys:
+            supported = ", ".join(section_fields)
+            joined = ", ".join(unknown_section_keys)
+            return f"{section_name} contains unsupported keys: {joined}; supported keys are {supported}"
+
+    return None
 
 
 def _payload_mapping(value: object, *, field_name: str) -> tuple[dict[str, object] | None, dict[str, object] | None]:
@@ -1892,8 +1995,9 @@ def run_contract_check(request: RunContractCheckPayload) -> dict:
     ``contract.benchmark_reproduction``.
 
     ``request.contract`` is optional, but when supplied it must be a project or
-    phase contract object with ``schema_version: 1``. The payload is treated as
-    a hard schema boundary for authoritative fields: non-object sections,
+    phase contract object. ``schema_version`` defaults to ``1`` when omitted
+    and must equal ``1`` when provided. The payload is treated as a hard schema
+    boundary for authoritative fields: non-object sections,
     coercive scalars, blank strings, and malformed list members are rejected
     instead of being guessed. Contract payloads must also satisfy the shared
     semantic integrity rules: do not reuse target IDs across claim/deliverable/
@@ -1907,8 +2011,11 @@ def run_contract_check(request: RunContractCheckPayload) -> dict:
     fields inside those objects. When ``request.binding`` is present, its keys
     must come from the per-check ``supported_binding_fields`` surfaced by
     ``suggest_contract_checks(...)``; unsupported or irrelevant binding fields
-    are request errors, not soft verification issues. ``request.artifact_content``
-    is optional and must be a string when present.
+    are request errors, not soft verification issues. Singular/plural binding
+    aliases (for example ``claim_id`` / ``claim_ids``) must match when both are
+    provided. If both ``request.check_key`` and ``request.check_id`` are sent,
+    they must normalize to the same value. ``request.artifact_content`` is
+    optional and must be a string when present.
 
     Use ``suggest_contract_checks(contract, active_checks=...)`` first when you
     need the exact ``required_request_fields``, ``optional_request_fields``,
@@ -1921,6 +2028,9 @@ def run_contract_check(request: RunContractCheckPayload) -> dict:
             request, error = _payload_mapping(request, field_name="request")
             if error is not None:
                 return error
+            request_key_error = _validate_run_contract_check_request_keys(request)
+            if request_key_error is not None:
+                return _error_result(request_key_error)
             check_key = _normalize_optional_scalar_str(request.get("check_key"))
             check_id_value = _normalize_optional_scalar_str(request.get("check_id"))
             if (
@@ -1965,7 +2075,7 @@ def run_contract_check(request: RunContractCheckPayload) -> dict:
             binding_error = _validate_binding_payload(binding, allowed_targets=check_meta.binding_targets)
             if binding_error is not None:
                 return _error_result(binding_error)
-            binding_supplied = binding_raw is not None
+            binding_supplied = bool(binding_raw)
             metadata, metadata_error = _normalize_contract_metadata(metadata_raw or {})
             if metadata_error is not None:
                 return _error_result(metadata_error)
@@ -2275,8 +2385,9 @@ def run_contract_check(request: RunContractCheckPayload) -> dict:
 def suggest_contract_checks(contract: SuggestContractPayload, active_checks: StringListPayload = None) -> dict:
     """Suggest contract-aware checks from a schema-validated project or phase ``contract``.
 
-    ``contract`` must be an object with ``schema_version: 1`` and the normal GPD
-    contract structure. The tool keeps authoritative fields strict: non-object
+    ``contract`` must be an object with the normal GPD contract structure.
+    ``schema_version`` defaults to ``1`` when omitted and must equal ``1`` when
+    provided. The tool keeps authoritative fields strict: non-object
     payloads, coercive scalars, and malformed list members are rejected rather
     than inferred. Contract payloads must also satisfy the shared semantic
     integrity rules: do not reuse target IDs across claim/deliverable/

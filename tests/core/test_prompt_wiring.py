@@ -730,6 +730,9 @@ def test_planning_and_phase_templates_surface_active_reference_context() -> None
     assert "**Active References:** {active_reference_context}" in planner_prompt
     assert "@path/to/reference-or-benchmark-anchor.md" in phase_prompt
     assert "Planning requires an approved scoping contract in `.gpd/state.json`" in workflow_text
+    assert "project_contract_validation" in workflow_text
+    assert "project_contract_load_info" in workflow_text
+    assert "visible-but-blocked contract is not an approved planning contract" in workflow_text
     assert "**Project Contract:** {project_contract}" in workflow_text
     assert "**Active References:** {active_reference_context}" in workflow_text
     assert "**Anchor coverage:** Required references, baselines, and prior outputs are surfaced" in workflow_text
@@ -872,6 +875,9 @@ def test_phase_research_and_verification_surfaces_keep_anchor_checks_mandatory()
     assert "| validation, testing, benchmarks    | VALIDATION.md, REFERENCES.md    |" in planner_agent
     assert "Do NOT skip contract-critical anchors" in verify_workflow
     assert "active_reference_context" in verify_workflow
+    assert "project_contract_validation" in verify_workflow
+    assert "project_contract_load_info" in verify_workflow
+    assert "visible-but-blocked contract must be repaired before it is used as authoritative verification scope" in verify_workflow
     assert "suggest_contract_checks(contract)" in verify_workflow
 
 
@@ -922,6 +928,9 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "Each gap has: `subject_kind`" not in verifier_agent
     assert "Verification Status:** {passed | gaps_found | expert_needed | human_needed}" in verifier_agent
     assert "`contract_results` is authoritative." in execute_plan
+    assert "project_contract_validation" in execute_plan
+    assert "project_contract_load_info" in execute_plan
+    assert "visible-but-blocked contract is still not an approved execution contract" in execute_plan
     assert "Autonomy mode (`supervised` / `balanced` / `yolo`) and profile may change cadence or verbosity, but they do NOT relax contract-result emission." in execute_plan
     assert "contract_results" in verify_phase
     assert "Verification targets must stay user-visible" in verify_phase
@@ -941,6 +950,14 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "subject_role" in comparison_template
     assert "Profiles and autonomy modes may compress prose or cadence, but they do NOT relax contract-result emission" in executor_agent
     assert "Use claim IDs, deliverable IDs, acceptance test IDs, reference IDs, and forbidden proxy IDs directly from the `contract` block." in verifier_agent
+
+
+def test_execute_phase_workflow_surfaces_project_contract_validation_gate() -> None:
+    execute_workflow = (WORKFLOWS_DIR / "execute-phase.md").read_text(encoding="utf-8")
+
+    assert "project_contract_validation" in execute_workflow
+    assert "project_contract_load_info" in execute_workflow
+    assert "visible-but-blocked contract as an approved execution contract" in execute_workflow
 
 
 def test_verification_prompts_keep_suggested_contract_check_bindings_schema_tight() -> None:
@@ -1297,7 +1314,12 @@ def test_state_json_schema_surfaces_stdin_contract_persistence_and_model_normali
     assert "Approved project contracts must include at least one observable, claim, or deliverable." in state_schema
     assert "`uncertainty_markers.weakest_anchors` and `uncertainty_markers.disconfirming_observations` must both be non-empty." in state_schema
     assert "`scope.in_scope` must name at least one project boundary or objective." in state_schema
-    assert "If a project contract has any `references[]`, at least one reference must set `must_surface: true`." in state_schema
+    assert (
+        "If a project contract has any `references[]` and does not already carry concrete prior-output, "
+        "user-anchor, or baseline grounding, at least one reference must set `must_surface: true`."
+        in state_schema
+    )
+    assert "a missing `must_surface: true` reference is still a warning" in state_schema
     assert "If a project-contract reference sets `must_surface: true`, `applies_to[]` must not be empty." in state_schema
     assert "If a project-contract reference sets `must_surface: true`, `required_actions[]` must not be empty." in state_schema
     assert (

@@ -293,3 +293,45 @@ def test_context_discovers_additional_research_map_reference_artifacts(tmp_path:
 
     assert ".gpd/research-map/CONCERNS.md" in ctx["research_map_reference_files"]
     assert ".gpd/phases/00-baseline/00-SUMMARY.md" in ctx["effective_reference_intake"]["must_include_prior_outputs"]
+
+
+def test_ingest_reference_artifacts_surfaces_explicit_or_derived_must_surface_flags(tmp_path: Path) -> None:
+    _bootstrap_project(tmp_path)
+    literature_dir = tmp_path / ".gpd" / "literature"
+    literature_dir.mkdir(parents=True)
+    (literature_dir / "REVIEW.md").write_text(
+        "# Review\n\n"
+        "## Active Anchor Registry\n\n"
+        "| Anchor ID | Anchor | Type | Source / Locator | Why It Matters | Must Surface | Required Action |\n"
+        "| --------- | ------ | ---- | ---------------- | -------------- | ------------ | --------------- |\n"
+        "| ref-benchmark | Benchmark Ref | benchmark | Benchmark Paper | Decisive benchmark | no | cite |\n"
+        "| ref-method | Method Ref | method | Method Paper | Required method anchor |  | compare |\n",
+        encoding="utf-8",
+    )
+
+    result = ingest_reference_artifacts(
+        tmp_path,
+        literature_review_files=[".gpd/literature/REVIEW.md"],
+        research_map_reference_files=[],
+    )
+
+    benchmark = next(ref for ref in result.references if ref.id == "ref-benchmark")
+    method = next(ref for ref in result.references if ref.id == "ref-method")
+
+    assert benchmark.must_surface is False
+    assert method.must_surface is True
+
+
+def test_anchor_registry_templates_document_must_surface_column_and_fallback_heuristic() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    literature_workflow = (repo_root / "src/gpd/specs/workflows/literature-review.md").read_text(encoding="utf-8")
+    reference_template = (
+        repo_root / "src/gpd/specs/references/templates/research-mapper/REFERENCES.md"
+    ).read_text(encoding="utf-8")
+
+    assert "| Must Surface |" in literature_workflow
+    assert "Set `Must Surface` to `yes`" in literature_workflow
+    assert "roles like `benchmark`, `definition`, `method`, or `must_consider`" in literature_workflow
+    assert "| Must Surface |" in reference_template
+    assert "`Must Surface` marks anchors" in reference_template
+    assert "required actions such as `use`, `compare`, or `avoid`" in reference_template

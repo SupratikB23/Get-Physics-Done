@@ -356,11 +356,12 @@ status: completed | checkpoint
 
 ## Active Anchor Registry
 
-| Anchor ID | Anchor | Type | Source / Locator | Why It Matters | Contract Subject IDs | Required Action | Carry Forward To |
-| --------- | ------ | ---- | ---------------- | -------------- | -------------------- | --------------- | ---------------- |
-| {stable-anchor-id} | {reference or artifact} | {benchmark/method/background/prior artifact} | {citation, dataset id, or path} | {claim, observable, deliverable, or convention constrained} | {claim-id, deliverable-id, or blank} | {read/use/compare/cite} | {planning/execution/verification/writing} |
+| Anchor ID | Anchor | Type | Source / Locator | Why It Matters | Contract Subject IDs | Must Surface | Required Action | Carry Forward To |
+| --------- | ------ | ---- | ---------------- | -------------- | -------------------- | ------------ | --------------- | ---------------- |
+| {stable-anchor-id} | {reference or artifact} | {benchmark/method/background/prior artifact} | {citation, dataset id, or path} | {claim, observable, deliverable, or convention constrained} | {claim-id, deliverable-id, or blank} | {yes/no} | {read/use/compare/cite} | {planning/execution/verification/writing} |
 
 `Carry Forward To` is workflow stage scope only. If exact contract subject IDs are known, store them in `Contract Subject IDs` instead of collapsing them into stage labels.
+Set `Must Surface` to `yes` when later planners or verifiers must explicitly re-surface the anchor. If you leave it blank, ingestion promotes anchors with roles like `benchmark`, `definition`, `method`, or `must_consider`, and anchors whose required actions include `use`, `compare`, or `avoid`.
 
 ## Convention Catalog
 

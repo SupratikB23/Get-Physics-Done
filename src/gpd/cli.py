@@ -31,6 +31,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from gpd.command_labels import canonical_command_label
 from gpd.core.constants import ENV_GPD_DISABLE_CHECKOUT_REEXEC
 from gpd.core.errors import ConfigError, GPDError
 
@@ -2717,10 +2718,7 @@ def _unique_preserving_order(values: list[str]) -> list[str]:
 
 def _canonical_command_name(command_name: str) -> str:
     """Normalize a CLI command name to the registry's public gpd:name form."""
-    normalized = command_name.strip()
-    if normalized.startswith("/"):
-        normalized = normalized[1:]
-    return normalized if normalized.startswith("gpd:") else f"gpd:{normalized}"
+    return canonical_command_label(command_name)
 
 
 def _resolve_registry_command(command_name: str) -> tuple[object, str]:

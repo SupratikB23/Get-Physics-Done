@@ -21,6 +21,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from gpd import registry as content_registry
+from gpd.command_labels import rewrite_runtime_command_surfaces
 from gpd.core.errors import GPDError
 from gpd.core.observability import gpd_span
 from gpd.mcp.servers import parse_frontmatter_safe, stable_mcp_error, stable_mcp_response
@@ -42,9 +43,6 @@ _CONTRACT_REFERENCE_NAMES = {
     "summary.md",
     "verification-report.md",
 }
-_RUNTIME_COMMAND_SURFACE_RE = re.compile(r"(?<![A-Za-z0-9_-])/?gpd:(?P<slug>[a-z0-9][a-z0-9-]*)")
-
-
 def _load_skill_index() -> list[content_registry.SkillDef]:
     """Load the canonical registry/MCP skill index from shared commands and agents."""
     return [content_registry.get_skill(name) for name in content_registry.list_skills()]
@@ -73,11 +71,7 @@ def _skill_index_label(skill: content_registry.SkillDef) -> str:
 
 def _canonicalize_command_surface(content: str) -> str:
     """Rewrite runtime-facing command examples to canonical ``gpd-*`` names."""
-
-    def _replace(match: re.Match[str]) -> str:
-        return f"gpd-{match.group('slug')}"
-
-    return _RUNTIME_COMMAND_SURFACE_RE.sub(_replace, content)
+    return rewrite_runtime_command_surfaces(content, canonical="skill")
 
 
 def _resolve_skill_content(content: str) -> str:
@@ -264,16 +258,20 @@ def get_skill(name: str) -> dict:
             }
             if skill.source_kind == "command":
                 command = content_registry.get_command(skill.registry_name)
+                allowed_tools = list(command.allowed_tools)
                 payload.update(
                     {
                         "context_mode": command.context_mode,
                         "argument_hint": command.argument_hint,
-                        "allowed_tools": command.allowed_tools,
                         "review_contract": (
                             dataclasses.asdict(command.review_contract) if command.review_contract is not None else None
                         ),
                     }
                 )
+                payload["allowed_tools"] = allowed_tools
+            elif skill.source_kind == "agent":
+                agent = content_registry.get_agent(skill.registry_name)
+                payload["allowed_tools"] = list(agent.tools)
             return stable_mcp_response(payload)
         except (GPDError, OSError, ValueError, TimeoutError) as e:
             return stable_mcp_error(e)

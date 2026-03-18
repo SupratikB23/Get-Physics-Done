@@ -8,18 +8,21 @@ from pathlib import Path
 import pytest
 
 from gpd.adapters import get_adapter
+from gpd.adapters.runtime_catalog import list_runtime_names
+
+RUNTIME_NAMES = list_runtime_names()
 
 
 class TestResolveTargetDir:
     """Test resolve_target_dir for all adapters."""
 
-    @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+    @pytest.mark.parametrize("runtime", RUNTIME_NAMES)
     def test_local_uses_cwd(self, runtime: str, tmp_path: Path) -> None:
         adapter = get_adapter(runtime)
         result = adapter.resolve_target_dir(is_global=False, cwd=tmp_path)
         assert result == tmp_path / adapter.config_dir_name
 
-    @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+    @pytest.mark.parametrize("runtime", RUNTIME_NAMES)
     def test_global_uses_global_config(self, runtime: str) -> None:
         adapter = get_adapter(runtime)
         result = adapter.resolve_target_dir(is_global=True)
@@ -161,7 +164,7 @@ class TestUninstallBase:
 class TestAdapterConformance:
     """Verify all adapters implement the runtime-facing interface."""
 
-    @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+    @pytest.mark.parametrize("runtime", RUNTIME_NAMES)
     def test_has_required_properties(self, runtime: str) -> None:
         adapter = get_adapter(runtime)
         assert isinstance(adapter.runtime_name, str)
@@ -170,7 +173,7 @@ class TestAdapterConformance:
         assert isinstance(adapter.help_command, str)
         assert isinstance(adapter.global_config_dir, Path)
 
-    @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+    @pytest.mark.parametrize("runtime", RUNTIME_NAMES)
     def test_has_required_methods(self, runtime: str) -> None:
         adapter = get_adapter(runtime)
         assert callable(adapter.finalize_install)
@@ -191,12 +194,12 @@ class TestAdapterConformance:
         adapter = get_adapter(runtime)
         assert adapter.help_command == expected
 
-    @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+    @pytest.mark.parametrize("runtime", RUNTIME_NAMES)
     def test_config_dir_name_starts_with_dot(self, runtime: str) -> None:
         adapter = get_adapter(runtime)
         assert adapter.config_dir_name.startswith(".")
 
-    @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+    @pytest.mark.parametrize("runtime", RUNTIME_NAMES)
     def test_runtime_name_matches_registry(self, runtime: str) -> None:
         adapter = get_adapter(runtime)
         assert adapter.runtime_name == runtime
