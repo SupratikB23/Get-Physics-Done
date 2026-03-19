@@ -827,7 +827,7 @@ def validate_project_contract(
 
     if mode == "approved" and decisive_target_count > 0 and not _has_approved_grounding_signal(parsed):
         errors.append(
-            "approved project contract requires at least one concrete anchor/reference/prior-output/baseline or an explicit 'anchor unknown' blocker"
+            "approved project contract requires at least one concrete anchor/reference/prior-output/baseline; explicit missing-anchor notes preserve uncertainty but do not satisfy approval on their own"
         )
 
     if not parsed.acceptance_tests:

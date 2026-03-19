@@ -565,25 +565,25 @@ def test_state_set_project_contract_rejects_contract_missing_skeptical_fields(tm
     assert saved["project_contract"] is None
 
 
-def test_state_set_project_contract_accepts_singleton_list_normalization(tmp_path: Path):
+def test_state_set_project_contract_rejects_singleton_list_drift(tmp_path: Path):
     contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
     contract["context_intake"]["must_read_refs"] = "ref-benchmark"
     save_state_json(tmp_path, default_state_dict())
 
     result = state_set_project_contract(tmp_path, contract)
 
-    assert result.updated is True
-    assert result.reason is None
+    assert result.updated is False
+    assert result.reason is not None
+    assert "Invalid project contract schema:" in result.reason
+    assert "context_intake.must_read_refs must be a list, not str" in result.reason
     saved = load_state_json(tmp_path)
     assert saved is not None
-    assert saved["project_contract"] is not None
-    assert saved["project_contract"]["context_intake"]["must_read_refs"] == ["ref-benchmark"]
+    assert saved["project_contract"] is None
 
 
 def test_state_set_project_contract_accepts_recoverable_schema_normalization(tmp_path: Path):
     contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
     contract["claims"][0]["notes"] = "harmless"
-    contract["references"][0]["aliases"] = "not-a-list"
     save_state_json(tmp_path, default_state_dict())
 
     result = state_set_project_contract(tmp_path, contract)
@@ -595,7 +595,6 @@ def test_state_set_project_contract_accepts_recoverable_schema_normalization(tmp
     assert saved["project_contract"] is not None
     assert saved["project_contract"]["claims"][0]["id"] == "claim-benchmark"
     assert "notes" not in saved["project_contract"]["claims"][0]
-    assert saved["project_contract"]["references"][0]["aliases"] == ["not-a-list"]
 
 
 def test_state_set_project_contract_surfaces_approved_mode_warnings_on_success(tmp_path: Path):

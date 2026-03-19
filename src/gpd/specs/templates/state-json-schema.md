@@ -213,7 +213,7 @@ Approved-mode grounding is field-specific:
 
 The approved-mode gate uses the exact rule:
 
-`approved project contract requires at least one concrete anchor/reference/prior-output/baseline or an explicit 'anchor unknown' blocker`
+`approved project contract requires at least one concrete anchor/reference/prior-output/baseline; explicit missing-anchor notes preserve uncertainty but do not satisfy approval on their own`
 
 Placeholder or `TBD` text does not count as concrete grounding. That includes generic filler such as `TBD`, `TODO`, `unknown`, `unclear`, `none`, `n/a`, and `placeholder` when they are not attached to a real anchor.
 
@@ -246,7 +246,7 @@ If the user does not know the decisive anchor yet, keep that uncertainty explici
 - `Decisive target not yet chosen before planning can proceed.`
 - `Baseline comparison is TBD before planning can proceed.`
 
-These phrases are valid only when they point to a genuinely missing decisive anchor; placeholder-only wording does not satisfy approved-mode grounding.
+These phrases are valid for preserving uncertainty when they point to a genuinely missing decisive anchor, but they do not satisfy approved-mode grounding on their own. Approved mode still needs a concrete reference, prior output, user anchor, or baseline elsewhere in the contract; placeholder-only wording does not count.
 
 ### `position`
 

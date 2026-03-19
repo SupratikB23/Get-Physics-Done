@@ -600,10 +600,8 @@ def test_new_project_requires_scoping_contract_across_setup_modes() -> None:
     assert "Require one explicit scoping approval gate before requirements and roadmap generation" in workflow_text
     assert "Roadmap approval: Auto-approve only for `balanced` / `yolo`; if `autonomy=supervised`, present the draft roadmap before commit" in workflow_text
     assert "Minimal mode is still allowed to be lean, but it is not allowed to be contract-free." in workflow_text
-    assert (
-        'At least one anchor, reference/prior-output constraint, or an explicit "anchor unknown / must establish later" note'
-        in workflow_text
-    )
+    assert "At least one concrete anchor, reference, prior-output constraint, or baseline" in workflow_text
+    assert "If the decisive anchor is still unknown, keep that blocker explicit" in workflow_text
     assert "scope.unresolved_questions`, `context_intake.context_gaps`, or `uncertainty_markers.weakest_anchors`" in workflow_text
     assert "Do not approve a scoping contract that strips decisive outputs, anchors, prior outputs, or review/stop triggers down to generic placeholders." in workflow_text
     assert "Do NOT skip the initial scoping-contract approval gate." in workflow_text

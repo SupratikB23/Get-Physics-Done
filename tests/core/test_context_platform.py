@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,6 +32,27 @@ _RUNTIME_ENV_KEYS = {
         if env_var
     ),
 }
+
+
+def _mark_complete_runtime_install(config_dir: Path, *, runtime: str, install_scope: str = "local") -> None:
+    """Create the concrete install markers the fallback detector should trust."""
+    adapter = get_adapter(runtime)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    for relpath in adapter.install_completeness_relpaths():
+        if relpath == "gpd-file-manifest.json":
+            continue
+        artifact = config_dir / relpath
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        if artifact.suffix:
+            artifact.write_text("{}\n" if artifact.suffix == ".json" else "# test\n", encoding="utf-8")
+        else:
+            artifact.mkdir(parents=True, exist_ok=True)
+    manifest: dict[str, object] = {"runtime": runtime, "install_scope": install_scope}
+    if runtime == "codex":
+        skills_dir = config_dir.parent / ".agents" / "skills"
+        (skills_dir / "gpd-help").mkdir(parents=True, exist_ok=True)
+        manifest["codex_skills_dir"] = str(skills_dir)
+    (config_dir / "gpd-file-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 
 def _runtime_pair() -> tuple[str, str]:
@@ -69,7 +91,7 @@ def test_init_context_uses_runtime_detect_directory_fallback(monkeypatch: pytest
 
     with monkeypatch.context() as runtime_env:
         _clear_runtime_env(runtime_env)
-        (tmp_path / adapter.local_config_dir_name).mkdir()
+        _mark_complete_runtime_install(tmp_path / adapter.local_config_dir_name, runtime=runtime)
 
         with patch("gpd.hooks.runtime_detect.Path.home", return_value=tmp_path), \
              patch("gpd.hooks.runtime_detect.Path.cwd", return_value=tmp_path):
@@ -78,6 +100,49 @@ def test_init_context_uses_runtime_detect_directory_fallback(monkeypatch: pytest
             assert ctx["platform"] == runtime
 
     importlib.reload(context_module)
+
+
+def test_detect_platform_fallback_ignores_incomplete_local_runtime_dirs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stray_runtime, installed_runtime = _runtime_pair()
+    stray_adapter = get_adapter(stray_runtime)
+    installed_adapter = get_adapter(installed_runtime)
+
+    with monkeypatch.context() as runtime_env:
+        _clear_runtime_env(runtime_env)
+        (tmp_path / stray_adapter.local_config_dir_name).mkdir()
+        _mark_complete_runtime_install(tmp_path / installed_adapter.local_config_dir_name, runtime=installed_runtime)
+
+        with (
+            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="unknown"),
+            patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="unknown"),
+        ):
+            assert context_module._detect_platform(tmp_path) == installed_runtime
+
+
+def test_detect_platform_fallback_ignores_incomplete_global_runtime_dirs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stray_runtime, installed_runtime = _runtime_pair()
+    stray_adapter = get_adapter(stray_runtime)
+    installed_adapter = get_adapter(installed_runtime)
+
+    with monkeypatch.context() as runtime_env:
+        _clear_runtime_env(runtime_env)
+        stray_global = stray_adapter.resolve_global_config_dir(home=tmp_path)
+        stray_global.mkdir(parents=True, exist_ok=True)
+        installed_global = installed_adapter.resolve_global_config_dir(home=tmp_path)
+        _mark_complete_runtime_install(installed_global, runtime=installed_runtime, install_scope="global")
+
+        with (
+            patch("gpd.core.context.Path.home", return_value=tmp_path),
+            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="unknown"),
+            patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="unknown"),
+        ):
+            assert context_module._detect_platform(tmp_path) == installed_runtime
 
 
 def test_init_context_prefers_explicit_gpd_runtime_override(

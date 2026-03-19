@@ -43,6 +43,7 @@ from gpd.core.constants import (
     ProjectLayout,
 )
 from gpd.core.contract_validation import (
+    _collect_list_shape_drift_errors,
     _has_authoritative_scalar_schema_findings,
     _split_project_contract_schema_findings,
     salvage_project_contract,
@@ -2214,11 +2215,13 @@ def state_set_project_contract(cwd: Path, contract_data: dict[str, object] | Res
         if isinstance(contract_data, ResearchContract):
             parsed = contract_data
         else:
+            list_shape_drift_errors = _collect_list_shape_drift_errors(contract_data)
             normalized_contract, schema_findings = salvage_project_contract(contract_data)
             schema_warnings, schema_errors = _split_project_contract_schema_findings(
                 schema_findings,
                 allow_singleton_defaults=False,
             )
+            schema_errors = list(dict.fromkeys([*schema_errors, *list_shape_drift_errors]))
             if schema_errors:
                 return StateUpdateResult(
                     updated=False,

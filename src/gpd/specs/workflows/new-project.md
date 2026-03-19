@@ -120,8 +120,8 @@ Build a canonical scoping contract from the extracted input.
 
 - Core question
 - At least one decisive output, claim, or deliverable
-- At least one anchor, reference/prior-output constraint, or an explicit "anchor unknown / must establish later / target not yet chosen" note
-- At least one anchor, reference/prior-output constraint, or an explicit "anchor unknown / must establish later" note
+- At least one concrete anchor, reference, prior-output constraint, or baseline
+- If the decisive anchor is still unknown, keep that blocker explicit in `scope.unresolved_questions`, `context_intake.context_gaps`, or `uncertainty_markers.weakest_anchors` rather than inventing one
 
 **Fields to capture even if still uncertain:**
 
@@ -752,7 +752,7 @@ When you could write a clear scoping contract, use ask_user:
 
 If "Keep exploring" — ask what they want to add, or identify gaps and probe naturally.
 
-Avoid rigid turn-counting. After several substantive exchanges, if you can state the core question, one decisive output or deliverable, and at least one anchor (or an explicit "anchor unknown / need grounding / target not yet chosen" note), offer to proceed. If those blocking fields are still missing after roughly 6 follow-ups, summarize what is missing and ask whether to keep exploring or proceed with explicit open questions. A full phase breakdown is not required at this stage; if only the first grounded investigation chunk is clear, say so and carry later decomposition as an open question. Do not force closure just because a counter was hit, and do not imply certainty where there is still ambiguity.
+Avoid rigid turn-counting. After several substantive exchanges, if you can state the core question, one decisive output or deliverable, and at least one concrete anchor/reference/prior-output/baseline while keeping any still-missing decisive anchor explicit as an open question, offer to proceed. If those blocking fields are still missing after roughly 6 follow-ups, summarize what is missing and ask whether to keep exploring or proceed with explicit open questions. A full phase breakdown is not required at this stage; if only the first grounded investigation chunk is clear, say so and carry later decomposition as an open question. Do not force closure just because a counter was hit, and do not imply certainty where there is still ambiguity.
 If you only have limiting cases, sanity checks, or generic benchmark language with no decisive smoking-gun observable, curve, or benchmark reproduction, keep exploring unless the user explicitly says that is the decisive standard.
 
 ## 4. Synthesize The Approved Project Contract And Write PROJECT.md

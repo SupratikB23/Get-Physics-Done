@@ -166,7 +166,8 @@ Only offer to proceed when you can state, in concrete terms:
 
 - the core problem,
 - the decisive output or deliverable,
-- at least one anchor (or an explicit "anchor unknown; must establish later"),
+- at least one concrete anchor, reference, prior output, or baseline,
+- and, if the decisive anchor is still unknown, an explicit missing-anchor note that keeps that blocker visible,
 - the weakest assumption,
 - one failure signal or forbidden proxy,
 - and any user-stated prior outputs, stop conditions, or review triggers that must stay visible.
