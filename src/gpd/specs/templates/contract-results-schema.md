@@ -19,7 +19,7 @@ If the source PLAN contains a `contract:` block, then the derived `SUMMARY.md` o
 - `contract_results`
 - `comparison_verdicts` whenever a decisive comparison is required by the contract or decisive anchor context
 
-If `contract_results` or `comparison_verdicts` are present, `plan_contract_ref` is required.
+If `contract_results` or `comparison_verdicts` are present, `plan_contract_ref` is required, and `uncertainty_markers` must stay explicit in the frontmatter.
 
 ---
 
@@ -32,7 +32,7 @@ plan_contract_ref: .gpd/phases/XX-name/XX-YY-PLAN.md#/contract
 Rules:
 
 - Must be a string.
-- Must be a project-local PLAN path, not an absolute path, URL, or parent-traversing path.
+- Must be the canonical project-root-relative `.gpd/phases/XX-name/XX-YY-PLAN.md#/contract` path, not an absolute path, URL, or parent-traversing path.
 - Must end with the exact `#/contract` fragment; pointing at the PLAN file alone or at another fragment is invalid.
 - Must resolve to the matching PLAN contract when validated from disk.
 
@@ -89,6 +89,7 @@ Rules:
 - Ledger keys must be real IDs from the referenced PLAN contract.
 - `contract_results` and every nested entry use a closed schema. Only the documented keys are allowed; invented keys such as `context_usage` fail validation.
 - Missing contract-backed `contract_results` is invalid.
+- `uncertainty_markers` must remain explicit in contract-backed outputs so the model sees unresolved anchors, competing explanations, and disconfirming observations before writing.
 - Every declared claim, deliverable, acceptance test, reference, and forbidden proxy ID from the referenced PLAN contract must appear in its matching section.
 - Do not silently omit unfinished work. Use `not_attempted`, `missing`, `not_applicable`, or `unresolved` explicitly when a contract ID is still open.
 - `linked_ids` and evidence sub-IDs (`claim_id`, `deliverable_id`, `acceptance_test_id`, `reference_id`) must point to declared contract IDs.

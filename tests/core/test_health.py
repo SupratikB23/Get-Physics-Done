@@ -119,14 +119,6 @@ class TestCheckStoragePaths:
         assert result.details["temporary_project_root"] is True
         assert any("Project root is under a temporary directory" in warning for warning in result.warnings)
 
-
-def test_repo_gitignore_keeps_checkpoint_outputs_under_gpd_only() -> None:
-    ignore_lines = (Path(__file__).resolve().parents[2] / ".gitignore").read_text(encoding="utf-8").splitlines()
-
-    assert ".gpd/" in ignore_lines
-    assert "CHECKPOINTS.md" not in ignore_lines
-    assert "phase-checkpoints/" not in ignore_lines
-
     def test_hidden_results_and_scratch_outputs_warn(self, tmp_path: Path) -> None:
         cwd = _bootstrap_health_project(tmp_path)
         hidden_results = cwd / ".gpd" / "phases" / "01-setup" / "results"
@@ -141,6 +133,48 @@ def test_repo_gitignore_keeps_checkpoint_outputs_under_gpd_only() -> None:
         assert result.status == CheckStatus.WARN
         assert any(".gpd/phases/01-setup/results/out.json" in warning for warning in result.warnings)
         assert any(".gpd/tmp/final.csv" in warning for warning in result.warnings)
+
+    def test_repo_gitignore_keeps_checkpoint_outputs_under_gpd_only(self, tmp_path: Path) -> None:
+        repo = _init_git_repo(tmp_path)
+
+        result = subprocess.run(
+            [
+                "git",
+                "check-ignore",
+                "-v",
+                "--",
+                ".gpd/CHECKPOINTS.md",
+                ".gpd/phase-checkpoints/01-test-phase.md",
+            ],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        assert ".gpd/CHECKPOINTS.md" in result.stdout
+        assert ".gpd/phase-checkpoints/01-test-phase.md" in result.stdout
+
+    def test_git_status_reports_dirty_tracked_checkpoint_artifacts(self, tmp_path: Path) -> None:
+        repo = _init_git_repo(tmp_path)
+        checkpoint_dir = repo / ".gpd" / "phase-checkpoints"
+        checkpoint_dir.mkdir(parents=True)
+        root_index = repo / ".gpd" / "CHECKPOINTS.md"
+        phase_checkpoint = checkpoint_dir / "01-test-phase.md"
+        root_index.write_text("initial index\n", encoding="utf-8")
+        phase_checkpoint.write_text("initial phase checkpoint\n", encoding="utf-8")
+
+        subprocess.run(["git", "add", "-f", ".gpd/CHECKPOINTS.md", ".gpd/phase-checkpoints/01-test-phase.md"], cwd=repo, check=True, capture_output=True, text=True)
+
+        root_index.write_text("dirty index\n", encoding="utf-8")
+        phase_checkpoint.write_text("dirty phase checkpoint\n", encoding="utf-8")
+
+        result = check_git_status(repo)
+
+        assert result.label == "Git Status"
+        assert result.status == CheckStatus.OK
+        assert result.details["repo_detected"] is True
+        assert result.details["uncommitted_files"] == 2
 
 
 class TestCheckCompaction:
@@ -610,6 +644,13 @@ def _bootstrap_health_project(tmp_path: Path) -> Path:
     (planning / "ROADMAP.md").write_text("# Roadmap\n", encoding="utf-8")
     (planning / "STATE.md").write_text("# State\n", encoding="utf-8")
     (planning / "PROJECT.md").write_text("# Project\n", encoding="utf-8")
+    return tmp_path
+
+
+def _init_git_repo(tmp_path: Path) -> Path:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    repo_root = Path(__file__).resolve().parents[2]
+    (tmp_path / ".gitignore").write_text((repo_root / ".gitignore").read_text(encoding="utf-8"), encoding="utf-8")
     return tmp_path
 
 

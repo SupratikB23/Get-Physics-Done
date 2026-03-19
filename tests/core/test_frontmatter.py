@@ -387,7 +387,8 @@ class TestValidateFrontmatter:
         assert result.valid is False
         assert any("comparison_verdicts: expected a list" in error for error in result.errors)
 
-    def test_summary_normalizes_empty_contract_results_section_lists(self):
+    @pytest.mark.parametrize("placeholder", ["[]", "null"])
+    def test_summary_rejects_placeholder_contract_results_section_shapes(self, placeholder: str):
         content = (
             "---\n"
             "phase: 01\n"
@@ -397,11 +398,29 @@ class TestValidateFrontmatter:
             "completed: 2025-01-01\n"
             "plan_contract_ref: .gpd/phases/01-test/01-01-PLAN.md#/contract\n"
             "contract_results:\n"
-            "  claims: []\n"
+            f"  claims: {placeholder}\n"
+            "  uncertainty_markers:\n"
+            "    weakest_anchors: []\n"
+            "    disconfirming_observations: []\n"
             "---\n\nBody."
         )
         result = validate_frontmatter(content, "summary")
-        assert result.valid is True
+        assert result.valid is False
+        assert any("claims" in error for error in result.errors)
+
+    def test_summary_rejects_missing_uncertainty_markers_for_contract_backed_summary(self):
+        content = (STAGE4_FIXTURES_DIR / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+            "  uncertainty_markers:\n"
+            "    weakest_anchors: [Reference tolerance interpretation]\n"
+            "    disconfirming_observations: [Benchmark agreement disappears once normalization is fixed]\n",
+            "",
+            1,
+        )
+
+        result = validate_frontmatter(content, "summary")
+
+        assert result.valid is False
+        assert any("uncertainty_markers" in error for error in result.errors)
 
     def test_plan_rejects_unsupported_must_haves_field(self):
         content = _valid_plan_contract_frontmatter().replace(
@@ -844,19 +863,22 @@ class TestValidateFrontmatter:
         assert result.valid is True
 
     def test_verification_status_passed_rejects_blocked_contract_results(self, tmp_path: Path):
-        artifact_dir = tmp_path / "artifacts"
-        artifact_dir.mkdir(parents=True)
-        (artifact_dir / "01-01-PLAN.md").write_text(
+        phase_dir = tmp_path / ".gpd" / "phases" / "01-benchmark"
+        phase_dir.mkdir(parents=True)
+        (phase_dir / "01-01-PLAN.md").write_text(
             (FIXTURES_DIR / "plan_with_contract.md").read_text(encoding="utf-8"),
             encoding="utf-8",
         )
-        verification_path = artifact_dir / "01-VERIFICATION.md"
+        verification_path = phase_dir / "01-VERIFICATION.md"
         verification_path.write_text(
             (STAGE4_FIXTURES_DIR / "verification_with_contract_results.md")
             .read_text(encoding="utf-8")
             .replace(
-                "plan_contract_ref: .gpd/phases/01-benchmark/01-01-PLAN.md#/contract",
-                "plan_contract_ref: 01-01-PLAN.md#/contract",
+                "comparison_verdicts:\n",
+                "  uncertainty_markers:\n"
+                "    weakest_anchors: [Reference tolerance interpretation]\n"
+                "    disconfirming_observations: [Benchmark agreement disappears once normalization is fixed]\n"
+                "comparison_verdicts:\n",
                 1,
             )
             .replace(

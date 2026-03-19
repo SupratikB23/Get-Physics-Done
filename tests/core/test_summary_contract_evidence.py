@@ -48,17 +48,50 @@ def test_summary_extract_field_filter_returns_contract_results(tmp_path: Path) -
     assert result["comparison_verdicts"][0]["subject_role"] == "decisive"
 
 
-def test_summary_extract_normalizes_empty_contract_results_section_lists(tmp_path: Path) -> None:
+@pytest.mark.parametrize("placeholder", ["[]", "null"])
+def test_summary_extract_rejects_placeholder_contract_results_section_shapes(
+    tmp_path: Path,
+    placeholder: str,
+) -> None:
     summary_path = tmp_path / "broken-SUMMARY.md"
     summary_path.write_text(
-        "---\nphase: 01\nplan: 01\ndepth: full\nprovides: []\ncompleted: 2026-03-13\ncontract_results:\n  claims: []\n---\n\n# Summary\n",
+        (
+            "---\n"
+            "phase: 01\n"
+            "plan: 01\n"
+            "depth: full\n"
+            "provides: []\n"
+            "completed: 2026-03-13\n"
+            "contract_results:\n"
+            f"  claims: {placeholder}\n"
+            "  uncertainty_markers:\n"
+            "    weakest_anchors: []\n"
+            "    disconfirming_observations: []\n"
+            "---\n\n"
+            "# Summary\n"
+        ),
         encoding="utf-8",
     )
 
-    result = cmd_summary_extract(tmp_path, "broken-SUMMARY.md")
+    with pytest.raises(ValidationError, match="claims"):
+        cmd_summary_extract(tmp_path, "broken-SUMMARY.md")
 
-    assert result.contract_results is not None
-    assert result.contract_results.claims == {}
+
+def test_summary_extract_requires_explicit_uncertainty_markers(tmp_path: Path) -> None:
+    summary_path = tmp_path / "broken-SUMMARY.md"
+    summary_path.write_text(
+        (FIXTURES_DIR / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+            "  uncertainty_markers:\n"
+            "    weakest_anchors: [Reference tolerance interpretation]\n"
+            "    disconfirming_observations: [Benchmark agreement disappears once normalization is fixed]\n",
+            "",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="uncertainty_markers"):
+        cmd_summary_extract(tmp_path, "broken-SUMMARY.md")
 
 
 def test_summary_extract_normalizes_reference_action_ledgers(tmp_path: Path) -> None:

@@ -95,6 +95,7 @@ def test_sync_phase_checkpoints_generates_root_and_phase_docs(tmp_path: Path) ->
 
     assert result.generated is True
     assert result.phase_count == 1
+    assert result.preserved_phase_count == 0
     assert ".gpd/phase-checkpoints/01-test-phase.md" in result.updated_files
     assert ".gpd/CHECKPOINTS.md" in result.updated_files
 
@@ -131,6 +132,7 @@ def test_sync_phase_checkpoints_skips_malformed_summary_and_still_regenerates_ot
     result = sync_phase_checkpoints(cwd)
 
     assert result.phase_count == 1
+    assert result.preserved_phase_count == 0
     assert "Skipped .gpd/phases/02-bad-phase/01-SUMMARY.md: malformed frontmatter" in "\n".join(result.errors)
     assert ".gpd/phase-checkpoints/01-good-phase.md" in result.updated_files
     assert ".gpd/CHECKPOINTS.md" in result.updated_files
@@ -169,6 +171,7 @@ def test_sync_phase_checkpoints_preserves_existing_generated_output_for_unreadab
     result = sync_phase_checkpoints(cwd)
 
     assert result.phase_count == 1
+    assert result.preserved_phase_count == 1
     assert "Skipped .gpd/phases/02-binary-phase/01-SUMMARY.md: unreadable or missing file" in "\n".join(result.errors)
     assert preserved.exists()
     assert preserved.read_text(encoding="utf-8").startswith(_GENERATED_HEADER)
@@ -219,6 +222,7 @@ def test_sync_phase_checkpoints_does_not_create_empty_outputs_when_no_summaries_
     checkpoint_dir = cwd / ".gpd" / "phase-checkpoints"
 
     assert result.phase_count == 0
+    assert result.preserved_phase_count == 0
     assert result.generated is False
     assert result.updated_files == []
     assert result.removed_files == []
@@ -244,6 +248,7 @@ def test_sync_phase_checkpoints_preserves_unmanaged_markdown_and_cleans_generate
     result = sync_phase_checkpoints(cwd)
 
     assert result.phase_count == 0
+    assert result.preserved_phase_count == 0
     assert ".gpd/phase-checkpoints/01-empty-phase.md" in result.removed_files
     assert ".gpd/CHECKPOINTS.md" in result.removed_files
     assert generated.exists() is False
@@ -267,6 +272,7 @@ def test_sync_phase_checkpoints_keeps_existing_generated_outputs_for_failed_phas
     result = sync_phase_checkpoints(cwd)
 
     assert result.phase_count == 0
+    assert result.preserved_phase_count == 1
     assert result.generated is True
     assert preserved.exists()
     assert ".gpd/phase-checkpoints/01-bad-phase.md" not in result.removed_files

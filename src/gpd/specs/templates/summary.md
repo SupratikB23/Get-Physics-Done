@@ -10,16 +10,16 @@ Template for `.gpd/phases/XX-name/{phase}-{plan}-SUMMARY.md` - phase completion 
 
 ## Summary Depth Selection
 
-This single template covers all summary depths. The `depth` field in frontmatter controls which sections are required:
+This single template covers all summary depths. The `depth` field in frontmatter must be set explicitly and controls which sections are required:
 
 | Depth | When to Use | Sections Required |
 |-------|------------|-------------------|
 | **minimal** | Convention setup, tool configuration, single clear result | Performance, Key Results, Task Commits, Next Phase Readiness |
 | **standard** | Simple calculations, setup phases, straightforward results | + Equations Derived, Approximations, Validations, Decisions, Deviations |
-| **full** (default) | Most plans: derivations, code, and verification | + Key Quantities table, Files, Figures, Issues, Open Questions |
+| **full** | Most plans: derivations, code, and verification | + Key Quantities table, Files, Figures, Issues, Open Questions |
 | **complex** | Multi-step derivations, parameter sweeps, extensive validation | + Cross-Phase Dependencies, Convention Changes, full deviation detail |
 
-**Default to full** unless the plan is clearly simple enough for a lighter variant.
+Choose the depth explicitly. Use `full` for the common detailed case unless the plan is clearly simple enough for a lighter variant.
 
 ---
 
@@ -32,7 +32,8 @@ Keep this ledger user-visible: record what claim was established, what artifact 
 Use `@{GPD_INSTALL_DIR}/templates/contract-results-schema.md` as the schema source of truth for these fields. If `contract_results` or `comparison_verdicts` are present, `plan_contract_ref` is also required. If a decisive comparison is required, omitting its `comparison_verdicts` entry is a validation failure, not a stylistic omission.
 Every declared claim, deliverable, acceptance test, reference, and forbidden proxy ID from the source PLAN contract must appear in the matching `contract_results` section. Use explicit statuses like `not_attempted`, `missing`, `not_applicable`, or `unresolved` instead of silently omitting contract IDs.
 Reload `@{GPD_INSTALL_DIR}/templates/contract-results-schema.md` immediately before writing the YAML and apply it literally rather than paraphrasing from memory.
-`plan_contract_ref` must be a project-local PLAN path, not absolute or parent-traversing, and must end with the exact `#/contract` fragment. For reference-backed decisive comparisons, `comparison_kind: benchmark|prior_work|experiment|baseline|cross_method` can satisfy the requirement; `comparison_kind: other` cannot.
+`plan_contract_ref` must be the canonical project-root-relative `.gpd/phases/XX-name/{phase}-{plan}-PLAN.md#/contract` path. It must not be absolute, parent-traversing, or collapse to a bare sibling reference. For reference-backed decisive comparisons, `comparison_kind: benchmark|prior_work|experiment|baseline|cross_method` can satisfy the requirement; `comparison_kind: other` cannot.
+Keep `uncertainty_markers` explicit and user-visible in contract-backed outputs; do not let it be synthesized by hidden defaults.
 For `contract_results.references`, keep the action ledger consistent: `completed` needs non-empty `completed_actions`, `missing` needs non-empty `missing_actions`, `not_applicable` keeps both lists empty, and the two lists must not overlap.
 Every `comparison_verdicts` entry must declare `subject_role` explicitly. If a decisive external anchor was used, include `reference_id`; if the decisive anchor is itself the compared subject, use `subject_kind: reference`.
 Emit decisive `comparison_verdicts` whenever the PLAN contract includes `benchmark` or `cross_method` acceptance tests, whenever a benchmark/compare-driven reference anchors the subject, or whenever you performed a decisive comparison in practice.
@@ -46,7 +47,7 @@ Canonical ledger schema and validator-enforced rules to load before writing fron
 ---
 phase: XX-name
 plan: YY
-depth: minimal|standard|full|complex  # Controls which sections to include (default: full)
+depth: minimal|standard|full|complex  # Controls which sections to include; set explicitly
 one-liner: "[Substantive one-liner describing outcome — NOT 'phase complete' or 'derivation finished']"
 subsystem (optional):
   [
@@ -514,9 +515,9 @@ _Completed: 2026-03-15_
 </example>
 
 <guidelines>
-**Depth selection:** Default to `full`. Use `minimal` only for pure setup phases (convention setup, tool config) with a single clear result. Use `complex` for multi-step derivations, parameter sweeps, or plans with cross-phase dependencies. When in doubt, use `full`.
+**Depth selection:** Set `depth` explicitly. Use `minimal` only for pure setup phases (convention setup, tool config) with a single clear result. Use `complex` for multi-step derivations, parameter sweeps, or plans with cross-phase dependencies. When in doubt, choose `full` deliberately rather than treating it as an implicit default.
 
-**Frontmatter:** Required fields: `phase`, `plan`, `depth`, `provides`, `completed`. Populate optional fields (`subsystem`, `tags`, `requires`, `affects`, `methods`, `key-files`, `key-decisions`, `patterns-established`, `duration`) as relevant. For contract-backed summaries, `contract_results` is required, `comparison_verdicts` is required whenever a decisive comparison was required or attempted, and `plan_contract_ref` is required whenever either ledger is present. Enables automatic context assembly for future planning.
+**Frontmatter:** Required fields: `phase`, `plan`, `depth`, `provides`, `completed`. Populate optional fields (`subsystem`, `tags`, `requires`, `affects`, `methods`, `key-files`, `key-decisions`, `patterns-established`, `duration`) as relevant. For contract-backed summaries, `contract_results` is required, `comparison_verdicts` is required whenever a decisive comparison was required or attempted, `plan_contract_ref` is required whenever either ledger is present, and `uncertainty_markers` must stay explicit rather than being implied by defaults. Enables automatic context assembly for future planning.
 
 **One-liner:** Must be substantive. "Derived RG flow equations for phi-4 theory to two-loop order" not "Derivation finished".
 

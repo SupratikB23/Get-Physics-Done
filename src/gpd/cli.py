@@ -4136,6 +4136,17 @@ def _resolve_cli_target_dir(target_dir: str) -> Path:
     if resolved.is_absolute():
         return resolved
     return _get_cwd() / resolved
+
+
+def _target_dir_matches_global(runtime_name: str, target_dir: str, *, action: str) -> bool:
+    """Return whether an explicit target-dir names the runtime's canonical global dir."""
+    adapter = _get_adapter_or_error(runtime_name, action=action)
+    resolve_target_dir = getattr(adapter, "resolve_target_dir", None)
+    if not callable(resolve_target_dir):
+        return False
+    return _resolve_cli_target_dir(target_dir) == resolve_target_dir(True, _get_cwd())
+
+
 @app.command("install")
 def install(
     runtimes: list[str] | None = typer.Argument(
@@ -4194,7 +4205,7 @@ def install(
         elif local_install:
             is_global = False
         else:
-            is_global = False
+            is_global = _target_dir_matches_global(selected[0], target_dir, action="install")
     elif global_install:
         is_global = True
     elif local_install:
@@ -4293,7 +4304,7 @@ def uninstall(
         elif local_uninstall:
             is_global = False
         else:
-            is_global = False
+            is_global = _target_dir_matches_global(selected[0], target_dir, action="uninstall")
     elif not global_uninstall and not local_uninstall:
         is_global = _prompt_location(selected, action="uninstall")
     else:

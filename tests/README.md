@@ -365,7 +365,7 @@ flowchart TD
 - `src/gpd/core/state.py -> state.json.bak`
   `generated-output`
 
-- `src/gpd/core/state.py -> <cwd>/.gpd/state.intent`
+- `src/gpd/core/state.py -> <cwd>/.gpd/.state-write-intent`
   `generated-output`
   Dual-write recovery marker for interrupted `state.json` and `STATE.md` writes.
 

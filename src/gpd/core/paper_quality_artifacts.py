@@ -287,7 +287,9 @@ def _collect_contract_coverage(project_root: Path) -> _ContractCoverage:
         contract_results: ContractResults | None = None
         if isinstance(raw_results, dict) and plan_contract is not None:
             try:
-                contract_results = ContractResults.model_validate(normalize_contract_results_input(raw_results))
+                contract_results = ContractResults.model_validate(
+                    normalize_contract_results_input(raw_results, strict=True)
+                )
             except PydanticValidationError:
                 contract_results = None
             if contract_results is not None:

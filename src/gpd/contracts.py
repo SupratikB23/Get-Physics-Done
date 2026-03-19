@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections import defaultdict
 from typing import Literal
 
@@ -36,15 +37,6 @@ __all__ = [
     "contract_from_data",
 ]
 
-_CONTRACT_RESULTS_MAPPING_KEYS = (
-    "claims",
-    "deliverables",
-    "acceptance_tests",
-    "references",
-    "forbidden_proxies",
-)
-
-
 def _normalize_optional_str(value: object) -> object:
     if isinstance(value, str):
         stripped = value.strip()
@@ -78,27 +70,56 @@ def _normalize_string_list(value: object) -> object:
     return normalized
 
 
-def _normalize_mapping_field(value: object) -> object:
-    if value is None:
-        return {}
-    return value
+class _StrictContractResultsInput(dict[str, object]):
+    """Marker mapping for strict contract-results validation contexts."""
 
 
-def normalize_contract_results_input(value: object) -> object:
-    """Normalize boundary-format drift before strict ``ContractResults`` validation.
+_STRICT_CONTRACT_RESULTS_CALLERS = {"gpd.core.commands", "gpd.core.frontmatter"}
+_NON_STRICT_CONTRACT_RESULTS_CALLERS = {"gpd.core.paper_quality_artifacts"}
 
-    Some legacy YAML emits empty sections as ``[]`` instead of ``{}``. Accepting
-    only the empty-list form at parser boundaries preserves stability for old
-    summaries without reintroducing broad, silent coercion inside the shared
-    contract models.
+
+def _contract_results_callers() -> set[str]:
+    """Return module names in the active call stack for contract-results parsing."""
+
+    frame = inspect.currentframe()
+    callers: set[str] = set()
+    try:
+        caller = frame.f_back if frame is not None else None
+        while caller is not None:
+            module_name = caller.f_globals.get("__name__")
+            if isinstance(module_name, str):
+                callers.add(module_name)
+            caller = caller.f_back
+    finally:
+        del caller
+        del frame
+    return callers
+
+
+def normalize_contract_results_input(value: object, *, strict: bool | None = None) -> object:
+    """Preserve contract-results shape before strict ``ContractResults`` validation.
+
+    The shared model boundary no longer coerces placeholder mappings such as
+    ``null`` or ``[]`` into empty ledgers. Frontmatter and command parsing mark
+    the input as strict so explicit ledgers are required there, while the
+    paper-quality aggregation path stays permissive for legacy fixture reuse.
     """
     if not isinstance(value, dict):
         return value
 
     normalized = dict(value)
-    for key in _CONTRACT_RESULTS_MAPPING_KEYS:
-        if normalized.get(key) == []:
-            normalized[key] = {}
+    callers = _contract_results_callers()
+    if callers & _NON_STRICT_CONTRACT_RESULTS_CALLERS:
+        strict = False
+    elif strict is None:
+        strict = bool(callers & _STRICT_CONTRACT_RESULTS_CALLERS)
+    if not strict:
+        for field_name in ("claims", "deliverables", "acceptance_tests", "references", "forbidden_proxies"):
+            section_value = normalized.get(field_name)
+            if section_value is None or isinstance(section_value, list):
+                normalized[field_name] = {}
+    if strict:
+        return _StrictContractResultsInput(normalized)
     return normalized
 
 
@@ -292,6 +313,13 @@ class ContractResults(BaseModel):
     forbidden_proxies: dict[str, ContractForbiddenProxyResult] = Field(default_factory=dict)
     uncertainty_markers: ContractUncertaintyMarkers = Field(default_factory=lambda: ContractUncertaintyMarkers())
 
+    @model_validator(mode="before")
+    @classmethod
+    def _require_explicit_uncertainty_markers(cls, value: object) -> object:
+        if isinstance(value, _StrictContractResultsInput) and "uncertainty_markers" not in value:
+            raise ValueError("uncertainty_markers must be explicit in contract-backed contract_results")
+        return value
+
     @field_validator(
         "claims",
         "deliverables",
@@ -302,7 +330,7 @@ class ContractResults(BaseModel):
     )
     @classmethod
     def _normalize_mapping_sections(cls, value: object) -> object:
-        return _normalize_mapping_field(value)
+        return value
 
 
 class SuggestedContractCheck(BaseModel):
@@ -339,7 +367,7 @@ class ComparisonVerdict(BaseModel):
 
     subject_id: str
     subject_kind: Literal["claim", "deliverable", "acceptance_test", "reference"]
-    subject_role: Literal["decisive", "supporting", "supplemental", "other"] = "other"
+    subject_role: Literal["decisive", "supporting", "supplemental", "other"]
     reference_id: str | None = None
     comparison_kind: Literal["benchmark", "prior_work", "experiment", "cross_method", "baseline", "other"] = "other"
     metric: str | None = None
@@ -362,12 +390,6 @@ class ComparisonVerdict(BaseModel):
     @classmethod
     def _normalize_optional_fields(cls, value: object) -> object:
         return _normalize_optional_str(value)
-
-    @property
-    def subject_role_explicit(self) -> bool:
-        """Return whether ``subject_role`` was explicitly set in source data."""
-
-        return "subject_role" in self.model_fields_set
 
     def anchored_reference_ids(self, known_reference_ids: set[str] | None = None) -> set[str]:
         """Return contract reference anchors named by this verdict.
@@ -679,7 +701,7 @@ class ResearchContract(BaseModel):
     references: list[ContractReference] = Field(default_factory=list)
     forbidden_proxies: list[ContractForbiddenProxy] = Field(default_factory=list)
     links: list[ContractLink] = Field(default_factory=list)
-    uncertainty_markers: ContractUncertaintyMarkers = Field(default_factory=ContractUncertaintyMarkers)
+    uncertainty_markers: ContractUncertaintyMarkers = Field(default_factory=lambda: ContractUncertaintyMarkers())
 
 
 _CONTRACT_ID_GROUPS: tuple[tuple[str, str], ...] = (

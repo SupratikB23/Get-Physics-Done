@@ -900,7 +900,10 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "plan_contract_ref" in summary_template
     assert "Keep this ledger user-visible" in summary_template
     assert "Reload `@{GPD_INSTALL_DIR}/templates/contract-results-schema.md` immediately before writing the YAML" in summary_template
-    assert "project-local PLAN path, not absolute or parent-traversing" in summary_template
+    assert "canonical project-root-relative `.gpd/phases/XX-name/{phase}-{plan}-PLAN.md#/contract` path" in summary_template
+    assert "Choose the depth explicitly" in summary_template
+    assert "default: full" not in summary_template
+    assert "Keep `uncertainty_markers` explicit and user-visible" in summary_template
     assert "omitting the corresponding `comparison_verdicts` entry makes the summary incomplete" in summary_template
     assert "verification_inputs" not in summary_template
     assert "contract_results" in verification_template
@@ -1042,6 +1045,8 @@ def test_contract_schema_references_stay_wired_into_templates_and_review_docs() 
     assert '"sections"' in paper_config_schema
     assert "XX-YY-SUMMARY.md" in contract_results_schema
     assert "XX-VERIFICATION.md" in contract_results_schema
+    assert "Must be the canonical project-root-relative `.gpd/phases/XX-name/XX-YY-PLAN.md#/contract` path" in contract_results_schema
+    assert "`uncertainty_markers` must remain explicit in contract-backed outputs" in contract_results_schema
     assert "templates/contract-results-schema.md" in executor_completion
     assert "claim_id: claim-main" in executor_completion
     assert "completed_actions: [read, compare, cite]" in executor_completion

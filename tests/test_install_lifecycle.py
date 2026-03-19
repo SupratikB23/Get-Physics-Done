@@ -17,12 +17,15 @@ import json
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 from gpd.adapters import get_adapter, iter_runtime_descriptors
 from gpd.adapters.install_utils import MANIFEST_NAME, file_hash
+from gpd.cli import app
 
 _RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
 _ALL_RUNTIMES = tuple(descriptor.runtime_name for descriptor in _RUNTIME_DESCRIPTORS)
+runner = CliRunner()
 
 
 def _install_kwargs_for_runtime(tmp_path: Path, runtime: str, *, is_global: bool, explicit_target: bool = False) -> dict[str, object]:
@@ -690,6 +693,54 @@ class TestManifestConsistency:
         manifest = json.loads((target / MANIFEST_NAME).read_text(encoding="utf-8"))
         assert manifest["install_target_dir"] == str(target)
         assert manifest["explicit_target"] is True
+
+    @pytest.mark.parametrize("manifest_runtime", ["Claude Code", "claude"])
+    def test_uninstall_accepts_display_name_and_alias_manifest_runtime(
+        self,
+        manifest_runtime: str,
+        tmp_path: Path,
+        gpd_root: Path,
+    ) -> None:
+        adapter = get_adapter("claude-code")
+        target = tmp_path / adapter.config_dir_name
+        target.mkdir(parents=True, exist_ok=True)
+
+        _install_and_finalize(
+            adapter,
+            gpd_root,
+            target,
+            **_install_kwargs_for_runtime(tmp_path, "claude-code", is_global=False),
+        )
+
+        manifest_path = target / MANIFEST_NAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["runtime"] = manifest_runtime
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        result = adapter.uninstall(target)
+
+        assert result["removed"]
+        assert not manifest_path.exists()
+
+    def test_target_dir_matching_global_dir_infers_global_scope(self, tmp_path: Path) -> None:
+        from unittest.mock import patch
+
+        runtime = "claude-code"
+        adapter = get_adapter(runtime)
+        fake_home = tmp_path / "_fake_home"
+        fake_home.mkdir()
+
+        with patch("pathlib.Path.home", return_value=fake_home):
+            target_dir = adapter.resolve_target_dir(True, tmp_path)
+            result = runner.invoke(
+                app,
+                ["--raw", "install", runtime, "--target-dir", str(target_dir)],
+                catch_exceptions=False,
+            )
+
+        assert result.exit_code == 0, result.output
+        manifest = json.loads((target_dir / "gpd-file-manifest.json").read_text(encoding="utf-8"))
+        assert manifest["install_scope"] == "global"
 
 
 # ---------------------------------------------------------------------------

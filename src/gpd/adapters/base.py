@@ -42,6 +42,20 @@ from gpd.registry import AgentDef, load_agents_from_dir
 logger = logging.getLogger(__name__)
 
 
+def _normalize_manifest_runtime(runtime: object) -> str | None:
+    """Return the canonical runtime name for manifest/runtime metadata when possible."""
+    if not isinstance(runtime, str):
+        return None
+
+    normalized = runtime.strip()
+    if not normalized:
+        return None
+
+    from gpd.hooks.runtime_detect import normalize_runtime_name
+
+    return normalize_runtime_name(normalized) or normalized
+
+
 class RuntimeAdapter(abc.ABC):
     """Abstract base for GPD runtime adapters."""
 
@@ -270,11 +284,7 @@ class RuntimeAdapter(abc.ABC):
             return None
         if not isinstance(payload, dict):
             return None
-        runtime = payload.get("runtime")
-        if not isinstance(runtime, str):
-            return None
-        normalized = runtime.strip()
-        return normalized or None
+        return _normalize_manifest_runtime(payload.get("runtime"))
 
     def _validate_target_runtime(self, target_dir: Path, *, action: str) -> None:
         """Reject explicit target dirs that already belong to another runtime."""
@@ -290,17 +300,18 @@ class RuntimeAdapter(abc.ABC):
         if not isinstance(manifest_runtime, str):
             return
 
-        manifest_runtime = manifest_runtime.strip()
-        if not manifest_runtime or manifest_runtime == self.runtime_name:
+        manifest_runtime_label = manifest_runtime.strip()
+        normalized_manifest_runtime = _normalize_manifest_runtime(manifest_runtime)
+        if not normalized_manifest_runtime or normalized_manifest_runtime == self.runtime_name:
             return
 
         try:
-            other_runtime = get_runtime_descriptor(manifest_runtime).display_name
+            other_runtime = get_runtime_descriptor(normalized_manifest_runtime).display_name
         except KeyError:
-            other_runtime = "unknown runtime"
+            other_runtime = normalized_manifest_runtime
         raise RuntimeError(
             f"Refusing to {action} `{target_dir}` because its GPD manifest belongs to "
-            f"{other_runtime} (`{manifest_runtime}`), not {self.display_name} (`{self.runtime_name}`)."
+            f"{other_runtime} (`{manifest_runtime_label}`), not {self.display_name} (`{self.runtime_name}`)."
         )
 
     def runtime_cli_bridge_command(self, target_dir: Path) -> str:

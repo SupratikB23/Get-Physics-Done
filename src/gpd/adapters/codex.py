@@ -172,6 +172,26 @@ def _load_manifest_codex_skills_dir(target_dir: Path) -> Path | None:
     return None
 
 
+def _load_manifest_install_scope(target_dir: Path) -> str | None:
+    """Return the install scope recorded in the local manifest, if present."""
+    manifest_path = target_dir / MANIFEST_NAME
+    if not manifest_path.exists():
+        return None
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    if not isinstance(manifest, dict):
+        return None
+
+    install_scope = manifest.get("install_scope")
+    if install_scope in {"local", "global"}:
+        return str(install_scope)
+    return None
+
+
 def _resolve_codex_uninstall_skills_dir(target_dir: Path, *, is_global: bool, skills_dir: Path | None = None) -> Path:
     """Resolve the skills dir to clean during uninstall.
 
@@ -684,9 +704,10 @@ class CodexAdapter(RuntimeAdapter):
 
         skills_dir = _load_manifest_codex_skills_dir(target_dir)
         if skills_dir is None:
+            manifest_install_scope = _load_manifest_install_scope(target_dir)
             skills_dir = _resolve_codex_skills_dir(
                 target_dir,
-                is_global=_is_global_codex_target(target_dir),
+                is_global=manifest_install_scope == "global" if manifest_install_scope is not None else _is_global_codex_target(target_dir),
             )
 
         try:

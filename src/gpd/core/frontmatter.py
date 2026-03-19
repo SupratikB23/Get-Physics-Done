@@ -510,7 +510,7 @@ def _parse_contract_results(meta: dict) -> ContractResults | None:
     raw = meta.get("contract_results")
     if raw is None:
         return None
-    return ContractResults.model_validate(normalize_contract_results_input(raw))
+    return ContractResults.model_validate(normalize_contract_results_input(raw, strict=True))
 
 
 def _parse_comparison_verdicts(meta: dict) -> list[ComparisonVerdict]:
@@ -581,17 +581,19 @@ def _plan_contract_ref_path_error(plan_contract_ref: str) -> str | None:
 
     path_text = plan_contract_ref.strip().partition("#")[0].strip()
     if not path_text:
-        return "plan_contract_ref: must reference a project-local PLAN path"
+        return "plan_contract_ref: must reference a canonical project-root-relative .gpd PLAN path"
     if _PLAN_CONTRACT_REF_EXTERNAL_RE.match(path_text):
-        return "plan_contract_ref: must reference a project-local PLAN path"
+        return "plan_contract_ref: must reference a canonical project-root-relative .gpd PLAN path"
     if re.match(r"^[A-Za-z]:[\\/]", path_text) or re.match(r"^[A-Za-z]:$", path_text):
-        return "plan_contract_ref: must reference a project-local PLAN path"
+        return "plan_contract_ref: must reference a canonical project-root-relative .gpd PLAN path"
 
     relative_plan_path = Path(path_text[2:] if path_text.startswith("./") else path_text)
     if relative_plan_path.is_absolute():
-        return "plan_contract_ref: must reference a project-local PLAN path"
+        return "plan_contract_ref: must reference a canonical project-root-relative .gpd PLAN path"
     if any(part == ".." for part in relative_plan_path.parts):
         return "plan_contract_ref: must not traverse parent directories"
+    if not relative_plan_path.parts or relative_plan_path.parts[0] != ".gpd":
+        return "plan_contract_ref: must reference a canonical project-root-relative .gpd PLAN path"
     return None
 
 
@@ -744,11 +746,6 @@ def _summary_contract_errors(
             )
         if verdict.reference_id is not None and verdict.reference_id not in reference_ids:
             errors.append(f"comparison_verdict references unknown reference_id {verdict.reference_id}")
-        if verdict.comparison_kind in _DECISIVE_COMPARISON_KINDS and not verdict.subject_role_explicit:
-            errors.append(
-                "comparison_verdict for "
-                f"{verdict.subject_id} must declare subject_role explicitly for {verdict.comparison_kind} comparisons"
-            )
         if (
             verdict.subject_role == "decisive"
             and verdict.comparison_kind in _DECISIVE_EXTERNAL_COMPARISON_KINDS
@@ -1015,37 +1012,21 @@ def _find_matching_plan_contract(summary_dir: Path, summary_meta: dict) -> _Plan
     if isinstance(plan_contract_ref, str):
         if _plan_contract_ref_fragment_error(plan_contract_ref) is not None:
             return _PlanContractResolution()
-        plan_ref_path = plan_contract_ref.split("#", 1)[0].strip()
-        if plan_ref_path:
-            relative_plan_path = Path(plan_ref_path[2:] if plan_ref_path.startswith("./") else plan_ref_path)
-            path_error = _plan_contract_ref_path_error(plan_contract_ref)
-            if path_error is not None:
-                return _PlanContractResolution(errors=[path_error])
-            candidates: list[Path]
-            if relative_plan_path.is_absolute():
-                candidates = [relative_plan_path]
-            else:
-                candidate_bases = [summary_dir]
-                project_root = resolve_project_root(summary_dir)
-                if project_root is not None:
-                    try:
-                        summary_dir.relative_to(project_root)
-                    except ValueError:
-                        project_root = summary_dir
-                current = summary_dir
-                while project_root is not None and current != project_root:
-                    current = current.parent
-                    candidate_bases.append(current)
-                candidates = [base / relative_plan_path for base in candidate_bases]
-
-            for candidate in candidates:
-                if not candidate.exists():
-                    continue
-                matched, resolution = _resolve_plan_contract_candidate(candidate, summary_meta)
-                if not matched:
-                    continue
-                return resolution
+        path_error = _plan_contract_ref_path_error(plan_contract_ref)
+        if path_error is not None:
             return _PlanContractResolution()
+        plan_ref_path = plan_contract_ref.split("#", 1)[0].strip()
+        relative_plan_path = Path(plan_ref_path[2:] if plan_ref_path.startswith("./") else plan_ref_path)
+        project_root = resolve_project_root(summary_dir)
+        if project_root is None:
+            return _PlanContractResolution()
+        candidate = (project_root / relative_plan_path).resolve(strict=False)
+        if not candidate.exists():
+            return _PlanContractResolution()
+        matched, resolution = _resolve_plan_contract_candidate(candidate, summary_meta)
+        if matched:
+            return resolution
+        return _PlanContractResolution()
 
     matching_candidates: list[_PlanContractResolution] = []
     for candidate in sorted(summary_dir.iterdir()):
@@ -1115,12 +1096,17 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
     if schema_name in {"summary", "verification"}:
         plan_contract_ref = meta.get("plan_contract_ref")
         plan_contract_ref_fragment_error: str | None = None
+        plan_contract_ref_path_error: str | None = None
         if plan_contract_ref is not None and not isinstance(plan_contract_ref, str):
             errors.append("plan_contract_ref: expected a string")
         elif isinstance(plan_contract_ref, str):
             plan_contract_ref_fragment_error = _plan_contract_ref_fragment_error(plan_contract_ref)
             if plan_contract_ref_fragment_error is not None:
                 errors.append(plan_contract_ref_fragment_error)
+            else:
+                plan_contract_ref_path_error = _plan_contract_ref_path_error(plan_contract_ref)
+                if plan_contract_ref_path_error is not None:
+                    errors.append(plan_contract_ref_path_error)
         if (meta.get("contract_results") is not None or meta.get("comparison_verdicts") is not None) and not isinstance(
             plan_contract_ref, str
         ):
@@ -1152,6 +1138,7 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
             if (
                 isinstance(plan_contract_ref, str)
                 and plan_contract_ref_fragment_error is None
+                and plan_contract_ref_path_error is None
                 and plan_contract is None
                 and not plan_contract_resolution.errors
             ):

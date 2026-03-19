@@ -21,6 +21,7 @@ from pathlib import Path
 from gpd.adapters import get_adapter
 from gpd.adapters.install_utils import GPD_INSTALL_DIR_NAME, MANIFEST_NAME, build_runtime_install_repair_command
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_REEXEC
+from gpd.hooks.runtime_detect import normalize_runtime_name
 
 
 def _parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
@@ -135,7 +136,9 @@ def _manifest_runtime(config_dir: Path) -> str | None:
     if not isinstance(runtime, str):
         return None
     normalized = runtime.strip()
-    return normalized or None
+    if not normalized:
+        return None
+    return normalize_runtime_name(normalized) or normalized
 
 
 def _runtime_display_name(runtime: str) -> str:
@@ -169,8 +172,11 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str) -> bo
         return False
 
     manifest_runtime = manifest.get("runtime")
-    if isinstance(manifest_runtime, str) and manifest_runtime.strip() and manifest_runtime.strip() != runtime:
-        return False
+    if isinstance(manifest_runtime, str):
+        normalized_runtime = normalize_runtime_name(manifest_runtime.strip()) if manifest_runtime.strip() else None
+        manifest_runtime_value = normalized_runtime or manifest_runtime.strip()
+        if manifest_runtime_value and manifest_runtime_value != runtime:
+            return False
 
     if manifest_scope == "local":
         return True

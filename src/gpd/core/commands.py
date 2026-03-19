@@ -307,7 +307,7 @@ def _parse_contract_results(value: object, summary_path: str) -> ContractResults
     if not isinstance(value, dict):
         raise ValidationError(f"Invalid contract_results in {summary_path}: expected an object")
     try:
-        return ContractResults.model_validate(normalize_contract_results_input(value))
+        return ContractResults.model_validate(normalize_contract_results_input(value, strict=True))
     except Exception as exc:  # pragma: no cover - pydantic version specifics
         raise ValidationError(f"Invalid contract_results in {summary_path}: {exc}") from exc
 

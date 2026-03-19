@@ -134,6 +134,44 @@ def test_installed_update_command_uses_manifest_runtime_metadata_for_custom_targ
     assert str(explicit_target) in command
 
 
+@pytest.mark.parametrize("manifest_runtime", ["Claude Code", "claude"])
+def test_runtime_cli_accepts_display_name_and_alias_manifest_runtime(
+    tmp_path: Path,
+    manifest_runtime: str,
+) -> None:
+    import gpd.runtime_cli as runtime_cli
+    from gpd.adapters import get_adapter
+
+    runtime = "claude-code"
+    adapter = get_adapter(runtime)
+    gpd_root = Path(__file__).resolve().parents[2] / "src" / "gpd"
+    target_dir = tmp_path / adapter.config_dir_name
+    target_dir.mkdir(parents=True, exist_ok=True)
+    result = adapter.install(gpd_root, target_dir, is_global=True)
+    adapter.finalize_install(result)
+    manifest_path = target_dir / "gpd-file-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["runtime"] = manifest_runtime
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with patch("gpd.runtime_cli._maybe_reexec_from_checkout", lambda *_args, **_kwargs: None):
+        with pytest.raises(SystemExit) as excinfo:
+            runtime_cli.main(
+                [
+                    "--runtime",
+                    runtime,
+                    "--config-dir",
+                    str(target_dir),
+                    "--install-scope",
+                    "global",
+                    "--raw",
+                    "version",
+                ]
+            )
+
+    assert excinfo.value.code == 0
+
+
 def test_installed_update_command_ignores_process_cwd_for_nested_default_local_install(tmp_path: Path) -> None:
     from gpd.hooks.install_metadata import installed_update_command
 
