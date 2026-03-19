@@ -27,7 +27,6 @@ from gpd.contracts import (
     ResearchContract,
     VerificationEvidence,
 )
-from gpd.core.checkpoints import sync_phase_checkpoints
 from gpd.core.constants import (
     ENV_GPD_DEBUG,
     PHASES_DIR_NAME,
@@ -307,7 +306,11 @@ class RecordMetricResult(BaseModel):
 
 
 class UpdateProgressResult(BaseModel):
-    """Returned by :func:`state_update_progress`."""
+    """Returned by :func:`state_update_progress`.
+
+    ``checkpoint_files`` is retained for backward compatibility, but progress
+    recomputation no longer synchronizes checkpoint shelf artifacts.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -2258,19 +2261,12 @@ def state_update_progress(cwd: Path) -> UpdateProgressResult:
         if progress_pattern.search(content):
             new_content = progress_pattern.sub(lambda m: m.group(1) + progress_str, content, count=1)
             _write_state_markdown_locked(cwd, new_content)
-            try:
-                checkpoints_result = sync_phase_checkpoints(cwd)
-                checkpoint_files = checkpoints_result.updated_files
-            except Exception:
-                logger.warning("Failed to generate phase checkpoint documents", exc_info=True)
-                checkpoint_files = []
             return UpdateProgressResult(
                 updated=True,
                 percent=percent,
                 completed=total_completed,
                 total=total_plans,
                 bar=progress_str,
-                checkpoint_files=checkpoint_files,
             )
 
         return UpdateProgressResult(updated=False, reason="Progress field not found in STATE.md")

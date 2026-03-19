@@ -138,6 +138,26 @@ def test_graph_captures_hook_runtime_wiring_edges() -> None:
         assert edge not in graph
 
 
+def test_graph_captures_checkpoint_feature_edges() -> None:
+    graph = read_graph_text()
+    expected_edges = [
+        "`src/gpd/cli.py::sync_phase_checkpoints -> src/gpd/core/checkpoints.py::sync_phase_checkpoints`",
+        "`src/gpd/core/phases.py -> src/gpd/core/checkpoints.py::sync_phase_checkpoints`",
+        "`src/gpd/core/checkpoints.py -> generated outputs {.gpd/CHECKPOINTS.md, .gpd/phase-checkpoints/*.md}`",
+        "`src/gpd/core/checkpoints.py -> <cwd>/.gpd/CHECKPOINTS.md`",
+        "`src/gpd/core/checkpoints.py -> <cwd>/.gpd/phase-checkpoints/*.md`",
+    ]
+    unexpected_edges = [
+        "`src/gpd/core/state.py -> src/gpd/core/checkpoints.py::sync_phase_checkpoints`",
+    ]
+
+    for edge in expected_edges:
+        assert edge in graph
+
+    for edge in unexpected_edges:
+        assert edge not in graph
+
+
 def test_graph_test_file_references_exist() -> None:
     missing = sorted(
         {

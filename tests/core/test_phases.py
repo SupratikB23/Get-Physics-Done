@@ -889,6 +889,27 @@ def test_phase_plan_index_rejects_scalar_dependency_fields(tmp_path: Path) -> No
     assert any("depends_on" in error for error in result.validation.errors)
 
 
+def test_phase_plan_index_detects_checkpoint_tasks_without_interactive_flag(tmp_path: Path) -> None:
+    _setup_project(tmp_path)
+    phase_dir = _create_phase_dir(tmp_path, "01-setup")
+    (phase_dir / "a-PLAN.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            wave: 1
+            ---
+            <task type="checkpoint">
+              <name>Review the checkpoint</name>
+            </task>
+            """
+        )
+    )
+
+    result = phase_plan_index(tmp_path, "1")
+
+    assert result.has_checkpoints is True
+
+
 def test_validate_phase_waves_reports_malformed_frontmatter(tmp_path: Path) -> None:
     _setup_project(tmp_path)
     phase_dir = _create_phase_dir(tmp_path, "01-setup")

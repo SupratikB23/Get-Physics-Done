@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from gpd.core.checkpoints import sync_phase_checkpoints
 from gpd.core.phases import (
     MilestoneIncompleteError,
     find_phase,
@@ -134,8 +135,8 @@ class TestPhaseLifecycle:
         # STATE.md should reflect transition
         state = (tmp_path / ".gpd" / "STATE.md").read_text()
         assert "Ready to plan" in state
-        assert (tmp_path / "phase-checkpoints" / "01-setup.md").exists()
-        assert (tmp_path / "CHECKPOINTS.md").exists()
+        assert (tmp_path / ".gpd" / "phase-checkpoints" / "01-setup.md").exists()
+        assert (tmp_path / ".gpd" / "CHECKPOINTS.md").exists()
 
     def test_completing_last_phase_marks_milestone_complete(self, tmp_path: Path) -> None:
         self._create_fixture(tmp_path)
@@ -236,6 +237,25 @@ class TestPhaseRemoveRenumber:
         # With force=True should succeed
         result = phase_remove(tmp_path, "2", force=True)
         assert result.removed == "2"
+
+    def test_phase_remove_resyncs_checkpoint_shelf(self, tmp_path: Path) -> None:
+        self._create_fixture(tmp_path)
+        derivation_dir = tmp_path / ".gpd" / "phases" / "02-derivation"
+        (derivation_dir / "02-01-SUMMARY.md").write_text("# Summary\n", encoding="utf-8")
+        validation_dir = tmp_path / ".gpd" / "phases" / "03-validation"
+        (validation_dir / "03-01-SUMMARY.md").write_text("# Summary\n", encoding="utf-8")
+
+        sync_phase_checkpoints(tmp_path)
+        assert (tmp_path / ".gpd" / "phase-checkpoints" / "02-derivation.md").exists()
+        assert (tmp_path / ".gpd" / "phase-checkpoints" / "03-validation.md").exists()
+
+        result = phase_remove(tmp_path, "2", force=True)
+
+        assert result.removed == "2"
+        assert not (tmp_path / ".gpd" / "phase-checkpoints" / "02-derivation.md").exists()
+        assert (tmp_path / ".gpd" / "phase-checkpoints" / "02-validation.md").exists()
+        checkpoints_index = (tmp_path / ".gpd" / "CHECKPOINTS.md").read_text(encoding="utf-8")
+        assert "[Phase 02: Validation](phase-checkpoints/02-validation.md)" in checkpoints_index
 
 
 # ─── Roadmap Analyze → Phase Add → Re-Analyze Round-Trip ──────────────────

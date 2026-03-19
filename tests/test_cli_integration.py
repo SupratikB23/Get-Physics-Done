@@ -779,8 +779,8 @@ class TestSyncPhaseCheckpointsCommand:
 
         parsed = json.loads(result.output)
         assert parsed["phase_count"] == 1
-        assert (gpd_project / "phase-checkpoints" / "01-test-phase.md").exists()
-        assert (gpd_project / "CHECKPOINTS.md").exists()
+        assert (gpd_project / ".gpd" / "phase-checkpoints" / "01-test-phase.md").exists()
+        assert (gpd_project / ".gpd" / "CHECKPOINTS.md").exists()
 
 
 class TestResolveModelCommand:

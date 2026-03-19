@@ -339,9 +339,49 @@ def test_state_update_progress_ignores_orphan_summaries_and_caps_percent(tmp_pat
     assert result.completed == 1
     assert result.total == 1
     assert result.percent == 100
-    assert (cwd / "phase-checkpoints" / "01-foundations.md").exists()
-    assert (cwd / "CHECKPOINTS.md").exists()
-    assert "CHECKPOINTS.md" in result.checkpoint_files
+    assert result.checkpoint_files == []
+    assert not (cwd / ".gpd" / "phase-checkpoints" / "01-foundations.md").exists()
+    assert not (cwd / ".gpd" / "CHECKPOINTS.md").exists()
+
+
+def test_state_update_progress_leaves_checkpoint_shelf_artifacts_unchanged(tmp_path: Path) -> None:
+    cwd = _bootstrap_project(tmp_path)
+    planning = cwd / ".gpd"
+    state = default_state_dict()
+    state["position"]["current_phase"] = "01"
+    state["position"]["total_phases"] = 2
+    state["position"]["status"] = "Executing"
+    (planning / "STATE.md").write_text(generate_state_markdown(state), encoding="utf-8")
+
+    phase_one = planning / "phases" / "01-foundations"
+    phase_one.mkdir(parents=True)
+    (phase_one / "PLAN.md").write_text("# plan\n", encoding="utf-8")
+    (phase_one / "SUMMARY.md").write_text("# summary\n", encoding="utf-8")
+
+    phase_two = planning / "phases" / "02-analysis"
+    phase_two.mkdir(parents=True)
+    (phase_two / "PLAN.md").write_text("# plan\n", encoding="utf-8")
+    (phase_two / "SUMMARY.md").write_text("# summary\n", encoding="utf-8")
+
+    checkpoint_dir = cwd / ".gpd" / "phase-checkpoints"
+    checkpoint_dir.mkdir()
+    stale_checkpoint = checkpoint_dir / "99-old-phase.md"
+    stale_checkpoint.write_text("stale checkpoint\n", encoding="utf-8")
+    checkpoints_index = cwd / ".gpd" / "CHECKPOINTS.md"
+    checkpoints_index.write_text("stale index\n", encoding="utf-8")
+
+    result = state_update_progress(cwd)
+
+    assert result.updated is True
+    assert result.completed == 2
+    assert result.total == 2
+    assert result.percent == 100
+    assert result.checkpoint_files == []
+    assert not (checkpoint_dir / "01-foundations.md").exists()
+    assert not (checkpoint_dir / "02-analysis.md").exists()
+    assert stale_checkpoint.read_text(encoding="utf-8") == "stale checkpoint\n"
+    assert stale_checkpoint.exists()
+    assert checkpoints_index.read_text(encoding="utf-8") == "stale index\n"
 
 
 def test_state_validate_allows_pristine_default_convention_lock(tmp_path: Path) -> None:

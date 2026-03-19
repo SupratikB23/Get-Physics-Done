@@ -202,6 +202,17 @@ def _extract_state_field(state_content: str, field_name: str) -> str | None:
     return None if value == "\u2014" else value
 
 
+_CHECKPOINT_TASK_RE = re.compile(r'<task\s+[^>]*?type=["\']?checkpoint', re.IGNORECASE)
+
+
+def _sync_phase_checkpoints_safely(cwd: Path) -> None:
+    """Run checkpoint sync without interrupting lifecycle operations."""
+    try:
+        sync_phase_checkpoints(cwd)
+    except Exception:
+        logger.warning("Failed to generate phase checkpoint documents", exc_info=True)
+
+
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
 
 
@@ -959,7 +970,7 @@ def phase_plan_index(cwd: Path, phase: str) -> PhasePlanIndex:
             if "interactive" in fm:
                 interactive = fm["interactive"] in (True, "true")
 
-            if interactive:
+            if interactive or _CHECKPOINT_TASK_RE.search(content):
                 has_checkpoints = True
 
             has_summary = plan_id in completed_plan_ids
@@ -1613,7 +1624,7 @@ def phase_remove(cwd: Path, target_phase: str, *, force: bool = False) -> PhaseR
 
                     _save_state_markdown(cwd, state_content)
 
-        return PhaseRemoveResult(
+        result = PhaseRemoveResult(
             removed=target_phase,
             directory_deleted=target_dir,
             renamed_directories=renamed_dirs,
@@ -1621,6 +1632,9 @@ def phase_remove(cwd: Path, target_phase: str, *, force: bool = False) -> PhaseR
             roadmap_updated=True,
             state_updated=state_path.exists(),
         )
+
+    _sync_phase_checkpoints_safely(cwd)
+    return result
 
 
 def _renumber_decimal_phases(phases_dir: Path, normalized: str) -> tuple[list[RenameEntry], list[RenameEntry]]:
@@ -1907,10 +1921,7 @@ def phase_complete(cwd: Path, phase_num: str) -> PhaseCompleteResult:
 
                     _save_state_markdown(cwd, state_content)
 
-            try:
-                sync_phase_checkpoints(cwd)
-            except Exception:
-                logger.warning("Failed to generate phase checkpoint documents", exc_info=True)
+            _sync_phase_checkpoints_safely(cwd)
 
         return PhaseCompleteResult(
             completed_phase=phase_num,
@@ -2061,10 +2072,7 @@ def milestone_complete(cwd: Path, version: str, *, name: str | None = None) -> M
                     )
                     _save_state_markdown(cwd, state_content)
 
-            try:
-                sync_phase_checkpoints(cwd)
-            except Exception:
-                logger.warning("Failed to generate phase checkpoint documents", exc_info=True)
+            _sync_phase_checkpoints_safely(cwd)
 
         return MilestoneCompleteResult(
             version=version,

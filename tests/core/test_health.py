@@ -119,6 +119,14 @@ class TestCheckStoragePaths:
         assert result.details["temporary_project_root"] is True
         assert any("Project root is under a temporary directory" in warning for warning in result.warnings)
 
+
+def test_repo_gitignore_keeps_checkpoint_outputs_under_gpd_only() -> None:
+    ignore_lines = (Path(__file__).resolve().parents[2] / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+    assert ".gpd/" in ignore_lines
+    assert "CHECKPOINTS.md" not in ignore_lines
+    assert "phase-checkpoints/" not in ignore_lines
+
     def test_hidden_results_and_scratch_outputs_warn(self, tmp_path: Path) -> None:
         cwd = _bootstrap_health_project(tmp_path)
         hidden_results = cwd / ".gpd" / "phases" / "01-setup" / "results"

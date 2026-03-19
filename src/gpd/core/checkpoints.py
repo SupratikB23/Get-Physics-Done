@@ -1,10 +1,10 @@
 """Generated human-facing phase checkpoint documents.
 
-Builds a root-facing reading layer from the canonical per-phase SUMMARY and
+Builds a project-internal reading layer from the canonical per-phase SUMMARY and
 VERIFICATION artifacts. The generated outputs are deterministic:
 
-- one ``phase-checkpoints/<phase-dir>.md`` file per phase that has summaries
-- one root ``CHECKPOINTS.md`` index covering the whole project
+- one ``.gpd/phase-checkpoints/<phase-dir>.md`` file per phase that has summaries
+- one ``.gpd/CHECKPOINTS.md`` index covering the whole project
 
 The canonical source of truth remains ``.gpd/phases/.../*-SUMMARY.md`` and
 ``*-VERIFICATION.md``. This module only derives readable checkpoint notes from
@@ -50,6 +50,8 @@ class SyncPhaseCheckpointsResult(BaseModel):
     root_index: str
     updated_files: list[str] = Field(default_factory=list)
     removed_files: list[str] = Field(default_factory=list)
+    skipped_files: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,21 @@ class _PhaseSummaryDoc:
     body: str
     provides: list[str]
     summary_extract: SummaryExtractResult
+
+
+@dataclass(frozen=True)
+class _PhaseSummaryScanResult:
+    docs: list[_PhaseSummaryDoc]
+    skipped_files: list[str]
+    errors: list[str]
+
+
+@dataclass(frozen=True)
+class _CheckpointIndexEntry:
+    phase_dir_name: str
+    phase_number: str
+    phase_title: str
+    one_liner: str = ""
 
 
 def _title_from_phase_dir(phase_dir_name: str) -> tuple[str, str]:
@@ -138,25 +155,44 @@ def _verification_sort_key(path: Path) -> tuple[int, str]:
     return (0, path.name)
 
 
-def _phase_summary_docs(cwd: Path, phase_dir: Path) -> list[_PhaseSummaryDoc]:
+def _markdown_relpath(target: Path, start: Path) -> str:
+    return Path(os.path.relpath(target, start)).as_posix()
+
+
+def _is_generated_checkpoint_file(path: Path) -> bool:
+    content = safe_read_file(path)
+    return bool(content and content.startswith(_GENERATED_HEADER))
+
+
+def _phase_summary_docs(cwd: Path, phase_dir: Path) -> _PhaseSummaryScanResult:
     layout = ProjectLayout(cwd)
     docs: list[_PhaseSummaryDoc] = []
+    skipped_files: list[str] = []
+    errors: list[str] = []
 
     for summary_path in sorted(
         [path for path in phase_dir.iterdir() if path.is_file() and layout.is_summary_file(path.name)],
         key=_summary_sort_key,
     ):
+        summary_relpath = summary_path.relative_to(cwd).as_posix()
         content = safe_read_file(summary_path)
         if content is None:
+            skipped_files.append(summary_relpath)
+            errors.append(f"Skipped {summary_relpath}: unreadable or missing file")
             continue
         try:
             frontmatter, body = extract_frontmatter(content)
+            extracted = cmd_summary_extract(cwd, summary_relpath)
         except FrontmatterParseError as exc:
-            raise ValueError(f"Failed to parse {summary_path.relative_to(cwd)}: {exc}") from exc
+            skipped_files.append(summary_relpath)
+            errors.append(f"Skipped {summary_relpath}: malformed frontmatter ({exc})")
+            continue
+        except Exception as exc:
+            skipped_files.append(summary_relpath)
+            errors.append(f"Skipped {summary_relpath}: {exc}")
+            continue
 
         phase_number, phase_title = _title_from_phase_dir(phase_dir.name)
-        summary_relpath = summary_path.relative_to(cwd).as_posix()
-        extracted = cmd_summary_extract(cwd, summary_relpath)
         raw_dependency_graph = frontmatter.get("dependency-graph")
         if isinstance(raw_dependency_graph, dict):
             raw_provides = raw_dependency_graph.get("provides")
@@ -179,7 +215,7 @@ def _phase_summary_docs(cwd: Path, phase_dir: Path) -> list[_PhaseSummaryDoc]:
             )
         )
 
-    return docs
+    return _PhaseSummaryScanResult(docs=docs, skipped_files=skipped_files, errors=errors)
 
 
 def _verification_paths(cwd: Path, phase_dir: Path) -> list[str]:
@@ -260,7 +296,7 @@ def _render_phase_checkpoint(cwd: Path, phase_dir: Path, docs: list[_PhaseSummar
     )
 
     for doc in docs:
-        link = os.path.relpath(doc.summary_path, checkpoint_dir)
+        link = _markdown_relpath(doc.summary_path, checkpoint_dir)
         label = f"Plan {doc.plan or '?'} summary"
         if doc is latest:
             label = f"Latest summary ({doc.summary_path.name})"
@@ -268,7 +304,7 @@ def _render_phase_checkpoint(cwd: Path, phase_dir: Path, docs: list[_PhaseSummar
 
     for verification_path in verification_paths:
         verification_file = cwd / verification_path
-        link = os.path.relpath(verification_file, checkpoint_dir)
+        link = _markdown_relpath(verification_file, checkpoint_dir)
         lines.append(f"- Verification: [{verification_file.name}]({link})")
 
     key_files = list(dict.fromkeys(latest.summary_extract.key_files))
@@ -295,7 +331,7 @@ def _render_phase_checkpoint(cwd: Path, phase_dir: Path, docs: list[_PhaseSummar
             ]
         )
         for doc in docs[:-1]:
-            link = os.path.relpath(doc.summary_path, checkpoint_dir)
+            link = _markdown_relpath(doc.summary_path, checkpoint_dir)
             lines.append(f"### Plan {doc.plan or '?'}")
             lines.append("")
             if doc.one_liner:
@@ -307,7 +343,7 @@ def _render_phase_checkpoint(cwd: Path, phase_dir: Path, docs: list[_PhaseSummar
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _render_root_index(cwd: Path, grouped: list[tuple[Path, list[_PhaseSummaryDoc]]]) -> str:
+def _render_root_index(cwd: Path, entries: list[_CheckpointIndexEntry]) -> str:
     lines = [
         _GENERATED_HEADER,
         "",
@@ -324,12 +360,11 @@ def _render_root_index(cwd: Path, grouped: list[tuple[Path, list[_PhaseSummaryDo
     ]
 
     layout = ProjectLayout(cwd)
-    for phase_dir, docs in grouped:
-        latest = docs[-1]
-        link = layout.phase_checkpoint_file(phase_dir.name).relative_to(cwd).as_posix()
-        line = f"- [Phase {latest.phase_number}: {latest.phase_title}]({link})"
-        if latest.one_liner:
-            line += f" — {latest.one_liner}"
+    for entry in entries:
+        link = _markdown_relpath(layout.phase_checkpoint_file(entry.phase_dir_name), layout.checkpoints_md.parent)
+        line = f"- [Phase {entry.phase_number}: {entry.phase_title}]({link})"
+        if entry.one_liner:
+            line += f" — {entry.one_liner}"
         lines.append(line)
 
     lines.append("")
@@ -344,25 +379,59 @@ def _write_if_changed(path: Path, content: str) -> bool:
     return True
 
 
+def _remove_generated_if_present(path: Path) -> bool:
+    if not path.exists() or not _is_generated_checkpoint_file(path):
+        return False
+    path.unlink()
+    return True
+
+
 @instrument_gpd_function("checkpoints.sync_phase_checkpoints")
 def sync_phase_checkpoints(cwd: Path) -> SyncPhaseCheckpointsResult:
     """Generate the root-facing checkpoint shelf from phase summaries."""
     layout = ProjectLayout(cwd)
-    layout.phase_checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
     grouped: list[tuple[Path, list[_PhaseSummaryDoc]]] = []
+    index_entries: list[_CheckpointIndexEntry] = []
     updated_files: list[str] = []
     removed_files: list[str] = []
+    skipped_files: list[str] = []
+    errors: list[str] = []
+    preserved_checkpoint_paths: set[Path] = set()
 
     if layout.phases_dir.is_dir():
         for phase_dir in sorted(
             [path for path in layout.phases_dir.iterdir() if path.is_dir()],
             key=cmp_to_key(lambda a, b: compare_phase_numbers(a.name, b.name)),
         ):
-            docs = _phase_summary_docs(cwd, phase_dir)
+            scan_result = _phase_summary_docs(cwd, phase_dir)
+            skipped_files.extend(scan_result.skipped_files)
+            errors.extend(scan_result.errors)
+            docs = scan_result.docs
             if not docs:
+                if scan_result.errors:
+                    checkpoint_path = layout.phase_checkpoint_file(phase_dir.name)
+                    if _is_generated_checkpoint_file(checkpoint_path):
+                        preserved_checkpoint_paths.add(checkpoint_path.resolve())
+                        phase_number, phase_title = _title_from_phase_dir(phase_dir.name)
+                        index_entries.append(
+                            _CheckpointIndexEntry(
+                                phase_dir_name=phase_dir.name,
+                                phase_number=phase_number,
+                                phase_title=phase_title,
+                            )
+                        )
                 continue
             grouped.append((phase_dir, docs))
+            latest = docs[-1]
+            index_entries.append(
+                _CheckpointIndexEntry(
+                    phase_dir_name=phase_dir.name,
+                    phase_number=latest.phase_number,
+                    phase_title=latest.phase_title,
+                    one_liner=latest.one_liner,
+                )
+            )
             checkpoint_path = layout.phase_checkpoint_file(phase_dir.name)
             content = _render_phase_checkpoint(cwd, phase_dir, docs)
             if _write_if_changed(checkpoint_path, content):
@@ -372,27 +441,37 @@ def sync_phase_checkpoints(cwd: Path) -> SyncPhaseCheckpointsResult:
         layout.phase_checkpoint_file(phase_dir.name).resolve()
         for phase_dir, _docs in grouped
     }
-    for existing in sorted(
-        [
-            path
-            for path in layout.phase_checkpoints_dir.glob("*.md")
-            if not path.name.startswith("._")
-        ]
-    ):
-        if existing.resolve() in expected_checkpoint_paths:
-            continue
-        existing.unlink()
-        removed_files.append(existing.relative_to(cwd).as_posix())
+    expected_checkpoint_paths.update(preserved_checkpoint_paths)
+    if layout.phase_checkpoints_dir.is_dir():
+        for existing in sorted(
+            [
+                path
+                for path in layout.phase_checkpoints_dir.glob("*.md")
+                if not path.name.startswith("._")
+            ]
+        ):
+            if existing.resolve() in expected_checkpoint_paths:
+                continue
+            if _remove_generated_if_present(existing):
+                removed_files.append(existing.relative_to(cwd).as_posix())
 
-    root_content = _render_root_index(cwd, grouped)
-    if _write_if_changed(layout.checkpoints_md, root_content):
-        updated_files.append(layout.checkpoints_md.relative_to(cwd).as_posix())
+    if index_entries:
+        root_content = _render_root_index(cwd, index_entries)
+        if _write_if_changed(layout.checkpoints_md, root_content):
+            updated_files.append(layout.checkpoints_md.relative_to(cwd).as_posix())
+    elif _remove_generated_if_present(layout.checkpoints_md):
+        removed_files.append(layout.checkpoints_md.relative_to(cwd).as_posix())
+
+    if layout.phase_checkpoints_dir.is_dir() and not any(layout.phase_checkpoints_dir.iterdir()):
+        layout.phase_checkpoints_dir.rmdir()
 
     return SyncPhaseCheckpointsResult(
-        generated=True,
+        generated=bool(index_entries or updated_files or removed_files),
         phase_count=len(grouped),
         checkpoint_dir=layout.phase_checkpoints_dir.relative_to(cwd).as_posix(),
         root_index=layout.checkpoints_md.relative_to(cwd).as_posix(),
         updated_files=updated_files,
         removed_files=removed_files,
+        skipped_files=skipped_files,
+        errors=errors,
     )

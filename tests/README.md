@@ -112,6 +112,7 @@ flowchart TD
     cli --> adapters[src/gpd/adapters/*.py]
     cli --> hooks[src/gpd/hooks/*.py]
     cli --> paper[src/gpd/mcp/paper/*.py]
+    cli --> checkpoints[src/gpd/core/checkpoints.py]
     registry[src/gpd/registry.py] --> commands[src/gpd/commands/*.md]
     registry --> agents[src/gpd/agents/*.md]
     commands --> workflows[src/gpd/specs/workflows/*.md]
@@ -124,6 +125,7 @@ flowchart TD
     hooks --> workspace_state[external .gpd/**]
     builtin[src/gpd/mcp/builtin_servers.py] --> infra[infra/gpd-*.json]
     paper --> paper_outputs[generated paper/build outputs]
+    checkpoints --> checkpoint_outputs[generated checkpoint outputs]
     tests[tests/**] --> cli
     tests --> core
     tests --> adapters
@@ -335,6 +337,17 @@ flowchart TD
 - `src/gpd/cli.py -> src/gpd/mcp/paper/compiler.py`
   `hard-import`
 
+- `src/gpd/cli.py::sync_phase_checkpoints -> src/gpd/core/checkpoints.py::sync_phase_checkpoints`
+  `spawn`
+
+- `src/gpd/core/phases.py -> src/gpd/core/checkpoints.py::sync_phase_checkpoints`
+  `spawn`
+  `phases.py` also regenerates checkpoint artifacts after phase completion and cleanup.
+
+- `src/gpd/core/checkpoints.py -> generated outputs {.gpd/CHECKPOINTS.md, .gpd/phase-checkpoints/*.md}`
+  `generated-output`
+  `sync-phase-checkpoints` materializes the internal checkpoint index plus one checkpoint note per phase directory.
+
 - `src/gpd/core/state.py -> src/gpd/contracts.py`
   `schema-contains`
   `ResearchState` contains `ConventionLock` and related typed state structures.
@@ -355,6 +368,12 @@ flowchart TD
 - `src/gpd/core/state.py -> <cwd>/.gpd/state.intent`
   `generated-output`
   Dual-write recovery marker for interrupted `state.json` and `STATE.md` writes.
+
+- `src/gpd/core/checkpoints.py -> <cwd>/.gpd/CHECKPOINTS.md`
+  `generated-output`
+
+- `src/gpd/core/checkpoints.py -> <cwd>/.gpd/phase-checkpoints/*.md`
+  `generated-output`
 
 - `src/gpd/core/results.py -> src/gpd/contracts.py`
   `schema-contains`
@@ -1595,6 +1614,8 @@ Operationally important node families that are not canonical repo files:
 - `<workspace>/.mcp.json`
 - update caches `*/cache/gpd-update-check.json`
 - runtime install `*/get-physics-done/VERSION`
+- `<cwd>/.gpd/CHECKPOINTS.md`
+- `<cwd>/.gpd/phase-checkpoints/*.md`
 - `dist/*.whl`
 - `dist/*.tar.gz`
 - paper outputs `main.tex`, `references.bib`, `main.pdf`, `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`

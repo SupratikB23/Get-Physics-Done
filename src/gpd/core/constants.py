@@ -113,7 +113,7 @@ MILESTONES_FILENAME = "MILESTONES.md"
 """Milestone tracking document."""
 
 CHECKPOINTS_FILENAME = "CHECKPOINTS.md"
-"""Root-level human-facing checkpoint index."""
+"""Generated human-facing checkpoint index under .gpd/."""
 
 AGENT_ID_FILENAME = "current-agent-id.txt"
 """File storing the current agent's identifier for resume detection."""
@@ -122,7 +122,7 @@ PHASES_DIR_NAME = "phases"
 """Subdirectory under .gpd/ containing per-phase directories."""
 
 PHASE_CHECKPOINTS_DIR_NAME = "phase-checkpoints"
-"""Root-level generated checkpoint shelf with one document per phase."""
+"""Generated checkpoint shelf under .gpd/ with one document per phase."""
 
 ANALYSIS_DIR_NAME = "analysis"
 """Subdirectory under .gpd/ for internal analysis/provenance reports."""
@@ -399,7 +399,7 @@ class ProjectLayout:
 
     @property
     def checkpoints_md(self) -> Path:
-        return self.root / CHECKPOINTS_FILENAME
+        return self.gpd / CHECKPOINTS_FILENAME
 
     @property
     def agent_id_file(self) -> Path:
@@ -413,7 +413,7 @@ class ProjectLayout:
 
     @property
     def phase_checkpoints_dir(self) -> Path:
-        return self.root / PHASE_CHECKPOINTS_DIR_NAME
+        return self.gpd / PHASE_CHECKPOINTS_DIR_NAME
 
     @property
     def analysis_dir(self) -> Path:

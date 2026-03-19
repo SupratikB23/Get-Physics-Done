@@ -3419,7 +3419,7 @@ def history_digest() -> None:
 
 @app.command("sync-phase-checkpoints")
 def sync_phase_checkpoints() -> None:
-    """Generate root-facing checkpoint notes from phase summaries."""
+    """Generate checkpoint notes under .gpd/ from phase summaries."""
     from gpd.core.checkpoints import sync_phase_checkpoints
 
     _output(sync_phase_checkpoints(_get_cwd()))

@@ -1106,9 +1106,9 @@ def test_sync_phase_checkpoints_subcommand(mock_sync):
     mock_result.model_dump.return_value = {
         "generated": True,
         "phase_count": 1,
-        "checkpoint_dir": "phase-checkpoints",
-        "root_index": "CHECKPOINTS.md",
-        "updated_files": ["phase-checkpoints/01-test-phase.md", "CHECKPOINTS.md"],
+        "checkpoint_dir": ".gpd/phase-checkpoints",
+        "root_index": ".gpd/CHECKPOINTS.md",
+        "updated_files": [".gpd/phase-checkpoints/01-test-phase.md", ".gpd/CHECKPOINTS.md"],
         "removed_files": [],
     }
     mock_sync.return_value = mock_result
