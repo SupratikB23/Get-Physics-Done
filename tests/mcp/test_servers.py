@@ -140,8 +140,9 @@ class TestBuiltinServerDescriptors:
         descriptor = build_public_descriptors()["gpd-state"]
         python_module = descriptor["alternatives"]["python_module"]
 
-        assert str(python_module["command"]) == "python3.11"
+        assert str(python_module["command"]) == "python3"
         assert str(python_module["command"]) != "python"
+        assert python_module["notes"] == "Requires gpd package installed and Python >=3.11"
 
     def test_build_mcp_servers_dict_checks_optional_modules_in_target_interpreter(self, monkeypatch):
         from gpd.mcp import builtin_servers

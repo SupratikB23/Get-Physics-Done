@@ -213,7 +213,7 @@ def test_public_mcp_descriptor_entry_point_alternatives_match_pyproject_scripts(
         assert isinstance(python_module, dict), name
         assert python_module.get("command") == "python"
         assert python_module.get("args") == ["-m", module_name]
-        assert python_module.get("notes") == "Requires gpd package installed"
+        assert python_module.get("notes") == "Requires gpd package installed and Python >=3.11"
 
 
 def test_arxiv_descriptor_tracks_required_dependency_surface() -> None:

@@ -230,41 +230,32 @@ class TestNormalizeVerificationRecordsBadData:
 
 
 class TestResultAddWithBadVerificationRecords:
-    """result_add gracefully handles malformed verification_records via the guard."""
+    """result_add rejects malformed verification_records at the write boundary."""
 
-    def test_string_in_verification_records_is_skipped(self, caplog):
-        """A plain string in verification_records should be skipped, not crash."""
+    def test_string_in_verification_records_is_rejected(self):
         state: dict = {}
-        with caplog.at_level(logging.WARNING):
-            result = result_add(
+        with pytest.raises(ResultError, match="verification_records\\[0\\]"):
+            result_add(
                 state,
                 result_id="R-bad-01",
                 verification_records=["not a dict"],
             )
-        # The bad record was skipped; result added with no verification records
-        assert result.id == "R-bad-01"
-        assert result.verification_records == []
-        assert result.verified is False
-        assert "Skipping" in caplog.text
+        assert state.get("intermediate_results", []) == []
 
-    def test_none_item_in_verification_records_is_skipped(self, caplog):
-        """A None item in verification_records should be skipped, not crash."""
+    def test_none_item_in_verification_records_is_rejected(self):
         state: dict = {}
-        with caplog.at_level(logging.WARNING):
-            result = result_add(
+        with pytest.raises(ResultError, match="verification_records\\[0\\]"):
+            result_add(
                 state,
                 result_id="R-bad-02",
                 verification_records=[None],
             )
-        assert result.id == "R-bad-02"
-        assert result.verification_records == []
-        assert "Skipping" in caplog.text
+        assert state.get("intermediate_results", []) == []
 
-    def test_mixed_good_and_bad_records_keeps_good_ones(self, caplog):
-        """Good verification records survive alongside bad ones."""
+    def test_mixed_good_and_bad_records_reject_entire_update(self):
         state: dict = {}
-        with caplog.at_level(logging.WARNING):
-            result = result_add(
+        with pytest.raises(ResultError, match="verification_records\\[0\\]"):
+            result_add(
                 state,
                 result_id="R-mixed",
                 verification_records=[
@@ -273,17 +264,11 @@ class TestResultAddWithBadVerificationRecords:
                     42,
                 ],
             )
-        assert result.id == "R-mixed"
-        assert len(result.verification_records) == 1
-        assert result.verification_records[0].verifier == "keeper"
-        # The result is verified because it has at least one valid record
-        assert result.verified is True
-        # Two bad items logged
-        assert caplog.text.count("Skipping") == 2
+        assert state.get("intermediate_results", []) == []
 
 
 class TestResultVerifyWithExistingBadRecords:
-    """result_verify calls _normalize_verification_records on existing records."""
+    """result_verify rejects corrupted stored verification records."""
 
     def test_verify_with_clean_state_works(self):
         """Baseline: result_verify on a result with no prior records succeeds."""
@@ -305,8 +290,8 @@ class TestResultVerifyWithExistingBadRecords:
         assert result.verified is True
         assert len(result.verification_records) == 2
 
-    def test_verify_skips_corrupted_existing_records(self, caplog):
-        """If existing records contain bad items, they are skipped during verify."""
+    def test_verify_rejects_corrupted_existing_records(self):
+        """If existing records contain bad items, verify stops instead of dropping them."""
         state: dict = {}
         result_add(state, result_id="R-03")
         # Manually inject a corrupted record into state
@@ -314,12 +299,9 @@ class TestResultVerifyWithExistingBadRecords:
             "corrupted string record",
             {"verifier": "legit", "method": "manual", "confidence": "medium"},
         ]
-        with caplog.at_level(logging.WARNING):
-            result = result_verify(state, "R-03", verifier="new-verifier", confidence="high")
-        assert result.verified is True
-        # One surviving old record + one new record = 2
-        assert len(result.verification_records) == 2
-        assert "Skipping" in caplog.text
+        with pytest.raises(ResultError, match="Existing verification_records for R-03 are invalid"):
+            result_verify(state, "R-03", verifier="new-verifier", confidence="high")
+        assert state["intermediate_results"][0]["verification_records"][0] == "corrupted string record"
 
 
 class TestResultUpdateWithBadVerificationRecords:

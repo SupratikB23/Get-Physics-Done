@@ -112,7 +112,7 @@ def gpd_project(tmp_path: Path) -> Path:
         "---\nphase: '01'\nplan: '01'\nwave: 1\n---\n\n# Plan A\n\n## Tasks\n\n- Task 1\n"
     )
     (p1 / "01-SUMMARY.md").write_text(
-        '---\nphase: "01"\nplan: "01"\none-liner: "Set up project"\n'
+        '---\nphase: "01"\nplan: "01"\ndepth: "full"\nprovides: ["main-module"]\ncompleted: "2026-03-22"\none-liner: "Set up project"\n'
         "key-files:\n  - src/main.py\n"
         "dependency-graph:\n  provides:\n    - main-module\n  affects:\n    - phase-2\n"
         "patterns-established:\n  - modular-design\n"

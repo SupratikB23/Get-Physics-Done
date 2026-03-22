@@ -354,12 +354,12 @@ def cmd_summary_extract(
     except FrontmatterParseError as exc:
         raise ValidationError(f"YAML parse error in {summary_path}: {exc}") from exc
 
-    if any(field in fm for field in ("plan_contract_ref", "contract_results", "comparison_verdicts")):
-        validation = validate_frontmatter(content, "summary", source_path=full_path)
-        if not validation.valid:
-            raise ValidationError(
-                f"Invalid summary frontmatter in {summary_path}: {'; '.join(validation.errors)}"
-            )
+    validation = validate_frontmatter(content, "summary", source_path=full_path)
+    if not validation.valid:
+        problems = [*validation.missing, *validation.errors]
+        raise ValidationError(
+            f"Invalid summary frontmatter in {summary_path}: {'; '.join(problems)}"
+        )
 
     # Extract one-liner: frontmatter first, fall back to body bold text
     one_liner = fm.get("one-liner")

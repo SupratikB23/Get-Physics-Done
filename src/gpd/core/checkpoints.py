@@ -207,9 +207,11 @@ def _phase_summary_docs(cwd: Path, phase_dir: Path) -> _PhaseSummaryScanResult:
             if field not in frontmatter or frontmatter[field] in (None, "")
         ]
         if missing_summary_fields:
+            skipped_files.append(summary_relpath)
             errors.append(
                 f"{summary_relpath} is missing required summary fields: {', '.join(missing_summary_fields)}"
             )
+            continue
         raw_dependency_graph = frontmatter.get("dependency-graph")
         if isinstance(raw_dependency_graph, dict):
             raw_provides = raw_dependency_graph.get("provides")
@@ -218,7 +220,7 @@ def _phase_summary_docs(cwd: Path, phase_dir: Path) -> _PhaseSummaryScanResult:
         provides = _normalize_string_list(raw_provides)
         docs.append(
             _PhaseSummaryDoc(
-                phase_number=str(frontmatter.get("phase") or phase_number).strip() or phase_number,
+                phase_number=phase_number,
                 phase_title=phase_title,
                 summary_path=summary_path,
                 plan=str(frontmatter.get("plan") or "").strip(),

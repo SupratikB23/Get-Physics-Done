@@ -866,6 +866,7 @@ def test_reference_workflows_require_anchor_registry_propagation() -> None:
     literature_workflow = (WORKFLOWS_DIR / "literature-review.md").read_text(encoding="utf-8")
     literature_command = (COMMANDS_DIR / "literature-review.md").read_text(encoding="utf-8")
     literature_agent = (AGENTS_DIR / "gpd-literature-reviewer.md").read_text(encoding="utf-8")
+    compare_workflow = (WORKFLOWS_DIR / "compare-results.md").read_text(encoding="utf-8")
     map_workflow = (WORKFLOWS_DIR / "map-research.md").read_text(encoding="utf-8")
     map_command = (COMMANDS_DIR / "map-research.md").read_text(encoding="utf-8")
     mapper_agent = (AGENTS_DIR / "gpd-research-mapper.md").read_text(encoding="utf-8")
@@ -876,9 +877,15 @@ def test_reference_workflows_require_anchor_registry_propagation() -> None:
     assert "authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes" in literature_workflow
     assert "Active Anchor Registry" in literature_command
     assert "active_anchors" in literature_agent
+    assert "project_contract_load_info" in compare_workflow
+    assert "project_contract_validation" in compare_workflow
+    assert "active_reference_context" in compare_workflow
+    assert "Treat `project_contract` as authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes." in compare_workflow
     assert "active_reference_context" in map_workflow
+    assert "effective_reference_intake" in map_workflow
     assert "project_contract_load_info" in map_workflow
     assert "project_contract_validation" in map_workflow
+    assert "reference_artifacts_content" in map_workflow
     assert "authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes" in map_workflow
     assert "Contract-critical anchors, decisive benchmarks, prior artifacts" in map_command
     assert "REFERENCES.md is an anchor registry" in mapper_agent

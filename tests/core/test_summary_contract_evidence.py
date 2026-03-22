@@ -250,3 +250,40 @@ def test_summary_extract_rejects_non_list_comparison_verdicts(tmp_path: Path) ->
 
     with pytest.raises(ValidationError, match="expected a list"):
         cmd_summary_extract(tmp_path, "broken-SUMMARY.md")
+
+
+def test_summary_extract_rejects_missing_required_summary_fields_without_contract_metadata(tmp_path: Path) -> None:
+    summary_path = tmp_path / "broken-SUMMARY.md"
+    summary_path.write_text(
+        "---\n"
+        "phase: 01\n"
+        "plan: 01\n"
+        "provides: []\n"
+        "completed: 2026-03-22\n"
+        "---\n\n"
+        "# Summary\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match=r"Invalid summary frontmatter.*depth"):
+        cmd_summary_extract(tmp_path, "broken-SUMMARY.md")
+
+
+def test_summary_extract_rejects_unsupported_legacy_summary_fields_without_contract_metadata(tmp_path: Path) -> None:
+    summary_path = tmp_path / "broken-SUMMARY.md"
+    summary_path.write_text(
+        "---\n"
+        "phase: 01\n"
+        "plan: 01\n"
+        "depth: standard\n"
+        "provides: []\n"
+        "completed: 2026-03-22\n"
+        "verification_inputs:\n"
+        "  truths: []\n"
+        "---\n\n"
+        "# Summary\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match=r"verification_inputs"):
+        cmd_summary_extract(tmp_path, "broken-SUMMARY.md")

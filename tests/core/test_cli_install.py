@@ -442,6 +442,44 @@ def test_uninstall_raw_outputs_structured_outcomes(tmp_path: Path) -> None:
     ]
 
 
+def test_uninstall_raw_continues_after_adapter_lookup_failure(tmp_path: Path) -> None:
+    removed_target = tmp_path / ".claude"
+    removed_target.mkdir()
+
+    claude_adapter = MagicMock()
+    claude_adapter.display_name = "Claude Code"
+    claude_adapter.resolve_target_dir.return_value = removed_target
+    claude_adapter.uninstall.return_value = {"removed": ["commands"]}
+
+    def fake_get_adapter(runtime: str):
+        if runtime == "codex":
+            raise RuntimeError("registry offline")
+        return claude_adapter
+
+    with (
+        patch("gpd.adapters.list_runtimes", return_value=["codex", "claude-code"]),
+        patch("gpd.adapters.get_adapter", side_effect=fake_get_adapter),
+    ):
+        result = runner.invoke(app, ["--raw", "uninstall", "--all", "--local"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["uninstalled"] == [
+        {
+            "runtime": "codex",
+            "status": "failed",
+            "target": "",
+            "error": "Runtime adapter unavailable for 'codex' during uninstall: registry offline",
+        },
+        {
+            "runtime": "claude-code",
+            "status": "removed",
+            "target": str(removed_target),
+            "removed": ["commands"],
+        },
+    ]
+
+
 # ─── 5. Non-TTY interactive mode ────────────────────────────────────────────
 
 

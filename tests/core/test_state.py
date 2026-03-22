@@ -956,6 +956,37 @@ def test_load_state_json_review_blocks_on_schema_normalization(tmp_path):
     assert standard["position"]["status"] is None
 
 
+def test_state_load_standard_surfaces_schema_normalization_for_malformed_verification_records(tmp_path):
+    layout = ProjectLayout(tmp_path)
+    layout.gpd.mkdir(parents=True, exist_ok=True)
+    layout.state_json.write_text(
+        json.dumps(
+            {
+                "intermediate_results": [
+                    {
+                        "id": "R-02b",
+                        "description": "Broken stored evidence",
+                        "depends_on": [],
+                        "verified": True,
+                        "verification_records": ["oops"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = state_load(tmp_path, integrity_mode="standard")
+
+    assert loaded.state["intermediate_results"][0]["verification_records"] == []
+    assert any(
+        'schema normalization: dropped "intermediate_results[0].verification_records[0]" because expected object, got str'
+        in issue
+        for issue in loaded.integrity_issues
+    )
+    assert any("verified=true but no verification_records present" in issue for issue in loaded.integrity_issues)
+
+
 def test_state_validate_standard_warns_for_verified_result_without_records(tmp_path):
     state = _state_with_result(
         {

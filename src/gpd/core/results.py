@@ -243,7 +243,7 @@ def result_add(
     else:
         deps = list(depends_on)
 
-    normalized_records = _normalize_verification_records(verification_records)
+    normalized_records = _strict_verification_records(verification_records)
 
     result_dict = {
         "id": rid,
@@ -416,7 +416,10 @@ def result_verify(
     )
 
     raw_result = state["intermediate_results"][idx]
-    records = _normalize_verification_records(raw_result.get("verification_records"))
+    try:
+        records = _strict_verification_records(raw_result.get("verification_records"))
+    except ResultError as exc:
+        raise ResultError(f"Existing verification_records for {result_id} are invalid: {exc}") from exc
     records.append(record)
     raw_result["verification_records"] = [entry.model_dump() for entry in records]
     raw_result["verified"] = True

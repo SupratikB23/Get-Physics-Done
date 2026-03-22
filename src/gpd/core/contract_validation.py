@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import re
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -650,14 +651,17 @@ def _is_concrete_reference_locator(value: str) -> bool:
     lowered = value.casefold().strip()
     if not lowered:
         return False
-    if any(pattern.search(lowered) for pattern in _PROJECT_ARTIFACT_PATH_PATTERNS):
-        return True
     if any(pattern.search(lowered) for pattern in _REFERENCE_LOCATOR_CONCRETE_PATTERNS):
         return True
     if re.search(r"\b(?:et al\.|journal|proceedings?|conference|chapter|sec\.?|section|table|fig(?:ure)?|eq(?:uation)?)\b", lowered) and re.search(
         r"\b\d+\b", lowered
     ):
         return True
+    if any(pattern.search(lowered) for pattern in _PROJECT_ARTIFACT_PATH_PATTERNS):
+        candidate = Path(value.strip()).expanduser()
+        if not candidate.is_absolute() and len(candidate.parts) > 1 and ".." not in candidate.parts:
+            return True
+        return False
     return False
 
 

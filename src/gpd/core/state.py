@@ -1895,12 +1895,12 @@ def sync_state_json(cwd: Path, md_content: str) -> dict:
         return sync_state_json_core(cwd, md_content)
 
 
-@instrument_gpd_function("state.load_json")
-def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
-    """Load state.json with intent recovery and fallback to STATE.md.
-
-    Returns the state dict, or None if no state exists.
-    """
+def _load_state_json_with_integrity_issues(
+    cwd: Path,
+    *,
+    integrity_mode: str = "standard",
+) -> tuple[dict | None, list[str]]:
+    """Load state.json and return the normalized state plus load-time integrity issues."""
     json_path = _state_json_path(cwd)
     bak_path = json_path.parent / STATE_JSON_BACKUP_FILENAME
 
@@ -1930,8 +1930,8 @@ def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
             )
             if integrity_mode == "review" and integrity_issues:
                 logger.warning("state.json failed review-mode integrity checks: %s", "; ".join(integrity_issues))
-                return None
-            return normalized
+                return None, integrity_issues
+            return normalized, integrity_issues
         except FileNotFoundError:
             pass
         except (TypeError, json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
@@ -1939,7 +1939,7 @@ def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
                 logger.debug("state.json parse error: %s", e)
             if integrity_mode == "review":
                 logger.warning("state.json parse error blocks review-mode loading: %s", e)
-                return None
+                return None, []
             # Try backup
             try:
                 bak_raw = bak_path.read_text(encoding="utf-8")
@@ -1954,9 +1954,9 @@ def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
                 )
                 if integrity_mode == "review" and integrity_issues:
                     logger.warning("state.json backup failed review-mode integrity checks: %s", "; ".join(integrity_issues))
-                    return None
+                    return None, integrity_issues
                 atomic_write(json_path, json.dumps(restored, indent=2) + "\n")
-                return restored
+                return restored, integrity_issues
             except (FileNotFoundError, TypeError, json.JSONDecodeError, OSError, UnicodeDecodeError):
                 if os.environ.get(ENV_GPD_DEBUG):
                     logger.debug("state.json.bak restore failed")
@@ -1966,13 +1966,23 @@ def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
         try:
             if integrity_mode == "review":
                 logger.warning("STATE.md fallback is disabled in review integrity mode")
-                return None
+                return None, []
             content = md_path.read_text(encoding="utf-8")
-            return sync_state_json_core(cwd, content)
+            return sync_state_json_core(cwd, content), []
         except (FileNotFoundError, OSError, UnicodeDecodeError):
             if os.environ.get(ENV_GPD_DEBUG):
                 logger.debug("STATE.md fallback failed")
-            return None
+            return None, []
+
+
+@instrument_gpd_function("state.load_json")
+def load_state_json(cwd: Path, integrity_mode: str = "standard") -> dict | None:
+    """Load state.json with intent recovery and fallback to STATE.md.
+
+    Returns the state dict, or None if no state exists.
+    """
+    state_obj, _integrity_issues = _load_state_json_with_integrity_issues(cwd, integrity_mode=integrity_mode)
+    return state_obj
 
 
 def save_state_json_locked(cwd: Path, state_obj: dict) -> None:
@@ -2010,11 +2020,16 @@ def save_state_markdown(cwd: Path, md_content: str) -> dict:
 @instrument_gpd_function("state.load")
 def state_load(cwd: Path, integrity_mode: str = "standard") -> StateLoadResult:
     """Load full state with config and file-existence metadata."""
-    state_obj = load_state_json(cwd, integrity_mode=integrity_mode)
+    state_obj, load_integrity_issues = _load_state_json_with_integrity_issues(cwd, integrity_mode=integrity_mode)
     validation = state_validate(cwd, integrity_mode=integrity_mode)
-    integrity_issues = list(validation.issues)
+    integrity_issues: list[str] = []
+    for issue in [*load_integrity_issues, *validation.issues]:
+        if issue not in integrity_issues:
+            integrity_issues.append(issue)
     if integrity_mode == "standard" and validation.warnings:
-        integrity_issues.extend(validation.warnings)
+        for warning in validation.warnings:
+            if warning not in integrity_issues:
+                integrity_issues.append(warning)
 
     layout = ProjectLayout(cwd)
     state_raw = safe_read_file(layout.state_md) or ""

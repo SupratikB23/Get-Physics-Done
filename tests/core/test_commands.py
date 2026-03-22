@@ -111,6 +111,11 @@ class TestSummaryExtract:
             tmp_path,
             (
                 "---\n"
+                'phase: "01"\n'
+                'plan: "01"\n'
+                "depth: standard\n"
+                "provides: []\n"
+                'completed: "2026-03-22"\n'
                 "one-liner: Phase completed successfully\n"
                 "key-files:\n  - src/main.py\n"
                 "methods:\n  added:\n    - finite-difference\n"
@@ -132,7 +137,18 @@ class TestSummaryExtract:
 
     def test_field_filter(self, tmp_path: Path):
         path = self._write_summary(
-            tmp_path, ("---\none-liner: filtered test\naffects:\n  - phase-2\n---\n\n# Summary\n")
+            tmp_path,
+            (
+                "---\n"
+                'phase: "01"\n'
+                'plan: "01"\n'
+                "depth: standard\n"
+                "provides: []\n"
+                'completed: "2026-03-22"\n'
+                "one-liner: filtered test\n"
+                "affects:\n  - phase-2\n"
+                "---\n\n# Summary\n"
+            ),
         )
         result = cmd_summary_extract(tmp_path, path, fields=["one_liner"])
         assert isinstance(result, dict)
@@ -141,14 +157,32 @@ class TestSummaryExtract:
 
     def test_body_one_liner_fallback(self, tmp_path: Path):
         path = self._write_summary(
-            tmp_path, ("---\nphase: 01\n---\n\n# Phase 1 Summary\n\n**Derived the Lagrangian**\n")
+            tmp_path,
+            (
+                "---\n"
+                "phase: 01\n"
+                "plan: 01\n"
+                "depth: standard\n"
+                "provides: []\n"
+                "completed: 2026-03-22\n"
+                "---\n\n# Phase 1 Summary\n\n**Derived the Lagrangian**\n"
+            ),
         )
         result = cmd_summary_extract(tmp_path, path)
         assert result.one_liner == "Derived the Lagrangian"
 
     def test_key_results_section(self, tmp_path: Path):
         path = self._write_summary(
-            tmp_path, ("---\nphase: 01\n---\n\n## Key Results\n\nSome results here.\n\n## Next Steps\n\nDo more.\n")
+            tmp_path,
+            (
+                "---\n"
+                "phase: 01\n"
+                "plan: 01\n"
+                "depth: standard\n"
+                "provides: []\n"
+                "completed: 2026-03-22\n"
+                "---\n\n## Key Results\n\nSome results here.\n\n## Next Steps\n\nDo more.\n"
+            ),
         )
         result = cmd_summary_extract(tmp_path, path)
         assert result.key_results == "Some results here."

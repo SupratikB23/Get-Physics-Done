@@ -183,6 +183,29 @@ def test_sync_phase_checkpoints_skips_malformed_summary_and_still_regenerates_ot
     assert "\\" not in checkpoints_index
 
 
+def test_sync_phase_checkpoints_skips_summary_with_invalid_frontmatter_schema(
+    tmp_path: Path,
+) -> None:
+    cwd = _setup_project(tmp_path)
+
+    good_phase_dir = cwd / ".gpd" / "phases" / "01-good-phase"
+    good_phase_dir.mkdir()
+    _write_summary(good_phase_dir / "01-SUMMARY.md", phase="01", plan="01", one_liner="Set up the project")
+
+    bad_phase_dir = cwd / ".gpd" / "phases" / "02-bad-phase"
+    bad_phase_dir.mkdir()
+    _write_summary(bad_phase_dir / "01-SUMMARY.md", phase="02", plan="01", one_liner="Broken summary")
+    broken = (bad_phase_dir / "01-SUMMARY.md").read_text(encoding="utf-8").replace("depth: full\n", "", 1)
+    (bad_phase_dir / "01-SUMMARY.md").write_text(broken, encoding="utf-8")
+
+    result = sync_phase_checkpoints(cwd)
+
+    assert result.phase_count == 1
+    assert ".gpd/phases/02-bad-phase/01-SUMMARY.md" in result.skipped_files
+    assert any("Invalid summary frontmatter" in error for error in result.errors)
+    assert not (cwd / ".gpd" / "phase-checkpoints" / "02-bad-phase.md").exists()
+
+
 def test_sync_phase_checkpoints_preserves_existing_generated_output_for_unreadable_summary(
     tmp_path: Path,
 ) -> None:

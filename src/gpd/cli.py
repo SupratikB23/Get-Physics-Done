@@ -4601,7 +4601,28 @@ def uninstall(
     uninstall_results: list[dict[str, object]] = []
     failures = False
     for rt in selected:
-        adapter = _get_adapter_or_error(rt, action="uninstall")
+        try:
+            from gpd.adapters import get_adapter
+
+            adapter = get_adapter(rt)
+        except KeyError:
+            supported = _supported_runtime_names()
+            supported_suffix = f" Supported: {', '.join(supported)}" if supported else ""
+            error_text = f"Unknown runtime {rt!r}.{supported_suffix}"
+            failures = True
+            outcome = {"runtime": rt, "status": "failed", "target": target_dir or "", "error": error_text}
+            if not _raw:
+                console.print(f"  [red]✗[/] {rt} — {error_text}")
+            uninstall_results.append(outcome)
+            continue
+        except Exception as exc:
+            error_text = f"Runtime adapter unavailable for {rt!r} during uninstall: {exc}"
+            failures = True
+            outcome = {"runtime": rt, "status": "failed", "target": target_dir or "", "error": error_text}
+            if not _raw:
+                console.print(f"  [red]✗[/] {rt} — {error_text}")
+            uninstall_results.append(outcome)
+            continue
         target = _resolve_cli_target_dir(target_dir) if target_dir else adapter.resolve_target_dir(is_global, _get_cwd())
         if not target.is_dir():
             outcome = {

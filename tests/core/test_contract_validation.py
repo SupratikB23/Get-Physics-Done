@@ -177,7 +177,7 @@ def test_validate_project_contract_approved_mode_accepts_prior_output_grounding(
 
 @pytest.mark.parametrize(
     "locator",
-    ["doi:10.1234/example", "arXiv:2401.12345", "Table 2", "Fig. 3"],
+    ["doi:10.1234/example", "arXiv:2401.12345", "Table 2", "Fig. 3", "artifacts/benchmark/report.json"],
 )
 def test_validate_project_contract_approved_mode_accepts_concrete_reference_locator_grounding(
     locator: str,
@@ -206,7 +206,7 @@ def test_validate_project_contract_approved_mode_accepts_concrete_reference_loca
     assert result.mode == "approved"
 
 
-@pytest.mark.parametrize("locator", ["Benchmark paper", "reference article"])
+@pytest.mark.parametrize("locator", ["Benchmark paper", "reference article", "/tmp/nonexistent.txt", "report.pdf"])
 def test_validate_project_contract_approved_mode_rejects_vague_reference_locator_grounding(
     locator: str,
 ) -> None:

@@ -117,7 +117,10 @@ class TestPhaseLifecycle:
         for num, name in [("01", "setup"), ("02", "derivation"), ("03", "validation")]:
             d = _create_phase(tmp_path, f"{num}-{name}")
             (d / f"{num}-01-PLAN.md").write_text("# Plan 1")
-            (d / f"{num}-01-SUMMARY.md").write_text("# Summary 1")
+            (d / f"{num}-01-SUMMARY.md").write_text(
+                f'---\nphase: "{num}"\nplan: "01"\ndepth: full\nprovides: []\ncompleted: "2026-02-23"\none-liner: "Summary {num}"\n---\n\n# Summary 1\n',
+                encoding="utf-8",
+            )
         return tmp_path
 
     def test_completing_a_phase_updates_roadmap_and_advances_state(self, tmp_path: Path) -> None:
@@ -241,9 +244,15 @@ class TestPhaseRemoveRenumber:
     def test_phase_remove_resyncs_checkpoint_shelf(self, tmp_path: Path) -> None:
         self._create_fixture(tmp_path)
         derivation_dir = tmp_path / ".gpd" / "phases" / "02-derivation"
-        (derivation_dir / "02-01-SUMMARY.md").write_text("# Summary\n", encoding="utf-8")
+        (derivation_dir / "02-01-SUMMARY.md").write_text(
+            '---\nphase: "02"\nplan: "01"\ndepth: full\nprovides: []\ncompleted: "2026-02-23"\none-liner: "Derivation summary"\n---\n\n# Summary\n',
+            encoding="utf-8",
+        )
         validation_dir = tmp_path / ".gpd" / "phases" / "03-validation"
-        (validation_dir / "03-01-SUMMARY.md").write_text("# Summary\n", encoding="utf-8")
+        (validation_dir / "03-01-SUMMARY.md").write_text(
+            '---\nphase: "03"\nplan: "01"\ndepth: full\nprovides: []\ncompleted: "2026-02-23"\none-liner: "Validation summary"\n---\n\n# Summary\n',
+            encoding="utf-8",
+        )
 
         sync_phase_checkpoints(tmp_path)
         assert (tmp_path / ".gpd" / "phase-checkpoints" / "02-derivation.md").exists()
