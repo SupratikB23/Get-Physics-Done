@@ -2178,7 +2178,7 @@ def _runtime_permissions_payload(
 ) -> dict[str, object]:
     """Return runtime-permissions status or sync payload for the selected runtime."""
     from gpd.adapters import get_adapter
-    from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, detect_runtime_for_gpd_use
+    from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN
 
     try:
         runtime_name = _resolve_permissions_runtime_name(runtime)
