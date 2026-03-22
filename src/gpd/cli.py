@@ -2207,6 +2207,118 @@ def config_ensure_section() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# permissions — Runtime permission integration
+# ═══════════════════════════════════════════════════════════════════════════
+
+permissions_app = typer.Typer(help="Runtime permission configuration")
+app.add_typer(permissions_app, name="permissions")
+
+
+@permissions_app.command("status")
+def permissions_status_cmd() -> None:
+    """Show the current runtime's permission configuration."""
+    from gpd.core.config import load_config
+    from gpd.core.permissions import permissions_status
+
+    config = load_config(_get_cwd())
+    result = permissions_status(config.runtime_permissions)
+    _output(result.to_dict())
+
+
+@permissions_app.command("enable-permissive")
+def permissions_enable_permissive() -> None:
+    """Enable permissive mode: skip runtime tool-permission prompts where supported.
+
+    For Claude Code this generates a launch wrapper at ~/.gpd/bin/claude-gpd
+    that passes --dangerously-skip-permissions.  Re-launch Claude Code with
+    that wrapper to activate the mode.
+
+    For Codex, which already runs in a permissive sandbox, this is a no-op.
+    For Gemini and OpenCode, the closest supported configuration is applied
+    and any gaps are documented in the output.
+    """
+    from gpd.core.config import apply_config_update, load_config
+    from gpd.core.constants import ProjectLayout
+    from gpd.core.permissions import generate_launch_wrapper, permissions_status
+    from gpd.core.utils import atomic_write, file_lock
+
+    cwd = _get_cwd()
+    config_path = ProjectLayout(cwd).config_json
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(config_path):
+        try:
+            raw = json.loads(config_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            raw = {}
+        if not isinstance(raw, dict):
+            raw = {}
+        updated, _canonical = apply_config_update(raw, "runtime_permissions", "permissive")
+        atomic_write(config_path, json.dumps(updated, indent=2) + "\n")
+
+    config = load_config(cwd)
+    runtime = os.environ.get("GPD_ACTIVE_RUNTIME", "unknown")
+
+    wrapper_path: str | None = None
+    if runtime == "claude-code":
+        wrapper = generate_launch_wrapper()
+        wrapper_path = str(wrapper)
+
+    status = permissions_status(config.runtime_permissions)
+    result = status.to_dict()
+    result["updated"] = True
+    if wrapper_path:
+        result["wrapper_path"] = wrapper_path
+    _output(result)
+
+
+@permissions_app.command("disable-permissive")
+def permissions_disable_permissive() -> None:
+    """Revert to default permission mode (runtime prompts for tool approval)."""
+    from gpd.core.config import apply_config_update, load_config
+    from gpd.core.constants import ProjectLayout
+    from gpd.core.permissions import permissions_status, remove_launch_wrapper
+    from gpd.core.utils import atomic_write, file_lock
+
+    cwd = _get_cwd()
+    config_path = ProjectLayout(cwd).config_json
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with file_lock(config_path):
+        try:
+            raw = json.loads(config_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            raw = {}
+        if not isinstance(raw, dict):
+            raw = {}
+        updated, _canonical = apply_config_update(raw, "runtime_permissions", "default")
+        atomic_write(config_path, json.dumps(updated, indent=2) + "\n")
+
+    remove_launch_wrapper()
+    config = load_config(cwd)
+    status = permissions_status(config.runtime_permissions)
+    result = status.to_dict()
+    result["updated"] = True
+    _output(result)
+
+
+@permissions_app.command("generate-wrapper")
+def permissions_generate_wrapper() -> None:
+    """Generate the Claude Code launch wrapper without changing config."""
+    from gpd.core.permissions import generate_launch_wrapper
+
+    wrapper = generate_launch_wrapper()
+    _output({
+        "generated": True,
+        "wrapper_path": str(wrapper),
+        "message": (
+            f"Launch wrapper written to {wrapper}.\n"
+            "Exit this session and re-launch with:\n"
+            f"  {wrapper}\n"
+            "to run Claude Code with --dangerously-skip-permissions."
+        ),
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # validate — Consistency validation
 # ═══════════════════════════════════════════════════════════════════════════
 
