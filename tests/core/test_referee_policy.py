@@ -243,3 +243,36 @@ def test_referee_decision_counts_must_be_non_negative(field_name: str) -> None:
             final_recommendation=ReviewRecommendation.major_revision,
             **{field_name: -1},
         )
+
+
+def test_referee_decision_input_rejects_unknown_top_level_keys() -> None:
+    with pytest.raises(ValidationError):
+        RefereeDecisionInput.model_validate(
+            {
+                "manuscript_path": "paper/main.tex",
+                "target_journal": "jhep",
+                "final_recommendation": "major_revision",
+                "unexpected": "boom",
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "blocking_issue_ids",
+    [
+        ["REF-001", "not-a-ref"],
+        [""],
+    ],
+)
+def test_referee_decision_input_rejects_malformed_blocking_issue_ids(
+    blocking_issue_ids: list[str],
+) -> None:
+    with pytest.raises(ValidationError):
+        RefereeDecisionInput.model_validate(
+            {
+                "manuscript_path": "paper/main.tex",
+                "target_journal": "jhep",
+                "final_recommendation": "major_revision",
+                "blocking_issue_ids": blocking_issue_ids,
+            }
+        )

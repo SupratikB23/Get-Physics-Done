@@ -163,7 +163,7 @@ class ClaimIndex(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: int = 1
+    version: Literal[1] = 1
     manuscript_path: str
     manuscript_sha256: Sha256Hex
     claims: list[ClaimRecord] = Field(default_factory=list)
@@ -191,8 +191,8 @@ class StageReviewReport(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: int = 1
-    round: int = 1
+    version: Literal[1] = 1
+    round: int = Field(default=1, gt=0)
     stage_id: str
     stage_kind: ReviewStageKind
     manuscript_path: str
@@ -234,8 +234,8 @@ class ReviewLedger(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: int = 1
-    round: int = 1
+    version: Literal[1] = 1
+    round: int = Field(default=1, gt=0)
     manuscript_path: str
     issues: list[ReviewIssue] = Field(default_factory=list)
 
@@ -245,8 +245,8 @@ class ReviewPanelBundle(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: int = 1
-    round: int = 1
+    version: Literal[1] = 1
+    round: int = Field(default=1, gt=0)
     manuscript_path: str
     target_journal: str = "unspecified"
     claim_index_path: str
@@ -281,6 +281,8 @@ class JournalSpec(BaseModel):
 class PaperConfig(BaseModel):
     """Complete configuration for generating a paper."""
 
+    model_config = ConfigDict(extra="forbid")
+
     title: str
     authors: list[Author]
     abstract: str
@@ -288,7 +290,7 @@ class PaperConfig(BaseModel):
     figures: list[FigureRef] = Field(default_factory=list)
     acknowledgments: str = ""
     bib_file: str = "references"
-    journal: str = "prl"
+    journal: Literal["prl", "apj", "mnras", "nature", "jhep", "jfm"] = "prl"
     appendix_sections: list[Section] = Field(default_factory=list)
     attribution_footer: str = "Generated with Get Physics Done"
 

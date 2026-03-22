@@ -134,10 +134,10 @@ def test_installed_update_command_uses_manifest_runtime_metadata_for_custom_targ
     assert str(explicit_target) in command
 
 
-@pytest.mark.parametrize("manifest_runtime", ["Claude Code", "claude"])
-def test_runtime_cli_accepts_display_name_and_alias_manifest_runtime(
+@pytest.mark.parametrize("runtime_arg", ["Claude Code", "claude"])
+def test_runtime_cli_accepts_display_name_and_alias_runtime_argument(
     tmp_path: Path,
-    manifest_runtime: str,
+    runtime_arg: str,
 ) -> None:
     import gpd.runtime_cli as runtime_cli
     from gpd.adapters import get_adapter
@@ -151,7 +151,6 @@ def test_runtime_cli_accepts_display_name_and_alias_manifest_runtime(
     adapter.finalize_install(result)
     manifest_path = target_dir / "gpd-file-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["runtime"] = manifest_runtime
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with patch("gpd.runtime_cli._maybe_reexec_from_checkout", lambda *_args, **_kwargs: None):
@@ -159,7 +158,7 @@ def test_runtime_cli_accepts_display_name_and_alias_manifest_runtime(
             runtime_cli.main(
                 [
                     "--runtime",
-                    runtime,
+                    runtime_arg,
                     "--config-dir",
                     str(target_dir),
                     "--install-scope",
@@ -170,6 +169,42 @@ def test_runtime_cli_accepts_display_name_and_alias_manifest_runtime(
             )
 
     assert excinfo.value.code == 0
+
+
+def test_installed_runtime_recovers_from_invalid_manifest_runtime_using_file_prefixes(tmp_path: Path) -> None:
+    from gpd.adapters import get_adapter
+    from gpd.hooks.install_metadata import installed_runtime
+
+    runtime = "codex"
+    adapter = get_adapter(runtime)
+    gpd_root = Path(__file__).resolve().parents[2] / "src" / "gpd"
+    target_dir = tmp_path / adapter.config_dir_name
+    target_dir.mkdir(parents=True, exist_ok=True)
+    result = adapter.install(gpd_root, target_dir, is_global=True)
+    adapter.finalize_install(result)
+
+    manifest_path = target_dir / "gpd-file-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["runtime"] = "definitely-not-a-runtime"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert installed_runtime(target_dir) == runtime
+
+
+def test_config_dir_has_complete_install_accepts_generic_markers_even_with_invalid_manifest_runtime(
+    tmp_path: Path,
+) -> None:
+    from gpd.hooks.install_metadata import config_dir_has_complete_install
+
+    config_dir = tmp_path / "custom-runtime-dir"
+    config_dir.mkdir()
+    (config_dir / "gpd-file-manifest.json").write_text(
+        json.dumps({"runtime": "definitely-not-a-runtime"}),
+        encoding="utf-8",
+    )
+    (config_dir / "get-physics-done").mkdir()
+
+    assert config_dir_has_complete_install(config_dir) is True
 
 
 def test_installed_update_command_ignores_process_cwd_for_nested_default_local_install(tmp_path: Path) -> None:

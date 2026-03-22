@@ -294,3 +294,148 @@ def test_review_ledger_rejects_invalid_issue_and_claim_id_formats(tmp_path: Path
 
     with pytest.raises(ValidationError):
         read_review_ledger(ledger_path)
+
+
+@pytest.mark.parametrize(
+    ("model_cls", "kwargs"),
+    [
+        (
+            ClaimIndex,
+            {
+                "version": 2,
+                "manuscript_path": "paper/main.tex",
+                "manuscript_sha256": "a" * 64,
+                "claims": [],
+            },
+        ),
+        (
+            StageReviewReport,
+            {
+                "version": 2,
+                "round": 1,
+                "stage_id": "reader",
+                "stage_kind": ReviewStageKind.reader,
+                "manuscript_path": "paper/main.tex",
+                "manuscript_sha256": "a" * 64,
+                "claims_reviewed": [],
+                "summary": "Summary",
+                "strengths": [],
+                "findings": [],
+                "confidence": ReviewConfidence.medium,
+                "recommendation_ceiling": ReviewRecommendation.major_revision,
+            },
+        ),
+        (
+            ReviewLedger,
+            {
+                "version": 2,
+                "round": 1,
+                "manuscript_path": "paper/main.tex",
+                "issues": [],
+            },
+        ),
+        (
+            ReviewPanelBundle,
+            {
+                "version": 2,
+                "round": 1,
+                "manuscript_path": "paper/main.tex",
+                "claim_index_path": ".gpd/review/CLAIMS.json",
+                "review_ledger_path": ".gpd/review/REVIEW-LEDGER.json",
+                "decision_path": ".gpd/review/REFEREE-DECISION.json",
+                "final_recommendation": ReviewRecommendation.major_revision,
+                "final_confidence": ReviewConfidence.medium,
+                "final_report_path": ".gpd/REFEREE-REPORT.md",
+            },
+        ),
+    ],
+)
+def test_review_artifacts_pin_version_to_one(model_cls, kwargs) -> None:
+    with pytest.raises(ValidationError):
+        model_cls(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ("model_cls", "kwargs"),
+    [
+        (
+            StageReviewReport,
+            {
+                "version": 1,
+                "round": 0,
+                "stage_id": "reader",
+                "stage_kind": ReviewStageKind.reader,
+                "manuscript_path": "paper/main.tex",
+                "manuscript_sha256": "a" * 64,
+                "claims_reviewed": [],
+                "summary": "Summary",
+                "strengths": [],
+                "findings": [],
+                "confidence": ReviewConfidence.medium,
+                "recommendation_ceiling": ReviewRecommendation.major_revision,
+            },
+        ),
+        (
+            ReviewLedger,
+            {
+                "version": 1,
+                "round": 0,
+                "manuscript_path": "paper/main.tex",
+                "issues": [],
+            },
+        ),
+        (
+            ReviewPanelBundle,
+            {
+                "version": 1,
+                "round": 0,
+                "manuscript_path": "paper/main.tex",
+                "claim_index_path": ".gpd/review/CLAIMS.json",
+                "review_ledger_path": ".gpd/review/REVIEW-LEDGER.json",
+                "decision_path": ".gpd/review/REFEREE-DECISION.json",
+                "final_recommendation": ReviewRecommendation.major_revision,
+                "final_confidence": ReviewConfidence.medium,
+                "final_report_path": ".gpd/REFEREE-REPORT.md",
+            },
+        ),
+    ],
+)
+def test_review_artifacts_require_positive_round_numbers(model_cls, kwargs) -> None:
+    with pytest.raises(ValidationError):
+        model_cls(**kwargs)
+
+
+def test_read_referee_decision_rejects_unknown_top_level_keys(tmp_path: Path) -> None:
+    decision_path = tmp_path / "REFEREE-DECISION.json"
+    decision_path.write_text(
+        json.dumps(
+            {
+                "manuscript_path": "paper/main.tex",
+                "target_journal": "jhep",
+                "final_recommendation": "major_revision",
+                "unexpected": "boom",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        read_referee_decision(decision_path)
+
+
+def test_read_referee_decision_rejects_malformed_blocking_issue_ids(tmp_path: Path) -> None:
+    decision_path = tmp_path / "REFEREE-DECISION.json"
+    decision_path.write_text(
+        json.dumps(
+            {
+                "manuscript_path": "paper/main.tex",
+                "target_journal": "jhep",
+                "final_recommendation": "major_revision",
+                "blocking_issue_ids": ["REF-001", "not-a-ref"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        read_referee_decision(decision_path)

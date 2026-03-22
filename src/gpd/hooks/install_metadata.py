@@ -93,14 +93,13 @@ def _infer_runtime_from_manifest(config_dir: Path) -> str | None:
     runtime = manifest.get("runtime")
     if "runtime" in manifest:
         if not isinstance(runtime, str):
-            return None
-        normalized_runtime = runtime.strip()
-        if not normalized_runtime:
-            return None
-        canonical_runtime = normalize_runtime_name(normalized_runtime)
-        if canonical_runtime is not None:
-            return canonical_runtime
-        return None
+            runtime = None
+        else:
+            normalized_runtime = runtime.strip()
+            if normalized_runtime:
+                canonical_runtime = normalize_runtime_name(normalized_runtime)
+                if canonical_runtime is not None:
+                    return canonical_runtime
 
     files = manifest.get("files")
     if isinstance(files, dict):
@@ -157,6 +156,8 @@ def config_dir_has_complete_install(config_dir: Path) -> bool:
             return get_adapter(runtime).has_complete_install(config_dir)
         except KeyError:
             return False
+    if _has_generic_complete_install(config_dir):
+        return True
     if "runtime" in manifest:
         return False
     return _has_generic_complete_install(config_dir)

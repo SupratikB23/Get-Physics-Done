@@ -7,10 +7,11 @@ from collections import Counter
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from gpd.mcp.paper.models import (
     ReviewConfidence,
+    ReviewIssueId,
     ReviewIssueSeverity,
     ReviewIssueStatus,
     ReviewLedger,
@@ -37,6 +38,8 @@ class ReviewAdequacy(StrEnum):
 class RefereeDecisionInput(BaseModel):
     """Typed summary of the final staged-review adjudication."""
 
+    model_config = ConfigDict(extra="forbid")
+
     manuscript_path: str = ""
     target_journal: str = "unspecified"
     final_recommendation: ReviewRecommendation
@@ -54,7 +57,7 @@ class RefereeDecisionInput(BaseModel):
     literature_positioning: ReviewAdequacy = ReviewAdequacy.adequate
     unresolved_major_issues: int = Field(default=0, ge=0)
     unresolved_minor_issues: int = Field(default=0, ge=0)
-    blocking_issue_ids: list[str] = Field(default_factory=list)
+    blocking_issue_ids: list[ReviewIssueId] = Field(default_factory=list)
 
 
 class RefereeDecisionReport(BaseModel):

@@ -508,6 +508,44 @@ class TestMainThrottle:
 
         mock_popen.assert_not_called()
 
+    def test_runtime_neutral_fallback_cache_does_not_suppress_preferred_refresh(self, tmp_path: Path) -> None:
+        """A runtime-neutral fallback cache must not short-circuit the preferred runtime refresh."""
+        home = tmp_path / "home"
+        preferred_cache = tmp_path / ".codex" / "cache" / "gpd-update-check.json"
+        preferred_cache.parent.mkdir(parents=True)
+        preferred_cache.write_text(
+            json.dumps({"checked": int(time.time()) - UPDATE_CHECK_TTL_SECONDS - 100, "update_available": False}),
+            encoding="utf-8",
+        )
+
+        fallback_cache = home / ".gpd" / "cache" / "gpd-update-check.json"
+        fallback_cache.parent.mkdir(parents=True)
+        fallback_cache.write_text(
+            json.dumps({"checked": int(time.time()), "update_available": False}),
+            encoding="utf-8",
+        )
+
+        with (
+            patch(
+                "gpd.hooks.runtime_detect.get_update_cache_candidates",
+                return_value=[
+                    UpdateCacheCandidate(path=preferred_cache, runtime="codex", scope="local"),
+                    UpdateCacheCandidate(path=fallback_cache, runtime=None, scope=None),
+                ],
+            ),
+            patch("gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install", return_value="unknown"),
+            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="codex"),
+            patch("gpd.hooks.runtime_detect.Path.cwd", return_value=tmp_path),
+            patch("gpd.hooks.runtime_detect.Path.home", return_value=home),
+            patch("gpd.hooks.check_update.Path.home", return_value=home),
+            patch("subprocess.Popen") as mock_popen,
+        ):
+            main()
+
+        mock_popen.assert_called_once()
+        spawned_cache = Path(mock_popen.call_args.args[0][-1])
+        assert spawned_cache == preferred_cache
+
     def test_fresh_wrong_scope_cache_should_not_suppress_global_install_refresh(self, tmp_path: Path) -> None:
         """Install-aware expectation: a fresh cache from the wrong scope must not suppress refresh for the live install."""
         workspace = tmp_path / "workspace"

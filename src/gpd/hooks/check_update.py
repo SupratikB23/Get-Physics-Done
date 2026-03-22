@@ -286,7 +286,10 @@ def main() -> None:
         )
 
     # Throttle: skip only when the preferred runtime/home cache set is still fresh.
+    has_runtime_specific_candidate = any(candidate.runtime in ALL_RUNTIMES for candidate in relevant_candidates)
     for candidate in relevant_candidates:
+        if candidate.runtime is None and has_runtime_specific_candidate:
+            continue
         candidate_path = candidate.path
         if not candidate_path.exists():
             continue
