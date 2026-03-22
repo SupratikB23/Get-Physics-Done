@@ -12,6 +12,12 @@ from gpd.mcp.paper.bibliography import CitationSource
 from gpd.mcp.paper.compiler import CompilationResult, _get_tlmgr_package, check_class_file
 from gpd.mcp.paper.models import Author, FigureRef, PaperConfig, Section
 
+
+def _allow_journal_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep happy-path build tests focused on build orchestration, not TeX setup."""
+    monkeypatch.setattr("gpd.mcp.paper.compiler.check_journal_dependencies", lambda spec: (True, []))
+
+
 # ---- Compiler wrapper tests ----
 
 
@@ -63,6 +69,7 @@ class TestBuildPaper:
         async def mock_compile(tex_path, output_dir, compiler="pdflatex"):
             return mock_result
 
+        _allow_journal_dependencies(monkeypatch)
         monkeypatch.setattr("gpd.mcp.paper.compiler.compile_paper", mock_compile)
 
         output = await build_paper(config, tmp_path, bib_data=bib)
@@ -111,6 +118,7 @@ class TestBuildPaper:
         async def mock_compile(tex_path, output_dir, compiler="pdflatex"):
             return mock_result
 
+        _allow_journal_dependencies(monkeypatch)
         monkeypatch.setattr("gpd.mcp.paper.compiler.compile_paper", mock_compile)
 
         output = await build_paper(
@@ -132,6 +140,8 @@ class TestBuildPaper:
         bib_content = (tmp_path / "references.bib").read_text(encoding="utf-8")
         assert "einstein1905" in bib_content
         assert "bohr1913" in bib_content
+        assert output.success is True
+        assert output.pdf_path == pdf_path
         assert output.bibliography_audit is not None
         assert output.bibliography_audit.entries[0].key == "bohr1913"
         assert output.manifest is not None
@@ -160,7 +170,7 @@ class TestBuildPaper:
         async def mock_compile(tex_path, output_dir, compiler="pdflatex"):
             return mock_result
 
-        monkeypatch.setattr("gpd.mcp.paper.compiler.check_class_file", lambda dc, install_hint=None: (True, "ok"))
+        _allow_journal_dependencies(monkeypatch)
         monkeypatch.setattr("gpd.mcp.paper.compiler.compile_paper", mock_compile)
 
         output = await build_paper(config, tmp_path)
@@ -195,6 +205,7 @@ class TestBuildPaper:
         async def mock_compile(tex_path, output_dir, compiler="pdflatex"):
             return mock_result
 
+        _allow_journal_dependencies(monkeypatch)
         monkeypatch.setattr("gpd.mcp.paper.compiler.compile_paper", mock_compile)
 
         output = await build_paper(
