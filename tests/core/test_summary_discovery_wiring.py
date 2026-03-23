@@ -25,3 +25,10 @@ def test_verify_work_searches_legacy_and_plan_scoped_summary_artifacts() -> None
 
     assert 'ls "$phase_dir"/SUMMARY.md "$phase_dir"/*-SUMMARY.md 2>/dev/null' in workflow_text
     assert "ls .gpd/phases/*/SUMMARY.md .gpd/phases/*/*-SUMMARY.md 2>/dev/null | sort" in workflow_text
+
+
+def test_verify_work_searches_legacy_and_plan_scoped_verification_artifacts() -> None:
+    workflow_text = (WORKFLOWS_DIR / "verify-work.md").read_text(encoding="utf-8")
+
+    assert "rg -l '^session_status: (validating|diagnosed)$' .gpd/phases/*/VERIFICATION.md .gpd/phases/*/*-VERIFICATION.md 2>/dev/null | sort | head -5" in workflow_text
+    assert 'ls "$phase_dir"/VERIFICATION.md "$phase_dir"/*-VERIFICATION.md 2>/dev/null | head -1' in workflow_text

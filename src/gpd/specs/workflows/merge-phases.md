@@ -177,7 +177,7 @@ These overlapping plans will need manual reconciliation after merge.
 
 ```bash
 # Copy verification results (preserve as-is with source phase prefix)
-for FILE in "${SOURCE_DIR}"/*-VERIFICATION.md "${SOURCE_DIR}"/*-VALIDATION.md; do
+for FILE in "${SOURCE_DIR}"/VERIFICATION.md "${SOURCE_DIR}"/*-VERIFICATION.md "${SOURCE_DIR}"/*-VALIDATION.md; do
   if [ -f "$FILE" ]; then
     cp "$FILE" "${TARGET_DIR}/merged-from-phase-${SOURCE_PHASE}-$(basename "$FILE")"
   fi

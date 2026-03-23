@@ -585,6 +585,15 @@ Structured literature review for a physics research topic.
 
 Usage: `/gpd:literature-review "Sachdev-Ye-Kitaev model thermodynamics"`
 
+**`/gpd:explain [concept]`**
+Explain a concept, method, notation, result, or paper in project context or from a standalone question.
+
+- Spawns a `gpd-explainer` agent and grounds the explanation in the active phase, manuscript, or local workflow when available
+- Produces a structured explanation under `.gpd/explanations/`
+- Audits cited papers with `gpd-bibliographer` and includes a reading path with openable links
+
+Usage: `/gpd:explain "Ward identity"`
+
 ### Hypothesis Branches
 
 **`/gpd:branch-hypothesis <description>`**
@@ -604,6 +613,16 @@ Compare results across hypothesis branches side-by-side.
 - Helps decide which branch to merge back
 
 Usage: `/gpd:compare-branches`
+
+**`/gpd:compare-results [phase, artifact, or comparison target]`**
+Compare internal results, baselines, or methods and emit a decisive verdict.
+
+- Compares contract-backed results, baselines, or prior-work targets within the current project
+- Surfaces supporting evidence and decisive comparison outcomes for downstream verification
+- Use when you need to reconcile two results rather than compare two branches
+
+Usage: `/gpd:compare-results 3`
+Usage: `/gpd:compare-results results/summary.csv experiment.csv`
 
 ### Decision Tracking
 
@@ -824,21 +843,27 @@ Show this command reference.
 
 ## Workflow Modes
 
-Set during `/gpd:new-project`:
+Set during `/gpd:new-project` and adjustable later with `/gpd:settings`:
 
-**Interactive Mode**
+**Supervised**
 
 - Confirms each major decision
 - Pauses at checkpoints for approval
 - More guidance throughout
 
-**YOLO Mode**
+**Balanced (Recommended)**
+
+- Default mode for normal research work
+- Keeps the main workflow moving without suppressing important checkpoints
+- Balances autonomy with review gates
+
+**YOLO**
 
 - Auto-approves most decisions
 - Executes plans without confirmation
 - Only stops for critical checkpoints (e.g., sign convention choices)
 
-Change anytime by editing `.gpd/config.json`
+Change anytime with `/gpd:settings`
 
 ## Planning Configuration
 

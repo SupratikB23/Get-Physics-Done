@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+
+import pytest
 
 from gpd.core.constants import STATE_JSON_BACKUP_FILENAME, ProjectLayout
 from gpd.core.context import init_progress
@@ -91,6 +94,42 @@ def test_state_and_context_restore_backup_project_contract_when_primary_contract
     assert ctx["project_contract"] is not None
     assert ctx["project_contract"]["scope"]["question"] == "Recovered from backup contract"
     assert ctx["project_contract_load_info"]["source_path"].endswith(STATE_JSON_BACKUP_FILENAME)
+
+
+@pytest.mark.parametrize(
+    "primary_state_contents",
+    [
+        None,
+        "{",
+    ],
+)
+def test_state_and_context_restore_backup_project_contract_when_primary_state_is_missing_or_unreadable(
+    tmp_path: Path,
+    primary_state_contents: str | None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _setup_project(tmp_path)
+
+    layout = ProjectLayout(tmp_path)
+    backup_state = default_state_dict()
+    backup_contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    backup_contract["scope"]["question"] = "Recovered from backup-only state"
+    backup_state["project_contract"] = backup_contract
+    layout.state_json_backup.write_text(json.dumps(backup_state, indent=2) + "\n", encoding="utf-8")
+    if primary_state_contents is not None:
+        layout.state_json.write_text(primary_state_contents, encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="gpd.core.context"):
+        ctx = init_progress(tmp_path)
+
+    assert ctx["project_contract"] is not None
+    assert ctx["project_contract"]["scope"]["question"] == "Recovered from backup-only state"
+    assert ctx["project_contract_load_info"]["source_path"].endswith(STATE_JSON_BACKUP_FILENAME)
+    assert ctx["project_contract_load_info"]["status"].startswith("loaded")
+    assert any(
+        "the primary state.json was unavailable or unreadable" in record.message
+        for record in caplog.records
+    )
 
 
 def test_state_and_context_drop_integrity_invalid_backup_project_contract(tmp_path: Path) -> None:

@@ -40,6 +40,7 @@ Version: $ARGUMENTS (optional — defaults to current milestone)
 
 **Completed Work:**
 find_files: .gpd/phases/*/*-SUMMARY.md
+find_files: .gpd/phases/*/VERIFICATION.md
 find_files: .gpd/phases/*/*-VERIFICATION.md
 </context>
 

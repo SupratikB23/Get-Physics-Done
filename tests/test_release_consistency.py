@@ -131,6 +131,9 @@ def _expected_wheel_dependency_names() -> set[str]:
     return _expected_runtime_dependency_names() | {"arxiv-mcp-server"}
 
 
+HELP_COMMAND_HEADING_RE = re.compile(r"^\*\*`/gpd:([a-z0-9-]+)(?:[^`]*)`\*\*$", re.MULTILINE)
+
+
 def _normalized_requirement_name(requirement: str) -> str:
     normalized: list[str] = []
     for char in requirement.split(";", 1)[0].strip():
@@ -152,6 +155,14 @@ def _wheel_dependency_names(metadata: str) -> set[str]:
         if line.startswith("Requires-Dist:")
     ]
     return _normalized_dependency_names(requirements)
+
+
+def _command_inventory_stems(repo_root: Path) -> set[str]:
+    return {path.stem for path in (repo_root / "src/gpd/commands").glob("*.md")}
+
+
+def _help_heading_stems(content: str) -> set[str]:
+    return set(HELP_COMMAND_HEADING_RE.findall(content))
 
 
 def test_required_public_release_artifacts_exist() -> None:
@@ -585,6 +596,19 @@ def test_help_reference_surfaces_keep_regression_check_wording_aligned_with_impl
         assert "re-runs dimensional analysis" not in content
         assert "re-runs limiting cases" not in content
         assert "re-runs numerical checks" not in content
+
+
+def test_help_reference_surfaces_match_command_inventory() -> None:
+    repo_root = _repo_root()
+    inventory = _command_inventory_stems(repo_root)
+    help_command = (repo_root / "src/gpd/commands/help.md").read_text(encoding="utf-8")
+    help_workflow = (repo_root / "src/gpd/specs/workflows/help.md").read_text(encoding="utf-8")
+
+    command_help_stems = _help_heading_stems(help_command)
+    workflow_help_stems = _help_heading_stems(help_workflow)
+
+    assert command_help_stems == inventory
+    assert workflow_help_stems == inventory
 
 
 def test_regression_check_canonical_surfaces_match_scan_only_implementation() -> None:

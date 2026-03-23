@@ -1193,7 +1193,7 @@ Follow the verification workflow. Read `{GPD_INSTALL_DIR}/workflows/verify-phase
 Read status after verification completes:
 
 ```bash
-grep "^status:" "$phase_dir"/*-VERIFICATION.md | head -1 | cut -d: -f2 | tr -d ' '
+grep "^status:" "$phase_dir"/VERIFICATION.md "$phase_dir"/*-VERIFICATION.md 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' '
 ```
 
 | Status         | Action                                                      |
@@ -1251,8 +1251,8 @@ Before triggering gap closure, classify the failure to select the minimum-cost r
 ```bash
 # Count only top-level verification outcomes. Nested contract-results and gap
 # ledgers also have `status:` fields, so unanchored grep would overcount them.
-FAILED_COUNT=$(rg -c '^status: (gaps_found|expert_needed|human_needed)$' "${phase_dir}"/*-VERIFICATION.md 2>/dev/null | awk -F: '{sum += $2} END {print sum+0}')
-TOTAL_COUNT=$(rg -c '^status: (passed|gaps_found|expert_needed|human_needed)$' "${phase_dir}"/*-VERIFICATION.md 2>/dev/null | awk -F: '{sum += $2} END {print sum+0}')
+FAILED_COUNT=$(rg -c '^status: (gaps_found|expert_needed|human_needed)$' "${phase_dir}"/VERIFICATION.md "${phase_dir}"/*-VERIFICATION.md 2>/dev/null | awk -F: '{sum += $2} END {print sum+0}')
+TOTAL_COUNT=$(rg -c '^status: (passed|gaps_found|expert_needed|human_needed)$' "${phase_dir}"/VERIFICATION.md "${phase_dir}"/*-VERIFICATION.md 2>/dev/null | awk -F: '{sum += $2} END {print sum+0}')
 ```
 
 | Failure Pattern | Recovery | Cost |
@@ -1492,10 +1492,10 @@ Mark phase complete in ROADMAP.md (date, status).
 Follow the full transition protocol. Read `{GPD_INSTALL_DIR}/workflows/transition.md` using the file_read tool for PROJECT.md evolution, DECISIONS.md updates, and parallel phase detection.
 
 ```bash
-PRE_CHECK=$(gpd pre-commit-check --files .gpd/ROADMAP.md .gpd/STATE.md "${phase_dir}"/*-VERIFICATION.md .gpd/REQUIREMENTS.md 2>&1) || true
+PRE_CHECK=$(gpd pre-commit-check --files .gpd/ROADMAP.md .gpd/STATE.md "${phase_dir}"/VERIFICATION.md "${phase_dir}"/*-VERIFICATION.md .gpd/REQUIREMENTS.md 2>&1) || true
 echo "$PRE_CHECK"
 
-gpd commit "docs(phase-${phase_number}): complete phase execution" --files .gpd/ROADMAP.md .gpd/STATE.md "${phase_dir}"/*-VERIFICATION.md .gpd/REQUIREMENTS.md
+gpd commit "docs(phase-${phase_number}): complete phase execution" --files .gpd/ROADMAP.md .gpd/STATE.md "${phase_dir}"/VERIFICATION.md "${phase_dir}"/*-VERIFICATION.md .gpd/REQUIREMENTS.md
 ```
 
 </step>

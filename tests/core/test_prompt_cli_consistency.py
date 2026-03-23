@@ -9,10 +9,12 @@ from gpd.registry import VALID_CONTEXT_MODES, _parse_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI_PATH = REPO_ROOT / "src/gpd/cli.py"
+COMMANDS_DIR = REPO_ROOT / "src/gpd/commands"
+WORKFLOWS_DIR = REPO_ROOT / "src/gpd/specs/workflows"
 PROMPT_ROOTS = (
-    REPO_ROOT / "src/gpd/commands",
+    COMMANDS_DIR,
     REPO_ROOT / "src/gpd/agents",
-    REPO_ROOT / "src/gpd/specs/workflows",
+    WORKFLOWS_DIR,
     REPO_ROOT / "src/gpd/specs/references",
     REPO_ROOT / "src/gpd/specs/templates",
 )
@@ -127,7 +129,7 @@ def test_prompt_sources_use_canonical_gpd_command_syntax() -> None:
 
 
 def test_help_prompt_command_count_matches_live_inventory() -> None:
-    command_count = len(list((REPO_ROOT / "src/gpd/commands").glob("*.md")))
+    command_count = len(list(COMMANDS_DIR.glob("*.md")))
     help_prompt = (REPO_ROOT / "src/gpd/commands/help.md").read_text(encoding="utf-8")
 
     assert f"Run `/gpd:help --all` for all {command_count} commands." in help_prompt
@@ -222,6 +224,20 @@ def test_verifier_prompt_does_not_claim_regression_check_spawns_verifier() -> No
     verifier = (REPO_ROOT / "src/gpd/agents/gpd-verifier.md").read_text(encoding="utf-8")
 
     assert "The regression-check command" not in verifier
+
+
+def test_help_prompt_workflow_modes_match_current_settings_vocabulary() -> None:
+    help_command = (COMMANDS_DIR / "help.md").read_text(encoding="utf-8")
+    help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8")
+
+    for content in (help_command, help_workflow):
+        assert "Interactive Mode" not in content
+        assert "YOLO Mode" not in content
+        assert "Change anytime by editing `.gpd/config.json`" not in content
+        assert "Supervised" in content
+        assert "Balanced (Recommended)" in content
+        assert "YOLO" in content
+        assert "/gpd:settings" in content
 
 
 def test_execute_phase_failure_recovery_counts_only_top_level_verification_statuses() -> None:

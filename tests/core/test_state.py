@@ -52,6 +52,21 @@ def _event_name(event: dict[str, object]) -> str | None:
             return value
     return None
 
+
+def _write_backup_only_state(
+    tmp_path: Path,
+    primary_state: dict[str, object],
+    *,
+    backup_state: dict[str, object] | None = None,
+) -> ProjectLayout:
+    save_state_json(tmp_path, primary_state)
+    save_state_markdown(tmp_path, generate_state_markdown(primary_state))
+    layout = ProjectLayout(tmp_path)
+    state_for_backup = backup_state or primary_state
+    layout.state_json_backup.write_text(json.dumps(state_for_backup, indent=2) + "\n", encoding="utf-8")
+    layout.state_json.unlink()
+    return layout
+
 # ─── default_state_dict ──────────────────────────────────────────────────────
 
 
@@ -871,6 +886,24 @@ def test_load_state_json_backup_restore_drops_project_contract_when_backup_requi
     assert restored["project_contract"] is None
 
 
+def test_load_state_json_recovers_backup_only_state_when_primary_json_is_missing(tmp_path: Path) -> None:
+    primary_state = default_state_dict()
+    primary_state["position"]["status"] = "Executing"
+    backup_state = json.loads(json.dumps(primary_state))
+    backup_state["project_contract"] = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    backup_state["project_contract"]["scope"]["question"] = "Recovered from backup state"
+    layout = _write_backup_only_state(tmp_path, primary_state, backup_state=backup_state)
+
+    loaded = load_state_json(tmp_path)
+
+    assert loaded is not None
+    assert loaded["project_contract"]["scope"]["question"] == "Recovered from backup state"
+    assert loaded["position"]["status"] == "Executing"
+    assert json.loads(layout.state_json.read_text(encoding="utf-8"))["project_contract"]["scope"]["question"] == (
+        "Recovered from backup state"
+    )
+
+
 def test_load_state_json_primary_file_drops_project_contract_when_singleton_list_drift_requires_blocking_normalization(
     tmp_path: Path,
 ):
@@ -944,6 +977,24 @@ def test_state_load_matches_context_progress_for_recoverably_normalized_project_
 
     assert loaded.state["project_contract"] == ctx["project_contract"]
     assert "notes" not in loaded.state["project_contract"]["claims"][0]
+
+
+def test_state_load_recovers_backup_only_state_when_primary_json_is_missing(tmp_path: Path) -> None:
+    primary_state = default_state_dict()
+    primary_state["position"]["status"] = "Executing"
+    backup_state = json.loads(json.dumps(primary_state))
+    backup_state["project_contract"] = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    backup_state["project_contract"]["scope"]["question"] = "Recovered from backup state"
+    layout = _write_backup_only_state(tmp_path, primary_state, backup_state=backup_state)
+
+    loaded = state_load(tmp_path)
+
+    assert loaded.state["project_contract"]["scope"]["question"] == "Recovered from backup state"
+    assert loaded.state["position"]["status"] == "Executing"
+    assert loaded.state_exists is True
+    assert json.loads(layout.state_json.read_text(encoding="utf-8"))["project_contract"]["scope"]["question"] == (
+        "Recovered from backup state"
+    )
 
 
 def test_ensure_state_schema_preserves_good_fields_when_one_is_bad():
@@ -1300,6 +1351,25 @@ def test_state_validate_recovers_backup_when_primary_root_is_not_an_object(tmp_p
     assert validation.valid is True
     assert validation.integrity_status == "warning"
     assert any("state.json root was recovered from state.json.bak" in warning for warning in validation.warnings)
+
+
+def test_state_validate_recovers_backup_only_state_when_primary_json_is_missing(tmp_path: Path) -> None:
+    primary_state = default_state_dict()
+    primary_state["position"]["status"] = "Executing"
+    backup_state = json.loads(json.dumps(primary_state))
+    backup_state["project_contract"] = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    backup_state["project_contract"]["scope"]["question"] = "Recovered from backup state"
+    _write_backup_only_state(tmp_path, primary_state, backup_state=backup_state)
+
+    validation = state_validate(tmp_path)
+
+    assert validation.valid is True
+    assert validation.integrity_status == "warning"
+    assert not any("state.json not found" in issue for issue in validation.issues)
+    assert any(
+        "state.json root was recovered from state.json.bak after primary state.json was missing" in warning
+        for warning in validation.warnings
+    )
 
 
 def test_state_validate_recovers_backup_root_without_project_contract(tmp_path: Path) -> None:

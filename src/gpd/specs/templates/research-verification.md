@@ -26,17 +26,44 @@ contract_results:
     claim-main:
       status: not_attempted
       summary: "[verification not started yet]"
-  deliverables: {}
-  acceptance_tests: {}
-  references: {}
-  forbidden_proxies: {}
+  deliverables:
+    deliverable-main:
+      status: not_attempted
+      summary: "[verification not started yet]"
+  acceptance_tests:
+    acceptance-test-main:
+      status: not_attempted
+      summary: "[verification not started yet]"
+  references:
+    reference-main:
+      status: not_attempted
+      summary: "[verification not started yet]"
+  forbidden_proxies:
+    forbidden-proxy-main:
+      status: unresolved
+      summary: "[verification not started yet]"
   uncertainty_markers:
     weakest_anchors: [anchor-1]
     unvalidated_assumptions: [assumption-1]
     competing_explanations: [alternative-1]
     disconfirming_observations: [observation-1]
-comparison_verdicts: []
-suggested_contract_checks: []
+comparison_verdicts:
+  - subject_id: claim-main
+    subject_kind: claim
+    subject_role: decisive
+    reference_id: ref-main
+    comparison_kind: benchmark
+    metric: relative_error
+    threshold: "<= 0.01"
+    verdict: inconclusive
+    recommended_action: "[close the decisive benchmark once the evidence is written]"
+    notes: "[template placeholder; replace with the first decisive verdict]"
+suggested_contract_checks:
+  - check: "[missing decisive benchmark comparison]"
+    reason: "[why the missing check matters]"
+    suggested_subject_kind: acceptance_test
+    suggested_subject_id: test-benchmark
+    evidence_path: [artifact path or expected evidence path]
 source: [list of SUMMARY.md files validated]
 started: [ISO timestamp]
 updated: [ISO timestamp]
@@ -60,6 +87,8 @@ comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline 
 comparison_reference_id: [reference-id or ""]
 expected: |
 [what the researcher should confirm or evaluate]
+# Use `comparison_kind: benchmark` for benchmark acceptance tests and
+# `comparison_kind: cross_method` for cross-method acceptance tests.
 suggested_contract_checks:
   # If you cannot bind the gap to a known contract target yet, omit both
   # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.

@@ -481,6 +481,16 @@ Compare theoretical/numerical results against experimental data.
 
 Usage: `/gpd:compare-experiment predictions.csv experiment.csv`
 
+**`/gpd:compare-results [phase, artifact, or comparison target]`**
+Compare internal results, baselines, or methods and emit a decisive verdict.
+
+- Compares phase outputs, artifacts, or named comparison targets
+- Surfaces agreement, tension, or failure in a single verdict-oriented view
+- Useful when you need to compare internal baselines without reaching for external data
+
+Usage: `/gpd:compare-results 3`
+Usage: `/gpd:compare-results results/01-SUMMARY.md`
+
 **`/gpd:validate-conventions [phase]`**
 Validate convention consistency across all phases.
 
@@ -504,6 +514,16 @@ Scan completed phase artifacts for regressions in already-recorded verification 
 
 Usage: `/gpd:regression-check`
 Usage: `/gpd:regression-check 3`
+
+**`/gpd:health`**
+Run project health checks and optionally auto-fix issues.
+
+- Checks state, frontmatter, storage-path policy, and other project health surfaces
+- Reports warnings and fixable issues before they become workflow blockers
+- Supports `--fix` for automatic repair of common problems
+
+Usage: `/gpd:health`
+Usage: `/gpd:health --fix`
 
 ### Quantitative Analysis
 
@@ -573,7 +593,7 @@ Usage: `/gpd:peer-review paper/`
 Structure point-by-point response to referee reports and revise the manuscript.
 
 - Parses referee comments into structured items with severity levels
-- Drafts AUTHOR-RESPONSE{round_suffix}.md with REF-xxx issue tracking (fixed/rebutted/acknowledged)
+- Drafts both `.gpd/AUTHOR-RESPONSE{round_suffix}.md` and `.gpd/paper/REFEREE_RESPONSE{round_suffix}.md` with REF-xxx issue tracking (fixed/rebutted/acknowledged)
 - Consumes `.gpd/review/REVIEW-LEDGER*.json` and `.gpd/review/REFEREE-DECISION*.json` when present to preserve blocking-issue context
 - Spawns paper-writer agents for targeted section revisions
 - Tracks new calculations required by referees as revision tasks
@@ -604,6 +624,15 @@ Explain a concept, method, notation, result, or paper in project context or from
 - Audits cited papers with `gpd-bibliographer` and includes a reading path with openable links
 
 Usage: `/gpd:explain "Ward identity"`
+
+**`/gpd:suggest-next`**
+Suggest the most impactful next action based on current project state.
+
+- Scans phases, plans, verification status, blockers, and todos
+- Produces a prioritized action list
+- Fastest way to answer "what should I do next?" without reading through progress reports
+
+Usage: `/gpd:suggest-next`
 
 **`/gpd:literature-review [topic]`**
 Structured literature review for a physics research topic.

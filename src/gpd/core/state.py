@@ -1974,16 +1974,6 @@ def _load_state_json_with_integrity_issues(
     json_path = _state_json_path(cwd)
     bak_path = json_path.parent / STATE_JSON_BACKUP_FILENAME
 
-    def _drop_invalid_project_contract(state_obj: dict) -> tuple[dict, list[str]]:
-        project_contract = state_obj.get("project_contract")
-        if project_contract is None or contract_from_data(project_contract) is not None:
-            return state_obj, []
-        cleaned_state = dict(state_obj)
-        cleaned_state["project_contract"] = None
-        return cleaned_state, [
-            'schema normalization: dropped "project_contract" because contract integrity checks failed'
-        ]
-
     with _state_lock(cwd):
         _recover_intent_locked(cwd)
         # Read paths must not silently default malformed singleton contract sections.
@@ -2017,7 +2007,14 @@ def _load_state_json_with_integrity_issues(
                 return None, integrity_issues
             return normalized, integrity_issues
         except FileNotFoundError:
-            pass
+            restored, integrity_issues = _load_state_json_from_backup(
+                bak_path,
+                integrity_mode=integrity_mode,
+                allow_project_contract_salvage=allow_project_contract_salvage,
+            )
+            if restored is not None:
+                atomic_write(json_path, json.dumps(restored, indent=2) + "\n")
+                return restored, integrity_issues
         except (TypeError, json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
             if os.environ.get(ENV_GPD_DEBUG):
                 logger.debug("state.json parse error: %s", e)
@@ -2025,29 +2022,16 @@ def _load_state_json_with_integrity_issues(
                 logger.warning("state.json parse error blocks review-mode loading: %s", e)
                 return None, []
             # Try backup
-            try:
-                bak_raw = bak_path.read_text(encoding="utf-8")
-                bak_parsed = json.loads(bak_raw)
-                if not isinstance(bak_parsed, dict):
-                    raise TypeError(f"state root must be an object, got {type(bak_parsed).__name__}")
-                restored, integrity_issues, _recovered_root_from_backup, _recovered_contract_from_backup = (
-                    _normalize_state_schema_with_backup_project_contract(
-                    bak_parsed,
-                    None,
-                    allow_project_contract_salvage=allow_project_contract_salvage,
-                    retain_blocking_project_contract_errors=False,
-                    )
-                )
-                restored, contract_integrity_issues = _drop_invalid_project_contract(restored)
-                integrity_issues.extend(contract_integrity_issues)
-                if integrity_mode == "review" and integrity_issues:
-                    logger.warning("state.json backup failed review-mode integrity checks: %s", "; ".join(integrity_issues))
-                    return None, integrity_issues
+            restored, integrity_issues = _load_state_json_from_backup(
+                bak_path,
+                integrity_mode=integrity_mode,
+                allow_project_contract_salvage=allow_project_contract_salvage,
+            )
+            if restored is not None:
                 atomic_write(json_path, json.dumps(restored, indent=2) + "\n")
                 return restored, integrity_issues
-            except (FileNotFoundError, TypeError, json.JSONDecodeError, OSError, UnicodeDecodeError):
-                if os.environ.get(ENV_GPD_DEBUG):
-                    logger.debug("state.json.bak restore failed")
+            if os.environ.get(ENV_GPD_DEBUG):
+                logger.debug("state.json.bak restore failed")
 
         # Fall back to STATE.md
         md_path = _state_md_path(cwd)
@@ -2061,6 +2045,46 @@ def _load_state_json_with_integrity_issues(
             if os.environ.get(ENV_GPD_DEBUG):
                 logger.debug("STATE.md fallback failed")
             return None, []
+
+
+def _drop_invalid_project_contract(state_obj: dict) -> tuple[dict, list[str]]:
+    project_contract = state_obj.get("project_contract")
+    if project_contract is None or contract_from_data(project_contract) is not None:
+        return state_obj, []
+    cleaned_state = dict(state_obj)
+    cleaned_state["project_contract"] = None
+    return cleaned_state, [
+        'schema normalization: dropped "project_contract" because contract integrity checks failed'
+    ]
+
+
+def _load_state_json_from_backup(
+    bak_path: Path,
+    *,
+    integrity_mode: str,
+    allow_project_contract_salvage: bool,
+) -> tuple[dict | None, list[str]]:
+    try:
+        bak_raw = bak_path.read_text(encoding="utf-8")
+        bak_parsed = json.loads(bak_raw)
+        if not isinstance(bak_parsed, dict):
+            raise TypeError(f"state root must be an object, got {type(bak_parsed).__name__}")
+        restored, integrity_issues, _recovered_root_from_backup, _recovered_contract_from_backup = (
+            _normalize_state_schema_with_backup_project_contract(
+                bak_parsed,
+                None,
+                allow_project_contract_salvage=allow_project_contract_salvage,
+                retain_blocking_project_contract_errors=False,
+            )
+        )
+        restored, contract_integrity_issues = _drop_invalid_project_contract(restored)
+        integrity_issues.extend(contract_integrity_issues)
+        if integrity_mode == "review" and integrity_issues:
+            logger.warning("state.json backup failed review-mode integrity checks: %s", "; ".join(integrity_issues))
+            return None, integrity_issues
+        return restored, integrity_issues
+    except (FileNotFoundError, TypeError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None, []
 
 
 @instrument_gpd_function("state.load_json")
@@ -2764,7 +2788,18 @@ def state_validate(cwd: Path, integrity_mode: str = "standard") -> StateValidate
                 target = issues if integrity_mode == "review" else warnings
                 target.append(f"state.json version drift: expected 1, found {raw_version}")
     except FileNotFoundError:
-        issues.append("state.json not found")
+        backup_state_json, backup_issues = _load_state_json_from_backup(
+            bak_path,
+            integrity_mode=integrity_mode,
+            allow_project_contract_salvage=False,
+        )
+        if backup_state_json is not None:
+            state_json = backup_state_json
+            target = issues if integrity_mode == "review" else warnings
+            target.extend(backup_issues)
+            target.append("state.json root was recovered from state.json.bak after primary state.json was missing")
+        else:
+            issues.append("state.json not found")
     except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
         issues.append(f"state.json parse error: {e}")
 

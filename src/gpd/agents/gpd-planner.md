@@ -1646,7 +1646,7 @@ Use init context (from load_project_state) which provides `phase_dir`:
 
 ```bash
 # Check for VERIFICATION.md (physics consistency gaps)
-ls "$phase_dir"/*-VERIFICATION.md 2>/dev/null
+ls "$phase_dir"/VERIFICATION.md "$phase_dir"/*-VERIFICATION.md 2>/dev/null
 
 # Check for REVIEW.md with diagnosed status (expert review gaps)
 grep -l "status: diagnosed" "$phase_dir"/*-REVIEW.md 2>/dev/null

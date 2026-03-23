@@ -134,6 +134,7 @@ If no SUMMARYs exist: "No results yet (no plans executed)."
 
 Look for:
 
+- `VERIFICATION.md` — legacy phase-level automated physics checks
 - `*-VERIFICATION.md` — automated physics checks
 - `*-VALIDATION.md` — researcher-reviewed validation
 

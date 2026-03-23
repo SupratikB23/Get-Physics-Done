@@ -102,6 +102,7 @@ Rules:
   `status: missing` requires non-empty `missing_actions`.
   `status: not_applicable` requires both `completed_actions` and `missing_actions` to stay empty.
   `completed_actions` and `missing_actions` must not overlap.
+- For decisive acceptance tests, benchmark requirements must close with `comparison_kind: benchmark` and cross-method requirements must close with `comparison_kind: cross_method`; `prior_work`, `experiment`, `baseline`, and `other` do not satisfy those decisive mappings on their own.
 
 ---
 
@@ -128,6 +129,7 @@ Rules:
 - Do not invent `artifact` or `other` subject kinds for contract-backed verdicts. If the thing you compared is a file, plot, or table, point the verdict at the deliverable or reference ID that owns it.
 - `subject_role` must be explicit on every verdict. Do not assume a missing role defaults to `decisive`.
 - Only `subject_role: decisive` satisfies a required decisive comparison or participates in pass/fail consistency checks against `contract_results`. `supporting` and `supplemental` verdicts are informative context only.
+- Benchmark acceptance tests require `comparison_kind: benchmark`; cross-method acceptance tests require `comparison_kind: cross_method`.
 - For list-typed ledger fields such as `linked_ids`, `completed_actions`, `missing_actions`, and all `uncertainty_markers` entries, even a single item must stay a YAML list. scalar strings are invalid: `linked_ids: claim-id` and `completed_actions: read` fail validation; use `linked_ids: [claim-id]` and `completed_actions: [read]`.
 - If a decisive external anchor was used, include `reference_id`. If the decisive anchor is itself the compared subject, use `subject_kind: reference` and `subject_id: <reference-id>`.
 - If a decisive comparison is required, omitting its verdict makes the artifact incomplete.

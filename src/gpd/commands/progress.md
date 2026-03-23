@@ -196,7 +196,7 @@ List files in the current phase directory:
 ```bash
 ls -1 .gpd/phases/[current-phase-dir]/*-PLAN.md 2>/dev/null | wc -l
 ls -1 .gpd/phases/[current-phase-dir]/*-SUMMARY.md 2>/dev/null | wc -l
-ls -1 .gpd/phases/[current-phase-dir]/*-VERIFICATION.md 2>/dev/null | wc -l
+ls -1 .gpd/phases/[current-phase-dir]/VERIFICATION.md .gpd/phases/[current-phase-dir]/*-VERIFICATION.md 2>/dev/null | wc -l
 ```
 
 State: "This phase has {X} plans, {Y} summaries."
@@ -207,7 +207,7 @@ Check for VERIFICATION.md files with gaps or review requirements. This includes 
 
 ```bash
 # Check for validation with gaps or review requirements
-grep -l -E "^(status: (gaps_found|human_needed|expert_needed)|session_status: diagnosed)$" .gpd/phases/[current-phase-dir]/*-VERIFICATION.md 2>/dev/null
+grep -l -E "^(status: (gaps_found|human_needed|expert_needed)|session_status: diagnosed)$" .gpd/phases/[current-phase-dir]/VERIFICATION.md .gpd/phases/[current-phase-dir]/*-VERIFICATION.md 2>/dev/null
 ```
 
 Track:

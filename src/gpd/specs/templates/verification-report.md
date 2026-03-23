@@ -152,13 +152,14 @@ When a decisive comparison was attempted but remains unresolved, keep the affect
 
 ## Comparison Verdict Ledger
 
-| Subject ID | Subject Kind | Comparison Kind | Anchor / Source | Metric | Threshold | Verdict | Notes |
-| ---------- | ------------ | --------------- | --------------- | ------ | --------- | ------- | ----- |
-| {claim-id} | claim | benchmark | {reference-id or prior artifact} | {relative_error} | {<= 0.01} | {pass/tension/fail/inconclusive} | {why} |
-| {deliverable-id} | deliverable | cross_method | {reference-id or artifact path} | {difference} | {threshold} | {verdict} | {notes} |
+| Subject ID | Subject Kind | Subject Role | Comparison Kind | Anchor / Source | Metric | Threshold | Verdict | Notes |
+| ---------- | ------------ | ------------ | --------------- | --------------- | ------ | --------- | ------- | ----- |
+| {claim-id} | claim | decisive | benchmark | {reference-id or prior artifact} | {relative_error} | {<= 0.01} | {pass/tension/fail/inconclusive} | {why} |
+| {deliverable-id} | deliverable | supporting | cross_method | {reference-id or artifact path} | {difference} | {threshold} | {verdict} | {notes} |
 
 Emit comparison verdicts whenever the contract or decisive anchor context requires a benchmark, prior-work, experiment, baseline, or cross-method comparison. If a comparison is decisive, absence of a verdict is itself a gap; a prose claim like "agrees with literature" is not a substitute. For partial or exploratory phases, `inconclusive` and `tension` are valid honest outcomes when the check was started but not closed.
 Only `subject_role: decisive` closes a decisive benchmark/cross-method requirement or contradicts a passed contract target. `supporting` and `supplemental` verdicts are recorded context, not decisive blockers on their own.
+- Benchmark acceptance tests require `comparison_kind: benchmark`; cross-method acceptance tests require `comparison_kind: cross_method`.
 
 ## Suggested Contract Checks
 

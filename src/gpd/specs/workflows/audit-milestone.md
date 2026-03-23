@@ -77,8 +77,8 @@ gpd phase list
 For each phase directory, read the VERIFICATION.md:
 
 ```bash
-cat .gpd/phases/01-*/*-VERIFICATION.md
-cat .gpd/phases/02-*/*-VERIFICATION.md
+cat .gpd/phases/01-*/VERIFICATION.md .gpd/phases/01-*/*-VERIFICATION.md
+cat .gpd/phases/02-*/VERIFICATION.md .gpd/phases/02-*/*-VERIFICATION.md
 # etc.
 ```
 

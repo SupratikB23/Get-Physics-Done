@@ -792,6 +792,10 @@ def test_progress_workflow_surfaces_contract_load_and_validation_state() -> None
     assert 'status: (gaps_found|diagnosed|human_needed|expert_needed)' not in command_text
     assert "`session_status: diagnosed`" in workflow_text
     assert "`session_status: diagnosed`" in command_text
+    assert ".gpd/phases/[current-phase-dir]/VERIFICATION.md" in workflow_text
+    assert ".gpd/phases/[current-phase-dir]/VERIFICATION.md" in command_text
+    assert ".gpd/phases/[current-phase-dir]/*-VERIFICATION.md" in workflow_text
+    assert ".gpd/phases/[current-phase-dir]/*-VERIFICATION.md" in command_text
 
 
 def test_planning_prompts_keep_contract_gate_in_light_mode_and_all_modes() -> None:
@@ -981,6 +985,8 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "verification_inputs" not in summary_template
     assert "contract_results" in verification_template
     assert "comparison_verdicts" in verification_template
+    assert "Subject Role" in verification_template
+    assert "subject_role: decisive" in verification_template
     assert "Record only user-visible contract targets here" in verification_template
     assert "status: passed` is strict" in verification_template
     assert "absence of a verdict is itself a gap" in verification_template
@@ -988,9 +994,22 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "uncertainty_markers:" in verification_template
     assert "weakest_anchors: [anchor-1]" in verification_template
     assert "disconfirming_observations: [observation-1]" in verification_template
+    assert "Benchmark acceptance tests require `comparison_kind: benchmark`" in verification_template
+    assert "cross-method acceptance tests require `comparison_kind: cross_method`" in verification_template
     assert "Use `@{GPD_INSTALL_DIR}/templates/verification-report.md` for the canonical verification frontmatter contract." in research_verification
     assert "status: passed | gaps_found | expert_needed | human_needed" in research_verification
-    assert "comparison_verdicts: []" in research_verification
+    assert "deliverables: {}" not in research_verification
+    assert "acceptance_tests: {}" not in research_verification
+    assert "references: {}" not in research_verification
+    assert "forbidden_proxies: {}" not in research_verification
+    assert "deliverable-main" in research_verification
+    assert "acceptance-test-main" in research_verification
+    assert "reference-main" in research_verification
+    assert "forbidden-proxy-main" in research_verification
+    assert "comparison_verdicts:" in research_verification
+    assert "subject_role: decisive" in research_verification
+    assert "comparison_kind: benchmark" in research_verification
+    assert "suggested_contract_checks:" in research_verification
     assert "uncertainty_markers:" in research_verification
     assert "weakest_anchors: [anchor-1]" in research_verification
     assert "disconfirming_observations: [observation-1]" in research_verification
@@ -1010,6 +1029,8 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "scalar strings are invalid" in contract_results_schema
     assert "Even singleton values must stay YAML lists in strict contract-backed ledgers" in summary_template
     assert "Even singleton values must stay YAML lists in strict contract-backed ledgers" in verification_template
+    assert "Benchmark acceptance tests require `comparison_kind: benchmark`" in contract_results_schema
+    assert "cross-method acceptance tests require `comparison_kind: cross_method`" in contract_results_schema
     assert "claim_id" in research_verification
     assert "acceptance_test_id" in research_verification
     assert "frontmatter contract compatible with `@{GPD_INSTALL_DIR}/templates/verification-report.md`" in verify_workflow
@@ -1026,6 +1047,20 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "required_request_fields" in verify_workflow
     assert "supported_binding_fields" in verify_workflow
     assert "run_contract_check(request=...)" in verify_workflow
+    assert "Benchmark acceptance tests require `comparison_kind: benchmark`" in verify_workflow
+    assert "cross-method acceptance tests require `comparison_kind: cross_method`" in verify_workflow
+    assert "deliverables: {}" not in verify_workflow
+    assert "acceptance_tests: {}" not in verify_workflow
+    assert "references: {}" not in verify_workflow
+    assert "forbidden_proxies: {}" not in verify_workflow
+    assert "deliverable-id" in verify_workflow
+    assert "acceptance-test-id" in verify_workflow
+    assert "reference-id" in verify_workflow
+    assert "forbidden-proxy-id" in verify_workflow
+    assert "comparison_verdicts:" in verify_workflow
+    assert "subject_role: decisive" in verify_workflow
+    assert "comparison_kind: benchmark" in verify_workflow
+    assert "suggested_contract_checks:" in verify_workflow
     assert "`suggested_contract_check`" not in verify_workflow
     assert "Return status (`passed` | `gaps_found` | `expert_needed` | `human_needed`)" in verify_phase
     assert "contract_results including `uncertainty_markers`" in verify_phase
@@ -1294,6 +1329,16 @@ def test_verify_work_workflow_uses_body_only_subject_kind_fields() -> None:
     assert "\nsubject_kind: [claim | deliverable | acceptance_test | reference | forbidden_proxy | suggested_contract_check]" not in verify_work
     assert "check_subject_kind: `claim | deliverable | acceptance_test | reference | forbidden_proxy | suggested_contract_check`" not in verify_work
     assert "check_subject_kind: [claim | deliverable | acceptance_test | reference | forbidden_proxy | suggested_contract_check]" not in verify_work
+
+
+def test_verify_work_active_sessions_use_dual_verification_paths_and_keep_status_separate() -> None:
+    verify_work = (WORKFLOWS_DIR / "verify-work.md").read_text(encoding="utf-8")
+
+    assert "rg -l '^session_status: (validating|diagnosed)$' .gpd/phases/*/VERIFICATION.md .gpd/phases/*/*-VERIFICATION.md 2>/dev/null | sort | head -5" in verify_work
+    assert "Only treat files with `session_status: validating` or `session_status: diagnosed` as active researcher sessions." in verify_work
+    assert "extract canonical verification `status`, `session_status`, `phase`, and the Current Check section" in verify_work
+    assert "`session_status` replace or overwrite the canonical verification `status`" in verify_work
+    assert '`session_status` if present, otherwise `status`' not in verify_work
 
 
 def test_skill_surface_exposes_contract_references_for_paper_and_review_workflows() -> None:
@@ -1572,11 +1617,27 @@ def test_stage5_execution_surfaces_use_bounded_review_cadence_and_first_result_g
 def test_show_phase_workflow_distinguishes_verification_status_from_session_status() -> None:
     show_phase = (WORKFLOWS_DIR / "show-phase.md").read_text(encoding="utf-8")
 
+    assert "`VERIFICATION.md`" in show_phase
+    assert "`*-VERIFICATION.md`" in show_phase
     assert "read frontmatter to extract canonical verification `status`, plus `session_status` when present" in show_phase
     assert "Automated verification uses `passed`/`gaps_found`/`expert_needed`/`human_needed`" in show_phase
     assert "researcher-session progress uses `session_status: validating|completed|diagnosed`" in show_phase
     assert "Automated verification uses `passed`/`gaps_found`/`human_needed`" not in show_phase
     assert "interactive validation uses `validating`/`completed`/`diagnosed`" not in show_phase
+
+
+def test_execute_phase_and_related_agents_surface_legacy_and_plan_scoped_verification_artifacts() -> None:
+    execute_phase = (WORKFLOWS_DIR / "execute-phase.md").read_text(encoding="utf-8")
+    planner = (AGENTS_DIR / "gpd-planner.md").read_text(encoding="utf-8")
+    verifier = (AGENTS_DIR / "gpd-verifier.md").read_text(encoding="utf-8")
+    audit_milestone = (WORKFLOWS_DIR / "audit-milestone.md").read_text(encoding="utf-8")
+
+    assert '"$phase_dir"/VERIFICATION.md "$phase_dir"/*-VERIFICATION.md' in execute_phase
+    assert '".gpd/phases/[current-phase-dir]/VERIFICATION.md .gpd/phases/[current-phase-dir]/*-VERIFICATION.md' not in execute_phase
+    assert 'ls "$phase_dir"/VERIFICATION.md "$phase_dir"/*-VERIFICATION.md 2>/dev/null' in planner
+    assert 'find_files("$PHASE_DIR/VERIFICATION.md")' in verifier
+    assert 'find_files("$PHASE_DIR/*-VERIFICATION.md")' in verifier
+    assert '.gpd/phases/01-*/VERIFICATION.md .gpd/phases/01-*/*-VERIFICATION.md' in audit_milestone
 
 
 def test_debug_prompts_use_session_status_for_diagnosis_progress() -> None:

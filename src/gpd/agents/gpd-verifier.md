@@ -1625,7 +1625,7 @@ If `state.json` does not exist or has no `convention_lock`, fall back to STATE.m
 
 ## Step 0: Check for Previous Verification
 
-Use find_files to find: `find_files("$PHASE_DIR/*-VERIFICATION.md")`, then Read the file if found.
+Use find_files to find both `find_files("$PHASE_DIR/VERIFICATION.md")` and `find_files("$PHASE_DIR/*-VERIFICATION.md")`, then read whichever verification artifact exists.
 
 **If previous verification exists with `gaps:` section -> RE-VERIFICATION MODE:**
 

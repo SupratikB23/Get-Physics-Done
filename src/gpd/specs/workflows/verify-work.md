@@ -125,22 +125,23 @@ Use `protocol_bundle_context` from init JSON as additive specialized guidance.
 **First: Check for active verification sessions**
 
 ```bash
-find .gpd/phases -name "*-VERIFICATION.md" -type f 2>/dev/null | head -5
+rg -l '^session_status: (validating|diagnosed)$' .gpd/phases/*/VERIFICATION.md .gpd/phases/*/*-VERIFICATION.md 2>/dev/null | sort | head -5
 ```
 
 **If active sessions exist AND no $ARGUMENTS provided:**
 
-Read each file's frontmatter (`session_status` if present, otherwise `status`), plus `phase` and the Current Check section.
+Only treat files with `session_status: validating` or `session_status: diagnosed` as active researcher sessions.
+Read each active file's frontmatter to extract canonical verification `status`, `session_status`, `phase`, and the Current Check section. Do not let `session_status` replace or overwrite the canonical verification `status`.
 
 Display inline:
 
 ```
 ## Active Verification Sessions
 
-| # | Phase | Session | Current Check | Progress |
-|---|-------|--------|---------------|----------|
-| 1 | 04-dispersion | validating | 3. Limiting Cases | 2/6 |
-| 2 | 05-numerics | validating | 1. Convergence Test | 0/4 |
+| # | Phase | Session | Verification Status | Current Check | Progress |
+|---|-------|---------|---------------------|---------------|----------|
+| 1 | 04-dispersion | validating | gaps_found | 3. Limiting Cases | 2/6 |
+| 2 | 05-numerics | diagnosed | expert_needed | 1. Convergence Test | 0/4 |
 
 Reply with a number to resume, or provide a phase number to start new.
 ```
@@ -298,7 +299,7 @@ mkdir -p "$phase_dir"
 **Check for existing VERIFICATION.md** (e.g., from a prior `/gpd:execute-phase` → `verify-phase` run):
 
 ```bash
-EXISTING_VERIFICATION=$(ls "$phase_dir"/*-VERIFICATION.md 2>/dev/null | head -1)
+EXISTING_VERIFICATION=$(ls "$phase_dir"/VERIFICATION.md "$phase_dir"/*-VERIFICATION.md 2>/dev/null | head -1)
 ```
 
 If an existing VERIFICATION.md is found (e.g., from a prior `/gpd:execute-phase` → `verify-phase` automated run):
@@ -331,17 +332,44 @@ contract_results:
     claim-id:
       status: not_attempted
       summary: [verification not started yet]
-  deliverables: {}
-  acceptance_tests: {}
-  references: {}
-  forbidden_proxies: {}
+  deliverables:
+    deliverable-id:
+      status: not_attempted
+      summary: [verification not started yet]
+  acceptance_tests:
+    acceptance-test-id:
+      status: not_attempted
+      summary: [verification not started yet]
+  references:
+    reference-id:
+      status: not_attempted
+      summary: [verification not started yet]
+  forbidden_proxies:
+    forbidden-proxy-id:
+      status: unresolved
+      summary: [verification not started yet]
   uncertainty_markers:
     weakest_anchors: [anchor-1]
     unvalidated_assumptions: [assumption-1]
     competing_explanations: [alternative-1]
     disconfirming_observations: [observation-1]
-comparison_verdicts: []
-suggested_contract_checks: []
+comparison_verdicts:
+  - subject_id: claim-id
+    subject_kind: claim
+    subject_role: decisive
+    reference_id: ref-main
+    comparison_kind: benchmark
+    metric: relative_error
+    threshold: "<= 0.01"
+    verdict: inconclusive
+    recommended_action: [close the decisive benchmark once the evidence is written]
+    notes: [template placeholder; replace with the first decisive verdict]
+suggested_contract_checks:
+  - check: [missing decisive benchmark comparison]
+    reason: [why the missing check matters]
+    suggested_subject_kind: acceptance_test
+    suggested_subject_id: test-benchmark
+    evidence_path: [artifact path or expected evidence path]
 source: [list of SUMMARY.md files]
 started: [ISO timestamp]
 updated: [ISO timestamp]
@@ -369,6 +397,8 @@ computation: |
 [what computational test was performed]
 precomputed_result: |
 [result of AI's independent computation]
+# Benchmark acceptance tests require `comparison_kind: benchmark`.
+# cross-method acceptance tests require `comparison_kind: cross_method`.
 suggested_contract_checks:
   # If you cannot bind the gap to a known contract target yet, omit both
   # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.
