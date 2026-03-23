@@ -54,6 +54,15 @@ def _schema_anyof_object(schema_fragment: dict[str, object]) -> dict[str, object
     raise AssertionError(f"No object branch found in {schema_fragment!r}")
 
 
+def _schema_anyof_string(schema_fragment: dict[str, object]) -> dict[str, object]:
+    if schema_fragment.get("type") == "string":
+        return schema_fragment
+    for branch in schema_fragment.get("anyOf", []):
+        if isinstance(branch, dict) and branch.get("type") == "string":
+            return branch
+    raise AssertionError(f"No string branch found in {schema_fragment!r}")
+
+
 def _assert_open_object(schema_fragment: dict[str, object], *, label: str) -> None:
     assert schema_fragment["additionalProperties"] is True, f"{label} must remain salvage-friendly"
 
@@ -76,6 +85,27 @@ def _binding_condition_for_check(run_request_schema: dict[str, object], check_id
                     if isinstance(binding_schema, dict):
                         return _schema_anyof_object(binding_schema)
     raise AssertionError(f"No binding condition found for {check_identifier!r}")
+
+
+def _identity_condition_for_check(run_request_schema: dict[str, object], check_identifier: str) -> list[tuple[str, list[str]]]:
+    for clause in run_request_schema.get("allOf", []):
+        if_branch = clause.get("if")
+        if not isinstance(if_branch, dict):
+            continue
+        matches: list[tuple[str, list[str]]] = []
+        for branch in if_branch.get("anyOf", []):
+            if not isinstance(branch, dict):
+                continue
+            for field_name in ("check_key", "check_id"):
+                field_schema = branch.get("properties", {}).get(field_name)
+                if not isinstance(field_schema, dict):
+                    continue
+                enum_values = field_schema.get("enum")
+                if isinstance(enum_values, list) and check_identifier in enum_values:
+                    matches.append((field_name, [str(value) for value in enum_values]))
+        if matches:
+            return matches
+    raise AssertionError(f"No identity condition found for {check_identifier!r}")
 
 
 def test_run_contract_check_tool_description_surfaces_request_requirements() -> None:
@@ -179,6 +209,10 @@ def test_contract_tools_list_tools_expose_structured_request_schemas() -> None:
 
     observed = _schema_anyof_object(run_request["properties"]["observed"])
     assert {"metric_value", "threshold_value", "selected_family", "bias_checked"} <= set(observed["properties"])
+    for field_name in ("observed_limit", "selected_family"):
+        field_schema = _schema_anyof_string(observed["properties"][field_name])
+        assert field_schema["minLength"] == 1
+        assert field_schema["pattern"] == r"\S"
 
     contract_schema = _schema_anyof_object(run_request["properties"]["contract"])
     _assert_open_object(contract_schema, label="contract")
@@ -306,6 +340,23 @@ def test_contract_tools_list_tools_expose_structured_request_schemas() -> None:
     active_checks = suggest_schema["properties"]["active_checks"]
     assert active_checks["anyOf"][0]["type"] == "array"
     assert active_checks["anyOf"][0]["items"]["type"] == "string"
+
+    for field_name in ("source_reference_id", "regime_label", "expected_behavior", "declared_family"):
+        field_schema = _schema_anyof_string(metadata["properties"][field_name])
+        assert field_schema["minLength"] == 1
+        assert field_schema["pattern"] == r"\S"
+
+    benchmark_identity = _identity_condition_for_check(run_request, "contract.benchmark_reproduction")
+    assert benchmark_identity == [
+        ("check_key", ["contract.benchmark_reproduction", "5.16"]),
+        ("check_id", ["contract.benchmark_reproduction", "5.16"]),
+    ]
+
+    limit_identity = _identity_condition_for_check(run_request, "contract.limit_recovery")
+    assert limit_identity == [
+        ("check_key", ["contract.limit_recovery", "5.15"]),
+        ("check_id", ["contract.limit_recovery", "5.15"]),
+    ]
 
 
 def test_patterns_tools_expose_domain_category_and_severity_enums() -> None:

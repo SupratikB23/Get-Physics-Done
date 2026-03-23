@@ -2172,8 +2172,8 @@ def _resolve_permissions_runtime_name(runtime: str | None, *, strict: bool = Tru
 
     supported = _supported_runtime_names()
     if runtime is not None:
-        normalized = runtime.strip().lower()
-        if normalized not in supported:
+        normalized = normalize_runtime_name(runtime)
+        if normalized is None or normalized not in supported:
             _raise_permissions_resolution_error(
                 f"Unknown runtime {runtime!r}. Supported: {', '.join(supported)}",
                 strict=strict,

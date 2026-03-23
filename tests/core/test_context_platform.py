@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -93,8 +94,11 @@ def test_init_context_uses_runtime_detect_directory_fallback(monkeypatch: pytest
         _clear_runtime_env(runtime_env)
         _mark_complete_runtime_install(tmp_path / adapter.local_config_dir_name, runtime=runtime)
 
-        with patch("gpd.hooks.runtime_detect.Path.home", return_value=tmp_path), \
-             patch("gpd.hooks.runtime_detect.Path.cwd", return_value=tmp_path):
+        with (
+            patch("gpd.core.context.Path.home", return_value=tmp_path),
+            patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="unknown"),
+            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="unknown"),
+        ):
             module = importlib.reload(context_module)
             ctx = module.init_new_project(tmp_path)
             assert ctx["platform"] == runtime
@@ -143,6 +147,40 @@ def test_detect_platform_fallback_ignores_incomplete_global_runtime_dirs(
             patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="unknown"),
         ):
             assert context_module._detect_platform(tmp_path) == installed_runtime
+
+
+def test_detect_platform_delegates_install_fallback_to_runtime_detector(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stray_runtime, installed_runtime = _runtime_pair()
+    calls: list[tuple[str, Path | None, Path | None]] = []
+
+    def _fake_detect_runtime_install_target(
+        runtime: str,
+        *,
+        cwd: Path | None = None,
+        home: Path | None = None,
+    ) -> object | None:
+        calls.append((runtime, cwd, home))
+        if runtime == installed_runtime:
+            return SimpleNamespace(config_dir=tmp_path / "installed", install_scope="local")
+        return None
+
+    with monkeypatch.context() as runtime_env:
+        _clear_runtime_env(runtime_env)
+        with (
+            patch("gpd.core.context.Path.home", return_value=tmp_path),
+            patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="unknown"),
+            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="unknown"),
+            patch("gpd.hooks.runtime_detect.detect_runtime_install_target", side_effect=_fake_detect_runtime_install_target),
+        ):
+            assert context_module._detect_platform(tmp_path) == installed_runtime
+
+    assert calls == [
+        (stray_runtime, tmp_path, tmp_path),
+        (installed_runtime, tmp_path, tmp_path),
+    ]
 
 
 def test_init_context_prefers_explicit_gpd_runtime_override(

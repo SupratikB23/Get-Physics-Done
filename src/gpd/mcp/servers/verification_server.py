@@ -264,6 +264,10 @@ def _string_or_null_schema() -> dict[str, object]:
     return {"anyOf": [dict(_string_schema()), {"type": "null"}]}
 
 
+def _non_empty_string_or_null_schema() -> dict[str, object]:
+    return {"anyOf": [dict(_non_empty_string_schema()), {"type": "null"}]}
+
+
 def _string_list_schema(*, min_items: int | None = None) -> dict[str, object]:
     schema: dict[str, object] = {"type": "array", "items": _non_empty_string_schema()}
     if min_items is not None:
@@ -425,10 +429,10 @@ _CONTRACT_CHECK_IDENTIFIER_VALUES: tuple[str, ...] = tuple(
 _CONTRACT_BINDING_INPUT_SCHEMA: dict[str, object] = _binding_input_schema_for_targets(_CONTRACT_BINDING_TARGETS)
 _CONTRACT_METADATA_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
-        "regime_label": _string_or_null_schema(),
-        "expected_behavior": _string_or_null_schema(),
-        "source_reference_id": _string_or_null_schema(),
-        "declared_family": _string_or_null_schema(),
+        "regime_label": _non_empty_string_or_null_schema(),
+        "expected_behavior": _non_empty_string_or_null_schema(),
+        "source_reference_id": _non_empty_string_or_null_schema(),
+        "declared_family": _non_empty_string_or_null_schema(),
         "allowed_families": _string_list_schema(),
         "forbidden_families": _string_list_schema(),
     },
@@ -437,14 +441,14 @@ _CONTRACT_METADATA_INPUT_SCHEMA: dict[str, object] = _object_schema(
 _CONTRACT_OBSERVED_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
         "limit_passed": _boolean_or_null_schema(),
-        "observed_limit": _string_or_null_schema(),
+        "observed_limit": _non_empty_string_or_null_schema(),
         "metric_value": _number_or_null_schema(),
         "threshold_value": _number_or_null_schema(),
         "proxy_only": _boolean_or_null_schema(),
         "direct_available": _boolean_or_null_schema(),
         "proxy_available": _boolean_or_null_schema(),
         "consistency_passed": _boolean_or_null_schema(),
-        "selected_family": _string_or_null_schema(),
+        "selected_family": _non_empty_string_or_null_schema(),
         "competing_family_checked": _boolean_or_null_schema(),
         "bias_checked": _boolean_or_null_schema(),
         "calibration_checked": _boolean_or_null_schema(),
@@ -486,8 +490,8 @@ _CONTRACT_OBSERVABLE_INPUT_SCHEMA: dict[str, object] = _open_object_schema(
         "name": _non_empty_string_schema(),
         "kind": _enum_string_schema(_CONTRACT_OBSERVABLE_KIND_VALUES),
         "definition": _non_empty_string_schema(),
-        "regime": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "units": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "regime": _non_empty_string_or_null_schema(),
+        "units": _non_empty_string_or_null_schema(),
     },
     required=("id", "name", "definition"),
 )
@@ -639,7 +643,32 @@ def _run_contract_binding_condition_schema() -> list[dict[str, object]]:
     return conditions
 
 
+def _run_contract_identifier_pairing_condition_schema() -> dict[str, object] | None:
+    options: list[dict[str, object]] = []
+    for entry in _CONTRACT_AWARE_CHECK_ENTRIES:
+        identifiers = _check_identifier_values(entry)
+        if not identifiers:
+            continue
+        identifier_schema = {"enum": list(identifiers)}
+        options.append(
+            {
+                "properties": {
+                    "check_key": dict(identifier_schema),
+                    "check_id": dict(identifier_schema),
+                },
+                "required": ["check_key", "check_id"],
+            }
+        )
+    if not options:
+        return None
+    return {
+        "if": {"required": ["check_key", "check_id"]},
+        "then": {"anyOf": options},
+    }
+
+
 _RUN_CONTRACT_CHECK_BINDING_CONDITIONS = _run_contract_binding_condition_schema()
+_RUN_CONTRACT_CHECK_IDENTIFIER_PAIRING_CONDITION = _run_contract_identifier_pairing_condition_schema()
 _RUN_CONTRACT_CHECK_REQUEST_SCHEMA: dict[str, object] = {
     "type": "object",
     "additionalProperties": False,
@@ -654,11 +683,16 @@ _RUN_CONTRACT_CHECK_REQUEST_SCHEMA: dict[str, object] = {
         "binding": {"anyOf": [dict(_CONTRACT_BINDING_INPUT_SCHEMA), {"type": "null"}]},
         "metadata": {"anyOf": [dict(_CONTRACT_METADATA_INPUT_SCHEMA), {"type": "null"}]},
         "observed": {"anyOf": [dict(_CONTRACT_OBSERVED_INPUT_SCHEMA), {"type": "null"}]},
-        "artifact_content": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "artifact_content": _non_empty_string_or_null_schema(),
     },
 }
+all_of_conditions: list[dict[str, object]] = []
 if _RUN_CONTRACT_CHECK_BINDING_CONDITIONS:
-    _RUN_CONTRACT_CHECK_REQUEST_SCHEMA["allOf"] = _RUN_CONTRACT_CHECK_BINDING_CONDITIONS
+    all_of_conditions.extend(_RUN_CONTRACT_CHECK_BINDING_CONDITIONS)
+if _RUN_CONTRACT_CHECK_IDENTIFIER_PAIRING_CONDITION is not None:
+    all_of_conditions.append(_RUN_CONTRACT_CHECK_IDENTIFIER_PAIRING_CONDITION)
+if all_of_conditions:
+    _RUN_CONTRACT_CHECK_REQUEST_SCHEMA["allOf"] = all_of_conditions
 
 RunContractCheckPayload = Annotated[object, WithJsonSchema(_RUN_CONTRACT_CHECK_REQUEST_SCHEMA)]
 SuggestContractPayload = Annotated[object, WithJsonSchema(_CONTRACT_PAYLOAD_INPUT_SCHEMA)]
@@ -1091,6 +1125,11 @@ def _validate_string_list(value: object, *, field_name: str) -> tuple[list[str] 
         if not isinstance(item, str):
             return None, _error_result(f"{field_name}[{index}] must be a string")
     return value, None
+
+
+def _normalize_active_checks(active_checks: list[str]) -> list[str]:
+    """Trim and dedupe active check identifiers before they are compared."""
+    return _unique_strings(item.strip() for item in active_checks if item.strip())
 
 
 def _validate_boolean(value: object, *, field_name: str) -> tuple[bool | None, dict[str, object] | None]:
@@ -2505,6 +2544,7 @@ def suggest_contract_checks(contract: SuggestContractPayload, active_checks: Str
                 active_checks, error = _validate_string_list(active_checks, field_name="active_checks")
                 if error is not None:
                     return error
+                active_checks = _normalize_active_checks(active_checks)
             parsed, contract_salvage_errors, error = _parse_contract_payload(contract)
             if error is not None or parsed is None:
                 return error or _error_result("Invalid contract payload")
@@ -2935,7 +2975,8 @@ def get_verification_coverage(error_class_ids: list[int], active_checks: list[st
         validated_active_checks, error = _validate_string_list(active_checks, field_name="active_checks")
         if error is not None:
             return error
-        return stable_mcp_response(_coverage_inner(validated_error_class_ids, validated_active_checks))
+        normalized_active_checks = _normalize_active_checks(validated_active_checks)
+        return stable_mcp_response(_coverage_inner(validated_error_class_ids, normalized_active_checks))
 
 
 def _coverage_inner(error_class_ids: list[int], active_checks: list[str]) -> dict:

@@ -19,7 +19,8 @@ import sys
 from pathlib import Path
 
 from gpd.adapters import get_adapter
-from gpd.adapters.install_utils import GPD_INSTALL_DIR_NAME, MANIFEST_NAME, build_runtime_install_repair_command
+from gpd.adapters.install_utils import MANIFEST_NAME, build_runtime_install_repair_command
+from gpd.hooks.install_metadata import installed_runtime
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_REEXEC
 from gpd.hooks.runtime_detect import normalize_runtime_name
 
@@ -184,20 +185,7 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str) -> bo
 
     manifest = _load_install_manifest(candidate)
     manifest_scope = manifest.get("install_scope")
-    adapter = get_adapter(runtime)
-    if manifest_scope == "local":
-        manifest_runtime = manifest.get("runtime")
-        if isinstance(manifest_runtime, str):
-            normalized_runtime = normalize_runtime_name(manifest_runtime.strip()) if manifest_runtime.strip() else None
-            manifest_runtime_value = normalized_runtime or manifest_runtime.strip()
-            if manifest_runtime_value and manifest_runtime_value != runtime:
-                return False
-        return True
-
     if manifest_scope == "global":
-        return False
-
-    if _paths_equal(candidate, adapter.global_config_dir):
         return False
 
     manifest_runtime = manifest.get("runtime")
@@ -207,7 +195,14 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str) -> bo
         if manifest_runtime_value and manifest_runtime_value != runtime:
             return False
 
-    return (candidate / MANIFEST_NAME).is_file() and (candidate / GPD_INSTALL_DIR_NAME).is_dir()
+    if manifest_scope == "local":
+        return True
+
+    adapter = get_adapter(runtime)
+    if _paths_equal(candidate, adapter.global_config_dir):
+        return False
+
+    return installed_runtime(candidate) == runtime
 
 
 def _resolve_local_config_dir(raw_value: str, *, runtime: str, cli_cwd: Path) -> Path:

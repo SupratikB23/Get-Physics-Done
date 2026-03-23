@@ -555,6 +555,50 @@ def test_runtime_cli_resolves_local_config_dir_from_ancestor_workspace(
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_resolves_local_config_dir_from_ancestor_workspace_without_manifest_runtime(
+    monkeypatch,
+    tmp_path: Path,
+    descriptor,
+) -> None:
+    config_dir = tmp_path / descriptor.config_dir_name
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
+    manifest_path = config_dir / "gpd-file-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("runtime", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    nested_cwd = tmp_path / "research" / "notes"
+    nested_cwd.mkdir(parents=True)
+    monkeypatch.chdir(nested_cwd)
+    monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
+
+    observed: dict[str, object] = {}
+
+    def fake_entrypoint() -> int:
+        observed["argv"] = list(sys.argv)
+        observed["runtime"] = os.environ.get(ENV_GPD_ACTIVE_RUNTIME)
+        return 0
+
+    monkeypatch.setattr("gpd.cli.entrypoint", fake_entrypoint)
+
+    exit_code = main(
+        [
+            "--runtime",
+            descriptor.runtime_name,
+            "--config-dir",
+            f"./{descriptor.config_dir_name}",
+            "--install-scope",
+            "local",
+            "state",
+            "load",
+        ]
+    )
+
+    assert exit_code == 0
+    assert observed["argv"] == ["gpd", "state", "load"]
+    assert observed["runtime"] == descriptor.runtime_name
+
+
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_resolves_local_config_dir_from_forwarded_cli_cwd(
     monkeypatch,
     tmp_path: Path,

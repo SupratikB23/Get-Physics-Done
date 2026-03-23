@@ -71,6 +71,22 @@ def test_run_contract_check_accepts_semantically_equivalent_check_key_and_check_
     assert _call_verification_tool("run_contract_check", {"request": request_payload}) == expected
 
 
+def test_suggest_contract_checks_normalizes_whitespace_padded_active_checks() -> None:
+    from gpd.mcp.servers.verification_server import suggest_contract_checks
+
+    active_checks = [" contract.benchmark_reproduction ", "\n5.16\t"]
+
+    result = suggest_contract_checks(_load_project_contract_fixture(), active_checks=active_checks)
+    result_via_mcp = _call_verification_tool(
+        "suggest_contract_checks",
+        {"contract": _load_project_contract_fixture(), "active_checks": active_checks},
+    )
+
+    benchmark = next(entry for entry in result["suggested_checks"] if entry["check_key"] == "contract.benchmark_reproduction")
+    assert benchmark["already_active"] is True
+    assert result_via_mcp == result
+
+
 @pytest.mark.parametrize(
     ("request_payload", "expected_error"),
     [

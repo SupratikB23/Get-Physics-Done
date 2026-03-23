@@ -632,6 +632,38 @@ class TestConfigCommands:
         assert parsed["sync_applied"] is True
         assert settings["permissions"]["defaultMode"] == "bypassPermissions"
 
+    def test_permissions_sync_accepts_display_name_runtime(self, gpd_project: Path) -> None:
+        from gpd.adapters.claude_code import ClaudeCodeAdapter
+
+        target = gpd_project / ".claude"
+        target.mkdir()
+        gpd_root = Path(__file__).resolve().parents[1] / "src" / "gpd"
+        ClaudeCodeAdapter().install(gpd_root, target)
+
+        result = _invoke("--raw", "permissions", "sync", "--runtime", "Claude Code", "--autonomy", "yolo")
+        parsed = json.loads(result.output)
+        settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
+
+        assert parsed["runtime"] == "claude-code"
+        assert parsed["sync_applied"] is True
+        assert settings["permissions"]["defaultMode"] == "bypassPermissions"
+
+    def test_permissions_sync_accepts_alias_runtime(self, gpd_project: Path) -> None:
+        from gpd.adapters.claude_code import ClaudeCodeAdapter
+
+        target = gpd_project / ".claude"
+        target.mkdir()
+        gpd_root = Path(__file__).resolve().parents[1] / "src" / "gpd"
+        ClaudeCodeAdapter().install(gpd_root, target)
+
+        result = _invoke("--raw", "permissions", "sync", "--runtime", "claude", "--autonomy", "yolo")
+        parsed = json.loads(result.output)
+        settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
+
+        assert parsed["runtime"] == "claude-code"
+        assert parsed["sync_applied"] is True
+        assert settings["permissions"]["defaultMode"] == "bypassPermissions"
+
     def test_config_set_autonomy_attempts_runtime_permission_sync(
         self,
         gpd_project: Path,

@@ -2337,6 +2337,20 @@ class TestVerificationServer:
         assert result["schema_version"] == 1
         assert result["error"] == "active_checks[1] must be a string"
 
+    def test_verification_coverage_normalizes_whitespace_padded_active_checks(self):
+        from gpd.mcp.servers.verification_server import get_verification_coverage
+
+        result = get_verification_coverage(
+            error_class_ids=[15],
+            active_checks=[" 5.1 "],
+        )
+
+        assert result["schema_version"] == 1
+        assert result["active_checks"] == ["5.1"]
+        assert result["covered"] == 1
+        assert result["coverage_percent"] == 100.0
+        assert result["recommendation"] == "Full coverage"
+
 
     # --- _parse_dimensions helper ---
 

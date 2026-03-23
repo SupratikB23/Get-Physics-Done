@@ -96,12 +96,12 @@ class FrontmatterValidationError(GPDError, ValueError):
 # Core parsing
 # ---------------------------------------------------------------------------
 
-_FRONTMATTER_RE = re.compile(r"^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)")
-_EMPTY_FRONTMATTER_RE = re.compile(r"^---\r?\n---(?:\r?\n|$)")
+_FRONTMATTER_RE = re.compile(r"^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)")
+_EMPTY_FRONTMATTER_RE = re.compile(r"^---[ \t]*\r?\n---[ \t]*(?:\r?\n|$)")
 
 # Matches the full frontmatter block (including empty) for replacement operations.
 # Uses a lookahead so the trailing newline is preserved for the caller to reattach.
-_FRONTMATTER_BLOCK_RE = re.compile(r"^---\r?\n(?:[\s\S]*?\r?\n)?---(?=\r?\n|$)")
+_FRONTMATTER_BLOCK_RE = re.compile(r"^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?=\r?\n|$)")
 
 
 def extract_frontmatter(content: str) -> tuple[dict, str]:

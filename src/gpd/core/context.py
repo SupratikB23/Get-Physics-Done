@@ -16,7 +16,6 @@ from pathlib import Path
 
 from pydantic import ValidationError as PydanticValidationError
 
-from gpd.adapters import get_adapter
 from gpd.adapters.install_utils import AGENTS_DIR_NAME, FLAT_COMMANDS_DIR_NAME, GPD_INSTALL_DIR_NAME, HOOKS_DIR_NAME
 from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.contracts import ResearchContract, collect_contract_integrity_errors, contract_from_data
@@ -1151,38 +1150,36 @@ def _try_get_milestone_info(cwd: Path) -> dict:
 def _detect_platform(cwd: Path | None = None) -> str:
     """Detect the active AI runtime, if any."""
     resolved_cwd = cwd or Path.cwd()
+    resolved_home = Path.home()
     try:
-        from gpd.hooks.runtime_detect import detect_active_runtime, detect_runtime_for_gpd_use
+        from gpd.hooks.runtime_detect import (
+            detect_active_runtime,
+            detect_runtime_for_gpd_use,
+            detect_runtime_install_target,
+        )
 
-        active = detect_active_runtime(cwd=resolved_cwd)
+        active = detect_active_runtime(cwd=resolved_cwd, home=resolved_home)
         if active != "unknown":
             return active
 
-        detected = detect_runtime_for_gpd_use(cwd=resolved_cwd)
+        detected = detect_runtime_for_gpd_use(cwd=resolved_cwd, home=resolved_home)
         if detected != "unknown":
             return detected
+
+        for descriptor in iter_runtime_descriptors():
+            try:
+                install_target = detect_runtime_install_target(
+                    descriptor.runtime_name,
+                    cwd=resolved_cwd,
+                    home=resolved_home,
+                )
+            except Exception:
+                continue
+            if install_target is not None:
+                return descriptor.runtime_name
     except Exception:
         pass
 
-    resolved_home = Path.home()
-    for descriptor in iter_runtime_descriptors():
-        adapter = get_adapter(descriptor.runtime_name)
-        local_config_dir = resolved_cwd / adapter.local_config_dir_name
-        try:
-            if adapter.has_complete_install(local_config_dir):
-                return descriptor.runtime_name
-        except Exception:
-            pass
-
-        try:
-            global_config_dir = adapter.resolve_global_config_dir(home=resolved_home)
-        except Exception:
-            continue
-        try:
-            if adapter.has_complete_install(global_config_dir):
-                return descriptor.runtime_name
-        except Exception:
-            continue
     return "unknown"
 
 
