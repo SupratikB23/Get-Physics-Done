@@ -790,6 +790,71 @@ def test_install_target_dir_preserves_explicit_global_scope(tmp_path: Path) -> N
     ]
 
 
+def test_install_target_dir_uses_canonical_global_path_when_runtime_env_overrides_global_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Canonical global targets should stay global even when runtime env overrides drift."""
+    from gpd.adapters import get_adapter
+    from gpd.adapters.runtime_catalog import resolve_global_config_dir
+
+    captured_calls: list[dict[str, object]] = []
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    override_dir = tmp_path / "override-global"
+    override_dir.mkdir()
+
+    runtime_name = "codex"
+    adapter = get_adapter(runtime_name)
+    descriptor = adapter.runtime_descriptor
+    canonical_target = resolve_global_config_dir(descriptor, home=home, environ={})
+    canonical_target.mkdir(parents=True)
+
+    env_var = descriptor.global_config.env_var or descriptor.global_config.env_dir_var or descriptor.global_config.env_file_var
+    assert env_var is not None
+    env_value = str(override_dir / "config.json") if env_var == descriptor.global_config.env_file_var else str(override_dir)
+    monkeypatch.setenv(env_var, env_value)
+
+    mock_adapter = MagicMock(
+        runtime_descriptor=descriptor,
+        display_name=adapter.display_name,
+        help_command=adapter.help_command,
+        launch_command=adapter.launch_command,
+        new_project_command=adapter.new_project_command,
+        map_research_command=adapter.map_research_command,
+    )
+    mock_adapter.finalize_install.return_value = None
+
+    def mock_install_single(runtime_name, *, is_global, target_dir_override=None):
+        captured_calls.append(
+            {
+                "runtime": runtime_name,
+                "is_global": is_global,
+                "target_dir_override": target_dir_override,
+            }
+        )
+        return {"runtime": runtime_name, "commands": 5, "agents": 3, "target": str(canonical_target)}
+
+    with (
+        patch("gpd.cli._install_single_runtime", side_effect=mock_install_single),
+        patch("gpd.adapters.get_adapter", return_value=mock_adapter),
+        patch("gpd.cli._get_cwd", return_value=workspace),
+        patch("gpd.cli.Path.home", return_value=home),
+    ):
+        result = runner.invoke(app, ["install", runtime_name, "--target-dir", str(canonical_target)])
+
+    assert result.exit_code == 0, result.output
+    assert captured_calls == [
+        {
+            "runtime": runtime_name,
+            "is_global": True,
+            "target_dir_override": str(canonical_target),
+        }
+    ]
+
+
 def test_install_single_runtime_resolves_relative_target_dir_against_cli_cwd(tmp_path: Path):
     """Relative --target-dir should be anchored to --cwd, not the process cwd."""
     from gpd.cli import _install_single_runtime
