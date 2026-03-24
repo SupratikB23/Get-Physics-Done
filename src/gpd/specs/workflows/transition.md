@@ -653,9 +653,11 @@ Update Session Continuity section in STATE.md to reflect transition completion.
 **Format:**
 
 ```markdown
-Last session: [today]
-Stopped at: Phase [X] complete, ready to plan Phase [X+1]
-Resume file: —
+**Last session:** [today]
+**Stopped at:** Phase [X] complete, ready to plan Phase [X+1]
+**Resume file:** —
+**Hostname:** —
+**Platform:** —
 ```
 
 **Step complete when:**

@@ -571,7 +571,7 @@ If TeX is missing, do not block the review:
 
 ```
 Referee review artifacts were written, but a TeX toolchain is not available.
-Continue now with `GPD/REFEREE-REPORT.md` + `GPD/REFEREE-REPORT.tex` only.
+Continue now with `GPD/REFEREE-REPORT{round_suffix}.md` + `GPD/REFEREE-REPORT{round_suffix}.tex` only.
 If you want the polished PDF artifact as well, Authorize the agent to install TeX now or compile the `.tex` later in an environment that already has TeX.
 ```
 </step>

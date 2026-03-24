@@ -28,6 +28,9 @@ def test_resume_docs_use_canonical_paths_and_no_legacy_resume_command() -> None:
     resume_doc = (ROOT / "src/gpd/specs/workflows/resume-work.md").read_text(encoding="utf-8")
     portability_doc = (ROOT / "src/gpd/specs/references/orchestration/state-portability.md").read_text(encoding="utf-8")
     schema_doc = (ROOT / "src/gpd/specs/templates/state-json-schema.md").read_text(encoding="utf-8")
+    state_doc = (ROOT / "src/gpd/specs/templates/state.md").read_text(encoding="utf-8")
+    new_project_doc = (ROOT / "src/gpd/specs/workflows/new-project.md").read_text(encoding="utf-8")
+    transition_doc = (ROOT / "src/gpd/specs/workflows/transition.md").read_text(encoding="utf-8")
 
     for doc in (resume_doc, portability_doc):
         assert ".gpd/" not in doc
@@ -43,6 +46,30 @@ def test_resume_docs_use_canonical_paths_and_no_legacy_resume_command() -> None:
     assert "platform" in schema_doc
     assert "GPD/phases/03-analysis/.continue-here.md" in schema_doc
     assert '"resume_file": "GPD/phases/03-analysis/.continue-here.md"' in schema_doc
+    assert (
+        "## Session Continuity\n\n"
+        "**Last session:** —\n"
+        "**Stopped at:** —\n"
+        "**Resume file:** —\n"
+        "**Hostname:** —\n"
+        "**Platform:** —\n"
+    ) in state_doc
+    assert (
+        "## Session Continuity\n\n"
+        "**Last session:** [today's date]\n"
+        "**Stopped at:** Project initialized (minimal)\n"
+        "**Resume file:** —\n"
+        "**Hostname:** —\n"
+        "**Platform:** —\n"
+    ) in new_project_doc
+    assert (
+        "**Last session:** [today]\n"
+        "**Stopped at:** Phase [X] complete, ready to plan Phase [X+1]\n"
+        "**Resume file:** —\n"
+        "**Hostname:** —\n"
+        "**Platform:** —\n"
+    ) in transition_doc
+    assert "machine portability" in state_doc
 
 
 def test_init_resume_surfaces_machine_change_and_session_resume_candidate(

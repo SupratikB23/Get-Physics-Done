@@ -1714,10 +1714,10 @@ def generate_state_markdown(raw: dict) -> str:
     p("")
     sess = s.get("session") or {}
     p(f"**Last session:** {sess.get('last_date') or EM_DASH}")
-    p(f"**Hostname:** {sess.get('hostname') or EM_DASH}")
-    p(f"**Platform:** {sess.get('platform') or EM_DASH}")
     p(f"**Stopped at:** {sess.get('stopped_at') or EM_DASH}")
     p(f"**Resume file:** {sess.get('resume_file') or EM_DASH}")
+    p(f"**Hostname:** {sess.get('hostname') or EM_DASH}")
+    p(f"**Platform:** {sess.get('platform') or EM_DASH}")
     p("")
 
     return "\n".join(lines)
@@ -2787,10 +2787,10 @@ def _session_continuity_section(session: dict[str, object]) -> str:
             "## Session Continuity",
             "",
             f"**Last session:** {session.get('last_date') or EM_DASH}",
-            f"**Hostname:** {session.get('hostname') or EM_DASH}",
-            f"**Platform:** {session.get('platform') or EM_DASH}",
             f"**Stopped at:** {session.get('stopped_at') or EM_DASH}",
             f"**Resume file:** {session.get('resume_file') or EM_DASH}",
+            f"**Hostname:** {session.get('hostname') or EM_DASH}",
+            f"**Platform:** {session.get('platform') or EM_DASH}",
             "",
         ]
     )

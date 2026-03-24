@@ -7,12 +7,10 @@ from pathlib import Path
 
 from gpd.adapters import get_adapter
 from gpd.adapters.install_utils import build_runtime_install_repair_command
-from gpd.adapters.runtime_catalog import iter_runtime_descriptors, resolve_global_config_dir
+from gpd.adapters.runtime_catalog import resolve_global_config_dir
 from gpd.hooks.runtime_detect import (
-    RUNTIME_UNKNOWN,
     SCOPE_GLOBAL,
     SCOPE_LOCAL,
-    _runtime_from_manifest_or_path,
     normalize_runtime_name,
 )
 
@@ -111,43 +109,9 @@ def _paths_equal(left: Path, right: Path) -> bool:
         return left.expanduser() == right.expanduser()
 
 
-def _infer_runtime_from_manifest(config_dir: Path) -> str | None:
-    manifest = load_install_manifest(config_dir)
-    runtime = manifest.get("runtime")
-    if "runtime" in manifest:
-        if not isinstance(runtime, str):
-            runtime = None
-        else:
-            normalized_runtime = runtime.strip()
-            if normalized_runtime:
-                canonical_runtime = normalize_runtime_name(normalized_runtime)
-                if canonical_runtime is not None:
-                    return canonical_runtime
-
-    files = manifest.get("files")
-    if isinstance(files, dict):
-        file_keys = [str(key) for key in files]
-        for descriptor in iter_runtime_descriptors():
-            if any(
-                key.startswith(prefix)
-                for key in file_keys
-                for prefix in descriptor.manifest_file_prefixes
-            ):
-                return descriptor.runtime_name
-    return None
-
-
 def installed_runtime(config_dir: Path) -> str | None:
-    """Return the runtime associated with *config_dir* when it can be inferred."""
-
-    manifest_runtime = _infer_runtime_from_manifest(config_dir)
-    if manifest_runtime is not None:
-        return manifest_runtime
-
-    path_runtime = _runtime_from_manifest_or_path(config_dir, allow_local_path_fallback=False)
-    if path_runtime == RUNTIME_UNKNOWN:
-        return None
-    return path_runtime
+    """Return the authoritative runtime declared by *config_dir*'s manifest."""
+    return _manifest_runtime(config_dir)
 
 
 def _infer_explicit_target(

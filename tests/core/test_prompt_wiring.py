@@ -353,7 +353,7 @@ def test_referee_workflow_mentions_optional_pdf_compile_and_missing_tex_prompt()
 
     assert "compile the latest referee-report `.tex` file to a matching `.pdf`" in referee
     assert "Do NOT install TeX yourself" in referee
-    assert "Continue now with `GPD/REFEREE-REPORT.md` + `GPD/REFEREE-REPORT.tex` only" in peer_review
+    assert "Continue now with `GPD/REFEREE-REPORT{round_suffix}.md` + `GPD/REFEREE-REPORT{round_suffix}.tex` only" in peer_review
     assert "Authorize the agent to install TeX now" in peer_review
 
 

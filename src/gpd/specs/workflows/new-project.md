@@ -466,6 +466,8 @@ None yet.
 **Last session:** [today's date]
 **Stopped at:** Project initialized (minimal)
 **Resume file:** —
+**Hostname:** —
+**Platform:** —
 ```
 
 **config.json** — Create with sensible defaults (no config questions asked):

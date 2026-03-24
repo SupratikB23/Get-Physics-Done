@@ -5,9 +5,9 @@ type: referee-decision-schema
 
 # Referee Decision Schema
 
-Canonical source of truth for `GPD/review/REFEREE-DECISION.json` (or `GPD/review/REFEREE-DECISION{round_suffix}.json` in revision rounds).
+Canonical source of truth for `GPD/review/REFEREE-DECISION{round_suffix}.json`.
 
-This JSON is the machine-readable adjudication summary consumed by `gpd validate referee-decision`. It must stay semantically aligned with `GPD/REFEREE-REPORT.md` and `GPD/review/REVIEW-LEDGER{round_suffix}.json`.
+This JSON is the machine-readable adjudication summary consumed by `gpd validate referee-decision`. It must stay semantically aligned with `GPD/REFEREE-REPORT{round_suffix}.md` and `GPD/review/REVIEW-LEDGER{round_suffix}.json`.
 
 ---
 
@@ -59,7 +59,7 @@ Strict validation treats omitted fields as a policy error even when the default 
 - In strict mode, all specialist stage artifacts must use the same optional `-R<round>` suffix; do not mix unsuffixed and suffixed stage names in one decision.
 - In strict mode, any extra noncanonical `stage_artifacts` entry fails validation instead of being ignored.
 - When the validator has project-root access, every listed `stage_artifacts` path must exist.
-- `blocking_issue_ids` should be a subset of `REVIEW-LEDGER.json` `issues[].issue_id`.
+- `blocking_issue_ids` should be a subset of `REVIEW-LEDGER{round_suffix}.json` `issues[].issue_id`.
 - When you validate with `--ledger`, every unresolved blocking issue in the ledger must appear in `blocking_issue_ids`.
 - `unresolved_major_issues` should match the count of unresolved `critical` + `major` ledger issues. `unresolved_minor_issues` should match unresolved `minor` ledger issues.
 - Recommendation, confidence, issue counts, and blocking issue IDs must match the markdown referee report.

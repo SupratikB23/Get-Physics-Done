@@ -183,11 +183,17 @@ def test_contract_ledgers_surface_forbidden_proxy_bindings_and_action_vocabulary
 
 def test_referee_schema_and_panel_surface_strict_stage_artifact_naming_and_round_suffix_rules() -> None:
     referee_schema = (TEMPLATES_DIR / "paper" / "referee-decision-schema.md").read_text(encoding="utf-8")
+    review_ledger_schema = (TEMPLATES_DIR / "paper" / "review-ledger-schema.md").read_text(encoding="utf-8")
     panel = (REFERENCES_DIR / "publication" / "peer-review-panel.md").read_text(encoding="utf-8")
 
+    assert "GPD/review/REFEREE-DECISION{round_suffix}.json" in referee_schema
+    assert "GPD/REFEREE-REPORT{round_suffix}.md" in referee_schema
+    assert "REVIEW-LEDGER{round_suffix}.json" in referee_schema
     assert "STAGE-(reader|literature|math|physics|interestingness)(-R<round>)?.json" in referee_schema
     assert "same optional `-R<round>` suffix" in referee_schema
     assert "`{round_suffix}` in path examples means empty for initial review and `-R<round>`" in referee_schema
+    assert "GPD/review/REVIEW-LEDGER{round_suffix}.json" in review_ledger_schema
+    assert "REFEREE-DECISION{round_suffix}.json" in review_ledger_schema
     assert "GPD/review/CLAIMS{round_suffix}.json" in panel
     assert "GPD/review/STAGE-reader{round_suffix}.json" in panel
     assert "Strict-stage specialist artifacts must use canonical names `STAGE-reader`, `STAGE-literature`, `STAGE-math`, `STAGE-physics`, `STAGE-interestingness`." in panel

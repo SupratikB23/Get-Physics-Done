@@ -171,7 +171,7 @@ def test_runtime_cli_accepts_display_name_and_alias_runtime_argument(
     assert excinfo.value.code == 0
 
 
-def test_installed_runtime_recovers_from_invalid_manifest_runtime_using_file_prefixes(tmp_path: Path) -> None:
+def test_installed_runtime_fails_closed_for_invalid_manifest_runtime(tmp_path: Path) -> None:
     from gpd.adapters import get_adapter
     from gpd.hooks.install_metadata import installed_runtime
 
@@ -188,7 +188,7 @@ def test_installed_runtime_recovers_from_invalid_manifest_runtime_using_file_pre
     manifest["runtime"] = "definitely-not-a-runtime"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    assert installed_runtime(target_dir) == runtime
+    assert installed_runtime(target_dir) is None
 
 
 def test_config_dir_has_complete_install_rejects_generic_markers_when_manifest_runtime_is_invalid(
@@ -281,16 +281,15 @@ def test_installed_update_command_treats_scope_less_explicit_local_named_target_
 
 
 @pytest.mark.parametrize(
-    ("files", "expected_runtime"),
+    "files",
     [
-        ({"skills/gpd-help/SKILL.md": "hash"}, "codex"),
-        ({"command/gpd-help.md": "hash"}, "opencode"),
+        {"skills/gpd-help/SKILL.md": "hash"},
+        {"command/gpd-help.md": "hash"},
     ],
 )
-def test_installed_runtime_infers_runtime_from_catalog_owned_manifest_prefixes(
+def test_installed_runtime_fails_closed_for_manifest_without_runtime_even_with_catalog_owned_prefixes(
     tmp_path: Path,
     files: dict[str, str],
-    expected_runtime: str,
 ) -> None:
     from gpd.hooks.install_metadata import installed_runtime
 
@@ -301,7 +300,7 @@ def test_installed_runtime_infers_runtime_from_catalog_owned_manifest_prefixes(
         encoding="utf-8",
     )
 
-    assert installed_runtime(explicit_target) == expected_runtime
+    assert installed_runtime(explicit_target) is None
 
 
 def test_installed_runtime_fails_closed_when_manifest_is_corrupt(tmp_path: Path) -> None:

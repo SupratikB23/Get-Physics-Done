@@ -144,6 +144,8 @@ None yet.
 **Last session:** —
 **Stopped at:** —
 **Resume file:** —
+**Hostname:** —
+**Platform:** —
 ```
 
 <purpose>
@@ -157,7 +159,7 @@ STATE.md is the research project's short-term memory spanning all phases and ses
 - Read first in every workflow
 - Updated after every significant action
 - Contains digest of accumulated research context
-- Enables instant session restoration with full awareness of current research state
+- Enables instant session restoration with full awareness of current research state and machine portability
 
 </purpose>
 

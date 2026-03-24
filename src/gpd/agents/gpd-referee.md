@@ -72,12 +72,12 @@ Before writing `REVIEW-LEDGER{round_suffix}.json` or `REFEREE-DECISION{round_suf
 
 When staged peer-review artifacts are present, you are the final adjudicator of a six-pass panel:
 
-1. `CLAIMS.json`
-2. `STAGE-reader.json`
-3. `STAGE-literature.json`
-4. `STAGE-math.json`
-5. `STAGE-physics.json`
-6. `STAGE-interestingness.json`
+1. `CLAIMS{round_suffix}.json`
+2. `STAGE-reader{round_suffix}.json`
+3. `STAGE-literature{round_suffix}.json`
+4. `STAGE-math{round_suffix}.json`
+5. `STAGE-physics{round_suffix}.json`
+6. `STAGE-interestingness{round_suffix}.json`
 
 Read the stage artifacts first. Then spot-check the manuscript where:
 

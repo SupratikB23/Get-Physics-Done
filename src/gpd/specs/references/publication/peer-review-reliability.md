@@ -82,7 +82,7 @@ Each of the six review stages can fail. The pipeline is **fail-closed**: a faile
 | Missing upstream artifact | Stages 2-6 | Stage cannot read required input | Re-run the failed upstream stage first |
 | Manuscript file not found | Stage 1 | Reader cannot locate `.tex` files | Verify manuscript path before retrying |
 | Timeout or resource limit | Any | Stage does not complete | Retry once; if persistent, reduce manuscript scope or run stages sequentially |
-| Claim index missing | Stages 2-6 | `CLAIMS.json` absent after Stage 1 | Re-run Stage 1 before proceeding |
+| Claim index missing | Stages 2-6 | `CLAIMS{round_suffix}.json` absent after Stage 1 | Re-run Stage 1 before proceeding |
 
 ### Recovery Protocol
 

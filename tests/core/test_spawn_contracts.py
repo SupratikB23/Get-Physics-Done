@@ -258,10 +258,16 @@ def test_peer_review_stages_use_fresh_context_and_stage_artifacts() -> None:
     assert "fresh context" in math.text
     assert "fresh context" in physics.text
     assert "fresh context" in significance.text
+    assert "GPD/review/CLAIMS{round_suffix}.json" in referee.text
+    assert "GPD/review/STAGE-reader{round_suffix}.json" in referee.text
     assert "GPD/review/STAGE-literature{round_suffix}.json" in literature.text
     assert "GPD/review/STAGE-math{round_suffix}.json" in math.text
     assert "GPD/review/STAGE-physics{round_suffix}.json" in physics.text
     assert "GPD/review/STAGE-interestingness{round_suffix}.json" in significance.text
+    assert "GPD/review/STAGE-literature{round_suffix}.json" in referee.text
+    assert "GPD/review/STAGE-math{round_suffix}.json" in referee.text
+    assert "GPD/review/STAGE-physics{round_suffix}.json" in referee.text
+    assert "GPD/review/STAGE-interestingness{round_suffix}.json" in referee.text
     assert "GPD/review/REVIEW-LEDGER{round_suffix}.json" in referee.text
     assert "GPD/review/REFEREE-DECISION{round_suffix}.json" in referee.text
     assert "GPD/REFEREE-REPORT{round_suffix}.md" in referee.text

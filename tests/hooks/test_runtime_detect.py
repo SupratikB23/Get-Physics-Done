@@ -588,6 +588,19 @@ class TestDetectActiveRuntimeWithInstall:
         ):
             assert installed_runtime(canonical_dir) is None
 
+    def test_installed_runtime_fails_closed_for_manifestless_canonical_global_dir(self, tmp_path: Path) -> None:
+        home = tmp_path / "home"
+        canonical_dir = home / ".config" / "opencode"
+        canonical_dir.mkdir(parents=True)
+
+        env = _clean_runtime_env()
+        env["OPENCODE_CONFIG_DIR"] = str(tmp_path / "foreign-opencode")
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("gpd.hooks.runtime_detect.Path.home", return_value=home),
+        ):
+            assert installed_runtime(canonical_dir) is None
+
     def test_validate_target_runtime_rejects_manifestless_env_global_dir_with_gpd_markers(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

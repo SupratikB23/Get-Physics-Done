@@ -56,8 +56,16 @@ def test_state_record_session_persists_machine_identity(
     assert stored["session"]["platform"] == "Linux 6.1 x86_64"
     assert reparsed["session"]["hostname"] == "builder-01"
     assert reparsed["session"]["platform"] == "Linux 6.1 x86_64"
-    assert "**Hostname:** builder-01" in markdown
-    assert "**Platform:** Linux 6.1 x86_64" in markdown
+    assert (
+        "## Session Continuity\n\n"
+        "**Last session:** " in markdown
+    )
+    assert (
+        "**Stopped at:** Phase 03 Plan 2\n"
+        "**Resume file:** next-step.md\n"
+        "**Hostname:** builder-01\n"
+        "**Platform:** Linux 6.1 x86_64\n"
+    ) in markdown
 
 
 def test_init_resume_surfaces_machine_change_and_session_resume_candidate(
