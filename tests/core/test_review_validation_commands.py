@@ -13,6 +13,7 @@ from gpd.mcp.paper.models import (
     ClaimType,
     ReviewConfidence,
     ReviewFinding,
+    ReviewLedger,
     ReviewIssueSeverity,
     ReviewRecommendation,
     ReviewStageKind,
@@ -412,6 +413,41 @@ def test_validate_review_stage_report_reports_stage_kind_mismatch(tmp_path: Path
     assert "stage_id must equal stage_kind" in payload["error"]
 
 
+def test_validate_review_ledger_accepts_canonical_payload(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "REVIEW-LEDGER.json"
+    ledger = ReviewLedger(
+        round=1,
+        manuscript_path="paper/main.tex",
+        issues=[],
+    )
+    _write_json(ledger_path, ledger.model_dump(mode="json"))
+
+    result = runner.invoke(app, ["--raw", "validate", "review-ledger", str(ledger_path)], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["manuscript_path"] == "paper/main.tex"
+
+
+def test_validate_review_ledger_rejects_blank_manuscript_path(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "REVIEW-LEDGER.json"
+    _write_json(
+        ledger_path,
+        {
+            "version": 1,
+            "round": 1,
+            "manuscript_path": "   ",
+            "issues": [],
+        },
+    )
+
+    result = runner.invoke(app, ["--raw", "validate", "review-ledger", str(ledger_path)], catch_exceptions=False)
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert "review-ledger.manuscript_path" in payload["error"]
+
+
 def test_validate_referee_decision_strict_requires_explicit_policy_fields(tmp_path: Path, monkeypatch) -> None:
     _write_canonical_stage_artifacts(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -536,6 +572,57 @@ def test_validate_referee_decision_strict_rejects_blank_manuscript_path(tmp_path
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
     assert any("non-empty manuscript_path" in reason for reason in payload["reasons"])
+
+
+def test_validate_referee_decision_strict_rejects_blank_review_ledger_manuscript_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_canonical_stage_artifacts(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    decision = RefereeDecisionInput(
+        manuscript_path="paper/main.tex",
+        target_journal="jhep",
+        final_recommendation=ReviewRecommendation.major_revision,
+        final_confidence=ReviewConfidence.high,
+        stage_artifacts=list(CANONICAL_STAGE_ARTIFACTS),
+        central_claims_supported=True,
+        claim_scope_proportionate_to_evidence=True,
+        physical_assumptions_justified=True,
+        unsupported_claims_are_central=False,
+        reframing_possible_without_new_results=True,
+        mathematical_correctness=ReviewAdequacy.adequate,
+        novelty=ReviewAdequacy.adequate,
+        significance=ReviewAdequacy.adequate,
+        venue_fit=ReviewAdequacy.adequate,
+        literature_positioning=ReviewAdequacy.adequate,
+        unresolved_major_issues=0,
+        unresolved_minor_issues=0,
+        blocking_issue_ids=[],
+    )
+    decision_path = tmp_path / "referee-decision.json"
+    _write_json(decision_path, decision.model_dump(mode="json"))
+    ledger_path = tmp_path / "review-ledger.json"
+    _write_json(
+        ledger_path,
+        {
+            "version": 1,
+            "round": 1,
+            "manuscript_path": "",
+            "issues": [],
+        },
+    )
+
+    result = runner.invoke(
+        app,
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert "review-ledger.manuscript_path" in payload["error"]
 
 
 def test_validate_referee_decision_strict_rejects_stage_artifact_claim_index_mismatch(

@@ -797,6 +797,58 @@ class TestConfigCommands:
         assert parsed_sync["sync_applied"] is True
         assert settings["permissions"]["defaultMode"] == "bypassPermissions"
 
+    def test_permissions_status_uses_public_adapter_target_validation_contract(
+        self,
+        gpd_project: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import gpd.adapters as adapters_module
+
+        target = gpd_project / "external" / "codex-config"
+        target.mkdir(parents=True)
+        validation_calls: list[tuple[Path, str]] = []
+
+        class _FakeAdapter:
+            runtime_name = "codex"
+            display_name = "Codex"
+
+            def validate_target_runtime(self, target_dir: Path, *, action: str) -> None:
+                validation_calls.append((target_dir, action))
+
+            def has_complete_install(self, target_dir: Path) -> bool:
+                return True
+
+            def runtime_permissions_status(self, target_dir: Path, *, autonomy: str) -> dict[str, object]:
+                return {
+                    "runtime": "codex",
+                    "desired_mode": "default",
+                    "configured_mode": "default",
+                    "config_aligned": True,
+                    "requires_relaunch": False,
+                    "managed_by_gpd": False,
+                    "message": f"validated {target_dir.name} for {autonomy}",
+                }
+
+        monkeypatch.setattr(adapters_module, "get_adapter", lambda runtime_name: _FakeAdapter())
+
+        result = _invoke(
+            "--raw",
+            "permissions",
+            "status",
+            "--runtime",
+            "codex",
+            "--target-dir",
+            str(target),
+            "--autonomy",
+            "balanced",
+        )
+        parsed = json.loads(result.output)
+
+        assert validation_calls == [(target.resolve(strict=False), "inspect runtime permissions on")]
+        assert parsed["runtime"] == "codex"
+        assert parsed["target"] == str(target.resolve(strict=False))
+        assert parsed["message"] == "validated codex-config for balanced"
+
     @pytest.mark.parametrize("command", ["status", "sync"])
     def test_permissions_reject_foreign_manifest_target(
         self,

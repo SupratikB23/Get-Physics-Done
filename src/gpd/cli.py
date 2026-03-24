@@ -2267,7 +2267,7 @@ def _resolve_permissions_target_dir(
     if target_dir:
         resolved = _resolve_cli_target_dir(target_dir)
         try:
-            adapter._validate_target_runtime(resolved, action=action)
+            adapter.validate_target_runtime(resolved, action=action)
         except RuntimeError as exc:
             _error(str(exc))
     else:
@@ -2571,6 +2571,11 @@ def _resolve_review_preflight_manuscript(
     if manuscript is not None:
         return manuscript, f"{_format_display_path(manuscript)} present"
     return None, "no paper/main.tex, manuscript/main.tex, or draft/main.tex found"
+
+
+def _resolve_review_preflight_publication_artifact(manuscript: Path, *filenames: str) -> Path | None:
+    """Resolve review artifacts only from the active manuscript directory."""
+    return _first_existing_path(*(manuscript.parent / filename for filename in filenames))
 
 
 _REVIEW_PRECHECK_BLOCKING_CONDITIONS: dict[str, tuple[str, ...]] = {
@@ -3386,22 +3391,20 @@ def _build_review_preflight(
                     else f"missing {_format_display_path(report_path)}"
                 ),
                 blocking=True,
-            )
+        )
         if strict and manuscript is not None:
-            peer_review_local_only = command.name == "gpd:peer-review"
-            legacy_paper_candidates = () if peer_review_local_only else (cwd / "GPD" / "paper",)
-            artifact_manifest = _first_existing_path(
-                manuscript.parent / "ARTIFACT-MANIFEST.json",
-                *(candidate / "ARTIFACT-MANIFEST.json" for candidate in legacy_paper_candidates),
+            artifact_manifest = _resolve_review_preflight_publication_artifact(
+                manuscript,
+                "ARTIFACT-MANIFEST.json",
             )
-            bibliography_audit = _first_existing_path(
-                manuscript.parent / "BIBLIOGRAPHY-AUDIT.json",
-                *(candidate / "BIBLIOGRAPHY-AUDIT.json" for candidate in legacy_paper_candidates),
+            bibliography_audit = _resolve_review_preflight_publication_artifact(
+                manuscript,
+                "BIBLIOGRAPHY-AUDIT.json",
             )
-            reproducibility_manifest = _first_existing_path(
-                manuscript.parent / "reproducibility-manifest.json",
-                manuscript.parent / "REPRODUCIBILITY-MANIFEST.json",
-                *(candidate / "reproducibility-manifest.json" for candidate in legacy_paper_candidates),
+            reproducibility_manifest = _resolve_review_preflight_publication_artifact(
+                manuscript,
+                "reproducibility-manifest.json",
+                "REPRODUCIBILITY-MANIFEST.json",
             )
             artifact_manifest_detail = "no ARTIFACT-MANIFEST.json found near the manuscript"
             artifact_manifest_passed = artifact_manifest is not None

@@ -326,6 +326,8 @@ def _review_ledger_consistency_errors(data: RefereeDecisionInput, review_ledger:
 
     normalized_decision_path = _normalize_path_label(data.manuscript_path) if data.manuscript_path.strip() else ""
     normalized_ledger_path = _normalize_path_label(review_ledger.manuscript_path) if review_ledger.manuscript_path.strip() else ""
+    if not normalized_ledger_path:
+        errors.append("review ledger manuscript_path must be non-empty")
     if normalized_decision_path and normalized_ledger_path and normalized_decision_path != normalized_ledger_path:
         errors.append("referee decision manuscript_path does not match review ledger manuscript_path")
 

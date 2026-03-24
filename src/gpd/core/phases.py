@@ -204,11 +204,24 @@ _CHECKPOINT_TASK_RE = re.compile(r'<task\s+[^>]*?type=["\']?checkpoint', re.IGNO
 
 
 def _sync_phase_checkpoints_safely(cwd: Path) -> None:
-    """Run checkpoint sync without interrupting lifecycle operations."""
+    """Best-effort checkpoint sync for cleanup-style lifecycle operations."""
     try:
         sync_phase_checkpoints(cwd)
     except Exception:
         logger.warning("Failed to generate phase checkpoint documents", exc_info=True)
+
+
+def _upsert_milestone_entry(existing: str, version: str, milestone_entry: str) -> str:
+    """Replace or append a milestone entry keyed by version."""
+    pattern = re.compile(
+        rf"^##\s+{re.escape(version)}(?:\s|$)[\s\S]*?(?:\n---\n\n|\Z)",
+        re.MULTILINE,
+    )
+    if pattern.search(existing):
+        return pattern.sub(milestone_entry, existing, count=1)
+
+    separator = "" if existing.endswith("\n\n") else ("\n" if existing.endswith("\n") else "\n\n")
+    return existing + separator + milestone_entry
 
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
@@ -1919,7 +1932,10 @@ def phase_complete(cwd: Path, phase_num: str) -> PhaseCompleteResult:
 
                     _save_state_markdown(cwd, state_content)
 
-            _sync_phase_checkpoints_safely(cwd)
+            # sync_phase_checkpoints() already degrades gracefully for malformed
+            # or unreadable summaries. Let unexpected render/write failures
+            # surface here instead of silently completing the lifecycle step.
+            sync_phase_checkpoints(cwd)
 
         return PhaseCompleteResult(
             completed_phase=phase_num,
@@ -2054,7 +2070,7 @@ def milestone_complete(cwd: Path, version: str, *, name: str | None = None) -> M
 
             if milestones_path.exists():
                 existing = milestones_path.read_text(encoding="utf-8")
-                atomic_write(milestones_path, existing + "\n" + milestone_entry)
+                atomic_write(milestones_path, _upsert_milestone_entry(existing, version, milestone_entry))
             else:
                 atomic_write(milestones_path, f"# Milestones\n\n{milestone_entry}")
 
@@ -2070,7 +2086,9 @@ def milestone_complete(cwd: Path, version: str, *, name: str | None = None) -> M
                     )
                     _save_state_markdown(cwd, state_content)
 
-            _sync_phase_checkpoints_safely(cwd)
+            # sync_phase_checkpoints() already handles malformed or unreadable
+            # summaries non-fatally. Let unexpected sync failures propagate.
+            sync_phase_checkpoints(cwd)
 
         return MilestoneCompleteResult(
             version=version,

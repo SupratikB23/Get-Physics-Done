@@ -54,8 +54,13 @@ def test_resume_docs_use_canonical_paths_and_no_legacy_resume_command() -> None:
     assert "bounded-segment resume state" in portability_doc
     assert "portable bounded-segment resume hint" in portability_doc
     assert "Non-project or missing resume pointers are treated as advisory telemetry" in portability_doc
+    assert 'do not make `resume_mode="bounded_segment"`' in portability_doc
     assert "project-relative paths" in portability_doc
     assert "normalizes project-local absolute `resume_file` paths back to relative form" in portability_doc
+    assert "usable state from `GPD/state.json`, `GPD/state.json.bak`, or `GPD/STATE.md`" in resume_doc
+    assert "lone unreadable file path does not count as portable recoverable state" in portability_doc
+    assert "current readable `state.json` carries a malformed `project_contract`" in resume_doc
+    assert "silently promoting `state.json.bak` as the current authoritative contract" in portability_doc
     assert "state.json  >  state.json.bak  >  STATE.md" in portability_doc
     assert "state.json > state.json.bak > STATE.md > defaults (then regenerate STATE.md)" in schema_doc
     assert "/gpd:sync-state" in portability_doc

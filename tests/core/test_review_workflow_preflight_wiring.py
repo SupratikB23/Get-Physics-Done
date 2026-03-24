@@ -15,6 +15,8 @@ def test_write_paper_workflow_runs_centralized_review_preflight() -> None:
 
     assert "gpd validate review-preflight write-paper --strict" in workflow
     assert "Run the centralized review preflight before continuing:" in workflow
+    assert "Do not satisfy that gate with legacy `GPD/paper/` publication artifacts" in workflow
+    assert "Strict review for that resume path uses `${PAPER_DIR}/ARTIFACT-MANIFEST.json`" in workflow
     assert "missing manuscript" not in workflow
     assert 'PAPER_DIR="$DIR"' in workflow
     assert 'PAPER_DIR="paper"' in workflow
@@ -35,6 +37,9 @@ def test_arxiv_submission_workflow_runs_centralized_review_preflight() -> None:
 
     assert 'gpd validate review-preflight arxiv-submission "$ARGUMENTS" --strict' in workflow
     assert "gpd validate review-preflight arxiv-submission --strict" in workflow
+    assert "Strict preflight also requires `ARTIFACT-MANIFEST.json` and `BIBLIOGRAPHY-AUDIT.json` beside the resolved manuscript entry point." in workflow
+    assert "not from legacy `GPD/paper/` copies or some other manuscript directory" in workflow
+    assert "The same resolved manuscript root is also the strict preflight source of truth for `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`, and the compiled PDF." in workflow
     assert "If `$ARGUMENTS` specifies a `.tex` file, set `resolved_main_tex` to that file" in workflow
     assert "main.tex` under that directory" in workflow
     assert 'MAIN_SOURCE="${resolved_main_tex}"' in workflow

@@ -31,11 +31,15 @@ fi
 
 Parse JSON for: `state_exists`, `roadmap_exists`, `project_exists`, `planning_exists`, `has_interrupted_agent`, `interrupted_agent_id`, `commit_docs`, `project_contract`, `project_contract_validation`, `project_contract_load_info`, `contract_intake`, `effective_reference_intake`, `active_reference_context`, `reference_artifacts_content`, `active_execution_segment`, `segment_candidates`, `resume_mode`, `execution_resumable`, `execution_resume_file`, `execution_resume_file_source`, `current_execution_resume_file`, `session_resume_file`, `execution_paused_at`, `execution_review_pending`, `execution_pre_fanout_review_pending`, `execution_skeptical_requestioning_required`, `execution_downstream_locked`, `machine_change_detected`, `machine_change_notice`, `current_hostname`, `current_platform`, `session_hostname`, `session_platform`.
 
+`state_exists` means INIT could recover usable state from `GPD/state.json`, `GPD/state.json.bak`, or `GPD/STATE.md`. A stray unreadable file path by itself does not count as recoverable state.
+
 **If `state_exists` is true:** Proceed to load_state
 **If `state_exists` is false but `roadmap_exists` or `project_exists` is true:** Offer to reconstruct STATE.md
 **If `planning_exists` is false:** This is a new project - route to /gpd:new-project
 
 If `resume_mode="bounded_segment"` and `active_execution_segment` exists, treat that as the primary resume target. Do not infer a second resume system from ad hoc handoff files.
+
+If `active_execution_segment` exists but `current_execution_resume_file` is empty, non-project, or missing on disk, treat that live snapshot as advisory context only. It can explain the last gate or paused work, but it is not a ranked bounded-segment resume candidate and does not justify `resume_mode="bounded_segment"`.
 
 If `active_execution_segment.pre_fanout_review_pending` is true, the gate is still live even when a resume file exists. If `active_execution_segment.pre_fanout_review_cleared` is true, the review outcome was recorded but the separate fanout unlock is still missing.
 
@@ -81,6 +85,7 @@ cat GPD/PROJECT.md
 - `effective_reference_intake` is the authoritative carry-forward ledger for must-read refs, prior outputs, baselines, user anchors, and context gaps.
 - `active_reference_context` and `reference_artifacts_content` are readability aids for that ledger, not substitutes for it.
 - Do not reconstruct contract-critical anchors only from `STATE.md` / `PROJECT.md` prose when INIT already provided the structured ledger.
+- If the current readable `state.json` carries a malformed `project_contract`, surface that primary-state block. Do not silently promote `state.json.bak` as the current authoritative contract while the live state file is still readable.
 - If `project_contract_load_info.status` starts with `blocked` or `project_contract_validation.valid` is false, present that contract as visible-but-blocked and route the next action to contract repair before planning or execution.
 
 </step>
@@ -206,7 +211,7 @@ if [ "$has_interrupted_agent" = "true" ]; then
 fi
 ```
 
-**Bounded execution segment detection:** If `active_execution_segment` is present and `execution_resumable` is true, treat that live snapshot as the primary resume target. The runtime currently ranks only the live execution snapshot, a non-resumable `session_resume_file` handoff candidate, and an interrupted-agent marker as resume candidates. Do NOT invent additional candidates from plan files without summaries, auto-checkpoints, or other ad hoc checkpoints.
+**Bounded execution segment detection:** If `active_execution_segment` is present, `execution_resumable` is true, and `current_execution_resume_file` is present, treat that live snapshot as the primary resume target. The runtime currently ranks only a resumable live execution snapshot with a portable repo-local resume pointer, a non-resumable `session_resume_file` handoff candidate, and an interrupted-agent marker as resume candidates. If the live snapshot lacks a portable usable resume file, keep it visible only as advisory context. Do NOT invent additional candidates from plan files without summaries, auto-checkpoints, or other ad hoc checkpoints.
 
 Reason-scoped clears still matter on resume: a `first_result` clear does not retire `pre_fanout` or skeptical fields, and a `fanout unlock` does not clear the review gate by itself.
 
@@ -262,6 +267,11 @@ Present complete research project status to user:
 >> Session resume file recorded:
     - Resume artifact: [execution_resume_file]
     - Status: informational only; no resumable live execution snapshot is currently active
+
+[If active_execution_segment exists but `current_execution_resume_file` is empty:]
+>> Live execution snapshot detected:
+    - Status: advisory only; the stored resume pointer is not portable or no longer resolves
+    - Use: recover context about the last gate or paused task, but do not treat it as a resumable bounded segment
 
 [If machine_change_detected is true:]
 >> Machine change detected:
@@ -321,6 +331,10 @@ Based on project state, determine the most logical next action:
 -> If `checkpoint_reason=first_result`, `checkpoint_reason=pre_fanout`, or skeptical re-questioning is required: treat the next action as a review/replan decision whenever decisive evidence is still missing, not a routine execution resume
 -> Do not resume downstream fanout until the gate has an explicit clear/override outcome and, for `pre_fanout`, the matching fanout-unlock transition
 -> Option: Review another ranked resume candidate from `segment_candidates`
+
+**If `active_execution_segment` exists but `current_execution_resume_file` is empty:**
+-> Primary: Treat the live snapshot as advisory continuity context only and prefer a valid `session_resume_file` handoff or repair action
+-> Option: Inspect the live gate state without claiming the bounded segment is directly resumable
 
 **If `project_contract_load_info.status` starts with `blocked` or `project_contract_validation.valid` is false:**
 -> Primary: Repair the blocked contract or state-integrity issue before planning or execution

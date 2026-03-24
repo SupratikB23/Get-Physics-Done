@@ -58,6 +58,13 @@ def test_check_update_passes_cache_file_via_sys_argv(tmp_path: Path) -> None:
     assert args[3] == str(cache_path)
 
 
+def test_runtime_detect_does_not_keep_dead_private_lookup_helpers() -> None:
+    import gpd.hooks.runtime_detect as runtime_detect
+
+    assert not hasattr(runtime_detect, "_install_marker_quality")
+    assert not hasattr(runtime_detect, "_runtime_dirs_in_priority_order")
+
+
 def test_short_form_prerelease_is_older_than_final_release() -> None:
     from gpd.hooks.check_update import _is_older_than
 

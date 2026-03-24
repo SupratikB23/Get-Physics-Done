@@ -1152,6 +1152,22 @@ def test_execute_phase_workflow_surfaces_project_contract_validation_gate() -> N
     assert "visible-but-blocked contract as an approved execution contract" in execute_workflow
 
 
+def test_execute_phase_and_execute_plan_surface_required_reference_and_state_ownership_guidance() -> None:
+    execute_command = (COMMANDS_DIR / "execute-phase.md").read_text(encoding="utf-8")
+    execute_workflow = (WORKFLOWS_DIR / "execute-phase.md").read_text(encoding="utf-8")
+    execute_plan = (WORKFLOWS_DIR / "execute-plan.md").read_text(encoding="utf-8")
+
+    assert "@{GPD_INSTALL_DIR}/references/orchestration/artifact-surfacing.md" in execute_workflow
+    assert "{GPD_INSTALL_DIR}/references/execution/github-lifecycle.md" in execute_plan
+    assert (
+        "substitute the repository's actual default branch and remote names for "
+        "`<default-branch>` and `<remote-name>`"
+    ) in execute_plan
+    assert "applies returned shared-state updates after each successfully completed plan" in execute_command
+    assert "STATE.md is updated after each wave completes" not in execute_command
+    assert "By the time the wave-complete report is emitted" in execute_workflow
+
+
 def test_verification_prompts_keep_suggested_contract_check_bindings_schema_tight() -> None:
     verification_template = (TEMPLATES_DIR / "verification-report.md").read_text(encoding="utf-8")
     research_verification = (TEMPLATES_DIR / "research-verification.md").read_text(encoding="utf-8")
@@ -1360,10 +1376,14 @@ def test_contract_schema_references_stay_wired_into_templates_and_review_docs() 
     assert "templates/contract-results-schema.md" in verification_template
     assert "templates/paper/review-ledger-schema.md" in referee
     assert "templates/paper/referee-decision-schema.md" in referee
+    assert "fall back to direct standalone review" not in referee
+    assert "Do not fall back to standalone review" in referee
     assert "gpd validate review-claim-index" in peer_review
     assert "gpd validate review-stage-report" in peer_review
     assert "gpd validate review-ledger" in peer_review
     assert "--ledger GPD/review/REVIEW-LEDGER{round_suffix}.json" in peer_review
+    assert "before trusting any final recommendation" in peer_review
+    assert "Keep `manuscript_path` non-empty and identical across `GPD/review/REVIEW-LEDGER{round_suffix}.json`" in peer_review
     assert "templates/paper/review-ledger-schema.md" in panel
     assert "templates/paper/referee-decision-schema.md" in panel
     assert "--ledger GPD/review/REVIEW-LEDGER{round_suffix}.json" in panel
@@ -1529,6 +1549,21 @@ def test_peer_review_prompt_includes_concise_stage_map_for_users() -> None:
     ):
         assert token in peer_review_command
         assert token in peer_review_workflow
+
+
+def test_peer_review_referee_surface_fail_closed_stage6_contract() -> None:
+    referee = (AGENTS_DIR / "gpd-referee.md").read_text(encoding="utf-8")
+    peer_review = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
+    reliability = (REFERENCES_DIR / "publication" / "peer-review-reliability.md").read_text(encoding="utf-8")
+
+    assert "If any required staged-review artifact is missing, malformed, or uses the wrong round suffix, STOP" in peer_review
+    assert "before trusting any final recommendation" in peer_review
+    assert "Treat blank `manuscript_path` values in either `GPD/review/REVIEW-LEDGER{round_suffix}.json`" in peer_review
+    assert "Do not fall back to standalone review" in referee
+    assert "fall back to direct standalone review" not in referee
+    assert "passes `gpd validate referee-decision ... --strict --ledger ...`" in reliability
+    assert "passes `gpd validate review-ledger ...`, including a non-empty `manuscript_path`" in reliability
+    assert "A blank `manuscript_path` in the review ledger or referee decision is a contract failure" in reliability
 
 
 def test_research_verification_body_scaffold_keeps_body_only_subject_labels_distinct() -> None:

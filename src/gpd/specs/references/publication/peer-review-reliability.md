@@ -63,8 +63,8 @@ All of the following must hold before the review phase begins:
 The review phase is complete when:
 
 1. **All six stages have run.** Stage artifacts exist for reader, literature, math, physics, interestingness, and the final referee decision.
-2. **Referee decision is valid.** `GPD/review/REFEREE-DECISION{round_suffix}.json` passes schema validation.
-3. **Review ledger is valid.** `GPD/review/REVIEW-LEDGER{round_suffix}.json` passes schema validation.
+2. **Referee decision is valid.** `GPD/review/REFEREE-DECISION{round_suffix}.json` passes `gpd validate referee-decision ... --strict --ledger ...`, including non-empty `manuscript_path` alignment with the review ledger and stage artifacts.
+3. **Review ledger is valid.** `GPD/review/REVIEW-LEDGER{round_suffix}.json` passes `gpd validate review-ledger ...`, including a non-empty `manuscript_path`.
 4. **Findings are dispositioned.** Every blocking finding has either been addressed in a revision or explicitly acknowledged in an author response.
 
 If the recommendation is `accept` or `minor_revision` with no unresolved blockers, the manuscript may proceed to submission packaging. If the recommendation is `major_revision` or `reject`, the manuscript must return to revision before re-entering peer review.
@@ -103,6 +103,7 @@ After each stage writes its artifact, confirm:
   - `gpd validate review-ledger GPD/review/REVIEW-LEDGER{round_suffix}.json`
   - `gpd validate referee-decision GPD/review/REFEREE-DECISION{round_suffix}.json --strict --ledger GPD/review/REVIEW-LEDGER{round_suffix}.json`
 - Do not reimplement the schema checks manually in the workflow prose. The validators are the source of truth for required keys and cross-artifact consistency.
+- A blank `manuscript_path` in the review ledger or referee decision is a contract failure, not a recoverable omission.
 
 If validation fails, treat it as a stage failure and apply the retry protocol above.
 

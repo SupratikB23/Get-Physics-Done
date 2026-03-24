@@ -103,6 +103,34 @@ def test_review_ledger_consistency_rejects_unknown_blocking_issue_ids():
     assert any("blocking_issue_ids not found in review ledger" in reason for reason in report.reasons)
 
 
+def test_review_ledger_rejects_blank_manuscript_path() -> None:
+    with pytest.raises(ValidationError):
+        ReviewLedger(
+            manuscript_path="   ",
+            issues=[],
+        )
+
+
+def test_review_ledger_consistency_rejects_blank_manuscript_path_from_model_construct() -> None:
+    report = evaluate_referee_decision(
+        RefereeDecisionInput(
+            manuscript_path="paper/main.tex",
+            target_journal="jhep",
+            final_recommendation=ReviewRecommendation.major_revision,
+            stage_artifacts=[f"GPD/review/STAGE-{name}.json" for name in ("reader", "literature", "math", "physics", "interestingness")],
+        ),
+        strict=True,
+        review_ledger=ReviewLedger.model_construct(
+            round=1,
+            manuscript_path="",
+            issues=[],
+        ),
+    )
+
+    assert report.valid is False
+    assert any("review ledger manuscript_path must be non-empty" in reason for reason in report.reasons)
+
+
 def test_missing_stage_artifacts_reject_decision_when_project_root_supplied(tmp_path: Path):
     review_dir = tmp_path / "GPD" / "review"
     review_dir.mkdir(parents=True)

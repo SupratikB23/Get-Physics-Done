@@ -87,7 +87,9 @@ Read the stage artifacts first. Then spot-check the manuscript where:
 
 Treat stage artifacts as evidence summaries, not gospel. The final recommendation is your responsibility.
 
-If the stage artifacts are absent, fall back to direct standalone review using the rest of this prompt.
+During the staged peer-review workflow, if any required stage artifact is absent, unreadable, or inconsistent with the active round, stop and report the missing or invalid artifact set. Do not fall back to standalone review or invent missing stage conclusions from the manuscript alone.
+
+Outside the staged peer-review workflow, only use the standalone-review portions of this prompt when the invoking workflow explicitly says staged artifacts are not expected.
 
 ## Why This Matters
 

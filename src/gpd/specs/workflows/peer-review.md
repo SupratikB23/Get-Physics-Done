@@ -590,14 +590,18 @@ Files to read:
 
 If this is a revision round, also read the latest `REFEREE-REPORT*.md` and matching `AUTHOR-RESPONSE*.md`.
 
+If any required staged-review artifact is missing, malformed, or uses the wrong round suffix, STOP and report that failure instead of falling back to standalone review.
+
 Recommendation guardrails:
 1. Do not issue minor revision if novelty, physical support, or significance remain materially doubtful.
 2. A mathematically coherent but physically weak or scientifically mediocre paper can require major revision or rejection.
 3. Evaluate venue fit explicitly using the panel artifacts and spot-check the manuscript where the artifacts are under-evidenced.
 4. Treat protocol bundle guidance as additive context only. It can increase concern when decisive comparisons or benchmark anchors are missing, but it cannot rescue missing evidence or override the manuscript's actual artifact trail.
 5. Write `GPD/review/REVIEW-LEDGER{round_suffix}.json` and `GPD/review/REFEREE-DECISION{round_suffix}.json`.
-6. Run `gpd validate review-ledger GPD/review/REVIEW-LEDGER{round_suffix}.json`.
-7. Run `gpd validate referee-decision GPD/review/REFEREE-DECISION{round_suffix}.json --strict --ledger GPD/review/REVIEW-LEDGER{round_suffix}.json` before trusting a recommendation better than `major_revision`.
+6. Keep `manuscript_path` non-empty and identical across `GPD/review/REVIEW-LEDGER{round_suffix}.json`, `GPD/review/REFEREE-DECISION{round_suffix}.json`, and the staged-review artifacts for this round.
+7. Run `gpd validate review-ledger GPD/review/REVIEW-LEDGER{round_suffix}.json`.
+8. Run `gpd validate referee-decision GPD/review/REFEREE-DECISION{round_suffix}.json --strict --ledger GPD/review/REVIEW-LEDGER{round_suffix}.json` before trusting any final recommendation.
+9. If either validator fails, STOP and fix the JSON artifacts before presenting or relying on the final recommendation.
 
 Treat `project_contract_load_info` and `project_contract_validation` as the authoritative contract gate state. Treat `project_contract` and `contract_intake` as approved evidence only when that gate is clean and passing. Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence even when the contract gate is blocked. If that gate is blocked, keep `project_contract` and `contract_intake` visible as context but do not rely on them as approved scope.
 
@@ -617,7 +621,7 @@ If the referee agent fails to spawn or returns an error, STOP and report the fai
 
 Check that both `GPD/review/REVIEW-LEDGER{round_suffix}.json` and `GPD/review/REFEREE-DECISION{round_suffix}.json` exist and parse as valid JSON.
 
-Then run the built-in validators. These are the authoritative schema and consistency checks:
+Then run the built-in validators. These are the authoritative fail-closed schema and consistency checks for every final recommendation:
 
 ```bash
 gpd validate review-ledger GPD/review/REVIEW-LEDGER{round_suffix}.json
@@ -628,6 +632,8 @@ If validation fails:
 
 1. **Retry once.** Re-run the Stage 6 referee subagent with the same inputs and an explicit reminder to satisfy `review-ledger-schema.md` and `referee-decision-schema.md` by passing the built-in validators above.
 2. **If the retry also fails,** STOP the pipeline and report the failure: stage name, validation errors, and any partial output. Do not proceed to report summarization.
+
+Treat blank `manuscript_path` values in either `GPD/review/REVIEW-LEDGER{round_suffix}.json` or `GPD/review/REFEREE-DECISION{round_suffix}.json` as validation failures, not as optional bookkeeping.
 
 Max retries per stage: **1**.
 </step>

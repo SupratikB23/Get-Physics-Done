@@ -296,8 +296,12 @@ class RuntimeAdapter(abc.ABC):
             return None
         return _normalize_manifest_runtime(payload.get("runtime"))
 
+    def validate_target_runtime(self, target_dir: Path, *, action: str) -> None:
+        """Validate that an explicit target belongs to this runtime's install surface."""
+        self._validate_target_runtime(target_dir, action=action)
+
     def _validate_target_runtime(self, target_dir: Path, *, action: str) -> None:
-        """Reject explicit target dirs that already belong to another runtime."""
+        """Internal runtime-ownership validation behind the public adapter contract."""
         from gpd.hooks.install_metadata import (
             load_install_manifest_state,
         )

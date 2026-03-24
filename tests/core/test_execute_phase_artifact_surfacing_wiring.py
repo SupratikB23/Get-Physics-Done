@@ -5,6 +5,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / "src/gpd/specs/workflows"
 REFERENCES_DIR = REPO_ROOT / "src/gpd/specs/references/orchestration"
+EXECUTION_REFERENCES_DIR = REPO_ROOT / "src/gpd/specs/references/execution"
+GRAPH_PATH = REPO_ROOT / "tests/README.md"
 
 
 def test_execute_phase_loads_artifact_surfacing_before_using_it() -> None:
@@ -41,3 +43,40 @@ def test_artifact_surfacing_no_longer_promises_dead_progress_or_checkpoint_shape
     assert "/gpd:progress" not in artifact_surfacing
     assert "<artifacts>" not in artifact_surfacing
     assert "checkpoint:human-verify" not in artifact_surfacing
+
+
+def test_execute_plan_and_repo_graph_surface_github_lifecycle_wiring() -> None:
+    execute_plan = (WORKFLOWS_DIR / "execute-plan.md").read_text(encoding="utf-8")
+    github_lifecycle = (EXECUTION_REFERENCES_DIR / "github-lifecycle.md").read_text(encoding="utf-8")
+    graph = GRAPH_PATH.read_text(encoding="utf-8")
+
+    required_reading = "{GPD_INSTALL_DIR}/references/execution/github-lifecycle.md"
+
+    assert required_reading in execute_plan
+    assert execute_plan.index(required_reading) < execute_plan.index('<step name="create_checkpoint">')
+    assert "<default-branch>" in github_lifecycle
+    assert "<remote-name>" in github_lifecycle
+    assert "default branch (`main`)" not in github_lifecycle
+    assert "git branch --merged main" not in github_lifecycle
+    assert "git push origin <tag-name>" not in github_lifecycle
+    assert "git push origin --tags" not in github_lifecycle
+    assert (
+        "- `src/gpd/specs/workflows/execute-plan.md -> "
+        "src/gpd/specs/{references/execution/git-integration.md,"
+        "references/execution/github-lifecycle.md,"
+    ) in graph
+
+
+def test_repo_graph_surfaces_execute_phase_artifact_surfacing_edge() -> None:
+    graph = GRAPH_PATH.read_text(encoding="utf-8")
+
+    assert (
+        "- `src/gpd/specs/workflows/execute-phase.md -> "
+        "src/gpd/specs/{references/orchestration/meta-orchestration.md,"
+        "references/orchestration/artifact-surfacing.md,"
+    ) in graph
+    assert (
+        "- `src/gpd/specs/workflows/execute-phase.md -> "
+        "src/gpd/specs/{references/orchestration/meta-orchestration.md,"
+        "references/orchestration/checkpoints.md,"
+    ) not in graph

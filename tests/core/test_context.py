@@ -497,10 +497,9 @@ class TestInitExecutePhase:
 
         assert ctx["state_exists"] is True
 
-    def test_state_exists_uses_files_without_loading_or_repairing(
+    def test_state_exists_uses_recoverable_backup_without_persisting_repair(
         self,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from gpd.core.state import default_state_dict
 
@@ -509,11 +508,6 @@ class TestInitExecutePhase:
             json.dumps(default_state_dict()),
             encoding="utf-8",
         )
-
-        def _unexpected_load(_cwd: Path) -> tuple[dict[str, object] | None, list[str], str | None]:
-            raise AssertionError("_state_exists should not load state")
-
-        monkeypatch.setattr("gpd.core.context._peek_state_json", _unexpected_load)
 
         assert _state_exists(tmp_path) is True
         assert not (tmp_path / "GPD" / "state.json").exists()
@@ -1070,6 +1064,7 @@ class TestInitResume:
                 "plan": "2",
                 "segment_id": "seg-9",
                 "segment_status": "waiting_review",
+                "resume_file": "GPD/phases/03-analysis/.continue-here.md",
                 "checkpoint_reason": "pre-fanout",
                 "pre_fanout_review_pending": True,
                 "updated_at": "2026-03-10T12:00:00+00:00",
@@ -1096,6 +1091,7 @@ class TestInitResume:
                 "plan": "02",
                 "segment_id": "seg-7",
                 "segment_status": "waiting_review",
+                "resume_file": "GPD/phases/03-analysis/.continue-here.md",
                 "checkpoint_reason": "pre_fanout",
                 "pre_fanout_review_pending": True,
                 "skeptical_requestioning_required": True,
@@ -1131,6 +1127,7 @@ class TestInitResume:
                 "plan": "02",
                 "segment_id": "seg-8",
                 "segment_status": "waiting_review",
+                "resume_file": "GPD/phases/03-analysis/.continue-here.md",
                 "checkpoint_reason": "pre_fanout",
                 "pre_fanout_review_pending": True,
                 "pre_fanout_review_cleared": True,

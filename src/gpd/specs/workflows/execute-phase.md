@@ -550,6 +550,7 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
    1. `gpd state advance` immediately
    2. `gpd state record-metric` for the completed plan
    3. This ensures crash recovery loses at most ONE plan's state, not an entire wave
+   4. By the time the wave-complete report is emitted, `GPD/STATE.md` already reflects every successful plan from that wave
 
    If pass:
 

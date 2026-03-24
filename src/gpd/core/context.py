@@ -148,8 +148,8 @@ def _path_exists(cwd: Path, target: str) -> bool:
 
 def _state_exists(cwd: Path) -> bool:
     """Return whether the project has recoverable state from JSON or STATE.md."""
-    layout = ProjectLayout(cwd)
-    return any(path.exists() for path in (layout.state_json, layout.state_json_backup, layout.state_md))
+    state, _state_issues, _state_source = _peek_state_json(cwd)
+    return isinstance(state, dict)
 
 
 def _generate_slug(text: str | None) -> str | None:
@@ -262,9 +262,6 @@ def _load_raw_project_contract_payload(cwd: Path) -> tuple[Path, object] | None:
     if raw_contract is None:
         return source_path, None
     if not isinstance(raw_contract, dict):
-        backup_payload = _backup_project_contract("the primary state.json project_contract was not a JSON object")
-        if backup_payload is not None and backup_payload[1] is not None:
-            return backup_payload
         return source_path, raw_contract
 
     normalized_contract, schema_findings = salvage_project_contract(raw_contract)
@@ -273,11 +270,6 @@ def _load_raw_project_contract_payload(cwd: Path) -> tuple[Path, object] | None:
         allow_singleton_defaults=False,
     )
     if schema_errors or normalized_contract is None:
-        backup_payload = _backup_project_contract(
-            "the primary state.json project_contract required blocking schema normalization"
-        )
-        if backup_payload is not None and backup_payload[1] is not None:
-            return backup_payload
         return source_path, raw_contract
     return source_path, raw_contract
 
@@ -1073,7 +1065,7 @@ def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:
 
     paused_states = {"paused", "awaiting_user", "ready_to_continue", "waiting_review", "blocked"}
     segment_status = (snapshot.segment_status or "").lower() if snapshot is not None else ""
-    is_resumable = bool(snapshot and segment_status in paused_states)
+    is_resumable = bool(snapshot and segment_status in paused_states and current_execution_resume_file)
     paused_at = (
         snapshot.updated_at
         if snapshot is not None and segment_status in paused_states

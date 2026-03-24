@@ -130,7 +130,7 @@ def get_progress(project_dir: str) -> dict:
     """Get overall project progress summary.
 
     Updates progress_percent based on completed phases and returns
-    the current state without syncing checkpoint shelf artifacts.
+    the current state without surfacing checkpoint shelf artifacts.
 
     Args:
         project_dir: Absolute path to the project root directory.

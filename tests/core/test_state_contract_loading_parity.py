@@ -74,7 +74,7 @@ def test_state_and_context_keep_primary_state_when_primary_root_is_dict_but_sche
     assert ctx["project_contract_load_info"]["source_path"].endswith("GPD/state.json")
 
 
-def test_state_and_context_restore_backup_project_contract_when_primary_needs_blocking_normalization(
+def test_state_and_context_surface_blocked_primary_project_contract_when_primary_needs_blocking_normalization(
     tmp_path: Path,
 ) -> None:
     _setup_project(tmp_path)
@@ -96,15 +96,15 @@ def test_state_and_context_restore_backup_project_contract_when_primary_needs_bl
     ctx = init_progress(tmp_path)
     loaded = state_load(tmp_path)
 
-    assert loaded.state["project_contract"] is not None
-    assert loaded.state["project_contract"]["scope"]["question"] == "Recovered from backup contract"
-    assert ctx["project_contract"] is not None
-    assert ctx["project_contract"]["scope"]["question"] == "Recovered from backup contract"
-    assert loaded.state["project_contract"] == ctx["project_contract"]
-    assert ctx["project_contract_load_info"]["source_path"].endswith(STATE_JSON_BACKUP_FILENAME)
+    assert loaded.state["project_contract"] is None
+    assert ctx["project_contract"] is None
+    assert ctx["project_contract_load_info"]["status"] == "blocked_schema"
+    assert ctx["project_contract_load_info"]["source_path"].endswith("GPD/state.json")
+    assert any("context_intake" in error for error in ctx["project_contract_load_info"]["errors"])
+    assert json.loads(layout.state_json.read_text(encoding="utf-8"))["project_contract"]["context_intake"] == "not-a-dict"
 
 
-def test_state_and_context_restore_backup_project_contract_when_primary_contract_is_not_an_object(
+def test_state_and_context_surface_blocked_primary_project_contract_when_primary_contract_is_not_an_object(
     tmp_path: Path,
 ) -> None:
     _setup_project(tmp_path)
@@ -122,10 +122,13 @@ def test_state_and_context_restore_backup_project_contract_when_primary_contract
     layout.state_json_backup.write_text(json.dumps(backup_state, indent=2) + "\n", encoding="utf-8")
 
     ctx = init_progress(tmp_path)
+    loaded = state_load(tmp_path)
 
-    assert ctx["project_contract"] is not None
-    assert ctx["project_contract"]["scope"]["question"] == "Recovered from backup contract"
-    assert ctx["project_contract_load_info"]["source_path"].endswith(STATE_JSON_BACKUP_FILENAME)
+    assert loaded.state["project_contract"] is None
+    assert ctx["project_contract"] is None
+    assert ctx["project_contract_load_info"]["status"] == "blocked_type"
+    assert ctx["project_contract_load_info"]["source_path"].endswith("GPD/state.json")
+    assert ctx["project_contract_load_info"]["errors"] == ["project contract must be a JSON object"]
 
 
 @pytest.mark.parametrize(

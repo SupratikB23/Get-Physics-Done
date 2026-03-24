@@ -193,6 +193,7 @@ def test_referee_schema_and_panel_surface_strict_stage_artifact_naming_and_round
     assert "same optional `-R<round>` suffix" in referee_schema
     assert "`{round_suffix}` in path examples means empty for initial review and `-R<round>`" in referee_schema
     assert "GPD/review/REVIEW-LEDGER{round_suffix}.json" in review_ledger_schema
+    assert "`manuscript_path` must be non-empty" in review_ledger_schema
     assert "REFEREE-DECISION{round_suffix}.json" in review_ledger_schema
     assert "GPD/review/CLAIMS{round_suffix}.json" in panel
     assert "GPD/review/STAGE-reader{round_suffix}.json" in panel

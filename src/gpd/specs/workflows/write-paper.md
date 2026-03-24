@@ -96,6 +96,7 @@ gpd validate review-preflight write-paper --strict
 ```
 
 If review preflight exits nonzero because of missing project state, missing roadmap, degraded review integrity, missing research artifacts, or non-review-ready reproducibility coverage, STOP and show the blocking issues before drafting. Keep the current `project_contract`, `project_contract_load_info`, `project_contract_validation`, and `active_reference_context` visible throughout the staged review; they are authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes.
+For any resumed manuscript, strict preflight reads `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`, and `reproducibility-manifest.json` from the resolved manuscript directory itself. Do not satisfy that gate with legacy `GPD/paper/` publication artifacts when the active manuscript lives elsewhere.
 
 **Locate paper directory (if resuming):**
 
@@ -111,7 +112,7 @@ if [ -z "${PAPER_DIR}" ]; then
 fi
 ```
 
-If the loop found an existing `main.tex`, the workflow is resuming or revising that manuscript directory.
+If the loop found an existing `main.tex`, the workflow is resuming or revising that manuscript directory. Strict review for that resume path uses `${PAPER_DIR}/ARTIFACT-MANIFEST.json`, `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json`, and `${PAPER_DIR}/reproducibility-manifest.json` from the same directory.
 If no existing manuscript was found, `PAPER_DIR` defaults to `paper` and the workflow bootstraps a fresh scaffold there.
 
 **Check pdflatex availability (cross-platform):**

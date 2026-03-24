@@ -284,8 +284,57 @@ def test_init_resume_ignores_nonportable_current_execution_resume_file_and_uses_
     ctx = init_resume(tmp_path)
 
     assert ctx["current_execution_resume_file"] is None
+    assert ctx["execution_resumable"] is False
     assert ctx["execution_resume_file_source"] == "session_resume_file"
     assert ctx["execution_resume_file"] == "GPD/phases/03-analysis/alternate-resume.md"
-    assert ctx["segment_candidates"][0]["source"] == "current_execution"
-    assert ctx["segment_candidates"][0]["resume_file"] is None
-    assert ctx["segment_candidates"][1]["source"] == "session_resume_file"
+    assert ctx["resume_mode"] is None
+    assert ctx["active_execution_segment"]["segment_id"] == "seg-4"
+    assert ctx["segment_candidates"] == [
+        {
+            "source": "session_resume_file",
+            "status": "handoff",
+            "resume_file": "GPD/phases/03-analysis/alternate-resume.md",
+            "resumable": False,
+        }
+    ]
+
+
+def test_init_resume_treats_missing_live_resume_file_as_advisory_only(
+    tmp_path: Path, state_project_factory, monkeypatch
+) -> None:
+    cwd = state_project_factory(tmp_path)
+    _write_current_execution(
+        cwd,
+        {
+            "session_id": "sess-1",
+            "phase": "03",
+            "plan": "02",
+            "segment_id": "seg-4",
+            "segment_status": "paused",
+            "updated_at": "2026-03-10T12:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(
+        context_module,
+        "_current_machine_identity",
+        lambda: {"hostname": "builder-01", "platform": "Linux 6.1 x86_64"},
+    )
+
+    ctx = init_resume(tmp_path)
+
+    assert ctx["active_execution_segment"]["segment_id"] == "seg-4"
+    assert ctx["current_execution_resume_file"] is None
+    assert ctx["execution_resumable"] is False
+    assert ctx["execution_resume_file"] is None
+    assert ctx["resume_mode"] is None
+    assert ctx["segment_candidates"] == []
+
+
+def test_init_resume_state_exists_false_when_only_unrecoverable_state_file_is_present(tmp_path: Path) -> None:
+    planning = tmp_path / "GPD"
+    planning.mkdir()
+    (planning / "state.json").write_text("{\n", encoding="utf-8")
+
+    ctx = init_resume(tmp_path)
+
+    assert ctx["state_exists"] is False

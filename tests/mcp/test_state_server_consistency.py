@@ -164,7 +164,7 @@ def test_get_progress_does_not_mutate_checkpoint_shelf_artifacts(tmp_path: Path)
     assert result["updated"] is True
     assert result["completed"] == 2
     assert result["total"] == 2
-    assert result["checkpoint_files"] == []
+    assert "checkpoint_files" not in result
     assert not (checkpoint_dir / "01-foundations.md").exists()
     assert not (checkpoint_dir / "02-analysis.md").exists()
     assert stale_checkpoint.read_text(encoding="utf-8") == "stale checkpoint\n"

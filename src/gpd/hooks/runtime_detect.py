@@ -243,15 +243,6 @@ def _has_gpd_install(
     return adapter.has_complete_install(config_dir)
 
 
-def _install_marker_quality(config_dir: Path) -> int:
-    """Rank how confidently *config_dir* represents a real GPD install."""
-    if _has_gpd_install(config_dir):
-        return 2
-    if (config_dir / MANIFEST_NAME).is_file() or (config_dir / GPD_INSTALL_DIR_NAME).is_dir():
-        return 1
-    return 0
-
-
 def _runtime_dir_has_gpd_install(
     runtime: str,
     *,
@@ -496,34 +487,6 @@ def _resolved_priority_runtime(
     if preferred_runtime in ALL_RUNTIMES:
         return preferred_runtime
     return detect_runtime_for_gpd_use(cwd=cwd, home=home)
-
-
-def _runtime_dirs_in_priority_order(
-    *,
-    cwd: Path | None = None,
-    home: Path | None = None,
-    preferred_runtime: str | None = None,
-) -> list[Path]:
-    """Return runtime config dirs, optionally prioritizing one runtime first."""
-    resolved_cwd = cwd or Path.cwd()
-    resolved_home = home or Path.home()
-    prioritized_runtime = _resolved_priority_runtime(preferred_runtime, cwd=resolved_cwd, home=resolved_home)
-
-    dirs: list[Path] = []
-    if prioritized_runtime in ALL_RUNTIMES:
-        for runtime_dir, _scope in _ordered_runtime_dirs_for_lookup(
-            prioritized_runtime,
-            cwd=resolved_cwd,
-            home=resolved_home,
-        ):
-            dirs.append(runtime_dir)
-
-    for runtime in ALL_RUNTIMES:
-        if runtime == prioritized_runtime:
-            continue
-        dirs.append(_local_runtime_dir(runtime, resolved_cwd))
-        dirs.append(_global_runtime_dir(runtime, home=resolved_home))
-    return _unique_paths(dirs)
 
 
 def all_runtime_dirs(*, include_local: bool = False, cwd: Path | None = None, home: Path | None = None) -> list[Path]:

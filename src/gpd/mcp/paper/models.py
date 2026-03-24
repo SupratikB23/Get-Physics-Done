@@ -255,6 +255,14 @@ class ReviewLedger(BaseModel):
     manuscript_path: str
     issues: list[ReviewIssue] = Field(default_factory=list)
 
+    @field_validator("manuscript_path")
+    @classmethod
+    def _nonempty_manuscript_path(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("manuscript_path must be non-empty")
+        return normalized
+
 
 class JournalSpec(BaseModel):
     """Specification for a journal's LaTeX configuration."""

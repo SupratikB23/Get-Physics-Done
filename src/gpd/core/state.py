@@ -316,8 +316,8 @@ class RecordMetricResult(BaseModel):
 class UpdateProgressResult(BaseModel):
     """Returned by :func:`state_update_progress`.
 
-    ``checkpoint_files`` is retained for backward compatibility, but progress
-    recomputation no longer synchronizes checkpoint shelf artifacts.
+    Progress recomputation no longer synchronizes checkpoint shelf artifacts or
+    surfaces them through progress APIs.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -329,7 +329,6 @@ class UpdateProgressResult(BaseModel):
     completed: int = 0
     total: int = 0
     bar: str = ""
-    checkpoint_files: list[str] = Field(default_factory=list)
 
 
 class AddDecisionResult(BaseModel):
@@ -1030,8 +1029,8 @@ def _normalize_state_schema_with_backup_project_contract(
     *,
     allow_project_contract_salvage: bool = True,
     retain_blocking_project_contract_errors: bool = True,
-) -> tuple[dict, list[str], bool, bool]:
-    """Normalize state and recover backup state / contract when needed."""
+) -> tuple[dict, list[str], bool]:
+    """Normalize state and recover backup state when the primary root is unreadable."""
 
     normalized, integrity_issues = _normalize_state_schema(
         raw,
@@ -1039,7 +1038,6 @@ def _normalize_state_schema_with_backup_project_contract(
         retain_blocking_project_contract_errors=retain_blocking_project_contract_errors,
     )
     recovered_root_from_backup = False
-    recovered_project_contract_from_backup = False
 
     backup_normalized: dict | None = None
     backup_issues: list[str] = []
@@ -1053,25 +1051,9 @@ def _normalize_state_schema_with_backup_project_contract(
         normalized = backup_normalized
         integrity_issues = []
         recovered_root_from_backup = True
-        recovered_project_contract_from_backup = backup_normalized.get("project_contract") is not None
         logger.warning("Recovered state.json from state.json.bak after primary state.json required normalization")
-    elif (
-        isinstance(raw, dict)
-        and raw.get("project_contract") is not None
-        and normalized.get("project_contract") is None
-        and backup_normalized is not None
-        and backup_normalized.get("project_contract") is not None
-    ):
-        backup_contract = backup_normalized.get("project_contract")
-        if backup_contract is not None:
-            normalized["project_contract"] = copy.deepcopy(backup_contract)
-            integrity_issues = _normalize_recovered_project_contract_issues(integrity_issues)
-            recovered_project_contract_from_backup = True
-            logger.warning(
-                "Recovered project_contract from state.json.bak after primary state.json required blocking normalization"
-            )
 
-    return normalized, integrity_issues, recovered_root_from_backup, recovered_project_contract_from_backup
+    return normalized, integrity_issues, recovered_root_from_backup
 
 
 def _format_validation_location(loc: tuple[object, ...]) -> str:
@@ -1111,39 +1093,6 @@ def _integrity_issue_from_contract_error(error: str) -> str:
         path, detail = path_match.groups()
         return f"schema normalization: project_contract.{path} {detail}"
     return f"schema normalization: {error}"
-
-
-_PROJECT_CONTRACT_RECOVERY_ISSUE = (
-    'schema normalization: recovered "project_contract" from state.json.bak '
-    "after primary project_contract required blocking normalization"
-)
-_PROJECT_CONTRACT_ROOT_KEYS = set(ResearchContract.model_fields)
-
-
-def _looks_like_project_contract_issue(raw_issue: str) -> bool:
-    if raw_issue.startswith("project_contract."):
-        return True
-
-    path_match = re.match(r"^(schema_version|[A-Za-z_][A-Za-z0-9_]*)", raw_issue)
-    if path_match is None:
-        return False
-    return path_match.group(1) in _PROJECT_CONTRACT_ROOT_KEYS
-
-
-def _normalize_recovered_project_contract_issues(integrity_issues: list[str]) -> list[str]:
-    normalized_issues: list[str] = []
-    for issue in integrity_issues:
-        if issue.startswith('schema normalization: dropped "project_contract"'):
-            continue
-        if issue.startswith("schema normalization: ") and "project_contract" not in issue:
-            raw_issue = issue.removeprefix("schema normalization: ").strip()
-            if _looks_like_project_contract_issue(raw_issue):
-                issue = _integrity_issue_from_contract_error(raw_issue)
-        if issue not in normalized_issues:
-            normalized_issues.append(issue)
-    if _PROJECT_CONTRACT_RECOVERY_ISSUE not in normalized_issues:
-        normalized_issues.append(_PROJECT_CONTRACT_RECOVERY_ISSUE)
-    return normalized_issues
 
 
 def _normalize_project_contract_section(
@@ -2028,7 +1977,7 @@ def _load_state_json_with_integrity_issues(
                 bak_parsed = None
             if isinstance(bak_parsed, dict):
                 backup_parsed = bak_parsed
-            normalized, integrity_issues, recovered_root_from_backup, recovered_contract_from_backup = (
+            normalized, integrity_issues, recovered_root_from_backup = (
                 _normalize_state_schema_with_backup_project_contract(
                     parsed,
                     backup_parsed,
@@ -2042,10 +1991,6 @@ def _load_state_json_with_integrity_issues(
             if recovered_root_from_backup:
                 integrity_issues.append(
                     "state.json root was recovered from state.json.bak after primary state.json required normalization"
-                )
-            if recovered_contract_from_backup:
-                integrity_issues.append(
-                    "state.json project_contract was recovered from state.json.bak after primary state.json required blocking normalization"
                 )
             if integrity_mode == "review" and integrity_issues:
                 logger.warning("state.json failed review-mode integrity checks: %s", "; ".join(integrity_issues))
@@ -2194,7 +2139,7 @@ def _load_state_json_from_backup(
         bak_parsed = json.loads(bak_raw)
         if not isinstance(bak_parsed, dict):
             raise TypeError(f"state root must be an object, got {type(bak_parsed).__name__}")
-        restored, integrity_issues, _recovered_root_from_backup, _recovered_contract_from_backup = (
+        restored, integrity_issues, _recovered_root_from_backup = (
             _normalize_state_schema_with_backup_project_contract(
                 bak_parsed,
                 None,
@@ -2284,7 +2229,7 @@ def state_load(cwd: Path, integrity_mode: str = "standard") -> StateLoadResult:
     return StateLoadResult(
         state=state_obj or {},
         state_raw=state_raw,
-        state_exists=state_obj is not None or len(state_raw) > 0,
+        state_exists=state_obj is not None,
         roadmap_exists=layout.roadmap.exists(),
         config_exists=layout.config_json.exists(),
         integrity_mode=integrity_mode,

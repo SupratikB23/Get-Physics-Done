@@ -11,7 +11,6 @@ from gpd.core.constants import STATE_JSON_BACKUP_FILENAME, ProjectLayout
 from gpd.core.state import (
     VALID_STATUSES,
     ResearchState,
-    _normalize_recovered_project_contract_issues,
     _normalize_state_schema,
     default_state_dict,
     ensure_state_schema,
@@ -30,6 +29,7 @@ from gpd.core.state import (
     state_replace_field,
     state_set_project_contract,
     state_snapshot,
+    state_update_progress,
     state_validate,
     validate_state_transition,
 )
@@ -1024,6 +1024,17 @@ def test_state_load_recovers_backup_only_state_when_primary_json_is_missing(tmp_
     )
 
 
+def test_state_load_reports_state_exists_false_when_only_unrecoverable_state_file_is_present(tmp_path: Path) -> None:
+    planning = tmp_path / "GPD"
+    planning.mkdir()
+    (planning / "state.json").write_text("{\n", encoding="utf-8")
+
+    loaded = state_load(tmp_path)
+
+    assert loaded.state_exists is False
+    assert loaded.state == {}
+
+
 def test_ensure_state_schema_preserves_good_fields_when_one_is_bad():
     """When one top-level key has type errors, other valid keys survive."""
     result = ensure_state_schema({
@@ -1377,7 +1388,7 @@ def test_state_load_surfaces_standard_mode_warnings(tmp_path: Path) -> None:
     assert any("claims.0.notes" in issue for issue in loaded.integrity_issues)
 
 
-def test_state_validate_warns_when_project_contract_is_recovered_from_backup(tmp_path: Path) -> None:
+def test_state_validate_warns_when_primary_project_contract_is_blocked(tmp_path: Path) -> None:
     baseline = default_state_dict()
     save_state_json(tmp_path, baseline)
     save_state_markdown(tmp_path, generate_state_markdown(baseline))
@@ -1397,10 +1408,13 @@ def test_state_validate_warns_when_project_contract_is_recovered_from_backup(tmp
 
     assert validation.valid is True
     assert validation.integrity_status == "warning"
-    assert any("project_contract was recovered from state.json.bak" in warning for warning in validation.warnings)
+    assert any(
+        'dropped "project_contract" because contract schema required normalization' in warning
+        for warning in validation.warnings
+    )
 
 
-def test_state_load_preserves_prefixed_project_contract_issues_when_backup_contract_is_recovered(tmp_path: Path) -> None:
+def test_state_load_preserves_prefixed_project_contract_issues_when_primary_contract_is_blocked(tmp_path: Path) -> None:
     baseline = default_state_dict()
     baseline["position"]["status"] = "Executing"
     save_state_json(tmp_path, baseline)
@@ -1421,32 +1435,30 @@ def test_state_load_preserves_prefixed_project_contract_issues_when_backup_contr
 
     loaded = state_load(tmp_path)
 
-    assert loaded.state["project_contract"] is not None
+    assert loaded.state["project_contract"] is None
     assert any(
         "project_contract.references.0.must_surface must be a boolean" in issue
         for issue in loaded.integrity_issues
     )
     assert any(
-        'recovered "project_contract" from state.json.bak after primary project_contract required blocking normalization'
+        'dropped "project_contract" because authoritative scalar fields required normalization'
         in issue
         for issue in loaded.integrity_issues
     )
     assert not any(
-        'dropped "project_contract" because authoritative scalar fields required normalization' in issue
+        'recovered "project_contract" from state.json.bak after primary project_contract required blocking normalization'
+        in issue
         for issue in loaded.integrity_issues
     )
 
 
-def test_normalize_recovered_project_contract_issues_leaves_unrelated_state_issues_untouched() -> None:
-    normalized = _normalize_recovered_project_contract_issues(
-        [
-            "schema normalization: position.current_phase must be a string",
-            "schema normalization: references.0.must_surface must be a boolean",
-        ]
-    )
+def test_state_update_progress_omits_checkpoint_files_from_result_api(tmp_path: Path) -> None:
+    cwd = _bootstrap_project_with_state(tmp_path)
 
-    assert "schema normalization: position.current_phase must be a string" in normalized
-    assert "schema normalization: project_contract.references.0.must_surface must be a boolean" in normalized
+    result = state_update_progress(cwd)
+
+    assert not hasattr(result, "checkpoint_files")
+    assert "checkpoint_files" not in result.model_dump()
 
 
 def test_state_validate_recovers_backup_when_primary_root_is_not_an_object(tmp_path: Path) -> None:
@@ -1505,7 +1517,9 @@ def test_state_validate_recovers_backup_root_without_project_contract(tmp_path: 
     assert not any("project_contract was recovered from state.json.bak" in warning for warning in validation.warnings)
 
 
-def test_state_validate_review_blocks_when_project_contract_is_recovered_from_backup(tmp_path: Path) -> None:
+def test_state_validate_review_blocks_when_primary_project_contract_requires_blocking_normalization(
+    tmp_path: Path,
+) -> None:
     baseline = default_state_dict()
     save_state_json(tmp_path, baseline)
     save_state_markdown(tmp_path, generate_state_markdown(baseline))
@@ -1525,7 +1539,10 @@ def test_state_validate_review_blocks_when_project_contract_is_recovered_from_ba
 
     assert validation.valid is False
     assert validation.integrity_status == "blocked"
-    assert any("project_contract was recovered from state.json.bak" in issue for issue in validation.issues)
+    assert any(
+        'dropped "project_contract" because contract schema required normalization' in issue
+        for issue in validation.issues
+    )
 
 
 def test_state_validate_review_blocks_when_state_root_is_recovered_from_backup_without_project_contract(

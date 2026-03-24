@@ -394,7 +394,8 @@ def test_state_update_progress_ignores_orphan_summaries_and_caps_percent(tmp_pat
     assert result.completed == 1
     assert result.total == 1
     assert result.percent == 100
-    assert result.checkpoint_files == []
+    assert not hasattr(result, "checkpoint_files")
+    assert "checkpoint_files" not in result.model_dump(mode="json")
     assert not (cwd / "GPD" / "phase-checkpoints" / "01-foundations.md").exists()
     assert not (cwd / "GPD" / "CHECKPOINTS.md").exists()
 
@@ -431,7 +432,8 @@ def test_state_update_progress_leaves_checkpoint_shelf_artifacts_unchanged(tmp_p
     assert result.completed == 2
     assert result.total == 2
     assert result.percent == 100
-    assert result.checkpoint_files == []
+    assert not hasattr(result, "checkpoint_files")
+    assert "checkpoint_files" not in result.model_dump(mode="json")
     assert not (checkpoint_dir / "01-foundations.md").exists()
     assert not (checkpoint_dir / "02-analysis.md").exists()
     assert stale_checkpoint.read_text(encoding="utf-8") == "stale checkpoint\n"

@@ -17,6 +17,8 @@ Read these reference files using the file_read tool:
 - {GPD_INSTALL_DIR}/references/execution/executor-index.md -- Maps execution scenarios (QFT, condensed matter, numerical, paper writing, debugging) to the correct domain-specific reference files
 - {GPD_INSTALL_DIR}/templates/calculation-log.md -- Template for CALCULATION_LOG.md (detailed derivation records within a phase)
 - {GPD_INSTALL_DIR}/templates/recovery-plan.md -- Template for RECOVERY.md (structured recovery after plan execution failure)
+
+When following GitHub lifecycle examples, substitute the repository's actual default branch and remote names for `<default-branch>` and `<remote-name>`; those placeholders are not literal branch or remote names.
 </required_reading>
 
 <process>

@@ -285,6 +285,16 @@ def _write_review_stage_artifacts(
         )
 
 
+def _write_legacy_publication_artifacts(project_root: Path, artifact_names: tuple[str, ...]) -> None:
+    """Mirror publication review artifacts into the removed legacy internal location."""
+    legacy_dir = project_root / "GPD" / "paper"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    paper_dir = project_root / "paper"
+    for artifact_name in artifact_names:
+        source = paper_dir / artifact_name
+        (legacy_dir / artifact_name).write_bytes(source.read_bytes())
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Convention commands — the original bug class
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1260,6 +1270,38 @@ class TestReviewValidationCommands:
         assert checks["reproducibility_manifest"]["passed"] is True
         assert checks["reproducibility_ready"]["passed"] is True
 
+    def test_review_preflight_write_paper_strict_does_not_fall_back_to_legacy_gpd_paper_artifacts(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        (gpd_project / "paper" / "main.tex").unlink()
+
+        resume_dir = gpd_project / "manuscript"
+        resume_dir.mkdir()
+        (resume_dir / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\nResume manuscript.\n\\end{document}\n",
+            encoding="utf-8",
+        )
+        _write_legacy_publication_artifacts(
+            gpd_project,
+            ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json", "reproducibility-manifest.json"),
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "write-paper", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["manuscript"]["passed"] is True
+        assert "manuscript/main.tex" in checks["manuscript"]["detail"]
+        assert checks["artifact_manifest"]["passed"] is False
+        assert checks["bibliography_audit"]["passed"] is False
+        assert checks["reproducibility_manifest"]["passed"] is False
+
     def test_command_context_global_command_passes_without_project(
         self,
         tmp_path: Path,
@@ -1860,6 +1902,39 @@ class TestReviewValidationCommands:
         assert checks["manuscript"]["passed"] is True
         assert "submission/main.tex" in checks["manuscript"]["detail"]
         assert checks["compiled_manuscript"]["passed"] is True
+
+    def test_review_preflight_arxiv_submission_strict_does_not_fall_back_to_legacy_gpd_paper_artifacts(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        paper_dir = gpd_project / "paper"
+        (paper_dir / "main.tex").unlink()
+
+        submission_dir = gpd_project / "submission"
+        submission_dir.mkdir()
+        (submission_dir / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\nSubmission manuscript.\n\\end{document}\n",
+            encoding="utf-8",
+        )
+        (submission_dir / "main.pdf").write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
+        _write_legacy_publication_artifacts(
+            gpd_project,
+            ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"),
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "arxiv-submission", "submission/main.tex", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["manuscript"]["passed"] is True
+        assert checks["compiled_manuscript"]["passed"] is True
+        assert checks["artifact_manifest"]["passed"] is False
+        assert checks["bibliography_audit"]["passed"] is False
 
     def test_review_preflight_arxiv_submission_rejects_explicit_markdown_manuscript_file(
         self,

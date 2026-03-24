@@ -46,6 +46,7 @@ fi
 ```
 
 If review preflight exits nonzero because of missing project state, missing manuscript, missing compiled manuscript, unresolved publication blockers, degraded review integrity, or missing conventions, STOP and fix those blockers before packaging.
+Strict preflight also requires `ARTIFACT-MANIFEST.json` and `BIBLIOGRAPHY-AUDIT.json` beside the resolved manuscript entry point. If `$ARGUMENTS` resolves to `submission/main.tex`, those review artifacts must come from `submission/`, not from legacy `GPD/paper/` copies or some other manuscript directory.
 
 **Resolve manuscript target from $ARGUMENTS:**
 
@@ -89,7 +90,7 @@ SUBMISSION_DIR="arxiv-submission"
 <step name="paper_quality_gate">
 **Run the paper-quality submission gate before packaging:**
 
-Use the resolved manuscript root as the scoring source of truth. If `PAPER_DIR` is not already the project's `paper/` directory, create a temporary scratch project root that mirrors `GPD/` and exposes the resolved manuscript directory as `paper/` for scoring, then run:
+Use the resolved manuscript root as the scoring source of truth. The same resolved manuscript root is also the strict preflight source of truth for `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`, and the compiled PDF. If `PAPER_DIR` is not already the project's `paper/` directory, create a temporary scratch project root that mirrors `GPD/` and exposes the resolved manuscript directory as `paper/` for scoring, then run:
 
 ```bash
 QUALITY_ROOT="."

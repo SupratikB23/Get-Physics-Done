@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gpd.core.commands import SummaryExtractResult, _normalize_string_list, cmd_summary_extract
 from gpd.core.constants import ProjectLayout
+from gpd.core.errors import ValidationError
 from gpd.core.frontmatter import FrontmatterParseError, extract_frontmatter
 from gpd.core.observability import instrument_gpd_function
 from gpd.core.utils import atomic_write, compare_phase_numbers, safe_read_file
@@ -182,12 +183,13 @@ def _phase_summary_docs(cwd: Path, phase_dir: Path) -> _PhaseSummaryScanResult:
             continue
         try:
             frontmatter, body = extract_frontmatter(content)
-            extracted = cmd_summary_extract(cwd, summary_relpath)
         except FrontmatterParseError as exc:
             skipped_files.append(summary_relpath)
             errors.append(f"Skipped {summary_relpath}: malformed frontmatter ({exc})")
             continue
-        except Exception as exc:
+        try:
+            extracted = cmd_summary_extract(cwd, summary_relpath)
+        except ValidationError as exc:
             skipped_files.append(summary_relpath)
             errors.append(f"Skipped {summary_relpath}: {exc}")
             continue
@@ -397,7 +399,12 @@ def _remove_generated_if_present(path: Path) -> bool:
 
 @instrument_gpd_function("checkpoints.sync_phase_checkpoints")
 def sync_phase_checkpoints(cwd: Path) -> SyncPhaseCheckpointsResult:
-    """Generate the `GPD` checkpoint shelf from phase summaries."""
+    """Generate the `GPD` checkpoint shelf from phase summaries.
+
+    Malformed or unreadable summary inputs are recorded in ``errors`` and
+    skipped so the rest of the shelf can still refresh. Unexpected render,
+    write, or filesystem failures still propagate to the caller.
+    """
     layout = ProjectLayout(cwd)
 
     grouped: list[tuple[Path, list[_PhaseSummaryDoc]]] = []
