@@ -415,12 +415,12 @@ class TestParseCommandFile:
         assert "GPD/REFEREE-REPORT.md" not in cmd.review_contract.required_outputs
         assert "GPD/REFEREE-REPORT.tex" not in cmd.review_contract.required_outputs
         assert cmd.review_contract.stage_artifacts == [
-            "GPD/review/CLAIMS.json",
-            "GPD/review/STAGE-reader.json",
-            "GPD/review/STAGE-literature.json",
-            "GPD/review/STAGE-math.json",
-            "GPD/review/STAGE-physics.json",
-            "GPD/review/STAGE-interestingness.json",
+            "GPD/review/CLAIMS{round_suffix}.json",
+            "GPD/review/STAGE-reader{round_suffix}.json",
+            "GPD/review/STAGE-literature{round_suffix}.json",
+            "GPD/review/STAGE-math{round_suffix}.json",
+            "GPD/review/STAGE-physics{round_suffix}.json",
+            "GPD/review/STAGE-interestingness{round_suffix}.json",
             "GPD/review/REVIEW-LEDGER{round_suffix}.json",
             "GPD/review/REFEREE-DECISION{round_suffix}.json",
         ]
