@@ -4,7 +4,7 @@ template_version: 1
 
 # Verification Report Template
 
-Template for `.gpd/phases/XX-name/{phase}-VERIFICATION.md` -- physics verification of research phase results.
+Template for `GPD/phases/XX-name/{phase}-VERIFICATION.md` -- physics verification of research phase results.
 
 ---
 
@@ -62,7 +62,7 @@ phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
 status: passed | gaps_found | expert_needed | human_needed
 score: N/M contract targets verified
-plan_contract_ref: .gpd/phases/XX-name/{phase}-{plan}-PLAN.md#/contract
+plan_contract_ref: GPD/phases/XX-name/{phase}-{plan}-PLAN.md#/contract
 # Use `contract_results` only for user-visible contract targets. Do not encode internal tool/process milestones here.
 contract_results:
   # Every ID declared in the PLAN contract must appear in its matching section below.
@@ -80,16 +80,18 @@ contract_results:
           acceptance_test_id: acceptance-test-id
           reference_id: reference-id
           forbidden_proxy_id: forbidden-proxy-id
-          evidence_path: .gpd/phases/01-benchmark/01-VERIFICATION.md
+          evidence_path: GPD/phases/01-benchmark/01-VERIFICATION.md
   deliverables:
     deliverable-id:
       status: passed|partial|failed|blocked|not_attempted
       path: path/to/artifact
       summary: "[artifact verification verdict]"
+      linked_ids: [claim-id, acceptance-test-id]
   acceptance_tests:
     acceptance-test-id:
       status: passed|partial|failed|blocked|not_attempted
       summary: "[test verification verdict]"
+      linked_ids: [claim-id, deliverable-id, reference-id]
   references:
     reference-id:
       status: completed|missing|not_applicable
@@ -130,7 +132,7 @@ suggested_contract_checks:
     reason: "The reported agreement depends on a normalization-sensitive benchmark that is not yet explicit."
     suggested_subject_kind: acceptance_test
     suggested_subject_id: acceptance-test-id
-    evidence_path: .gpd/phases/01-benchmark/benchmark-comparison.csv
+    evidence_path: GPD/phases/01-benchmark/benchmark-comparison.csv
 ---
 
 # Phase {X}: {Name} Verification Report
@@ -498,7 +500,7 @@ Include a `suggested_contract_checks` entry whenever a decisive benchmark / cros
 
 | Debug File                                                                | Status                    | Root Cause                           | Lesson                              |
 | ------------------------------------------------------------------------- | ------------------------- | ------------------------------------ | ----------------------------------- |
-| {.gpd/debug/[slug].md where frontmatter `phase:` matches this phase} | {status from frontmatter} | {Resolution.root_cause or "pending"} | {Resolution.lessons_learned or "—"} |
+| {GPD/debug/[slug].md where frontmatter `phase:` matches this phase} | {status from frontmatter} | {Resolution.root_cause or "pending"} | {Resolution.lessons_learned or "—"} |
 
 {If no debug files match this phase: "No debug sessions recorded for this phase."}
 

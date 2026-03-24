@@ -353,7 +353,7 @@ def test_referee_workflow_mentions_optional_pdf_compile_and_missing_tex_prompt()
 
     assert "compile the latest referee-report `.tex` file to a matching `.pdf`" in referee
     assert "Do NOT install TeX yourself" in referee
-    assert "Continue now with `.gpd/REFEREE-REPORT.md` + `.gpd/REFEREE-REPORT.tex` only" in peer_review
+    assert "Continue now with `GPD/REFEREE-REPORT.md` + `GPD/REFEREE-REPORT.tex` only" in peer_review
     assert "Authorize the agent to install TeX now" in peer_review
 
 
@@ -459,16 +459,16 @@ def test_review_commands_expose_typed_contracts() -> None:
     assert "manuscript scaffold target (existing draft or bootstrap target)" in write_paper.review_contract.required_evidence
     assert "artifact manifest" in write_paper.review_contract.required_evidence
     assert "reproducibility manifest" in write_paper.review_contract.required_evidence
-    assert ".gpd/REFEREE-REPORT.tex" in write_paper.review_contract.required_outputs
+    assert "GPD/REFEREE-REPORT.tex" in write_paper.review_contract.required_outputs
     assert "manuscript" in write_paper.review_contract.preflight_checks
 
     assert peer_review.review_contract is not None
     assert peer_review.review_contract.review_mode == "publication"
-    assert ".gpd/REFEREE-REPORT{round_suffix}.md" in peer_review.review_contract.required_outputs
-    assert ".gpd/REFEREE-REPORT{round_suffix}.tex" in peer_review.review_contract.required_outputs
-    assert ".gpd/review/CLAIMS{round_suffix}.json" in peer_review.review_contract.required_outputs
-    assert ".gpd/review/STAGE-interestingness{round_suffix}.json" in peer_review.review_contract.required_outputs
-    assert ".gpd/review/REFEREE-DECISION{round_suffix}.json" in peer_review.review_contract.required_outputs
+    assert "GPD/REFEREE-REPORT{round_suffix}.md" in peer_review.review_contract.required_outputs
+    assert "GPD/REFEREE-REPORT{round_suffix}.tex" in peer_review.review_contract.required_outputs
+    assert "GPD/review/CLAIMS{round_suffix}.json" in peer_review.review_contract.required_outputs
+    assert "GPD/review/STAGE-interestingness{round_suffix}.json" in peer_review.review_contract.required_outputs
+    assert "GPD/review/REFEREE-DECISION{round_suffix}.json" in peer_review.review_contract.required_outputs
     assert "manuscript" in peer_review.review_contract.preflight_checks
     assert peer_review.review_contract.stage_ids == [
         "reader",
@@ -480,24 +480,24 @@ def test_review_commands_expose_typed_contracts() -> None:
     ]
     assert peer_review.review_contract.requires_fresh_context_per_stage is True
     assert peer_review.review_contract.stage_artifacts == [
-        ".gpd/review/CLAIMS{round_suffix}.json",
-        ".gpd/review/STAGE-reader{round_suffix}.json",
-        ".gpd/review/STAGE-literature{round_suffix}.json",
-        ".gpd/review/STAGE-math{round_suffix}.json",
-        ".gpd/review/STAGE-physics{round_suffix}.json",
-        ".gpd/review/STAGE-interestingness{round_suffix}.json",
-        ".gpd/review/REVIEW-LEDGER{round_suffix}.json",
-        ".gpd/review/REFEREE-DECISION{round_suffix}.json",
+        "GPD/review/CLAIMS{round_suffix}.json",
+        "GPD/review/STAGE-reader{round_suffix}.json",
+        "GPD/review/STAGE-literature{round_suffix}.json",
+        "GPD/review/STAGE-math{round_suffix}.json",
+        "GPD/review/STAGE-physics{round_suffix}.json",
+        "GPD/review/STAGE-interestingness{round_suffix}.json",
+        "GPD/review/REVIEW-LEDGER{round_suffix}.json",
+        "GPD/review/REFEREE-DECISION{round_suffix}.json",
     ]
-    assert peer_review.review_contract.final_decision_output == ".gpd/review/REFEREE-DECISION{round_suffix}.json"
+    assert peer_review.review_contract.final_decision_output == "GPD/review/REFEREE-DECISION{round_suffix}.json"
 
     assert verify_work.review_contract is not None
     assert verify_work.review_contract.required_state == "phase_executed"
     assert "phase_artifacts" in verify_work.review_contract.preflight_checks
 
     assert respond_to_referees.review_contract is not None
-    assert ".gpd/paper/REFEREE_RESPONSE{round_suffix}.md" in respond_to_referees.review_contract.required_outputs
-    assert ".gpd/AUTHOR-RESPONSE{round_suffix}.md" in respond_to_referees.review_contract.required_outputs
+    assert "GPD/paper/REFEREE_RESPONSE{round_suffix}.md" in respond_to_referees.review_contract.required_outputs
+    assert "GPD/AUTHOR-RESPONSE{round_suffix}.md" in respond_to_referees.review_contract.required_outputs
     assert "structured referee issues" in respond_to_referees.review_contract.required_evidence
     assert "peer-review review ledger when available" in respond_to_referees.review_contract.required_evidence
     assert "peer-review decision artifacts when available" in respond_to_referees.review_contract.required_evidence
@@ -566,8 +566,8 @@ def test_respond_to_referees_references_staged_review_artifacts() -> None:
     workflow_text = (WORKFLOWS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
     writer_text = (AGENTS_DIR / "gpd-paper-writer.md").read_text(encoding="utf-8")
 
-    assert ".gpd/review/REVIEW-LEDGER{round_suffix}.json" in command_text
-    assert ".gpd/review/REFEREE-DECISION{round_suffix}.json" in command_text
+    assert "GPD/review/REVIEW-LEDGER{round_suffix}.json" in command_text
+    assert "GPD/review/REFEREE-DECISION{round_suffix}.json" in command_text
     assert "REVIEW-LEDGER*.json" in workflow_text
     assert "REFEREE-DECISION*.json" in workflow_text
     assert "REVIEW-LEDGER{-RN}.json" in writer_text
@@ -580,22 +580,22 @@ def test_review_workflows_keep_round_suffix_artifacts_visible_and_anchor_respons
     write_paper = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
     panel = (REFERENCES_DIR / "publication" / "peer-review-panel.md").read_text(encoding="utf-8")
 
-    assert ".gpd/review/CLAIMS{round_suffix}.json" in peer_review
-    assert ".gpd/review/REVIEW-LEDGER{round_suffix}.json" in peer_review
-    assert ".gpd/review/REFEREE-DECISION{round_suffix}.json" in peer_review
-    assert ".gpd/REFEREE-REPORT{round_suffix}.md" in peer_review
-    assert ".gpd/REFEREE-REPORT{round_suffix}.tex" in panel
+    assert "GPD/review/CLAIMS{round_suffix}.json" in peer_review
+    assert "GPD/review/REVIEW-LEDGER{round_suffix}.json" in peer_review
+    assert "GPD/review/REFEREE-DECISION{round_suffix}.json" in peer_review
+    assert "GPD/REFEREE-REPORT{round_suffix}.md" in peer_review
+    assert "GPD/REFEREE-REPORT{round_suffix}.tex" in panel
 
     assert "${PAPER_DIR}/{section}.tex" in respond
     assert "${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json" in respond
     assert "${PAPER_DIR}/response-letter.tex" in respond
-    assert ".gpd/paper/REFEREE_RESPONSE{round_suffix}.md" in respond
-    assert ".gpd/AUTHOR-RESPONSE{round_suffix}.md" in respond
+    assert "GPD/paper/REFEREE_RESPONSE{round_suffix}.md" in respond
+    assert "GPD/AUTHOR-RESPONSE{round_suffix}.md" in respond
 
     assert "CLAIMS{round_suffix}.json" in write_paper
     assert "REVIEW-LEDGER{round_suffix}.json" in write_paper
     assert "REFEREE-DECISION{round_suffix}.json" in write_paper
-    assert ".gpd/REFEREE-REPORT{round_suffix}.md" in write_paper
+    assert "GPD/REFEREE-REPORT{round_suffix}.md" in write_paper
 
 
 def test_publication_commands_accept_documented_manuscript_layouts() -> None:
@@ -611,7 +611,7 @@ def test_new_project_recommended_autonomy_matches_balanced_default() -> None:
     workflow_text = (WORKFLOWS_DIR / "new-project.md").read_text(encoding="utf-8")
 
     assert workflow_text.count('"autonomy": "balanced"') >= 2
-    assert "How would you like to write `.gpd/config.json`?" in workflow_text
+    assert "How would you like to write `GPD/config.json`?" in workflow_text
     assert (
         "`autonomy=balanced`, `research_mode=balanced`, `parallelization=true`, "
         "`planning.commit_docs=true`, `execution.review_cadence=adaptive`"
@@ -661,7 +661,7 @@ def test_new_project_wiring_mentions_contract_persistence_and_contract_first_dow
     assert "gpd state set-project-contract -" in workflow_text
     assert "/tmp/gpd-project-contract.json" not in workflow_text
     assert "temporary JSON file if needed" not in workflow_text
-    assert "Read PROJECT.md and `.gpd/state.json` and extract" in workflow_text
+    assert "Read PROJECT.md and `GPD/state.json` and extract" in workflow_text
     assert "Derive phases from requirements AND the approved project contract" in workflow_text
     assert "If auto mode and `autonomy` is not `supervised`" in workflow_text
     assert "@{GPD_INSTALL_DIR}/templates/state-json-schema.md" in command_text
@@ -671,11 +671,11 @@ def test_new_project_defers_workflow_setup_until_after_scope_approval() -> None:
     workflow_text = (WORKFLOWS_DIR / "new-project.md").read_text(encoding="utf-8")
     command_text = (COMMANDS_DIR / "new-project.md").read_text(encoding="utf-8")
 
-    assert "Before `.gpd/config.json` exists, the `autonomy` and `research_mode` values from `gpd init new-project` are temporary defaults" in workflow_text
+    assert "Before `GPD/config.json` exists, the `autonomy` and `research_mode` values from `gpd init new-project` are temporary defaults" in workflow_text
     assert "## 2.5 Early Workflow Setup" not in workflow_text
     assert "What physics problem do you want to investigate?" in workflow_text
-    assert "If `.gpd/config.json` does not exist yet, run Step 5 now before generating or committing `PROJECT.md`." in workflow_text
-    assert "Run this step after scope approval and before the first project-artifact commit whenever `.gpd/config.json` does not exist yet." in workflow_text
+    assert "If `GPD/config.json` does not exist yet, run Step 5 now before generating or committing `PROJECT.md`." in workflow_text
+    assert "Run this step after scope approval and before the first project-artifact commit whenever `GPD/config.json` does not exist yet." in workflow_text
     assert "If Step 2.5 already captured provisional setup preferences" not in workflow_text
     assert "workflow opens with the physics-questioning pass" in command_text
     assert "asks for workflow preferences only after scope approval and before the first project-artifact commit" in command_text
@@ -775,7 +775,7 @@ def test_planning_and_phase_templates_surface_active_reference_context() -> None
     assert "**Project Contract:** {project_contract}" in planner_prompt
     assert "**Active References:** {active_reference_context}" in planner_prompt
     assert "@path/to/reference-or-benchmark-anchor.md" in phase_prompt
-    assert "Planning requires an approved scoping contract in `.gpd/state.json`" in workflow_text
+    assert "Planning requires an approved scoping contract in `GPD/state.json`" in workflow_text
     assert "project_contract_validation" in workflow_text
     assert "project_contract_load_info" in workflow_text
     assert "visible-but-blocked contract is not an approved planning contract" in workflow_text
@@ -799,10 +799,10 @@ def test_progress_workflow_surfaces_contract_load_and_validation_state() -> None
     assert 'status: (gaps_found|diagnosed|human_needed|expert_needed)' not in command_text
     assert "`session_status: diagnosed`" in workflow_text
     assert "`session_status: diagnosed`" in command_text
-    assert ".gpd/phases/[current-phase-dir]/VERIFICATION.md" in workflow_text
-    assert ".gpd/phases/[current-phase-dir]/VERIFICATION.md" in command_text
-    assert ".gpd/phases/[current-phase-dir]/*-VERIFICATION.md" in workflow_text
-    assert ".gpd/phases/[current-phase-dir]/*-VERIFICATION.md" in command_text
+    assert "GPD/phases/[current-phase-dir]/VERIFICATION.md" in workflow_text
+    assert "GPD/phases/[current-phase-dir]/VERIFICATION.md" in command_text
+    assert "GPD/phases/[current-phase-dir]/*-VERIFICATION.md" in workflow_text
+    assert "GPD/phases/[current-phase-dir]/*-VERIFICATION.md" in command_text
 
 
 def test_planning_prompts_keep_contract_gate_in_light_mode_and_all_modes() -> None:
@@ -916,9 +916,9 @@ def test_file_producing_command_surfaces_use_canonical_spawn_contract() -> None:
     research = (COMMANDS_DIR / "research-phase.md").read_text(encoding="utf-8")
 
     for content, agent_name, file_token in (
-        (literature, "gpd-literature-reviewer", ".gpd/literature/{slug}-REVIEW.md"),
-        (debug, "gpd-debugger", ".gpd/debug/{slug}.md"),
-        (research, "gpd-phase-researcher", ".gpd/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md"),
+        (literature, "gpd-literature-reviewer", "GPD/literature/{slug}-REVIEW.md"),
+        (debug, "gpd-debugger", "GPD/debug/{slug}.md"),
+        (research, "gpd-phase-researcher", "GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md"),
     ):
         assert f'read {{GPD_AGENTS_DIR}}/{agent_name}.md for your role and instructions' in content
         assert "readonly=false" in content
@@ -939,7 +939,7 @@ def test_revision_and_audit_workflows_verify_artifacts_before_trusting_success_t
     assert "Re-open `AUTHOR-RESPONSE{round_suffix}.md` and `REFEREE_RESPONSE{round_suffix}.md`" in respond
 
     assert "Verify the promised referee artifacts before trusting the handoff text" in audit
-    assert "Confirm `.gpd/REFEREE-REPORT.md` exists" in audit
+    assert "Confirm `GPD/REFEREE-REPORT.md` exists" in audit
     assert "If the agent reported success but either artifact is missing, treat peer review as failed" in audit
 
 
@@ -981,7 +981,7 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "plan_contract_ref" in summary_template
     assert "Keep this ledger user-visible" in summary_template
     assert "Reload `@{GPD_INSTALL_DIR}/templates/contract-results-schema.md` immediately before writing the YAML" in summary_template
-    assert "canonical project-root-relative `.gpd/phases/XX-name/{phase}-{plan}-PLAN.md#/contract` path" in summary_template
+    assert "canonical project-root-relative `GPD/phases/XX-name/{phase}-{plan}-PLAN.md#/contract` path" in summary_template
     assert "Choose the depth explicitly" in summary_template
     assert "default: full" not in summary_template
     assert "Keep `uncertainty_markers` explicit and user-visible" in summary_template
@@ -1151,7 +1151,7 @@ def test_verification_prompts_keep_suggested_contract_check_bindings_schema_tigh
     assert 'suggested_subject_id: ""' not in verification_template
     assert 'suggested_subject_id: [contract id or ""]' not in research_verification
     assert 'suggested_subject_id: [contract id or ""]' not in verify_workflow
-    assert "suggested_subject_id: [matching contract id]" in research_verification
+    assert 'suggested_subject_id: "matching contract id"' in research_verification
     assert 'suggested_subject_id: "matching contract id"' in verify_workflow
     assert "acceptance-test-id" in verification_template
     assert "acceptance-test-main" in research_verification
@@ -1188,6 +1188,11 @@ def test_lane5_prompt_examples_keep_schema_valid_contract_fields_visible() -> No
     assert "must_read_refs: [ref-sweep-anchor]" in parameter_sweep
     assert "reference-main" in research_verification
     assert "acceptance-test-main" in research_verification
+    assert "linked_ids: [deliverable-main, acceptance-test-main, reference-main]" in research_verification
+    assert "evidence:\n        - verifier: gpd-verifier" in research_verification
+    assert 'evidence_path: "[artifact path or expected evidence path]"' in research_verification
+    assert 'started: "ISO timestamp"' in research_verification
+    assert 'updated: "ISO timestamp"' in research_verification
     assert "test-benchmark" not in research_verification
     assert "reference-id" in verify_work
     assert "acceptance-test-id" in verify_work
@@ -1202,7 +1207,7 @@ def test_lane5_prompt_examples_keep_schema_valid_contract_fields_visible() -> No
 
 
 def test_verification_prompt_wiring_rejects_invalid_reference_and_proxy_scaffolds(tmp_path: Path) -> None:
-    phase_dir = tmp_path / ".gpd" / "phases" / "01-benchmark"
+    phase_dir = tmp_path / "GPD" / "phases" / "01-benchmark"
     phase_dir.mkdir(parents=True)
     (phase_dir / "01-01-PLAN.md").write_text(
         (FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8"),
@@ -1258,7 +1263,7 @@ def test_verification_prompt_wiring_rejects_invalid_reference_and_proxy_scaffold
 def test_verification_prompt_wiring_requires_suggested_checks_for_compare_required_references(
     tmp_path: Path,
 ) -> None:
-    phase_dir = tmp_path / ".gpd" / "phases" / "01-benchmark"
+    phase_dir = tmp_path / "GPD" / "phases" / "01-benchmark"
     phase_dir.mkdir(parents=True)
     (phase_dir / "01-01-PLAN.md").write_text(
         (FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8"),
@@ -1346,17 +1351,17 @@ def test_contract_schema_references_stay_wired_into_templates_and_review_docs() 
     assert "templates/paper/review-ledger-schema.md" in referee
     assert "templates/paper/referee-decision-schema.md" in referee
     assert "gpd validate review-ledger" in peer_review
-    assert "--ledger .gpd/review/REVIEW-LEDGER{round_suffix}.json" in peer_review
+    assert "--ledger GPD/review/REVIEW-LEDGER{round_suffix}.json" in peer_review
     assert "templates/paper/review-ledger-schema.md" in panel
     assert "templates/paper/referee-decision-schema.md" in panel
-    assert "--ledger .gpd/review/REVIEW-LEDGER{round_suffix}.json" in panel
+    assert "--ledger GPD/review/REVIEW-LEDGER{round_suffix}.json" in panel
     assert "templates/paper/paper-quality-input-schema.md" in scoring
     assert '"journal": "prl"' in paper_config_schema
     assert '"authors"' in paper_config_schema
     assert '"sections"' in paper_config_schema
     assert "XX-YY-SUMMARY.md" in contract_results_schema
     assert "XX-VERIFICATION.md" in contract_results_schema
-    assert "Must be the canonical project-root-relative `.gpd/phases/XX-name/XX-YY-PLAN.md#/contract` path" in contract_results_schema
+    assert "Must be the canonical project-root-relative `GPD/phases/XX-name/XX-YY-PLAN.md#/contract` path" in contract_results_schema
     assert "`uncertainty_markers` must remain explicit in contract-backed outputs" in contract_results_schema
     assert "weakest_anchors: [anchor-1]" in contract_results_schema
     assert "disconfirming_observations: [observation-1]" in contract_results_schema
@@ -1373,8 +1378,8 @@ def test_contract_schema_references_stay_wired_into_templates_and_review_docs() 
     assert "REFEREE-DECISION{round_suffix}.json --strict --ledger" in referee_decision_schema
     assert "STAGE-(reader|literature|math|physics|interestingness)(-R<round>)?.json" in referee_decision_schema
     assert "same optional `-R<round>` suffix" in referee_decision_schema
-    assert ".gpd/review/STAGE-reader{round_suffix}.json" in panel
-    assert ".gpd/review/CLAIMS{round_suffix}.json" in panel
+    assert "GPD/review/STAGE-reader{round_suffix}.json" in panel
+    assert "GPD/review/CLAIMS{round_suffix}.json" in panel
     assert "random_seeds[].computation" in reproducibility_template
     assert "resource_requirements[].step" in reproducibility_template
     assert "Strict validation fails on warnings, not only on hard errors." in reproducibility_template
@@ -1485,7 +1490,7 @@ def test_verify_work_workflow_uses_body_only_subject_kind_fields() -> None:
     assert "Use `forbidden_proxy_id` for explicit proxy-rejection checks" in verify_work
     assert "instead of inventing extra body subject kinds" in verify_work
     assert "{phase}" not in verify_work
-    assert ".gpd/phases/{phase_dir}" not in verify_work
+    assert "GPD/phases/{phase_dir}" not in verify_work
     assert 'Write to `${phase_dir}/${phase_number}-VERIFICATION.md`' in verify_work
     assert 'gpd validate verification-contract "${phase_dir}/${phase_number}-VERIFICATION.md"' in verify_work
     assert 'gpd commit "verify(${phase_number}): complete research validation - {passed} passed, {issues} issues" --files "${phase_dir}/${phase_number}-VERIFICATION.md"' in verify_work
@@ -1498,7 +1503,7 @@ def test_verify_work_workflow_uses_body_only_subject_kind_fields() -> None:
 def test_verify_work_active_sessions_use_dual_verification_paths_and_keep_status_separate() -> None:
     verify_work = (WORKFLOWS_DIR / "verify-work.md").read_text(encoding="utf-8")
 
-    assert "rg -l '^session_status: (validating|diagnosed)$' .gpd/phases/*/VERIFICATION.md .gpd/phases/*/*-VERIFICATION.md 2>/dev/null | sort | head -5" in verify_work
+    assert "rg -l '^session_status: (validating|diagnosed)$' GPD/phases/*/VERIFICATION.md GPD/phases/*/*-VERIFICATION.md 2>/dev/null | sort | head -5" in verify_work
     assert "Only treat files with `session_status: validating` or `session_status: diagnosed` as active researcher sessions." in verify_work
     assert "extract canonical verification `status`, `session_status`, `phase`, and the Current Check section" in verify_work
     assert "`session_status` replace or overwrite the canonical verification `status`" in verify_work
@@ -1811,11 +1816,11 @@ def test_execute_phase_and_related_agents_surface_legacy_and_plan_scoped_verific
     audit_milestone = (WORKFLOWS_DIR / "audit-milestone.md").read_text(encoding="utf-8")
 
     assert '"$phase_dir"/VERIFICATION.md "$phase_dir"/*-VERIFICATION.md' in execute_phase
-    assert '".gpd/phases/[current-phase-dir]/VERIFICATION.md .gpd/phases/[current-phase-dir]/*-VERIFICATION.md' not in execute_phase
+    assert '"GPD/phases/[current-phase-dir]/VERIFICATION.md GPD/phases/[current-phase-dir]/*-VERIFICATION.md' not in execute_phase
     assert 'ls "$phase_dir"/VERIFICATION.md "$phase_dir"/*-VERIFICATION.md 2>/dev/null' in planner
     assert 'find_files("$PHASE_DIR/VERIFICATION.md")' in verifier
     assert 'find_files("$PHASE_DIR/*-VERIFICATION.md")' in verifier
-    assert '.gpd/phases/01-*/VERIFICATION.md .gpd/phases/01-*/*-VERIFICATION.md' in audit_milestone
+    assert 'GPD/phases/01-*/VERIFICATION.md GPD/phases/01-*/*-VERIFICATION.md' in audit_milestone
 
 
 def test_debug_prompts_use_session_status_for_diagnosis_progress() -> None:
@@ -1886,7 +1891,7 @@ def test_stage7_runtime_parity_docs_use_canonical_model_resolution_and_generic_h
     execute_plan = (WORKFLOWS_DIR / "execute-plan.md").read_text(encoding="utf-8")
     quick = (WORKFLOWS_DIR / "quick.md").read_text(encoding="utf-8")
 
-    assert "Do not scrape `.gpd/config.json` directly in workflows." in model_resolution
+    assert "Do not scrape `GPD/config.json` directly in workflows." in model_resolution
     assert "gpd resolve-tier" in model_resolution
     assert "gpd resolve-model" in model_resolution
     assert "Delegation Contract" in agent_delegation
@@ -1910,7 +1915,7 @@ def test_stage7_runtime_parity_docs_use_canonical_model_resolution_and_generic_h
     assert "classifyHandoffIfNeeded" not in execute_phase
     assert "classifyHandoffIfNeeded" not in execute_plan
     assert "classifyHandoffIfNeeded" not in quick
-    assert "cat .gpd/config.json" not in model_resolution
+    assert "cat GPD/config.json" not in model_resolution
     assert "print(c.get('model_profile', 'review'))" not in execute_phase
 
 
@@ -1936,8 +1941,8 @@ def test_stage8_surfaces_decisive_comparisons_paper_quality_artifacts_and_profil
     verifier_agent = (AGENTS_DIR / "gpd-verifier.md").read_text(encoding="utf-8")
 
     assert "emit decisive verdicts" in compare_command
-    assert ".gpd/comparisons/[slug]-COMPARISON.md" in compare_workflow
-    assert ".gpd/analysis/comparison-{slug}.md" not in compare_workflow
+    assert "GPD/comparisons/[slug]-COMPARISON.md" in compare_workflow
+    assert "GPD/analysis/comparison-{slug}.md" not in compare_workflow
     assert "comparison_verdicts" in internal_template
     assert "figure_registry" in figure_tracker
     assert "role: smoking_gun|benchmark|comparison|sanity_check|publication_polish|other" in figure_tracker

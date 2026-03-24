@@ -36,6 +36,8 @@ def test_verification_report_strict_pass_guidance_includes_reference_coverage_ru
     assert "every `must_surface` reference has all `required_actions` recorded in `completed_actions`" in verification_report
     assert "linked_ids: [deliverable-id, acceptance-test-id, reference-id]" in verification_report
     assert "evidence:\n        - verifier: gpd-verifier" in verification_report
+    assert "linked_ids: [claim-id, acceptance-test-id]" in verification_report
+    assert "linked_ids: [claim-id, deliverable-id, reference-id]" in verification_report
     assert "suggested_contract_checks" in verification_report
     assert "status: passed" in verification_report
 
@@ -92,6 +94,8 @@ def test_model_visible_worked_examples_keep_summary_and_verdict_shapes_copy_safe
     assert 'notes: "Exact pole agreement closes the decisive benchmark requirement for this claim."' in executor_example
     assert "linked_ids: [deliverable-id, acceptance-test-id, reference-id]" in verification_report
     assert "evidence:\n        - verifier: gpd-verifier" in verification_report
+    assert "linked_ids: [claim-id, acceptance-test-id]" in verification_report
+    assert "linked_ids: [claim-id, deliverable-id, reference-id]" in verification_report
     assert "linked_ids: [deliverable-id, acceptance-test-id, reference-id]" in verifier_prompt
     assert "evidence:\n        - verifier: gpd-verifier" in verifier_prompt
     assert 'recommended_action: "[what to do next]"' in verifier_prompt
@@ -105,3 +109,20 @@ def test_research_verification_template_keeps_source_as_yaml_list() -> None:
     assert 'source:\n  - "03-01-SUMMARY.md"\n  - "03-02-SUMMARY.md"\n  - "03-03-SUMMARY.md"' in research_verification
     assert "keep this as a YAML list even when only one SUMMARY path is present" in research_verification
     assert "source: 03-01-SUMMARY.md, 03-02-SUMMARY.md, 03-03-SUMMARY.md" not in research_verification
+
+
+def test_research_verification_template_keeps_contract_results_and_scalar_placeholders_copy_safe() -> None:
+    research_verification = _read("src/gpd/specs/templates/research-verification.md")
+
+    assert "linked_ids: [deliverable-main, acceptance-test-main, reference-main]" in research_verification
+    assert "linked_ids: [claim-main, acceptance-test-main]" in research_verification
+    assert "linked_ids: [claim-main, deliverable-main, reference-main]" in research_verification
+    assert "evidence:\n        - verifier: gpd-verifier" in research_verification
+    assert 'evidence_path: "[artifact path or expected evidence path]"' in research_verification
+    assert 'started: "ISO timestamp"' in research_verification
+    assert 'updated: "ISO timestamp"' in research_verification
+    assert 'subject_id: "contract id or \\"\\""' in research_verification
+    assert 'evidence_path: [artifact path or expected evidence path]' not in research_verification
+    assert 'started: [ISO timestamp]' not in research_verification
+    assert 'updated: [ISO timestamp]' not in research_verification
+    assert 'subject_id: [contract id or ""]' not in research_verification
