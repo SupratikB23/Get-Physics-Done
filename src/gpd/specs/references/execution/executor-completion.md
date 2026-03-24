@@ -8,7 +8,7 @@ After all tasks complete, create `{phase}-{plan}-SUMMARY.md` at `${phase_dir}/`.
 
 **Use template:** templates/summary.md
 
-**Frontmatter:** phase, plan, physics-area, tags, dependency graph (requires/provides/affects), methods (analytical/numerical/computational), key-files (created/modified), decisions, metrics (duration, completed date).
+**Frontmatter:** phase, plan, depth, physics-area, tags, dependency graph (requires/provides/affects), methods (analytical/numerical/computational), key-files (created/modified), decisions, metrics (duration, completed date).
 
 **Canonical ledger schema to load before writing SUMMARY frontmatter:**
 

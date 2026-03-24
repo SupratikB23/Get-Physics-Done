@@ -51,6 +51,14 @@ def test_executor_summary_creation_requires_loading_contract_schema_before_front
     assert "load the schema above before writing frontmatter" in summary_creation
 
 
+def test_executor_completion_reference_exposes_required_summary_depth_and_completion_fields() -> None:
+    completion = _read_executor_completion_reference()
+
+    assert "**Frontmatter:** phase, plan, depth, physics-area" in completion
+    assert "metrics (duration, completed date)" in completion
+    assert "plan_contract_ref: \".gpd/phases/XX-name/{phase}-{plan}-PLAN.md#/contract\"" in completion
+
+
 def test_expanded_executor_prompt_keeps_contract_results_schema_visible_for_summary_creation() -> None:
     expanded = expand_at_includes(
         _read_executor_prompt(),

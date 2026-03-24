@@ -34,6 +34,8 @@ def test_verification_report_strict_pass_guidance_includes_reference_coverage_ru
     assert "every claim, deliverable, and acceptance_test entry in `contract_results` is `passed`" in verification_report
     assert "every reference entry is `completed`" in verification_report
     assert "every `must_surface` reference has all `required_actions` recorded in `completed_actions`" in verification_report
+    assert "linked_ids: [deliverable-id, acceptance-test-id, reference-id]" in verification_report
+    assert "evidence:\n        - verifier: gpd-verifier" in verification_report
     assert "suggested_contract_checks" in verification_report
     assert "status: passed" in verification_report
 
@@ -53,8 +55,33 @@ def test_verification_guidance_surfaces_the_same_canonical_suggestion_contract()
     assert "frontmatter contract compatible with `@{GPD_INSTALL_DIR}/templates/verification-report.md`" in verify_workflow
 
 
+def test_verify_work_scaffold_uses_yaml_strings_for_scalar_placeholders() -> None:
+    verify_workflow = _read("src/gpd/specs/workflows/verify-work.md")
+
+    assert 'summary: "verification not started yet"' in verify_workflow
+    assert 'notes: "verification not started yet"' in verify_workflow
+    assert 'recommended_action: "close the decisive benchmark once the evidence is written"' in verify_workflow
+    assert 'evidence_path: "artifact path or expected evidence path"' in verify_workflow
+    assert 'source: ["list of SUMMARY.md files"]' in verify_workflow
+    assert 'started: "ISO timestamp"' in verify_workflow
+    assert 'updated: "ISO timestamp"' in verify_workflow
+    assert 'subject_id: "contract id or \\"\\""' in verify_workflow
+    assert 'expected: "verifiable physics outcome"' in verify_workflow
+    assert 'computation: "specific numerical test performed"' in verify_workflow
+    assert 'result: "pending"' in verify_workflow
+    assert 'summary: [verification not started yet]' not in verify_workflow
+    assert 'notes: [verification not started yet]' not in verify_workflow
+    assert 'check: [missing decisive check]' not in verify_workflow
+    assert 'reason: [why the missing check matters]' not in verify_workflow
+    assert 'evidence_path: [artifact path or expected evidence path]' not in verify_workflow
+    assert 'subject_id: [contract id or ""]' not in verify_workflow
+    assert 'expected: [verifiable physics outcome]' not in verify_workflow
+    assert 'computation: [specific numerical test performed]' not in verify_workflow
+
+
 def test_model_visible_worked_examples_keep_summary_and_verdict_shapes_copy_safe() -> None:
     executor_example = _read("src/gpd/specs/references/execution/executor-worked-example.md")
+    verification_report = _read("src/gpd/specs/templates/verification-report.md")
     verifier_prompt = _read("src/gpd/agents/gpd-verifier.md")
 
     assert "depth: full" in executor_example
@@ -63,6 +90,10 @@ def test_model_visible_worked_examples_keep_summary_and_verdict_shapes_copy_safe
     assert "verifier: gpd-verifier" in executor_example
     assert 'recommended_action: "Keep the benchmark coefficient comparison explicit in the verification report."' in executor_example
     assert 'notes: "Exact pole agreement closes the decisive benchmark requirement for this claim."' in executor_example
+    assert "linked_ids: [deliverable-id, acceptance-test-id, reference-id]" in verification_report
+    assert "evidence:\n        - verifier: gpd-verifier" in verification_report
+    assert "linked_ids: [deliverable-id, acceptance-test-id, reference-id]" in verifier_prompt
+    assert "evidence:\n        - verifier: gpd-verifier" in verifier_prompt
     assert 'recommended_action: "[what to do next]"' in verifier_prompt
     assert 'notes: "[optional context]"' in verifier_prompt
 

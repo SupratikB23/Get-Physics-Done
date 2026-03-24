@@ -1152,7 +1152,7 @@ def test_verification_prompts_keep_suggested_contract_check_bindings_schema_tigh
     assert 'suggested_subject_id: [contract id or ""]' not in research_verification
     assert 'suggested_subject_id: [contract id or ""]' not in verify_workflow
     assert "suggested_subject_id: [matching contract id]" in research_verification
-    assert "suggested_subject_id: [matching contract id]" in verify_workflow
+    assert 'suggested_subject_id: "matching contract id"' in verify_workflow
     assert "acceptance-test-id" in verification_template
     assert "acceptance-test-main" in research_verification
     assert "acceptance-test-id" in verifier_agent

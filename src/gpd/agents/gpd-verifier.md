@@ -3844,6 +3844,16 @@ contract_results:
       status: passed|partial|failed|blocked|not_attempted
       summary: "[what verification established]"
       linked_ids: [deliverable-id, acceptance-test-id, reference-id]
+      evidence:
+        - verifier: gpd-verifier
+          method: benchmark reproduction
+          confidence: high
+          claim_id: claim-id
+          deliverable_id: deliverable-id
+          acceptance_test_id: acceptance-test-id
+          reference_id: reference-id
+          forbidden_proxy_id: forbidden-proxy-id
+          evidence_path: .gpd/phases/XX-name/XX-VERIFICATION.md
   deliverables:
     deliverable-id:
       status: passed|partial|failed|blocked|not_attempted

@@ -331,25 +331,25 @@ contract_results:
   claims:
     claim-id:
       status: not_attempted
-      summary: [verification not started yet]
+      summary: "verification not started yet"
   deliverables:
     deliverable-id:
       status: not_attempted
-      summary: [verification not started yet]
+      summary: "verification not started yet"
   acceptance_tests:
     acceptance-test-id:
       status: not_attempted
-      summary: [verification not started yet]
+      summary: "verification not started yet"
   references:
     reference-id:
       status: missing
       completed_actions: []
       missing_actions: [read]
-      summary: [verification not started yet]
+      summary: "verification not started yet"
   forbidden_proxies:
     forbidden-proxy-id:
       status: unresolved
-      notes: [verification not started yet]
+      notes: "verification not started yet"
   uncertainty_markers:
     weakest_anchors: [anchor-1]
     unvalidated_assumptions: [assumption-1]
@@ -364,22 +364,22 @@ comparison_verdicts:
     metric: relative_error
     threshold: "<= 0.01"
     verdict: inconclusive
-    recommended_action: [close the decisive benchmark once the evidence is written]
-    notes: [template placeholder; replace with the first decisive verdict]
+    recommended_action: "close the decisive benchmark once the evidence is written"
+    notes: "template placeholder; replace with the first decisive verdict"
 suggested_contract_checks:
-  - check: [missing decisive benchmark comparison]
-    reason: [why the missing check matters]
+  - check: "missing decisive benchmark comparison"
+    reason: "why the missing check matters"
     suggested_subject_kind: acceptance_test
     suggested_subject_id: acceptance-test-id
-    evidence_path: [artifact path or expected evidence path]
-  - check: [missing decisive reference comparison]
-    reason: [why the missing compare-required reference matters]
+    evidence_path: "artifact path or expected evidence path"
+  - check: "missing decisive reference comparison"
+    reason: "why the missing compare-required reference matters"
     suggested_subject_kind: reference
     suggested_subject_id: reference-id
-    evidence_path: [artifact path or expected evidence path]
-source: [list of SUMMARY.md files]
-started: [ISO timestamp]
-updated: [ISO timestamp]
+    evidence_path: "artifact path or expected evidence path"
+source: ["list of SUMMARY.md files"]
+started: "ISO timestamp"
+updated: "ISO timestamp"
 session_status: validating
 ---
 
@@ -388,33 +388,33 @@ session_status: validating
 <!-- OVERWRITE each check - shows where we are -->
 
 number: 1
-name: [first check name]
+name: "first check name"
 check_subject_kind: [claim | deliverable | acceptance_test | reference]
-subject_id: [contract id or ""]
-claim_id: [claim-id or ""]
-deliverable_id: [deliverable-id or ""]
-acceptance_test_id: [acceptance-test-id or ""]
-reference_ids: [reference-id, ...]
-forbidden_proxy_id: [forbidden-proxy-id or ""]
+subject_id: "contract id or \"\""
+claim_id: "claim-id or \"\""
+deliverable_id: "deliverable-id or \"\""
+acceptance_test_id: "acceptance-test-id or \"\""
+reference_ids: ["reference-id", "..."]
+forbidden_proxy_id: "forbidden-proxy-id or \"\""
 comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | other]
-comparison_reference_id: [reference-id]
+comparison_reference_id: "reference-id"
 # If this check is not comparison-backed yet, omit both `comparison_kind` and `comparison_reference_id` instead of leaving blank placeholders.
 expected: |
-[what the physics should show]
+  [what the physics should show]
 computation: |
-[what computational test was performed]
+  [what computational test was performed]
 precomputed_result: |
-[result of AI's independent computation]
+  [result of AI's independent computation]
 # Benchmark acceptance tests require `comparison_kind: benchmark`.
 # cross-method acceptance tests require `comparison_kind: cross_method`.
 suggested_contract_checks:
   # If you cannot bind the gap to a known contract target yet, omit both
   # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.
-  - check: [missing decisive check]
-    reason: [why the missing check matters]
+  - check: "missing decisive check"
+    reason: "why the missing check matters"
     suggested_subject_kind: [claim | deliverable | acceptance_test | reference]
-    suggested_subject_id: [matching contract id]
-    evidence_path: [artifact path or expected evidence path]
+    suggested_subject_id: "matching contract id"
+    evidence_path: "artifact path or expected evidence path"
   # Add a reference-backed decisive gap here whenever a benchmark reference or
   # a reference with required_actions including `compare` is still incomplete.
 awaiting: researcher response
@@ -424,34 +424,34 @@ awaiting: researcher response
 ### 1. [Check Name]
 
 check_subject_kind: [claim | deliverable | acceptance_test | reference]
-subject_id: [contract id or ""]
-claim_id: [claim-id or ""]
-deliverable_id: [deliverable-id or ""]
-acceptance_test_id: [acceptance-test-id or ""]
-reference_ids: [reference-id, ...]
-forbidden_proxy_id: [forbidden-proxy-id or ""]
+subject_id: "contract id or \"\""
+claim_id: "claim-id or \"\""
+deliverable_id: "deliverable-id or \"\""
+acceptance_test_id: "acceptance-test-id or \"\""
+reference_ids: ["reference-id", "..."]
+forbidden_proxy_id: "forbidden-proxy-id or \"\""
 comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | other]
-comparison_reference_id: [reference-id]
+comparison_reference_id: "reference-id"
 # If this check is not comparison-backed yet, omit both `comparison_kind` and `comparison_reference_id` instead of leaving blank placeholders.
-expected: [verifiable physics outcome]
-computation: [specific numerical test performed]
-precomputed_result: [AI's independent computation result]
+expected: "verifiable physics outcome"
+computation: "specific numerical test performed"
+precomputed_result: "AI's independent computation result"
 suggested_contract_checks:
   # If you cannot bind the gap to a known contract target yet, omit both
   # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.
-  - check: [missing decisive check]
-    reason: [why the missing check matters]
+  - check: "missing decisive check"
+    reason: "why the missing check matters"
     suggested_subject_kind: [claim | deliverable | acceptance_test | reference]
-    suggested_subject_id: [matching contract id]
-    evidence_path: [artifact path or expected evidence path]
-result: [pending]
+    suggested_subject_id: "matching contract id"
+    evidence_path: "artifact path or expected evidence path"
+result: "pending"
 
 ### 2. [Check Name]
 
-expected: [verifiable physics outcome]
-computation: [specific numerical test performed]
-precomputed_result: [AI's independent computation result]
-result: [pending]
+expected: "verifiable physics outcome"
+computation: "specific numerical test performed"
+precomputed_result: "AI's independent computation result"
+result: "pending"
 
 ...
 
