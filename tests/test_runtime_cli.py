@@ -552,6 +552,7 @@ def test_runtime_cli_resolves_local_config_dir_from_ancestor_workspace(
     tmp_path: Path,
     descriptor,
 ) -> None:
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / descriptor.config_dir_name
     _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
     nested_cwd = tmp_path / "research" / "notes"
@@ -593,6 +594,7 @@ def test_runtime_cli_rejects_local_config_dir_from_ancestor_workspace_without_ma
     capsys,
     descriptor,
 ) -> None:
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / descriptor.config_dir_name
     _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
     manifest_path = config_dir / "gpd-file-manifest.json"
@@ -623,8 +625,39 @@ def test_runtime_cli_rejects_local_config_dir_from_ancestor_workspace_without_ma
 
     captured = capsys.readouterr()
     assert exit_code == 127
-    assert "GPD runtime bridge rejected incomplete install manifest" in captured.err
-    assert "must declare a non-empty `runtime` field" in captured.err
+    assert f"GPD runtime install incomplete for {adapter.display_name}" in captured.err
+    assert str(nested_cwd / descriptor.config_dir_name) in captured.err
+    assert str(config_dir) not in captured.err
+
+
+@pytest.mark.parametrize(
+    "descriptor",
+    [descriptor for descriptor in _RUNTIME_DESCRIPTORS if descriptor.manifest_file_prefixes],
+    ids=lambda descriptor: descriptor.runtime_name,
+)
+def test_runtime_cli_rejects_local_candidate_with_file_prefixes_but_no_runtime(
+    tmp_path: Path,
+    descriptor,
+) -> None:
+    adapter = get_adapter(descriptor.runtime_name)
+    candidate = tmp_path / adapter.config_dir_name
+    candidate.mkdir()
+    manifest_prefix = descriptor.manifest_file_prefixes[0]
+    (candidate / "gpd-file-manifest.json").write_text(
+        json.dumps(
+            {
+                "install_scope": "local",
+                "files": {f"{manifest_prefix}artifact.txt": "hash"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert runtime_cli._is_matching_local_install_candidate(
+        candidate,
+        runtime=descriptor.runtime_name,
+        cli_cwd=tmp_path,
+    ) is False
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
@@ -634,6 +667,7 @@ def test_runtime_cli_rejects_corrupt_manifest_before_dispatch(
     capsys,
     descriptor,
 ) -> None:
+    adapter = get_adapter(descriptor.runtime_name)
     config_dir = tmp_path / descriptor.config_dir_name
     _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
     (config_dir / "gpd-file-manifest.json").write_text("not-json", encoding="utf-8")

@@ -362,6 +362,32 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         assert (target / "commands" / "gpd" / "help.md").exists()
         assert (target / "get-physics-done" / "VERSION").exists()
 
+    @pytest.mark.parametrize("runtime", ["codex", "opencode"])
+    def test_install_refuses_manifest_with_runtime_file_prefixes_but_no_runtime(
+        self, tmp_path: Path, runtime: str
+    ) -> None:
+        gpd_root = _make_gpd_root(tmp_path)
+        adapter = get_adapter(runtime)
+        target = tmp_path / f"{runtime}-prefixed-target"
+        target.mkdir()
+        manifest_prefix = adapter.runtime_descriptor.manifest_file_prefixes[0]
+        (target / MANIFEST_NAME).write_text(
+            json.dumps(
+                {
+                    "install_scope": "local",
+                    "files": {f"{manifest_prefix}artifact.txt": "hash"},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RuntimeError) as excinfo:
+            adapter.install(gpd_root, target, is_global=False, explicit_target=True)
+
+        message = str(excinfo.value)
+        assert f"Refusing to install into `{target}`" in message
+        assert "manifest cannot be trusted" in message
+
     @pytest.mark.parametrize("manifest_state", ["missing", "corrupt", "unknown"])
     def test_uninstall_refuses_ambiguous_target_when_manifest_cannot_prove_ownership(
         self, tmp_path: Path, manifest_state: str
@@ -378,6 +404,31 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         assert f"Refusing to uninstall from `{target}`" in message
         assert (target / "commands" / "gpd" / "help.md").exists()
         assert (target / "get-physics-done" / "VERSION").exists()
+
+    @pytest.mark.parametrize("runtime", ["codex", "opencode"])
+    def test_uninstall_refuses_manifest_with_runtime_file_prefixes_but_no_runtime(
+        self, tmp_path: Path, runtime: str
+    ) -> None:
+        adapter = get_adapter(runtime)
+        target = tmp_path / f"{runtime}-prefixed-target"
+        target.mkdir()
+        manifest_prefix = adapter.runtime_descriptor.manifest_file_prefixes[0]
+        (target / MANIFEST_NAME).write_text(
+            json.dumps(
+                {
+                    "install_scope": "local",
+                    "files": {f"{manifest_prefix}artifact.txt": "hash"},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RuntimeError) as excinfo:
+            adapter.uninstall(target)
+
+        message = str(excinfo.value)
+        assert f"Refusing to uninstall from `{target}`" in message
+        assert "manifest cannot be trusted" in message
 
     @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
     def test_uninstall_refuses_foreign_manifest(self, tmp_path: Path, runtime: str) -> None:

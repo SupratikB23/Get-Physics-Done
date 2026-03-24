@@ -18,11 +18,11 @@ import sys
 from pathlib import Path
 
 from gpd.adapters import get_adapter
-from gpd.adapters.install_utils import MANIFEST_NAME, build_runtime_install_repair_command
+from gpd.adapters.install_utils import build_runtime_install_repair_command
 from gpd.adapters.runtime_catalog import resolve_global_config_dir
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_REEXEC
-from gpd.hooks.install_metadata import installed_runtime, load_install_manifest_state
-from gpd.hooks.runtime_detect import _runtime_from_manifest_or_path, normalize_runtime_name
+from gpd.hooks.install_metadata import load_install_manifest_state
+from gpd.hooks.runtime_detect import normalize_runtime_name
 
 
 def _parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
@@ -183,34 +183,21 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str, cli_c
     if not candidate.is_dir():
         return False
 
+    manifest_runtime, manifest_status = _manifest_runtime_status(candidate)
+    if manifest_status != "ok" or manifest_runtime != runtime:
+        return False
+
     manifest = _load_install_manifest(candidate)
     manifest_scope = manifest.get("install_scope")
     if manifest_scope == "global":
         return False
-
-    manifest_runtime = manifest.get("runtime")
-    if isinstance(manifest_runtime, str):
-        normalized_runtime = normalize_runtime_name(manifest_runtime.strip()) if manifest_runtime.strip() else None
-        manifest_runtime_value = normalized_runtime or manifest_runtime.strip()
-        if manifest_runtime_value and manifest_runtime_value != runtime:
-            return False
 
     adapter = get_adapter(runtime)
     canonical_global_dir = resolve_global_config_dir(adapter.runtime_descriptor, home=Path.home(), environ={})
     if _paths_equal(candidate, canonical_global_dir) and manifest_scope != "local":
         return False
 
-    if installed_runtime(candidate) == runtime:
-        return True
-
-    return (
-        _runtime_from_manifest_or_path(
-            candidate,
-            cwd=cli_cwd,
-            allow_local_path_fallback=True,
-        )
-        == runtime
-    )
+    return True
 
 
 def _resolve_local_config_dir(raw_value: str, *, runtime: str, cli_cwd: Path) -> Path:

@@ -299,8 +299,6 @@ class RuntimeAdapter(abc.ABC):
     def _validate_target_runtime(self, target_dir: Path, *, action: str) -> None:
         """Reject explicit target dirs that already belong to another runtime."""
         from gpd.hooks.install_metadata import (
-            config_dir_has_complete_install,
-            installed_runtime,
             load_install_manifest_state,
         )
 
@@ -320,49 +318,24 @@ class RuntimeAdapter(abc.ABC):
             )
         )
         if manifest_state == "ok" and isinstance(manifest, dict):
-            if "runtime" not in manifest or _normalize_manifest_runtime(manifest.get("runtime")) is None:
-                if has_gpd_markers:
-                    raise RuntimeError(
-                        f"Refusing to {action} `{target_dir}` because its GPD manifest cannot be trusted.\n"
-                        "Ownership cannot be determined safely."
-                    )
-            else:
-                normalized_manifest_runtime = _normalize_manifest_runtime(manifest.get("runtime"))
-                if normalized_manifest_runtime == self.runtime_name:
-                    return
-                other_runtime = normalized_manifest_runtime or "unknown"
-                try:
-                    other_runtime_label = get_runtime_descriptor(other_runtime).display_name
-                except KeyError:
-                    other_runtime_label = other_runtime
+            normalized_manifest_runtime = _normalize_manifest_runtime(manifest.get("runtime"))
+            if normalized_manifest_runtime is None:
                 raise RuntimeError(
-                    f"Refusing to {action} `{target_dir}`.\n"
-                    f"Its GPD manifest belongs to {other_runtime_label} (`{other_runtime}`), "
-                    f"not {self.display_name} (`{self.runtime_name}`)."
+                    f"Refusing to {action} `{target_dir}` because its GPD manifest cannot be trusted.\n"
+                    "Ownership cannot be determined safely."
                 )
-
-        inferred_runtime = installed_runtime(target_dir)
-        if inferred_runtime is not None:
-            env_global_target = self.resolve_global_config_dir()
-            canonical_global_target = resolve_global_config_dir(self.runtime_descriptor, home=Path.home(), environ={})
-            if (
-                manifest_state == "missing"
-                and _paths_equal(target_dir, env_global_target)
-                and not _paths_equal(target_dir, canonical_global_target)
-            ):
-                inferred_runtime = None
-            else:
-                if inferred_runtime == self.runtime_name:
-                    return
-                try:
-                    other_runtime = get_runtime_descriptor(inferred_runtime).display_name
-                except KeyError:
-                    other_runtime = inferred_runtime
-                raise RuntimeError(
-                    f"Refusing to {action} `{target_dir}`.\n"
-                    f"Its GPD install belongs to {other_runtime} (`{inferred_runtime}`), "
-                    f"not {self.display_name} (`{self.runtime_name}`)."
-                )
+            if normalized_manifest_runtime == self.runtime_name:
+                return
+            other_runtime = normalized_manifest_runtime or "unknown"
+            try:
+                other_runtime_label = get_runtime_descriptor(other_runtime).display_name
+            except KeyError:
+                other_runtime_label = other_runtime
+            raise RuntimeError(
+                f"Refusing to {action} `{target_dir}`.\n"
+                f'Its GPD manifest belongs to {other_runtime_label} (`{other_runtime}`), '
+                f"not {self.display_name} (`{self.runtime_name}`)."
+            )
 
         if manifest_state in {"corrupt", "invalid"}:
             raise RuntimeError(
@@ -373,11 +346,6 @@ class RuntimeAdapter(abc.ABC):
         if manifest_state == "missing" and has_gpd_markers:
             raise RuntimeError(
                 f"Refusing to {action} `{target_dir}` because it already contains GPD artifacts but no manifest to establish ownership."
-            )
-
-        if config_dir_has_complete_install(target_dir):
-            raise RuntimeError(
-                f"Refusing to {action} `{target_dir}` because its GPD install ownership cannot be determined safely."
             )
 
     def runtime_cli_bridge_command(self, target_dir: Path) -> str:
