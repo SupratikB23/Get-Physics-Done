@@ -373,6 +373,7 @@ class TestReadCurrentTask:
 
     def test_local_runtime_todo_file_is_discovered(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
+        _mark_complete_install(tmp_path / ".codex", runtime="codex")
         local_todo_dir = tmp_path / ".codex" / "todos"
         local_todo_dir.mkdir(parents=True)
         todos = [{"status": "in_progress", "activeForm": "Inspect local runtime"}]
@@ -387,6 +388,7 @@ class TestReadCurrentTask:
     def test_workspace_dir_overrides_process_cwd_for_local_todos(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         home = tmp_path / "home"
+        _mark_complete_install(workspace / ".codex", runtime="codex")
         local_todo_dir = workspace / ".codex" / "todos"
         local_todo_dir.mkdir(parents=True)
         todos = [{"status": "in_progress", "activeForm": "Workspace-scoped task"}]
@@ -401,7 +403,7 @@ class TestReadCurrentTask:
         ):
             assert _read_current_task("session-123", str(workspace)) == "Workspace-scoped task"
 
-    def test_explicit_target_hook_todo_dir_is_checked_before_runtime_detect_dirs(self, tmp_path: Path) -> None:
+    def test_runtime_less_explicit_target_hook_todo_dir_is_ignored_for_task_lookup(self, tmp_path: Path) -> None:
         explicit_target = tmp_path / "custom-runtime-dir"
         hook_path = explicit_target / "hooks" / "statusline.py"
         hook_path.parent.mkdir(parents=True)
@@ -418,7 +420,7 @@ class TestReadCurrentTask:
             patch("gpd.hooks.statusline.__file__", str(hook_path)),
             patch("gpd.hooks.runtime_detect.get_todo_candidates", return_value=[]),
         ):
-            assert _read_current_task("session-123") == "Explicit target task"
+            assert _read_current_task("session-123") == ""
 
     def test_unrelated_self_config_todo_dir_does_not_override_workspace_install(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
@@ -602,6 +604,7 @@ class TestCheckUpdateHook:
 
         local_cache = tmp_path / ".codex" / "cache"
         local_cache.mkdir(parents=True)
+        _mark_complete_install(tmp_path / ".codex", runtime="codex")
         (local_cache / "gpd-update-check.json").write_text(
             json.dumps({"update_available": True, "checked": 20}),
             encoding="utf-8",
@@ -614,7 +617,7 @@ class TestCheckUpdateHook:
         ):
             result = _check_update()
 
-        expected = update_command_for_runtime("claude-code")
+        expected = update_command_for_runtime("codex")
         assert expected in result
 
     def test_local_runtime_cache_uses_cache_runtime_when_install_exists(self, tmp_path: Path) -> None:
@@ -765,6 +768,50 @@ class TestCheckUpdateHook:
         assert expected in result
         assert str(explicit_target) in result
 
+    def test_statusline_ignores_unrelated_self_config_cache_when_workspace_has_active_install(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        home = tmp_path / "home"
+
+        workspace_runtime_dir = workspace / ".codex"
+        workspace_cache = workspace_runtime_dir / "cache"
+        workspace_cache.mkdir(parents=True)
+        _mark_complete_install(workspace_runtime_dir, runtime="codex")
+        (workspace_cache / "gpd-update-check.json").write_text(
+            json.dumps({"update_available": True, "checked": 20}),
+            encoding="utf-8",
+        )
+
+        unrelated_runtime_dir = tmp_path / "custom-runtime-dir"
+        hook_path = unrelated_runtime_dir / "hooks" / "statusline.py"
+        unrelated_cache = unrelated_runtime_dir / "cache"
+        hook_path.parent.mkdir(parents=True)
+        unrelated_cache.mkdir(parents=True)
+        hook_path.write_text("# hook\n", encoding="utf-8")
+        _mark_complete_install(unrelated_runtime_dir, runtime="codex")
+        (unrelated_cache / "gpd-update-check.json").write_text(
+            json.dumps({"update_available": True, "checked": 30}),
+            encoding="utf-8",
+        )
+
+        with (
+            patch("gpd.hooks.statusline.__file__", str(hook_path)),
+            patch("gpd.hooks.runtime_detect.Path.home", return_value=home),
+        ):
+            result = _check_update(str(workspace))
+
+        expected = _repair_command(
+            "codex",
+            install_scope="local",
+            target_dir=workspace_runtime_dir,
+            explicit_target=False,
+        )
+        assert expected in result
+        assert str(unrelated_runtime_dir) not in result
+
     def test_explicit_target_hook_cache_recovers_missing_install_scope_from_installed_surface(
         self,
         tmp_path: Path,
@@ -800,7 +847,7 @@ class TestCheckUpdateHook:
         )
         assert expected in result
 
-    def test_explicit_target_hook_without_runtime_metadata_uses_runtime_neutral_command(self, tmp_path: Path) -> None:
+    def test_runtime_less_explicit_target_hook_does_not_emit_update_command(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         explicit_target = tmp_path / "custom-runtime-dir"
@@ -815,9 +862,9 @@ class TestCheckUpdateHook:
         with patch("gpd.hooks.statusline.__file__", str(hook_path)):
             result = _check_update(str(workspace))
 
-        assert "gpd-update" in result
+        assert result == ""
 
-    def test_runtime_directory_without_install_uses_runtime_neutral_update_command(self, tmp_path: Path) -> None:
+    def test_runtime_directory_without_install_emits_no_update_command(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
         home = tmp_path / "home"
@@ -837,7 +884,7 @@ class TestCheckUpdateHook:
         ):
             result = _check_update(str(workspace))
 
-        assert "gpd-update" in result
+        assert result == ""
 
     def test_stale_uninstalled_runtime_cache_is_ignored_when_another_runtime_is_installed(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"

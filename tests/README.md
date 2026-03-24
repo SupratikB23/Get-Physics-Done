@@ -1296,7 +1296,7 @@ They explicitly preserve:
 - `src/gpd/mcp/paper/review_artifacts.py -> external Python package {pydantic}`
   `external-package`
 
-- `src/gpd/mcp/paper/review_artifacts.py -> src/gpd/mcp/paper/models.py::{ClaimIndex, StageReviewReport, ReviewLedger, ReviewPanelBundle}`
+- `src/gpd/mcp/paper/review_artifacts.py -> src/gpd/mcp/paper/models.py::{ClaimIndex, StageReviewReport, ReviewLedger}`
   `hard-import`
 
 - `src/gpd/mcp/paper/bibliography.py -> generated outputs {*.bib, BIBLIOGRAPHY-AUDIT.json}`
@@ -1305,7 +1305,7 @@ They explicitly preserve:
 - `src/gpd/mcp/paper/artifact_manifest.py -> ARTIFACT-MANIFEST.json`
   `generated-output`
 
-- `src/gpd/mcp/paper/review_artifacts.py -> generated outputs {CLAIMS.json, STAGE-*.json, REVIEW-LEDGER.json, PANEL-BUNDLE.json}`
+- `src/gpd/mcp/paper/review_artifacts.py -> generated outputs {CLAIMS.json, STAGE-*.json, REVIEW-LEDGER.json, REFEREE-DECISION.json}`
   `generated-output`
 
 - `src/gpd/mcp/paper/compiler.py -> generated outputs {figures/**, main.tex, <bib>.bib, BIBLIOGRAPHY-AUDIT.json, ARTIFACT-MANIFEST.json, main.pdf}`
@@ -1351,7 +1351,7 @@ They explicitly preserve:
 - `tests/core/test_review_artifacts.py -> src/gpd/mcp/paper/review_artifacts.py`
   `hard-import`
 
-- `tests/core/test_review_artifacts.py -> generated outputs {CLAIMS.json, STAGE-*.json, REVIEW-LEDGER.json, PANEL-BUNDLE.json}`
+- `tests/core/test_review_artifacts.py -> generated outputs {CLAIMS.json, STAGE-*.json, REVIEW-LEDGER.json, REFEREE-DECISION.json}`
   `typed-roundtrip`
 
 - `tests/test_paper_compiler_regressions.py -> external binaries {latexmk, pdflatex}`

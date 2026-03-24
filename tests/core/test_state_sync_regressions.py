@@ -13,6 +13,8 @@ from gpd.core.state import (
     sync_state_json_core,
 )
 
+FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
+
 
 def _bootstrap_project(tmp_path: Path) -> Path:
     planning = tmp_path / "GPD"
@@ -117,6 +119,31 @@ def test_sync_state_json_core_preserves_user_edits_to_structured_result_bullets(
     assert stored["intermediate_results"][0]["description"] == "Edited benchmark summary"
     assert len(stored["intermediate_results"][0]["verification_records"]) == 1
     assert stored["intermediate_results"][0]["verification_records"][0]["method"] == "manual"
+
+
+def test_save_state_markdown_preserves_existing_project_contract_in_primary_state_json(tmp_path: Path) -> None:
+    cwd = _bootstrap_project(tmp_path)
+    planning = cwd / "GPD"
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+
+    existing_state = default_state_dict()
+    existing_state["project_contract"] = contract
+    (planning / "state.json").write_text(json.dumps(existing_state, indent=2), encoding="utf-8")
+
+    markdown_state = default_state_dict()
+    markdown_state["position"]["current_phase"] = "03"
+    markdown_state["position"]["status"] = "Executing"
+    md_content = generate_state_markdown(markdown_state)
+    (planning / "STATE.md").write_text(md_content, encoding="utf-8")
+
+    result = save_state_markdown(cwd, md_content)
+    stored = json.loads((planning / "state.json").read_text(encoding="utf-8"))
+
+    assert result["project_contract"] is not None
+    assert stored["project_contract"] is not None
+    assert result["project_contract"]["scope"]["question"] == contract["scope"]["question"]
+    assert stored["project_contract"]["scope"]["question"] == contract["scope"]["question"]
+    assert stored["project_contract"]["references"][0]["id"] == contract["references"][0]["id"]
 
 
 def test_sync_state_json_core_bootstrap_preserves_progress_and_metrics(tmp_path: Path) -> None:

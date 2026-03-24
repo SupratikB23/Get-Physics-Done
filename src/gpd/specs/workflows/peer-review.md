@@ -28,8 +28,8 @@ if [ $? -ne 0 ]; then
 fi
 ```
 
-Parse JSON for: `project_exists`, `state_exists`, `commit_docs`, `project_contract`, `project_contract_validation`, `project_contract_load_info`, `selected_protocol_bundle_ids`, `protocol_bundle_context`, `active_reference_context`.
-Treat `project_contract`, `project_contract_load_info`, `project_contract_validation`, and `active_reference_context` as authoritative contract-backed evidence context for later review stages. Stage 1 stays manuscript-first, but later adjudication must not ignore the approved contract, its load/validation state, or the active anchor ledger.
+Parse JSON for: `project_exists`, `state_exists`, `commit_docs`, `project_contract`, `project_contract_validation`, `project_contract_load_info`, `contract_intake`, `effective_reference_intake`, `reference_artifacts_content`, `selected_protocol_bundle_ids`, `protocol_bundle_context`, `active_reference_context`.
+Treat `project_contract_load_info` and `project_contract_validation` as the authoritative contract gate state. Treat `project_contract` and `contract_intake` as approved contract scope only when that gate is clean and passing. Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence context even when the structured contract is blocked. Stage 1 stays manuscript-first, but later adjudication must not ignore either the approved contract or the active anchor ledger.
 
 Run centralized context preflight before continuing:
 
@@ -100,6 +100,7 @@ gpd validate review-preflight peer-review "$ARGUMENTS" --strict
 ```
 
 If preflight exits nonzero because of missing project state, missing manuscript, degraded review integrity, or missing review-grade paper artifacts, STOP and show the blocking issues.
+If preflight reports blocked contract/state integrity, surface `project_contract_load_info` and `project_contract_validation` details in the stop message and repair the blocked contract before retrying.
 
 In strict peer-review mode, `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`, and a reproducibility manifest are required inputs. If the manuscript bibliography changed after the last audit, refresh `BIBLIOGRAPHY_AUDIT_PATH` before proceeding. Peer review is expected to fail closed when those review-support artifacts are absent, stale, or not review-ready.
 Passing preflight still does not establish scientific support. Complete manifests and audits cannot rescue missing decisive comparisons, overclaimed conclusions, or absent contract-backed evidence.
@@ -267,6 +268,20 @@ Round: {round}
 Selected protocol bundles: {selected_protocol_bundle_ids}
 Additive specialized guidance:
 {protocol_bundle_context}
+Project Contract:
+{project_contract}
+Project Contract Load Info:
+{project_contract_load_info}
+Project Contract Validation:
+{project_contract_validation}
+Active References:
+{active_reference_context}
+Contract Intake:
+{contract_intake}
+Effective Reference Intake:
+{effective_reference_intake}
+Reference Artifacts Content:
+{reference_artifacts_content}
 Output path: `GPD/review/STAGE-literature{round_suffix}.json`
 
 Files to read:
@@ -279,6 +294,7 @@ Files to read:
 - All `*.bib` files under `${MANUSCRIPT_ROOT}`, plus `references/references.bib` if present
 
 Use targeted web search when novelty, significance, or prior-work positioning is uncertain. Treat novelty-heavy claims as requiring external comparison, not trust. Use bundle reference prompts only as additive hints about which prior-work or benchmark framing should be visible; do not infer novelty or correctness from bundle presence alone.
+Treat `project_contract_load_info` and `project_contract_validation` as the authoritative contract gate state. Treat `project_contract` and `contract_intake` as approved evidence only when that gate is clean and passing. Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence even when the contract gate is blocked. If that gate is blocked, keep `project_contract` and `contract_intake` visible as context but do not rely on them as approved scope.
 Return STAGE 2 COMPLETE with assessment, blocker count, and major concern count.",
   description="Peer review stage 2: literature context"
 )
@@ -298,6 +314,20 @@ Operate in mathematical-soundness stage mode with a fresh context.
 
 Target journal: {target_journal}
 Round: {round}
+Project Contract:
+{project_contract}
+Project Contract Load Info:
+{project_contract_load_info}
+Project Contract Validation:
+{project_contract_validation}
+Active References:
+{active_reference_context}
+Contract Intake:
+{contract_intake}
+Effective Reference Intake:
+{effective_reference_intake}
+Reference Artifacts Content:
+{reference_artifacts_content}
 Output path: `GPD/review/STAGE-math{round_suffix}.json`
 
 Files to read:
@@ -310,6 +340,7 @@ Files to read:
 - `${REPRODUCIBILITY_MANIFEST_PATH}` if present
 
 Focus on key equations, limits, internal consistency, and approximation validity.
+Treat `project_contract_load_info` and `project_contract_validation` as the authoritative contract gate state. Treat `project_contract` and `contract_intake` as approved evidence only when that gate is clean and passing. Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence even when the contract gate is blocked. If that gate is blocked, keep `project_contract` and `contract_intake` visible as context but do not rely on them as approved scope.
 Return STAGE 3 COMPLETE with assessment, blocker count, and major concern count.",
   description="Peer review stage 3: mathematical soundness"
 )
@@ -362,6 +393,20 @@ Round: {round}
 Selected protocol bundles: {selected_protocol_bundle_ids}
 Additive specialized guidance:
 {protocol_bundle_context}
+Project Contract:
+{project_contract}
+Project Contract Load Info:
+{project_contract_load_info}
+Project Contract Validation:
+{project_contract_validation}
+Active References:
+{active_reference_context}
+Contract Intake:
+{contract_intake}
+Effective Reference Intake:
+{effective_reference_intake}
+Reference Artifacts Content:
+{reference_artifacts_content}
 Output path: `GPD/review/STAGE-physics{round_suffix}.json`
 
 Files to read:
@@ -382,6 +427,7 @@ Focus on:
 4. Whether decisive comparison artifacts, benchmark anchors, and estimator caveats expected by the specialized workflow are actually visible in the manuscript or honestly scoped down
 
 Treat bundle guidance as additive skepticism only. It may highlight missing decisive comparisons or estimator caveats, but it must not replace contract-backed evidence or create new manuscript obligations out of thin air.
+Treat `project_contract_load_info` and `project_contract_validation` as the authoritative contract gate state. Treat `project_contract` and `contract_intake` as approved evidence only when that gate is clean and passing. Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence even when the contract gate is blocked. If that gate is blocked, keep `project_contract` and `contract_intake` visible as context but do not rely on them as approved scope.
 
 Return STAGE 4 COMPLETE with assessment, blocker count, and major concern count.",
   description="Peer review stage 4: physical soundness"
@@ -429,6 +475,20 @@ Operate in interestingness-and-venue-fit stage mode with a fresh context.
 
 Target journal: {target_journal}
 Round: {round}
+Project Contract:
+{project_contract}
+Project Contract Load Info:
+{project_contract_load_info}
+Project Contract Validation:
+{project_contract_validation}
+Active References:
+{active_reference_context}
+Contract Intake:
+{contract_intake}
+Effective Reference Intake:
+{effective_reference_intake}
+Reference Artifacts Content:
+{reference_artifacts_content}
 Output path: `GPD/review/STAGE-interestingness{round_suffix}.json`
 
 Files to read:
@@ -443,6 +503,8 @@ You must explicitly decide whether the paper is:
 1. Scientifically interesting enough for the venue
 2. Merely technically competent
 3. Overclaimed relative to its actual contribution
+
+Treat `project_contract_load_info` and `project_contract_validation` as the authoritative contract gate state. Treat `project_contract` and `contract_intake` as approved evidence only when that gate is clean and passing. Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence even when the contract gate is blocked. If that gate is blocked, keep `project_contract` and `contract_intake` visible as context but do not rely on them as approved scope.
 
 Return STAGE 5 COMPLETE with assessment, blocker count, and major concern count.",
   description="Peer review stage 5: significance and venue fit"
@@ -501,6 +563,12 @@ Project Contract Validation:
 {project_contract_validation}
 Active References:
 {active_reference_context}
+Contract Intake:
+{contract_intake}
+Effective Reference Intake:
+{effective_reference_intake}
+Reference Artifacts Content:
+{reference_artifacts_content}
 
 Files to read:
 - Resolved manuscript main file and all nearby section .tex files
@@ -530,6 +598,8 @@ Recommendation guardrails:
 5. Write `GPD/review/REVIEW-LEDGER{round_suffix}.json` and `GPD/review/REFEREE-DECISION{round_suffix}.json`.
 6. Run `gpd validate review-ledger GPD/review/REVIEW-LEDGER{round_suffix}.json`.
 7. Run `gpd validate referee-decision GPD/review/REFEREE-DECISION{round_suffix}.json --strict --ledger GPD/review/REVIEW-LEDGER{round_suffix}.json` before trusting a recommendation better than `major_revision`.
+
+Treat `project_contract_load_info` and `project_contract_validation` as the authoritative contract gate state. Treat `project_contract` and `contract_intake` as approved evidence only when that gate is clean and passing. Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence even when the contract gate is blocked. If that gate is blocked, keep `project_contract` and `contract_intake` visible as context but do not rely on them as approved scope.
 
 Write `GPD/REFEREE-REPORT{round_suffix}.md` and the matching `GPD/REFEREE-REPORT{round_suffix}.tex`.
 Also write `GPD/CONSISTENCY-REPORT.md` when applicable.

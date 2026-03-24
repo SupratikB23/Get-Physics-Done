@@ -462,7 +462,7 @@ Verifying, Complete, Blocked, Ready to plan, Milestone complete
 
 **Written by:** `gpd state record-session`, `/gpd:pause-work`
 
-`session` stores the last session timestamp, advisory machine identity, stop location, and handoff resume file. `gpd init resume` surfaces `session.resume_file` as `execution_resume_file`, may rank it as a non-resumable `session_resume_file` candidate, and compares `hostname`/`platform` with the current machine to emit a non-blocking `machine_change_notice`.
+`session` stores the last session timestamp, advisory machine identity, stop location, and handoff resume file. Keep `resume_file` project-relative when it points inside the repository; `gpd state record-session` normalizes project-local absolute paths back to that form before persisting them. Omitting `--resume-file` preserves the current handoff pointer, while explicit placeholders such as `—`, `None`, or `null` clear it. `gpd init resume` surfaces `session.resume_file` as `execution_resume_file`, may rank it as a non-resumable `session_resume_file` candidate, and compares `hostname`/`platform` with the current machine to emit a non-blocking `machine_change_notice`.
 
 ---
 
@@ -490,14 +490,14 @@ STATE.md and state.json are kept in sync:
 
 1. **STATE.md → state.json**: `sync_state_json()` parses markdown, merges into existing JSON (preserving JSON-only fields)
 2. **state.json → STATE.md**: `save_state_json()` calls `generate_state_markdown()` to regenerate markdown
-3. **Crash recovery**: `state.json.bak` created after every successful write; `load_state_json()` tries backup before falling back to STATE.md
+3. **Crash recovery**: `state.json.bak` created after every successful write; `load_state_json()` tries the backup before falling back to STATE.md when primary JSON is missing or blocked
 4. **Atomic writes**: Uses intent-marker protocol (`.state-write-intent`) to detect and recover from interrupted writes
 5. **Locking**: `file_lock()` context manager prevents concurrent writes (TOCTOU races)
 
 ### Authority hierarchy
 
 ```
-state.json > STATE.md > state.json.bak > STATE.md (regenerated from defaults)
+state.json > state.json.bak > STATE.md > defaults (then regenerate STATE.md)
 ```
 
 For JSON-only fields (convention_lock, approximations, propagated_uncertainties, structured intermediate_results): state.json is sole authority. STATE.md renders a lossy view (structured objects become flat bullet strings).

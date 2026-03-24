@@ -42,6 +42,16 @@ def test_runtime_less_manifest_tree_is_rejected_by_install_metadata(tmp_path: Pa
     assert installed_update_command(config_dir) is None
 
 
+def test_non_utf8_manifest_tree_is_rejected_by_install_metadata(tmp_path: Path) -> None:
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "get-physics-done").mkdir(parents=True, exist_ok=True)
+    (config_dir / "gpd-file-manifest.json").write_bytes(b"\xff")
+
+    assert config_dir_has_complete_install(config_dir) is False
+    assert installed_update_command(config_dir) is None
+
+
 @pytest.mark.parametrize(
     ("module_name", "hook_filename"),
     [
@@ -57,6 +67,32 @@ def test_hook_self_detection_rejects_runtime_less_manifest_tree(
 ) -> None:
     config_dir = tmp_path / ".codex"
     hook_path = _seed_anonymous_install_tree(config_dir, hook_filename=hook_filename)
+    module = importlib.import_module(module_name)
+
+    with patch.object(module, "__file__", str(hook_path)):
+        assert module._self_config_dir() is None
+
+
+@pytest.mark.parametrize(
+    ("module_name", "hook_filename"),
+    [
+        ("gpd.hooks.check_update", "check_update.py"),
+        ("gpd.hooks.statusline", "statusline.py"),
+        ("gpd.hooks.notify", "notify.py"),
+    ],
+)
+def test_hook_self_detection_rejects_non_utf8_manifest_tree(
+    tmp_path: Path,
+    module_name: str,
+    hook_filename: str,
+) -> None:
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "get-physics-done").mkdir(parents=True, exist_ok=True)
+    (config_dir / "gpd-file-manifest.json").write_bytes(b"\xff")
+    hook_path = config_dir / "hooks" / hook_filename
+    hook_path.parent.mkdir(parents=True, exist_ok=True)
+    hook_path.write_text("# hook\n", encoding="utf-8")
     module = importlib.import_module(module_name)
 
     with patch.object(module, "__file__", str(hook_path)):

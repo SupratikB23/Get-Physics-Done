@@ -23,13 +23,18 @@ from gpd.adapters.runtime_catalog import list_runtime_names
 )
 def test_notify_update_skips_non_dict_or_invalid_cache_files(tmp_path: Path, cache_content: str) -> None:
     from gpd.hooks.notify import _check_and_notify_update
+    from gpd.hooks.runtime_detect import UpdateCacheCandidate
 
     cache_file = tmp_path / "gpd-update-check.json"
     cache_file.write_text(cache_content, encoding="utf-8")
 
-    with patch("gpd.hooks.runtime_detect.get_update_cache_files", return_value=[cache_file]), patch(
-        "gpd.hooks.runtime_detect.detect_active_runtime",
-        return_value="unknown",
+    with (
+        patch(
+            "gpd.hooks.runtime_detect.get_update_cache_candidates",
+            return_value=[UpdateCacheCandidate(path=cache_file, runtime="codex", scope="local")],
+        ),
+        patch("gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install", return_value="codex"),
+        patch("gpd.hooks.runtime_detect.should_consider_update_cache_candidate", return_value=True),
     ):
         _check_and_notify_update()
 
@@ -115,6 +120,47 @@ def test_update_cache_helpers_prefer_candidate_order_over_newer_unrelated_cache(
 
     assert cache == {"update_available": True, "checked": 20}
     assert candidate is preferred_candidate
+
+
+@pytest.mark.parametrize(
+    ("module_name", "function_name"),
+    [
+        ("gpd.hooks.notify", "_latest_update_cache"),
+        ("gpd.hooks.statusline", "_latest_update_cache"),
+    ],
+)
+def test_update_cache_helpers_prefer_runtime_tagged_candidate_over_runtimeless_fallback(
+    tmp_path: Path,
+    module_name: str,
+    function_name: str,
+) -> None:
+    module = __import__(module_name, fromlist=[function_name])
+    cache_reader = getattr(module, function_name)
+
+    fallback_cache = tmp_path / "fallback.json"
+    fallback_cache.write_text(json.dumps({"update_available": True, "checked": 10}), encoding="utf-8")
+    runtime_cache = tmp_path / "runtime.json"
+    runtime_cache.write_text(json.dumps({"update_available": True, "checked": 20}), encoding="utf-8")
+
+    fallback_candidate = SimpleNamespace(path=fallback_cache, runtime=None, scope=None)
+    runtime_candidate = SimpleNamespace(path=runtime_cache, runtime="codex", scope="local")
+
+    with (
+        patch(
+            "gpd.hooks.runtime_detect.get_update_cache_candidates",
+            return_value=[fallback_candidate, runtime_candidate],
+        ),
+        patch("gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install", return_value="codex"),
+        patch("gpd.hooks.runtime_detect.should_consider_update_cache_candidate", return_value=True),
+        patch(
+            "gpd.hooks.runtime_detect.detect_install_scope",
+            side_effect=lambda runtime, **_kwargs: "local" if runtime == "codex" else None,
+        ),
+    ):
+        cache, candidate = cache_reader(str(tmp_path))
+
+    assert cache == {"update_available": True, "checked": 20}
+    assert candidate is runtime_candidate
 
 
 def test_installed_update_command_uses_manifest_runtime_metadata_for_custom_targets(tmp_path: Path) -> None:
@@ -276,6 +322,45 @@ def test_installed_update_command_treats_scope_less_explicit_local_named_target_
     assert command is not None
     assert "--local" in command
     assert "--global" not in command
+    assert "--target-dir" in command
+    assert str(explicit_target) in command
+
+
+def test_installed_update_command_recovers_legacy_explicit_target_named_like_default_from_update_workflow(
+    tmp_path: Path,
+) -> None:
+    from gpd.hooks.install_metadata import installed_update_command
+
+    explicit_target = tmp_path / "custom-parent" / ".codex"
+    explicit_target.mkdir(parents=True)
+    (explicit_target / "gpd-file-manifest.json").write_text(
+        json.dumps(
+            {
+                "install_scope": "local",
+                "runtime": "codex",
+                "install_target_dir": str(explicit_target),
+            }
+        ),
+        encoding="utf-8",
+    )
+    update_workflow = explicit_target / "get-physics-done" / "workflows" / "update.md"
+    update_workflow.parent.mkdir(parents=True, exist_ok=True)
+    update_workflow.write_text(
+        '\n'.join(
+            [
+                'GPD_CONFIG_DIR="' + str(explicit_target) + '"',
+                'GPD_GLOBAL_CONFIG_DIR="' + str(tmp_path / ".codex-global") + '"',
+                'INSTALL_SCOPE="--local"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    command = installed_update_command(explicit_target)
+
+    assert command is not None
+    assert "--local" in command
     assert "--target-dir" in command
     assert str(explicit_target) in command
 

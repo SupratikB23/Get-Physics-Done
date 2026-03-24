@@ -146,7 +146,7 @@ For each node in the dependency tree, catalog all uncertainty sources.
 gpd --raw state validate
 ```
 
-If validation reports divergence or a parse error, stop here and run `/gpd:sync-state` (or the controlled backup + `gpd --raw state snapshot` recovery path) before trusting uncertainty values. If recovery is blocked, fall back to `STATE.md`'s `## Intermediate Results` and `## Propagated Uncertainties` sections, and clearly label the result as markdown-recovered rather than JSON-backed.
+If validation reports divergence or a parse error, stop here and run `/gpd:sync-state` (or the authoritative `save_state_markdown()` recovery path used there) before trusting uncertainty values. If recovery is blocked, fall back to `STATE.md`'s `## Intermediate Results` and `## Propagated Uncertainties` sections, and clearly label the result as markdown-recovered rather than JSON-backed.
 
 Read `propagated_uncertainties` in state.json for existing uncertainty values on input parameters. For each leaf input:
 

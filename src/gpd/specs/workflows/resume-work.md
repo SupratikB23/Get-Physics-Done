@@ -63,7 +63,7 @@ cat GPD/PROJECT.md
 - **Recent Decisions**: Key decisions affecting current work (method choices, convention selections, approximation schemes)
 - **Pending Todos**: Ideas captured during sessions
 - **Blockers/Concerns**: Issues carried forward (divergences, instabilities, missing data)
-- **Session Continuity**: Where we left off, any resume files
+- **Session Continuity**: Last session timestamp, stopped-at handoff, resume file pointer, previous hostname/platform, and any machine-change notice
 
 **From PROJECT.md extract:**
 
@@ -81,6 +81,7 @@ cat GPD/PROJECT.md
 - `effective_reference_intake` is the authoritative carry-forward ledger for must-read refs, prior outputs, baselines, user anchors, and context gaps.
 - `active_reference_context` and `reference_artifacts_content` are readability aids for that ledger, not substitutes for it.
 - Do not reconstruct contract-critical anchors only from `STATE.md` / `PROJECT.md` prose when INIT already provided the structured ledger.
+- If `project_contract_load_info.status` starts with `blocked` or `project_contract_validation.valid` is false, present that contract as visible-but-blocked and route the next action to contract repair before planning or execution.
 
 </step>
 
@@ -268,6 +269,13 @@ Present complete research project status to user:
     - Current machine: [current_hostname] ([current_platform])
     - Action: rerun the installer if runtime-local config may be stale
 
+[If `project_contract_load_info.status` starts with `blocked` or `project_contract_validation.valid` is false:]
+>> Contract repair required:
+    - Load status: [project_contract_load_info.status]
+    - Blocking detail: [first blocker or validation error]
+    - Action: repair the contract/state integrity issue before planning or execution
+    - Note: the structured contract stays visible for context, but it is not approved execution scope
+
 [If active_execution_segment is waiting on review:]
 >> Live execution gate detected:
     - Gate: [checkpoint_reason]
@@ -313,6 +321,10 @@ Based on project state, determine the most logical next action:
 -> If `checkpoint_reason=first_result`, `checkpoint_reason=pre_fanout`, or skeptical re-questioning is required: treat the next action as a review/replan decision whenever decisive evidence is still missing, not a routine execution resume
 -> Do not resume downstream fanout until the gate has an explicit clear/override outcome and, for `pre_fanout`, the matching fanout-unlock transition
 -> Option: Review another ranked resume candidate from `segment_candidates`
+
+**If `project_contract_load_info.status` starts with `blocked` or `project_contract_validation.valid` is false:**
+-> Primary: Repair the blocked contract or state-integrity issue before planning or execution
+-> Option: Inspect the blocked contract context and supporting diagnostics without resuming downstream work
 
 **If interrupted agent exists:**
 -> Primary: Resume interrupted agent (Task tool with resume parameter)
@@ -428,7 +440,7 @@ Before proceeding to routed workflow, update session continuity via CLI
 ```bash
 gpd state record-session \
   --stopped-at "Session resumed, proceeding to [action]" \
-  --resume-file "[updated if applicable, or omit flag]"
+  --resume-file "[updated if applicable; omit to keep the current pointer, or pass `—` to clear it]"
 ```
 
 This ensures if session ends unexpectedly, next resume knows the state.

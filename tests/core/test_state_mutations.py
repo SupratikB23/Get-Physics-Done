@@ -215,7 +215,7 @@ class TestStateRecordSession:
         assert stored["session"]["resume_file"] == "next-step.md"
         assert stored["session"]["last_date"] is not None
 
-    def test_record_session_clears_resume_file_when_omitted(
+    def test_record_session_preserves_resume_file_when_omitted(
         self, tmp_path: Path, session_state_project_factory
     ) -> None:
         cwd = session_state_project_factory(tmp_path)
@@ -228,8 +228,26 @@ class TestStateRecordSession:
         stored = json.loads((cwd / "GPD" / "state.json").read_text(encoding="utf-8"))
 
         assert "Done" in markdown
-        assert "**Resume file:**" in markdown
+        assert "**Resume file:** resume.md" in markdown
+        assert stored["session"]["resume_file"] == "resume.md"
+
+    @pytest.mark.parametrize("clear_value", ["", "  ", "—", "None", "null"])
+    def test_record_session_clears_resume_file_when_placeholder_is_passed(
+        self,
+        tmp_path: Path,
+        session_state_project_factory,
+        clear_value: str,
+    ) -> None:
+        cwd = session_state_project_factory(tmp_path)
+
+        result = state_record_session(cwd, stopped_at="Done", resume_file=clear_value)
+
+        assert result.recorded is True
+        stored = json.loads((cwd / "GPD" / "state.json").read_text(encoding="utf-8"))
+        markdown = (cwd / "GPD" / "STATE.md").read_text(encoding="utf-8")
+
         assert stored["session"]["resume_file"] is None
+        assert "**Resume file:** —" in markdown
 
     def test_record_session_missing_state_file(self, tmp_path: Path) -> None:
         result = state_record_session(tmp_path, stopped_at="Task 1")

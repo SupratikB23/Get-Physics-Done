@@ -622,7 +622,7 @@ Include session update in the `gpd_return` envelope:
 gpd_return:
   session_update:
     stopped_at: "Completed ${phase}-${plan}-PLAN.md"
-    resume_file: "None"
+    resume_file: "—"
 ```
 
 **Exception:** If executing in Pattern C (main context, no subagent), apply directly:
@@ -630,8 +630,8 @@ gpd_return:
 ```bash
 gpd state record-session \
   --stopped-at "Completed ${phase}-${plan}-PLAN.md" \
-  --resume-file "None"
-gpd observe event session continuity-updated --phase "${phase}" --plan "${plan}" --data "{\"stopped_at\":\"Completed ${phase}-${plan}-PLAN.md\",\"resume_file\":\"None\"}" 2>/dev/null || true
+  --resume-file "—"
+gpd observe event session continuity-updated --phase "${phase}" --plan "${plan}" --data "{\"stopped_at\":\"Completed ${phase}-${plan}-PLAN.md\",\"resume_file\":\"—\"}" 2>/dev/null || true
 ```
 
 Keep STATE.md under 150 lines.

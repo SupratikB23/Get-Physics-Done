@@ -345,6 +345,9 @@ def test_executor_completion_examples_use_command_based_next_actions() -> None:
 
     assert '"/gpd:execute-phase {phase}"' in completion
     assert '"/gpd:show-phase {phase}"' in completion
+    assert "gpd state validate" in completion
+    assert "/gpd:sync-state" in completion
+    assert "file_edit tool" not in completion
 
 
 def test_referee_workflow_mentions_optional_pdf_compile_and_missing_tex_prompt() -> None:
@@ -585,6 +588,12 @@ def test_review_workflows_keep_round_suffix_artifacts_visible_and_anchor_respons
     assert "GPD/review/REFEREE-DECISION{round_suffix}.json" in peer_review
     assert "GPD/REFEREE-REPORT{round_suffix}.md" in peer_review
     assert "GPD/REFEREE-REPORT{round_suffix}.tex" in panel
+    assert "Stage 1 `CLAIMS{round_suffix}.json` must follow this compact `ClaimIndex` shape:" in panel
+    assert "ClaimIndex` and every nested `ClaimRecord` use a closed schema; do not invent extra keys" in panel
+    assert "`manuscript_path` must be non-empty" in panel
+    assert "JSON `round` field must agree" in panel
+    assert "must exactly match the sibling `CLAIMS{round_suffix}.json`" in panel
+    assert "Stage 1 `CLAIMS.json` must follow this compact `ClaimIndex` shape:" not in panel
 
     assert "${PAPER_DIR}/{section}.tex" in respond
     assert "${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json" in respond
@@ -1381,6 +1390,8 @@ def test_contract_schema_references_stay_wired_into_templates_and_review_docs() 
     assert "REFEREE-DECISION{round_suffix}.json --strict --ledger" in referee_decision_schema
     assert "STAGE-(reader|literature|math|physics|interestingness)(-R<round>)?.json" in referee_decision_schema
     assert "same optional `-R<round>` suffix" in referee_decision_schema
+    assert "manuscript_path` must be non-empty" in referee_decision_schema
+    assert "must align with the matching `CLAIMS{round_suffix}.json` claim index" in referee_decision_schema
     assert "GPD/review/STAGE-reader{round_suffix}.json" in panel
     assert "GPD/review/CLAIMS{round_suffix}.json" in panel
     assert "random_seeds[].computation" in reproducibility_template
@@ -1421,9 +1432,23 @@ def test_review_and_verification_prompts_explicitly_surface_schema_sources_and_c
     assert "Project Contract Load Info:\n{project_contract_load_info}" in peer_review
     assert "Project Contract Validation:\n{project_contract_validation}" in peer_review
     assert "Active References:\n{active_reference_context}" in peer_review
+    assert "Contract Intake:\n{contract_intake}" in peer_review
+    assert "Effective Reference Intake:\n{effective_reference_intake}" in peer_review
+    assert "Reference Artifacts Content:\n{reference_artifacts_content}" in peer_review
     assert "project_contract_validation" in peer_review
     assert "project_contract_load_info" in peer_review
-    assert "Treat `project_contract`, `project_contract_load_info`, `project_contract_validation`, and `active_reference_context` as authoritative contract-backed evidence context" in peer_review
+    assert (
+        "Treat `project_contract_load_info` and `project_contract_validation` as the authoritative contract gate state."
+        in peer_review
+    )
+    assert (
+        "Treat `project_contract` and `contract_intake` as approved evidence only when that gate is clean and passing."
+        in peer_review
+    )
+    assert (
+        "Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence even when the contract gate is blocked."
+        in peer_review
+    )
     assert "project_contract_load_info" in write_paper
     assert "project_contract_validation" in write_paper
     assert "authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes" in write_paper
@@ -1438,19 +1463,54 @@ def test_review_and_verification_prompts_explicitly_surface_schema_sources_and_c
     assert "Canonical schema for `paper/reproducibility-manifest.json`:" in write_paper
     assert "Canonical reconciliation contract:" in sync_state
     assert "state-json-schema.md` itself" in sync_state
+    assert "save_state_markdown" in sync_state
+    assert "gpd --raw state snapshot" not in sync_state
     assert (
         "Keep the current `project_contract`, `project_contract_load_info`, `project_contract_validation`, "
         "and `active_reference_context` visible throughout the staged review"
         in write_paper
     )
+    assert peer_review.count("Project Contract:\n{project_contract}") >= 5
+    assert peer_review.count("Project Contract Load Info:\n{project_contract_load_info}") >= 5
+    assert peer_review.count("Project Contract Validation:\n{project_contract_validation}") >= 5
+    assert peer_review.count("Active References:\n{active_reference_context}") >= 5
+    assert peer_review.count("Contract Intake:\n{contract_intake}") >= 5
+    assert peer_review.count("Effective Reference Intake:\n{effective_reference_intake}") >= 5
+    assert peer_review.count("Reference Artifacts Content:\n{reference_artifacts_content}") >= 5
+    assert peer_review.count("Treat `project_contract` and `contract_intake` as approved evidence only when that gate is clean and passing.") >= 5
+    assert (
+        peer_review.count(
+            "Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence even when the contract gate is blocked."
+        )
+        >= 5
+    )
+    assert "repair the blocked contract before retrying" in peer_review
     assert "peer-review-panel.md` directly" in review_reader
     assert "peer-review-panel.md` directly" in review_literature
-    assert "Required schema for `STAGE-math.json` (`StageReviewReport`, mirroring the staged-review contract):" in review_math
-    assert "Required schema for `STAGE-physics.json` (`StageReviewReport`, mirroring the staged-review contract):" in review_physics
+    assert "GPD/review/CLAIMS{round_suffix}.json" in review_reader
+    assert "GPD/review/STAGE-reader{round_suffix}.json" in review_reader
+    assert "closed schema; do not invent extra keys" in review_reader
+    assert "CLAIMS.json" not in review_reader
+    assert "STAGE-reader.json" not in review_reader
+    assert "round-specific variant when instructed" not in review_reader
+    assert "GPD/review/STAGE-literature{round_suffix}.json" in review_literature
+    assert "GPD/review/STAGE-math{round_suffix}.json" in review_math
+    assert "GPD/review/STAGE-physics{round_suffix}.json" in review_physics
+    assert "GPD/review/STAGE-interestingness{round_suffix}.json" in review_significance
+    assert "Required schema for `STAGE-math{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):" in review_math
+    assert "Required schema for `STAGE-physics{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):" in review_physics
     assert (
-        "Required schema for `STAGE-interestingness.json` (`StageReviewReport`, mirroring the staged-review contract):"
+        "Required schema for `STAGE-interestingness{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):"
         in review_significance
     )
+    assert "STAGE-literature.json" not in review_literature
+    assert "STAGE-math.json" not in review_math
+    assert "STAGE-physics.json" not in review_physics
+    assert "STAGE-interestingness.json" not in review_significance
+    assert "round-specific variant" not in review_literature
+    assert "round-specific variant" not in review_math
+    assert "round-specific variant" not in review_physics
+    assert "round-specific variant" not in review_significance
     assert "re-open `@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md`" in referee
 
 
@@ -1853,6 +1913,8 @@ def test_resume_workflow_surfaces_contract_load_and_validation_state() -> None:
     assert "only when `project_contract_load_info` is clean and `project_contract_validation` passes" in resume_work
     assert "records whether that contract loaded cleanly and what blocked it if not." in resume_work
     assert "approval gate for treating the structured contract as authoritative" in resume_work
+    assert "Contract repair required:" in resume_work
+    assert "Repair the blocked contract or state-integrity issue before planning or execution" in resume_work
 
 
 def test_stage6_surfaces_protocol_bundle_context_across_planning_execution_and_verification() -> None:

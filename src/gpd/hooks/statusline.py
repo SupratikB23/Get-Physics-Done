@@ -457,7 +457,9 @@ def _latest_update_cache(workspace_dir: str | None = None) -> tuple[dict[str, ob
     from types import SimpleNamespace
 
     from gpd.hooks.runtime_detect import (
+        RUNTIME_UNKNOWN,
         detect_active_runtime_with_gpd_install,
+        detect_runtime_install_target,
         get_update_cache_candidates,
         should_consider_update_cache_candidate,
     )
@@ -465,7 +467,17 @@ def _latest_update_cache(workspace_dir: str | None = None) -> tuple[dict[str, ob
     workspace_path = resolve_project_root(workspace_dir) if workspace_dir else None
     active_installed_runtime = detect_active_runtime_with_gpd_install(cwd=workspace_path)
     self_config_dir = _self_config_dir()
-    if self_config_dir is not None:
+    active_install_target = (
+        detect_runtime_install_target(active_installed_runtime, cwd=workspace_path)
+        if active_installed_runtime not in (None, "", RUNTIME_UNKNOWN)
+        else None
+    )
+    prefer_self_cache = self_config_dir is not None
+    if self_config_dir is not None and active_install_target is not None and self_config_dir != active_install_target.config_dir:
+        prefer_self_cache = not (
+            workspace_path is not None and getattr(active_install_target, "install_scope", None) == "local"
+        )
+    if self_config_dir is not None and prefer_self_cache:
         cache_file = self_config_dir / "cache" / "gpd-update-check.json"
         if cache_file.exists():
             try:
@@ -518,10 +530,9 @@ def _check_update(workspace_dir: str | None = None) -> str:
     if cache and cache.get("update_available"):
         config_dir = getattr(cache_candidate, "config_dir", None)
         if isinstance(config_dir, Path):
-            from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, update_command_for_runtime
-
-            fallback_scope = _self_install_scope(config_dir)
-            command = _self_update_command(config_dir) or update_command_for_runtime(RUNTIME_UNKNOWN, scope=fallback_scope)
+            command = _self_update_command(config_dir)
+            if command is None:
+                return ""
             return f"\x1b[33m\u2b06 {command}\x1b[0m \u2502 "
 
         from gpd.hooks.runtime_detect import (

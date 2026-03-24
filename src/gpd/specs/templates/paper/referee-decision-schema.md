@@ -53,12 +53,14 @@ Strict validation treats omitted fields as a policy error even when the default 
 - In strict staged review, every top-level field in the required-shape example must be set explicitly. Defaults are not a substitute for policy input.
 - `final_recommendation` must be one of: `accept`, `minor_revision`, `major_revision`, `reject`.
 - `final_confidence` must be one of: `high`, `medium`, `low`.
+- In strict staged review, `manuscript_path` must be non-empty and must match the manuscript path used by the stage artifacts and review ledger.
 - Adequacy fields (`mathematical_correctness`, `novelty`, `significance`, `venue_fit`, `literature_positioning`) must be one of: `strong`, `adequate`, `weak`, `insufficient`.
 - `stage_artifacts` should list every specialist stage artifact used by the final referee. In strict mode, fewer than five stage artifacts fails validation.
 - In strict mode, specialist stage artifact filenames must match `STAGE-(reader|literature|math|physics|interestingness)(-R<round>)?.json`.
 - In strict mode, all specialist stage artifacts must use the same optional `-R<round>` suffix; do not mix unsuffixed and suffixed stage names in one decision.
 - In strict mode, any extra noncanonical `stage_artifacts` entry fails validation instead of being ignored.
 - When the validator has project-root access, every listed `stage_artifacts` path must exist.
+- When the validator has project-root access, every listed specialist stage artifact must parse as a valid `StageReviewReport` and must align with the matching `CLAIMS{round_suffix}.json` claim index: filename stage/round, manuscript path, manuscript sha256, `claims_reviewed`, and nested `claim_ids` must all agree with that Stage 1 artifact.
 - `blocking_issue_ids` should be a subset of `REVIEW-LEDGER{round_suffix}.json` `issues[].issue_id`.
 - When you validate with `--ledger`, every unresolved blocking issue in the ledger must appear in `blocking_issue_ids`.
 - `unresolved_major_issues` should match the count of unresolved `critical` + `major` ledger issues. `unresolved_minor_issues` should match unresolved `minor` ledger issues.

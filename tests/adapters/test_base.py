@@ -119,14 +119,24 @@ class TestUninstallBase:
         assert not (hooks / "check_update.py").exists()
         assert (hooks / "user-hook.py").exists()
 
-    def test_removes_manifest(self, tmp_path: Path) -> None:
+    def test_removes_owned_manifest(self, tmp_path: Path) -> None:
+        adapter = get_adapter("claude-code")
+        target = tmp_path / ".claude"
+        _write_owned_manifest(target)
+
+        adapter.uninstall(target)
+        assert not (target / "gpd-file-manifest.json").exists()
+
+    def test_refuses_untrusted_manifest_without_runtime(self, tmp_path: Path) -> None:
         adapter = get_adapter("claude-code")
         target = tmp_path / ".claude"
         target.mkdir(parents=True)
         (target / "gpd-file-manifest.json").write_text("{}", encoding="utf-8")
 
-        adapter.uninstall(target)
-        assert not (target / "gpd-file-manifest.json").exists()
+        with pytest.raises(RuntimeError, match="manifest cannot be trusted"):
+            adapter.uninstall(target)
+
+        assert (target / "gpd-file-manifest.json").exists()
 
     def test_removes_patches_dir(self, tmp_path: Path) -> None:
         adapter = get_adapter("claude-code")

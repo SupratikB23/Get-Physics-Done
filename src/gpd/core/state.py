@@ -39,6 +39,7 @@ from gpd.core.constants import (
     STANDALONE_PLAN,
     STATE_ARCHIVE_FILENAME,
     STATE_JSON_BACKUP_FILENAME,
+    STATE_JSON_FILENAME,
     STATE_LINES_BUDGET,
     STATE_LINES_TARGET,
     SUMMARY_SUFFIX,
@@ -1509,6 +1510,8 @@ def generate_state_markdown(raw: dict) -> str:
     else:
         p(f"See: {PLANNING_DIR_NAME}/{PROJECT_FILENAME}")
     p("")
+    p(f"**Machine-readable scoping contract:** `{PLANNING_DIR_NAME}/{STATE_JSON_FILENAME}` field `project_contract`")
+    p("")
     p(f"**Core research question:** {pr.get('core_research_question') or '[Not set]'}")
     p(f"**Current focus:** {pr.get('current_focus') or '[Not set]'}")
     p("")
@@ -1898,8 +1901,6 @@ def _write_state_pair_locked(cwd: Path, *, state_obj: dict, md_content: str) -> 
     md_backup = safe_read_file(md_path)
 
     normalized = _normalize_state_for_persistence(state_obj)
-    json_rendered = json.dumps(normalized, indent=2) + "\n"
-    backup_rendered = json_rendered
 
     def _valid_project_contract_from_state_text(state_text: str | None) -> object | None:
         if state_text is None:
@@ -1920,9 +1921,11 @@ def _write_state_pair_locked(cwd: Path, *, state_obj: dict, md_content: str) -> 
         if preserved_contract is None:
             preserved_contract = _valid_project_contract_from_state_text(prior_json_backup)
         if preserved_contract is not None:
-            backup_state = copy.deepcopy(normalized)
-            backup_state["project_contract"] = preserved_contract
-            backup_rendered = json.dumps(backup_state, indent=2) + "\n"
+            normalized = copy.deepcopy(normalized)
+            normalized["project_contract"] = preserved_contract
+
+    json_rendered = json.dumps(normalized, indent=2) + "\n"
+    backup_rendered = json_rendered
 
     try:
         atomic_write(json_tmp, json_rendered)
@@ -2796,6 +2799,30 @@ def _session_continuity_section(session: dict[str, object]) -> str:
     )
 
 
+def _normalize_session_resume_file(cwd: Path, resume_file: str | None) -> str | None:
+    """Normalize project-local absolute resume pointers back to repo-relative form."""
+    if resume_file is None:
+        return None
+
+    normalized = resume_file.strip()
+    if (
+        not normalized
+        or normalized == EM_DASH
+        or normalized == "[Not set]"
+        or normalized.casefold() in {"none", "null"}
+    ):
+        return None
+
+    candidate = Path(normalized).expanduser()
+    if not candidate.is_absolute():
+        return normalized
+
+    try:
+        return candidate.resolve(strict=False).relative_to(cwd.resolve(strict=False)).as_posix()
+    except (OSError, ValueError):
+        return normalized
+
+
 @instrument_gpd_function("state.record_session")
 def state_record_session(
     cwd: Path,
@@ -2823,6 +2850,12 @@ def state_record_session(
         existing_hostname = state_extract_field(content, "Hostname")
         existing_platform = state_extract_field(content, "Platform")
         existing_resume_file = state_extract_field(content, "Resume file")
+        normalized_existing_resume_file = _normalize_session_resume_file(cwd, existing_resume_file)
+        normalized_resume_file = (
+            normalized_existing_resume_file
+            if resume_file is None
+            else _normalize_session_resume_file(cwd, resume_file)
+        )
         updated: list[str] = []
 
         session_values = {
@@ -2830,7 +2863,7 @@ def state_record_session(
             "hostname": machine["hostname"],
             "platform": machine["platform"],
             "stopped_at": stopped_at if stopped_at is not None else existing_stopped_at,
-            "resume_file": resume_file,
+            "resume_file": normalized_resume_file,
         }
         new_content = _session_continuity_section(session_values)
 
@@ -2847,7 +2880,7 @@ def state_record_session(
             updated.append("Platform")
         if stopped_at is not None and stopped_at != existing_stopped_at:
             updated.append("Stopped at")
-        if (resume_file or EM_DASH) != (existing_resume_file or EM_DASH):
+        if (normalized_resume_file or EM_DASH) != (existing_resume_file or EM_DASH):
             updated.append("Resume file")
 
         if updated:
@@ -2857,7 +2890,7 @@ def state_record_session(
                 cwd=str(cwd),
                 updated_fields=",".join(updated),
                 stopped_at=stopped_at or "",
-                resume_file=resume_file or EM_DASH,
+                resume_file=normalized_resume_file or EM_DASH,
                 hostname=machine["hostname"] or EM_DASH,
                 platform=machine["platform"] or EM_DASH,
             ):
@@ -2868,7 +2901,7 @@ def state_record_session(
             "session.continuity.noop",
             cwd=str(cwd),
             stopped_at=stopped_at or "",
-            resume_file=resume_file or EM_DASH,
+            resume_file=normalized_resume_file or EM_DASH,
             hostname=machine["hostname"] or EM_DASH,
             platform=machine["platform"] or EM_DASH,
         ):

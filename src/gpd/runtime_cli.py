@@ -18,7 +18,13 @@ import sys
 from pathlib import Path
 
 from gpd.adapters import get_adapter
-from gpd.adapters.install_utils import build_runtime_install_repair_command
+from gpd.adapters.install_utils import (
+    COMMANDS_DIR_NAME,
+    FLAT_COMMANDS_DIR_NAME,
+    GPD_INSTALL_DIR_NAME,
+    MANIFEST_NAME,
+    build_runtime_install_repair_command,
+)
 from gpd.adapters.runtime_catalog import resolve_global_config_dir
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_REEXEC
 from gpd.hooks.install_metadata import load_install_manifest_state
@@ -144,7 +150,10 @@ def _manifest_runtime_status(config_dir: Path) -> tuple[str | None, str]:
     normalized = runtime.strip()
     if not normalized:
         return None, "malformed_runtime"
-    return normalize_runtime_name(normalized) or normalized, "ok"
+    canonical_runtime = normalize_runtime_name(normalized)
+    if canonical_runtime is None:
+        return None, "malformed_runtime"
+    return canonical_runtime, "ok"
 
 
 def _runtime_display_name(runtime: str) -> str:
@@ -184,19 +193,31 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str, cli_c
         return False
 
     manifest_runtime, manifest_status = _manifest_runtime_status(candidate)
-    if manifest_status != "ok" or manifest_runtime != runtime:
-        return False
-
-    manifest = _load_install_manifest(candidate)
-    manifest_scope = manifest.get("install_scope")
-    if manifest_scope == "global":
-        return False
-
     adapter = get_adapter(runtime)
     canonical_global_dir = resolve_global_config_dir(adapter.runtime_descriptor, home=Path.home(), environ={})
-    if _paths_equal(candidate, canonical_global_dir) and manifest_scope != "local":
-        return False
+    if manifest_status == "ok":
+        if manifest_runtime != runtime:
+            return False
 
+        manifest = _load_install_manifest(candidate)
+        manifest_scope = manifest.get("install_scope")
+        if manifest_scope == "global":
+            return False
+        if _paths_equal(candidate, canonical_global_dir) and manifest_scope != "local":
+            return False
+        return True
+
+    has_install_markers = any(
+        (
+            (candidate / GPD_INSTALL_DIR_NAME).is_dir(),
+            (candidate / COMMANDS_DIR_NAME / "gpd").is_dir(),
+            (candidate / FLAT_COMMANDS_DIR_NAME).is_dir(),
+        )
+    )
+    if not has_install_markers:
+        return False
+    if _paths_equal(candidate, canonical_global_dir):
+        return False
     return True
 
 
@@ -210,7 +231,8 @@ def _resolve_local_config_dir(raw_value: str, *, runtime: str, cli_cwd: Path) ->
         candidate = (base / relative).resolve(strict=False)
         if not _is_matching_local_install_candidate(candidate, runtime=runtime, cli_cwd=resolved_cwd):
             continue
-        if adapter.has_complete_install(candidate):
+        manifest_runtime, manifest_status = _manifest_runtime_status(candidate)
+        if manifest_status == "ok" and adapter.has_complete_install(candidate):
             return candidate
         if fallback is None:
             fallback = candidate
@@ -246,10 +268,15 @@ def _uses_effective_explicit_target(
     cli_cwd: Path,
 ) -> bool:
     """Return whether repair guidance must emit ``--target-dir``."""
-    if explicit_target or install_scope != "local":
-        return explicit_target
+    if explicit_target:
+        return True
 
-    default_local_config_dir = (cli_cwd / Path(raw_config_dir).expanduser()).resolve(strict=False)
+    adapter = get_adapter(runtime)
+    if install_scope == "global":
+        canonical_global_dir = resolve_global_config_dir(adapter.runtime_descriptor, home=Path.home(), environ={})
+        return not _paths_equal(config_dir, canonical_global_dir)
+
+    default_local_config_dir = adapter.resolve_local_config_dir(cli_cwd).resolve(strict=False)
     return not _paths_equal(config_dir, default_local_config_dir)
 
 
@@ -315,6 +342,7 @@ def _runtime_mismatch_error_message(
     *,
     runtime: str,
     manifest_runtime: str,
+    manifest_install_scope: str | None,
     raw_config_dir: str,
     config_dir: Path,
     install_scope: str,
@@ -322,15 +350,16 @@ def _runtime_mismatch_error_message(
     cli_cwd: Path,
 ) -> str:
     """Return repair guidance when the resolved config dir belongs to another runtime."""
+    owning_install_scope = manifest_install_scope if manifest_install_scope in {"local", "global"} else install_scope
     repair_command = build_runtime_install_repair_command(
         manifest_runtime,
-        install_scope=install_scope,
+        install_scope=owning_install_scope,
         target_dir=config_dir,
         explicit_target=_uses_effective_explicit_target(
-            runtime=runtime,
+            runtime=manifest_runtime,
             raw_config_dir=raw_config_dir,
             config_dir=config_dir,
-            install_scope=install_scope,
+            install_scope=owning_install_scope,
             explicit_target=explicit_target,
             cli_cwd=cli_cwd,
         ),
@@ -368,7 +397,7 @@ def _malformed_manifest_runtime_error_message(
     )
     return (
         f"GPD runtime bridge rejected malformed install manifest at `{config_dir}`.\n"
-        "The manifest `runtime` field must be a non-empty string.\n"
+        "The manifest `runtime` field must be a recognized non-empty runtime string.\n"
         f"Repair or reinstall with: `{repair_command}`\n"
     )
 
@@ -453,6 +482,10 @@ def main(argv: list[str] | None = None) -> int:
         cli_cwd=cli_cwd,
     )
     manifest_runtime, manifest_status = _manifest_runtime_status(config_dir)
+    manifest_payload = _load_install_manifest(config_dir) if manifest_status == "ok" else {}
+    manifest_install_scope = manifest_payload.get("install_scope")
+    if not isinstance(manifest_install_scope, str):
+        manifest_install_scope = None
     if manifest_status in {"corrupt", "invalid"}:
         sys.stderr.write(
             _untrusted_manifest_error_message(
@@ -494,6 +527,7 @@ def main(argv: list[str] | None = None) -> int:
             _runtime_mismatch_error_message(
                 runtime=runtime,
                 manifest_runtime=manifest_runtime,
+                manifest_install_scope=manifest_install_scope,
                 raw_config_dir=options.config_dir,
                 config_dir=config_dir,
                 install_scope=options.install_scope,

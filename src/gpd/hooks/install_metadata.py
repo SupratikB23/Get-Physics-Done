@@ -21,7 +21,7 @@ def load_install_manifest(config_dir: Path) -> dict[str, object]:
     manifest_path = config_dir / "gpd-file-manifest.json"
     try:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
 
@@ -39,7 +39,7 @@ def load_install_manifest_state(config_dir: Path) -> tuple[str, dict[str, object
         raw = manifest_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return "missing", {}
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return "corrupt", {}
 
     try:
@@ -72,6 +72,36 @@ def _install_scope_from_installed_update_workflow(config_dir: Path) -> str | Non
         return SCOPE_LOCAL
     if 'INSTALL_SCOPE="--global"' in content:
         return SCOPE_GLOBAL
+    return None
+
+
+def _explicit_target_from_installed_update_workflow(
+    config_dir: Path,
+    *,
+    install_scope: str | None,
+) -> bool | None:
+    """Infer explicit-target ownership from the installed update workflow."""
+
+    update_workflow = config_dir / "get-physics-done" / "workflows" / "update.md"
+    try:
+        content = update_workflow.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    config_dir_value = None
+    global_config_dir_value = None
+    for line in content.splitlines():
+        if line.startswith('GPD_CONFIG_DIR="') and line.endswith('"'):
+            config_dir_value = line[len('GPD_CONFIG_DIR="') : -1]
+        elif line.startswith('GPD_GLOBAL_CONFIG_DIR="') and line.endswith('"'):
+            global_config_dir_value = line[len('GPD_GLOBAL_CONFIG_DIR="') : -1]
+
+    if not isinstance(config_dir_value, str) or not config_dir_value:
+        return None
+    if install_scope == SCOPE_LOCAL:
+        return not config_dir_value.startswith("./")
+    if install_scope == SCOPE_GLOBAL and isinstance(global_config_dir_value, str) and global_config_dir_value:
+        return config_dir_value != global_config_dir_value
     return None
 
 
@@ -127,6 +157,13 @@ def _infer_explicit_target(
     behave deterministically even when invoked from nested workspaces or other
     directories.
     """
+    workflow_explicit_target = _explicit_target_from_installed_update_workflow(
+        config_dir,
+        install_scope=install_scope,
+    )
+    if workflow_explicit_target is not None:
+        return workflow_explicit_target
+
     if install_scope == SCOPE_LOCAL:
         if not _paths_equal(install_target, config_dir):
             return True

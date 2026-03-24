@@ -157,7 +157,7 @@ def _manifest_install_scope(config_dir: Path) -> str | None:
 
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 
     if not isinstance(manifest, dict):
@@ -175,7 +175,7 @@ def _manifest_runtime_status(config_dir: Path) -> tuple[str, str | None]:
 
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return "corrupt", None
 
     if not isinstance(manifest, dict):
@@ -686,6 +686,11 @@ def should_consider_update_cache_candidate(
             return False
         return candidate.scope in (None, install_target.install_scope)
 
+    if manifest_state == "missing":
+        return False
+    if not _has_gpd_install(candidate_config_dir, cwd=cwd, home=home):
+        return False
+
     if active_installed_runtime in (None, "", RUNTIME_UNKNOWN):
         return True
 
@@ -723,6 +728,11 @@ def should_consider_todo_candidate(
         if candidate_config_dir != install_target.config_dir:
             return False
         return candidate.scope in (None, install_target.install_scope)
+
+    if manifest_state == "missing":
+        return False
+    if not _has_gpd_install(candidate_config_dir, cwd=cwd, home=home):
+        return False
 
     if active_installed_runtime in (None, "", RUNTIME_UNKNOWN):
         return True

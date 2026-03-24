@@ -2830,6 +2830,24 @@ def _load_text_document(input_path: str) -> tuple[Path, str]:
         raise GPDError(f"Failed to read text input from {source}: {exc}") from exc
 
 
+def _project_root_for_json_input(input_path: str) -> Path:
+    """Return the best project-root anchor for a JSON artifact input path."""
+
+    cwd = _get_cwd()
+    if input_path == "-":
+        return cwd
+
+    target = Path(input_path)
+    if not target.is_absolute():
+        return cwd
+
+    resolved = target.expanduser().resolve(strict=False)
+    for base in (resolved.parent, *resolved.parent.parents):
+        if (base / "GPD").is_dir():
+            return base
+    return cwd
+
+
 def _resolve_existing_input_path(input_path: str | None, *, candidates: tuple[str, ...], label: str) -> Path:
     """Resolve an explicit or default input path under the current cwd."""
     if input_path:
@@ -3370,27 +3388,47 @@ def _build_review_preflight(
                 blocking=True,
             )
         if strict and manuscript is not None:
+            peer_review_local_only = command.name == "gpd:peer-review"
+            legacy_paper_candidates = () if peer_review_local_only else (cwd / "GPD" / "paper",)
             artifact_manifest = _first_existing_path(
                 manuscript.parent / "ARTIFACT-MANIFEST.json",
-                cwd / "GPD" / "paper" / "ARTIFACT-MANIFEST.json",
+                *(candidate / "ARTIFACT-MANIFEST.json" for candidate in legacy_paper_candidates),
             )
             bibliography_audit = _first_existing_path(
                 manuscript.parent / "BIBLIOGRAPHY-AUDIT.json",
-                cwd / "GPD" / "paper" / "BIBLIOGRAPHY-AUDIT.json",
+                *(candidate / "BIBLIOGRAPHY-AUDIT.json" for candidate in legacy_paper_candidates),
             )
             reproducibility_manifest = _first_existing_path(
                 manuscript.parent / "reproducibility-manifest.json",
                 manuscript.parent / "REPRODUCIBILITY-MANIFEST.json",
-                cwd / "GPD" / "paper" / "reproducibility-manifest.json",
+                *(candidate / "reproducibility-manifest.json" for candidate in legacy_paper_candidates),
             )
+            artifact_manifest_detail = "no ARTIFACT-MANIFEST.json found near the manuscript"
+            artifact_manifest_passed = artifact_manifest is not None
+            if artifact_manifest is not None:
+                artifact_manifest_detail = f"{_format_display_path(artifact_manifest)} present"
+                if strict:
+                    from gpd.mcp.paper.models import ArtifactManifest
+
+                    try:
+                        artifact_manifest_payload = json.loads(artifact_manifest.read_text(encoding="utf-8"))
+                        ArtifactManifest.model_validate(artifact_manifest_payload)
+                    except OSError as exc:
+                        artifact_manifest_passed = False
+                        artifact_manifest_detail = f"could not read artifact manifest: {exc}"
+                    except json.JSONDecodeError as exc:
+                        artifact_manifest_passed = False
+                        artifact_manifest_detail = f"could not parse artifact manifest: {exc}"
+                    except PydanticValidationError as exc:
+                        artifact_manifest_passed = False
+                        artifact_manifest_detail = (
+                            "artifact manifest is invalid: "
+                            + "; ".join(_format_pydantic_schema_error(error, root_label="artifact_manifest") for error in exc.errors()[:3])
+                        )
             add_check(
                 "artifact_manifest",
-                artifact_manifest is not None,
-                (
-                    f"{_format_display_path(artifact_manifest)} present"
-                    if artifact_manifest is not None
-                    else "no ARTIFACT-MANIFEST.json found near the manuscript"
-                ),
+                artifact_manifest_passed,
+                artifact_manifest_detail,
             )
             add_check(
                 "bibliography_audit",
@@ -3436,16 +3474,26 @@ def _build_review_preflight(
                     ),
                 )
             if strict and command.name == "gpd:peer-review" and bibliography_audit is not None:
+                from gpd.mcp.paper.bibliography import BibliographyAudit
+
                 try:
                     audit_payload = json.loads(bibliography_audit.read_text(encoding="utf-8"))
+                    audit = BibliographyAudit.model_validate(audit_payload)
                 except (OSError, json.JSONDecodeError) as exc:
                     add_check("bibliography_audit_clean", False, f"could not parse bibliography audit: {exc}")
+                except PydanticValidationError as exc:
+                    add_check(
+                        "bibliography_audit_clean",
+                        False,
+                        "bibliography audit is invalid: "
+                        + "; ".join(_format_pydantic_schema_error(error, root_label="bibliography_audit") for error in exc.errors()[:3]),
+                    )
                 else:
                     clean = (
-                        int(audit_payload.get("resolved_sources", 0)) == int(audit_payload.get("total_sources", 0))
-                        and int(audit_payload.get("partial_sources", 0)) == 0
-                        and int(audit_payload.get("unverified_sources", 0)) == 0
-                        and int(audit_payload.get("failed_sources", 0)) == 0
+                        audit.resolved_sources == audit.total_sources
+                        and audit.partial_sources == 0
+                        and audit.unverified_sources == 0
+                        and audit.failed_sources == 0
                     )
                     add_check(
                         "bibliography_audit_clean",
@@ -3696,6 +3744,7 @@ def validate_review_stage_report_cmd(
     input_path: str = typer.Argument(..., help="Path to a stage-review JSON file, or '-' for stdin"),
 ) -> None:
     """Validate a staged peer-review report."""
+    from gpd.core.referee_policy import validate_stage_review_artifact_file
     from gpd.mcp.paper.models import StageReviewReport
 
     payload = _load_json_document(input_path)
@@ -3707,6 +3756,17 @@ def validate_review_stage_report_cmd(
             exc=exc,
             schema_reference="references/publication/peer-review-panel.md",
         )
+    if input_path != "-":
+        artifact_path = Path(input_path)
+        if not artifact_path.is_absolute():
+            artifact_path = _get_cwd() / artifact_path
+        semantic_errors = validate_stage_review_artifact_file(artifact_path)
+        if semantic_errors:
+            message = "; ".join(semantic_errors[:5])
+            if len(semantic_errors) > 5:
+                message += f" (+{len(semantic_errors) - 5} more)"
+            message += ". See `references/publication/peer-review-panel.md`"
+            _error(message)
     _output(stage_report)
 
 
@@ -3777,7 +3837,7 @@ def validate_referee_decision(
         strict=strict,
         require_explicit_inputs=strict,
         review_ledger=review_ledger,
-        project_root=_get_cwd(),
+        project_root=_project_root_for_json_input(input_path),
     )
     _output(report)
     if not report.valid:

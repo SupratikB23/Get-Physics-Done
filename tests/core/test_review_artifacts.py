@@ -16,7 +16,6 @@ from gpd.mcp.paper.models import (
     ReviewIssue,
     ReviewIssueSeverity,
     ReviewLedger,
-    ReviewPanelBundle,
     ReviewRecommendation,
     ReviewStageKind,
     ReviewSupportStatus,
@@ -26,12 +25,10 @@ from gpd.mcp.paper.review_artifacts import (
     read_claim_index,
     read_referee_decision,
     read_review_ledger,
-    read_review_panel_bundle,
     read_stage_review_report,
     write_claim_index,
     write_referee_decision,
     write_review_ledger,
-    write_review_panel_bundle,
     write_stage_review_report,
 )
 
@@ -98,72 +95,21 @@ def test_review_artifact_round_trip(tmp_path: Path) -> None:
         venue_fit="adequate",
         blocking_issue_ids=["REF-001"],
     )
-    bundle = ReviewPanelBundle(
-        manuscript_path="paper/main.tex",
-        claim_index_path="GPD/review/CLAIMS.json",
-        stage_reports=["GPD/review/STAGE-interestingness.json"],
-        review_ledger_path="GPD/review/REVIEW-LEDGER.json",
-        decision_path="GPD/review/REFEREE-DECISION.json",
-        final_recommendation=ReviewRecommendation.major_revision,
-        final_confidence=ReviewConfidence.high,
-        final_report_path="GPD/REFEREE-REPORT.md",
-        final_report_tex_path="GPD/REFEREE-REPORT.tex",
-        consistency_report_path="GPD/CONSISTENCY-REPORT.md",
-    )
 
     claims_path = tmp_path / "CLAIMS.json"
     stage_path = tmp_path / "STAGE-interestingness.json"
     ledger_path = tmp_path / "REVIEW-LEDGER.json"
     decision_path = tmp_path / "REFEREE-DECISION.json"
-    bundle_path = tmp_path / "PANEL-BUNDLE.json"
 
     write_claim_index(claim_index, claims_path)
     write_stage_review_report(stage_report, stage_path)
     write_review_ledger(ledger, ledger_path)
     write_referee_decision(decision, decision_path)
-    write_review_panel_bundle(bundle, bundle_path)
 
     assert read_claim_index(claims_path) == claim_index
     assert read_stage_review_report(stage_path) == stage_report
     assert read_review_ledger(ledger_path) == ledger
     assert read_referee_decision(decision_path) == decision
-    assert read_review_panel_bundle(bundle_path) == bundle
-
-
-def test_review_panel_bundle_accepts_round_aware_reports_without_consistency_report(tmp_path: Path) -> None:
-    bundle_path = tmp_path / "PANEL-BUNDLE-R2.json"
-    bundle_path.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "round": 2,
-                "manuscript_path": "submission/main.tex",
-                "target_journal": "jhep",
-                "claim_index_path": "GPD/review/CLAIMS-R2.json",
-                "stage_reports": [
-                    "GPD/review/STAGE-reader-R2.json",
-                    "GPD/review/STAGE-literature-R2.json",
-                    "GPD/review/STAGE-math-R2.json",
-                    "GPD/review/STAGE-physics-R2.json",
-                    "GPD/review/STAGE-interestingness-R2.json",
-                ],
-                "review_ledger_path": "GPD/review/REVIEW-LEDGER-R2.json",
-                "decision_path": "GPD/review/REFEREE-DECISION-R2.json",
-                "final_recommendation": "major_revision",
-                "final_confidence": "medium",
-                "final_report_path": "GPD/REFEREE-REPORT-R2.md",
-                "final_report_tex_path": "GPD/REFEREE-REPORT-R2.tex",
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    bundle = read_review_panel_bundle(bundle_path)
-
-    assert bundle.round == 2
-    assert bundle.final_report_path == "GPD/REFEREE-REPORT-R2.md"
-    assert bundle.final_report_tex_path == "GPD/REFEREE-REPORT-R2.tex"
-    assert bundle.consistency_report_path == ""
 
 
 def test_claim_index_rejects_invalid_sha256(tmp_path: Path) -> None:
@@ -174,6 +120,42 @@ def test_claim_index_rejects_invalid_sha256(tmp_path: Path) -> None:
                 "version": 1,
                 "manuscript_path": "paper/main.tex",
                 "manuscript_sha256": "abc123",
+                "claims": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        read_claim_index(claims_path)
+
+
+def test_claim_index_rejects_uppercase_sha256(tmp_path: Path) -> None:
+    claims_path = tmp_path / "CLAIMS.json"
+    claims_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "manuscript_path": "paper/main.tex",
+                "manuscript_sha256": "A" * 64,
+                "claims": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        read_claim_index(claims_path)
+
+
+def test_claim_index_rejects_blank_manuscript_path(tmp_path: Path) -> None:
+    claims_path = tmp_path / "CLAIMS.json"
+    claims_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "manuscript_path": "   ",
+                "manuscript_sha256": "a" * 64,
                 "claims": [],
             }
         ),
@@ -205,6 +187,32 @@ def test_stage_review_report_requires_issue_ids(tmp_path: Path) -> None:
                         "summary": "Missing issue ID.",
                     }
                 ],
+                "confidence": "medium",
+                "recommendation_ceiling": "major_revision",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        read_stage_review_report(stage_path)
+
+
+def test_stage_review_report_rejects_blank_manuscript_path(tmp_path: Path) -> None:
+    stage_path = tmp_path / "STAGE-reader.json"
+    stage_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "round": 1,
+                "stage_id": "reader",
+                "stage_kind": "reader",
+                "manuscript_path": "   ",
+                "manuscript_sha256": "a" * 64,
+                "claims_reviewed": ["CLM-001"],
+                "summary": "Summary",
+                "strengths": [],
+                "findings": [],
                 "confidence": "medium",
                 "recommendation_ceiling": "major_revision",
             }
@@ -334,20 +342,6 @@ def test_review_ledger_rejects_invalid_issue_and_claim_id_formats(tmp_path: Path
                 "issues": [],
             },
         ),
-        (
-            ReviewPanelBundle,
-            {
-                "version": 2,
-                "round": 1,
-                "manuscript_path": "paper/main.tex",
-                "claim_index_path": "GPD/review/CLAIMS.json",
-                "review_ledger_path": "GPD/review/REVIEW-LEDGER.json",
-                "decision_path": "GPD/review/REFEREE-DECISION.json",
-                "final_recommendation": ReviewRecommendation.major_revision,
-                "final_confidence": ReviewConfidence.medium,
-                "final_report_path": "GPD/REFEREE-REPORT.md",
-            },
-        ),
     ],
 )
 def test_review_artifacts_pin_version_to_one(model_cls, kwargs) -> None:
@@ -382,20 +376,6 @@ def test_review_artifacts_pin_version_to_one(model_cls, kwargs) -> None:
                 "round": 0,
                 "manuscript_path": "paper/main.tex",
                 "issues": [],
-            },
-        ),
-        (
-            ReviewPanelBundle,
-            {
-                "version": 1,
-                "round": 0,
-                "manuscript_path": "paper/main.tex",
-                "claim_index_path": "GPD/review/CLAIMS.json",
-                "review_ledger_path": "GPD/review/REVIEW-LEDGER.json",
-                "decision_path": "GPD/review/REFEREE-DECISION.json",
-                "final_recommendation": ReviewRecommendation.major_revision,
-                "final_confidence": ReviewConfidence.medium,
-                "final_report_path": "GPD/REFEREE-REPORT.md",
             },
         ),
     ],

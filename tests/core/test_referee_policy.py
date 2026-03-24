@@ -159,10 +159,11 @@ def test_unresolved_critical_ledger_issues_count_toward_major_issue_total():
     assert any("unresolved_major_issues does not match review ledger count" in reason for reason in report.reasons)
 
 
-def test_manuscript_path_comparison_normalizes_equivalent_paths():
+@pytest.mark.parametrize("manuscript_path", ["./paper//main.tex", "paper/../paper/main.tex"])
+def test_manuscript_path_comparison_normalizes_equivalent_paths(manuscript_path: str):
     report = evaluate_referee_decision(
         RefereeDecisionInput(
-            manuscript_path="./paper//main.tex",
+            manuscript_path=manuscript_path,
             target_journal="jhep",
             final_recommendation=ReviewRecommendation.major_revision,
             stage_artifacts=[f"GPD/review/STAGE-{name}.json" for name in ("reader", "literature", "math", "physics", "interestingness")],
@@ -175,6 +176,28 @@ def test_manuscript_path_comparison_normalizes_equivalent_paths():
     )
 
     assert report.valid is True
+
+
+def test_review_ledger_round_mismatch_rejects_stage_artifacts() -> None:
+    report = evaluate_referee_decision(
+        RefereeDecisionInput(
+            manuscript_path="paper/main.tex",
+            target_journal="jhep",
+            final_recommendation=ReviewRecommendation.major_revision,
+            stage_artifacts=[
+                f"GPD/review/STAGE-{name}-R2.json" for name in ("reader", "literature", "math", "physics", "interestingness")
+            ],
+        ),
+        strict=True,
+        review_ledger=ReviewLedger(
+            round=1,
+            manuscript_path="paper/main.tex",
+            issues=[],
+        ),
+    )
+
+    assert report.valid is False
+    assert any("stage_artifacts round does not match review ledger round" in reason for reason in report.reasons)
 
 
 def test_strict_review_requires_at_least_five_stage_artifacts() -> None:

@@ -132,7 +132,9 @@ def _latest_update_cache(cwd: str | None = None) -> tuple[dict[str, object] | No
                     )
                     return cache, candidate
 
-    for candidate in get_update_cache_candidates(cwd=workspace_path, preferred_runtime=active_installed_runtime):
+    preferred_runtime = active_installed_runtime if workspace_path is not None else None
+    fallback_hit: tuple[dict[str, object], object] | None = None
+    for candidate in get_update_cache_candidates(cwd=workspace_path, preferred_runtime=preferred_runtime):
         if not should_consider_update_cache_candidate(
             candidate,
             active_installed_runtime=active_installed_runtime,
@@ -150,9 +152,12 @@ def _latest_update_cache(cwd: str | None = None) -> tuple[dict[str, object] | No
 
         if not isinstance(cache, dict):
             continue
-        return cache, candidate
+        if getattr(candidate, "runtime", None):
+            return cache, candidate
+        if fallback_hit is None:
+            fallback_hit = (cache, candidate)
 
-    return None, None
+    return fallback_hit if fallback_hit is not None else (None, None)
 
 
 def _check_and_notify_update(cwd: str | None = None) -> None:
@@ -172,8 +177,9 @@ def _check_and_notify_update(cwd: str | None = None) -> None:
         latest = latest_cache.get("latest", "?")
         config_dir = getattr(latest_candidate, "config_dir", None)
         if isinstance(config_dir, Path):
-            fallback_scope = _self_install_scope(config_dir)
-            cmd = _self_update_command(config_dir) or update_command_for_runtime(RUNTIME_UNKNOWN, scope=fallback_scope)
+            cmd = _self_update_command(config_dir)
+            if cmd is None:
+                return
             sys.stderr.write(f"[GPD] Update available: v{installed} \u2192 v{latest}. Run: {cmd}\n")
             return
         runtime = latest_candidate.runtime if latest_candidate is not None else RUNTIME_UNKNOWN
@@ -317,13 +323,12 @@ def main() -> None:
     if not isinstance(data, dict):
         return
 
-    cwd = _workspace_from_payload(data)
-    hook_payload = _hook_payload_policy(cwd)
-    allowed_event_types = hook_payload.notify_event_types
-    if allowed_event_types and data.get("type") not in (*allowed_event_types, None):
-        return
-
     try:
+        cwd = _workspace_from_payload(data)
+        hook_payload = _hook_payload_policy(cwd)
+        allowed_event_types = hook_payload.notify_event_types
+        if allowed_event_types and data.get("type") not in (*allowed_event_types, None):
+            return
         _trigger_update_check(cwd)
         _check_and_notify_update(cwd)
         _emit_execution_notification(cwd)

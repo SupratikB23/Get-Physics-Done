@@ -23,7 +23,14 @@ def test_artifact_surfacing_uses_canonical_paths_and_contract_terms() -> None:
     artifact_surfacing = (REFERENCES_DIR / "artifact-surfacing.md").read_text(encoding="utf-8")
 
     assert "GPD/phases/01-*/01-01-PLAN.md" in artifact_surfacing
-    assert "GPD/paper/REVIEW-REPORT.md" in artifact_surfacing
+    assert "GPD/review/CLAIMS{round_suffix}.json" in artifact_surfacing
+    assert "GPD/review/STAGE-reader{round_suffix}.json" in artifact_surfacing
+    assert "GPD/review/STAGE-interestingness{round_suffix}.json" in artifact_surfacing
+    assert "GPD/review/REFEREE-DECISION{round_suffix}.json" in artifact_surfacing
+    assert "GPD/REFEREE-REPORT{round_suffix}.md" in artifact_surfacing
+    assert "GPD/REFEREE-REPORT{round_suffix}.tex" in artifact_surfacing
+    assert "GPD/review/REVIEW-LEDGER{round_suffix}.json" in artifact_surfacing
+    assert "`.md`, `.tex`, `.json`" in artifact_surfacing
     assert "Contract deliverables that are the `subject` of an acceptance test" in artifact_surfacing
     assert ".gpd/" not in artifact_surfacing
 

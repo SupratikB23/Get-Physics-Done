@@ -6,11 +6,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from gpd.mcp.paper.bibliography import BibliographyAudit
 
-Sha256Hex = Annotated[str, Field(pattern=r"^[0-9a-fA-F]{64}$")]
+Sha256Hex = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 ClaimId = Annotated[str, Field(pattern=r"^CLM-[A-Za-z0-9][A-Za-z0-9_-]*$")]
 ReviewIssueId = Annotated[str, Field(pattern=r"^REF-[A-Za-z0-9][A-Za-z0-9_-]*$")]
 
@@ -168,6 +168,14 @@ class ClaimIndex(BaseModel):
     manuscript_sha256: Sha256Hex
     claims: list[ClaimRecord] = Field(default_factory=list)
 
+    @field_validator("manuscript_path")
+    @classmethod
+    def _nonempty_manuscript_path(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("manuscript_path must be non-empty")
+        return normalized
+
 
 class ReviewFinding(BaseModel):
     """One staged-review finding tied to specific claims and evidence."""
@@ -204,6 +212,14 @@ class StageReviewReport(BaseModel):
     confidence: ReviewConfidence
     recommendation_ceiling: ReviewRecommendation
 
+    @field_validator("manuscript_path")
+    @classmethod
+    def _nonempty_manuscript_path(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("manuscript_path must be non-empty")
+        return normalized
+
     @model_validator(mode="after")
     def _stage_id_matches_stage_kind(self) -> StageReviewReport:
         expected_stage_id = self.stage_kind.value
@@ -238,26 +254,6 @@ class ReviewLedger(BaseModel):
     round: int = Field(default=1, gt=0)
     manuscript_path: str
     issues: list[ReviewIssue] = Field(default_factory=list)
-
-
-class ReviewPanelBundle(BaseModel):
-    """Bundle tying staged review artifacts to the final referee decision."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    version: Literal[1] = 1
-    round: int = Field(default=1, gt=0)
-    manuscript_path: str
-    target_journal: str = "unspecified"
-    claim_index_path: str
-    stage_reports: list[str] = Field(default_factory=list)
-    review_ledger_path: str
-    decision_path: str
-    final_recommendation: ReviewRecommendation
-    final_confidence: ReviewConfidence
-    final_report_path: str
-    final_report_tex_path: str = ""
-    consistency_report_path: str = ""
 
 
 class JournalSpec(BaseModel):

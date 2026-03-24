@@ -201,7 +201,7 @@ gpd state record-session \
 - `state record-metric`: Appends to Performance Metrics table
 - `state add-decision`: Adds to Decisions section, removes placeholders
 - `result add`: Adds to intermediate results registry for cross-referencing
-- `state record-session`: Updates Last session timestamp and Stopped At fields
+- `state record-session`: Updates Last session timestamp and Stopped At fields; omit `--resume-file` to preserve the current handoff pointer or pass `--resume-file "—"` to clear it explicitly
 
 **gpd CLI error handling:**
 
@@ -229,7 +229,7 @@ gpd state advance  # might silently fail
 | `No phase/plan found` | STATE.md has unexpected structure | Check Current Phase/Plan fields in STATE.md |
 | Non-zero exit with no output | Python crash or missing dependency | Check `python --version`, verify gpd CLI path |
 
-**Recovery protocol:** If a gpd CLI command fails twice, read the target file manually, make the state update via file_edit tool, and document the manual fix in the plan SUMMARY.md.
+**Recovery protocol:** If a gpd CLI command fails twice, do not patch `STATE.md` or `state.json` manually. Capture the failing command and stderr in the return envelope or plan SUMMARY, run `gpd state validate` if the failure looks state-related, and escalate to `/gpd:sync-state` or the orchestrator instead of editing shared state files directly.
 
 **Extract decisions from SUMMARY.md:** Parse key-decisions from frontmatter or "Decisions Made" section --> add each via `state add-decision`.
 

@@ -1077,6 +1077,56 @@ class TestUpdateCacheCandidates:
         with patch.dict(os.environ, _clean_runtime_env(), clear=True):
             assert should_consider_update_cache_candidate(candidate, cwd=workspace, home=home) is False
 
+    def test_candidate_with_non_utf8_manifest_is_rejected(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        home = tmp_path / "home"
+        runtime_dir = workspace / ".codex"
+        _mark_gpd_install(runtime_dir)
+        (runtime_dir / "gpd-file-manifest.json").write_bytes(b"\xff")
+
+        candidate = UpdateCacheCandidate(
+            runtime_dir / "cache" / "gpd-update-check.json",
+            runtime=RUNTIME_CODEX,
+            scope=SCOPE_LOCAL,
+        )
+
+        with patch.dict(os.environ, _clean_runtime_env(), clear=True):
+            assert should_consider_update_cache_candidate(candidate, cwd=workspace, home=home) is False
+
+    def test_candidate_with_missing_manifest_is_rejected_without_trusted_install(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        home = tmp_path / "home"
+        runtime_dir = workspace / ".codex"
+        (runtime_dir / "cache").mkdir(parents=True)
+
+        candidate = UpdateCacheCandidate(
+            runtime_dir / "cache" / "gpd-update-check.json",
+            runtime=RUNTIME_CODEX,
+            scope=SCOPE_LOCAL,
+        )
+
+        with patch.dict(os.environ, _clean_runtime_env(), clear=True):
+            assert should_consider_update_cache_candidate(candidate, cwd=workspace, home=home) is False
+
+    def test_candidate_with_manifest_but_incomplete_install_is_rejected_without_trusted_install(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        home = tmp_path / "home"
+        runtime_dir = workspace / ".codex"
+        (runtime_dir / "cache").mkdir(parents=True)
+        _write_install_manifest(runtime_dir, install_scope=SCOPE_LOCAL)
+
+        candidate = UpdateCacheCandidate(
+            runtime_dir / "cache" / "gpd-update-check.json",
+            runtime=RUNTIME_CODEX,
+            scope=SCOPE_LOCAL,
+        )
+
+        with patch.dict(os.environ, _clean_runtime_env(), clear=True):
+            assert should_consider_update_cache_candidate(candidate, cwd=workspace, home=home) is False
+
     def test_candidate_listing_keeps_installed_scope_ahead_of_stale_other_scope(self, tmp_path: Path) -> None:
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -1173,6 +1223,56 @@ class TestTodoCandidates:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest.pop("runtime")
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        candidate = TodoCandidate(
+            runtime_dir / "todos",
+            runtime=RUNTIME_CODEX,
+            scope=SCOPE_LOCAL,
+        )
+
+        with patch.dict(os.environ, _clean_runtime_env(), clear=True):
+            assert should_consider_todo_candidate(candidate, cwd=workspace, home=home) is False
+
+    def test_candidate_with_non_utf8_manifest_is_rejected(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        home = tmp_path / "home"
+        runtime_dir = workspace / ".codex"
+        _mark_gpd_install(runtime_dir)
+        (runtime_dir / "gpd-file-manifest.json").write_bytes(b"\xff")
+
+        candidate = TodoCandidate(
+            runtime_dir / "todos",
+            runtime=RUNTIME_CODEX,
+            scope=SCOPE_LOCAL,
+        )
+
+        with patch.dict(os.environ, _clean_runtime_env(), clear=True):
+            assert should_consider_todo_candidate(candidate, cwd=workspace, home=home) is False
+
+    def test_candidate_with_missing_manifest_is_rejected_without_trusted_install(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        home = tmp_path / "home"
+        runtime_dir = workspace / ".codex"
+        (runtime_dir / "todos").mkdir(parents=True)
+
+        candidate = TodoCandidate(
+            runtime_dir / "todos",
+            runtime=RUNTIME_CODEX,
+            scope=SCOPE_LOCAL,
+        )
+
+        with patch.dict(os.environ, _clean_runtime_env(), clear=True):
+            assert should_consider_todo_candidate(candidate, cwd=workspace, home=home) is False
+
+    def test_candidate_with_manifest_but_incomplete_install_is_rejected_without_trusted_install(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        home = tmp_path / "home"
+        runtime_dir = workspace / ".codex"
+        (runtime_dir / "todos").mkdir(parents=True)
+        _write_install_manifest(runtime_dir, install_scope=SCOPE_LOCAL)
 
         candidate = TodoCandidate(
             runtime_dir / "todos",

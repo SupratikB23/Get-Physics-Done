@@ -273,11 +273,15 @@ Updated after each plan completion.
 
 ### Session Continuity
 
-Enables instant resumption:
+Enables instant resumption and machine portability:
 
-- When was last session
-- What was last completed
-- Is there a .continue-here file to resume from
+- Last session timestamp
+- Stopped-at handoff point
+- Resume file pointer
+- Hostname of the previous machine
+- Platform of the previous machine
+
+The `resume_file` field is the handoff signal for resuming work, and the `Hostname` and `Platform` fields record portability context without making resumption dependent on a specific file pattern.
 
 </sections>
 

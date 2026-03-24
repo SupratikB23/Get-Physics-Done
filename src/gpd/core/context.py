@@ -55,7 +55,7 @@ from gpd.core.contract_validation import (
 from gpd.core.errors import ValidationError
 from gpd.core.protocol_bundles import render_protocol_bundle_context, select_protocol_bundles
 from gpd.core.reference_ingestion import ingest_reference_artifacts
-from gpd.core.state import _load_state_json_with_integrity_issues
+from gpd.core.state import EM_DASH, _load_state_json_with_integrity_issues
 from gpd.core.state import peek_state_json as _peek_state_json
 from gpd.core.state import _current_machine_identity
 from gpd.core.utils import (
@@ -85,6 +85,8 @@ _REFERENCE_ROLE_PRIORITY = {
     "background": 4,
     "other": 5,
 }
+
+_RESUME_FILE_CLEAR_VALUES = frozenset({"[not set]", "none", "null"})
 
 # Directories to skip when scanning for research files.
 _RUNTIME_IGNORED_SCAN_PATHS = frozenset(
@@ -1050,8 +1052,18 @@ def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:
     current_platform = machine.get("platform")
     session_hostname = session.get("hostname") if isinstance(session, dict) else None
     session_platform = session.get("platform") if isinstance(session, dict) else None
-    session_resume_file = session.get("resume_file") if isinstance(session, dict) else None
-    current_execution_resume_file = snapshot.resume_file if snapshot is not None else None
+    session_resume_file = _normalize_runtime_resume_file(
+        cwd,
+        session.get("resume_file") if isinstance(session, dict) else None,
+    )
+    current_execution_resume_file = _normalize_runtime_resume_file(
+        cwd,
+        snapshot.resume_file if snapshot is not None else None,
+        require_exists=True,
+    )
+    current_execution_payload = snapshot.model_dump(mode="json") if snapshot is not None else None
+    if isinstance(current_execution_payload, dict):
+        current_execution_payload["resume_file"] = current_execution_resume_file
     execution_resume_file = current_execution_resume_file or session_resume_file
     execution_resume_file_source = (
         "current_execution"
@@ -1090,7 +1102,7 @@ def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:
         )
 
     return {
-        "current_execution": snapshot.model_dump(mode="json") if snapshot is not None else None,
+        "current_execution": current_execution_payload,
         "has_live_execution": snapshot is not None,
         "execution_review_pending": bool(
             snapshot
@@ -1119,7 +1131,45 @@ def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:
         "session_platform": session_platform,
         "machine_change_detected": machine_change_detected,
         "machine_change_notice": machine_change_notice,
-    }
+}
+
+
+def _normalize_runtime_resume_file(
+    cwd: Path,
+    resume_file: object,
+    *,
+    require_exists: bool = False,
+) -> str | None:
+    """Return a portable repo-local resume pointer when one can be trusted."""
+    if not isinstance(resume_file, str):
+        return None
+
+    normalized = resume_file.strip()
+    if not normalized or normalized == EM_DASH or normalized.casefold() in _RESUME_FILE_CLEAR_VALUES:
+        return None
+
+    resolved_cwd = cwd.resolve(strict=False)
+    candidate = Path(normalized).expanduser()
+    if candidate.is_absolute():
+        try:
+            normalized = candidate.resolve(strict=False).relative_to(resolved_cwd).as_posix()
+        except (OSError, ValueError):
+            return None
+        candidate = Path(normalized)
+
+    if candidate.is_absolute():
+        return None
+
+    resolved_target = (cwd / candidate).resolve(strict=False)
+    try:
+        resolved_target.relative_to(resolved_cwd)
+    except (OSError, ValueError):
+        return None
+
+    if require_exists and not resolved_target.exists():
+        return None
+
+    return candidate.as_posix()
 
 
 # ─── Config Loader ────────────────────────────────────────────────────────────

@@ -56,7 +56,7 @@ def _normalize_manifest_runtime(runtime: object) -> str | None:
 
     from gpd.hooks.runtime_detect import normalize_runtime_name
 
-    return normalize_runtime_name(normalized) or normalized
+    return normalize_runtime_name(normalized)
 
 
 def _paths_equal(left: Path, right: Path) -> bool:

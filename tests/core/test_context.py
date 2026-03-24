@@ -297,6 +297,13 @@ def _write_numerical_relativity_contract_state(tmp_path: Path) -> None:
 def _write_current_execution(tmp_path: Path, payload: dict[str, object]) -> None:
     observability = tmp_path / "GPD" / "observability"
     observability.mkdir(parents=True, exist_ok=True)
+    resume_file = payload.get("resume_file")
+    if isinstance(resume_file, str) and resume_file:
+        resume_path = Path(resume_file)
+        if not resume_path.is_absolute():
+            resume_path = tmp_path / resume_path
+        resume_path.parent.mkdir(parents=True, exist_ok=True)
+        resume_path.write_text("resume\n", encoding="utf-8")
     (observability / "current-execution.json").write_text(json.dumps(payload), encoding="utf-8")
 
 

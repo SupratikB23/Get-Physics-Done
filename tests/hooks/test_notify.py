@@ -460,7 +460,7 @@ def test_notify_keeps_target_dir_for_default_named_explicit_target(tmp_path: Pat
     assert expected in output
 
 
-def test_notify_explicit_target_without_runtime_metadata_falls_back_to_runtime_neutral_command(tmp_path: Path) -> None:
+def test_runtime_less_explicit_target_notify_hook_emits_no_update_command(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     explicit_target = tmp_path / "custom-runtime-dir"
@@ -482,10 +482,10 @@ def test_notify_explicit_target_without_runtime_metadata_falls_back_to_runtime_n
     ):
         _check_and_notify_update(str(workspace))
 
-    assert "Run: gpd-update" in stderr.getvalue()
+    assert stderr.getvalue() == ""
 
 
-def test_notify_runtime_directory_without_install_uses_runtime_neutral_command(tmp_path: Path) -> None:
+def test_notify_runtime_directory_without_install_emits_no_update_command(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     home = tmp_path / "home"
@@ -515,9 +515,7 @@ def test_notify_runtime_directory_without_install_uses_runtime_neutral_command(t
     ):
         _check_and_notify_update(str(workspace))
 
-    output = stderr.getvalue()
-    assert "Update available: v2.0.0" in output
-    assert "Run: gpd-update" in output
+    assert stderr.getvalue() == ""
 
 
 def test_notify_ignores_stale_uninstalled_runtime_cache_when_other_runtime_is_installed(tmp_path: Path) -> None:
@@ -686,6 +684,20 @@ def test_main_logs_handler_exception_instead_of_swallowing(tmp_path: Path) -> No
 
     output = stderr.getvalue()
     assert "notify handler failed: boom" in output
+
+
+def test_main_logs_workspace_resolution_exception_instead_of_raising() -> None:
+    payload = json.dumps({"type": "agent-turn-complete", "workspace": "/tmp/project"})
+    stderr = io.StringIO()
+    with (
+        patch("sys.stdin", io.StringIO(payload)),
+        patch("gpd.hooks.notify._workspace_from_payload", side_effect=RuntimeError("boom")),
+        patch.dict("os.environ", {"GPD_DEBUG": "1"}),
+        patch("sys.stderr", stderr),
+    ):
+        main()
+
+    assert "notify handler failed: boom" in stderr.getvalue()
 
 
 def test_emit_execution_notification_for_first_result_gate(tmp_path: Path) -> None:

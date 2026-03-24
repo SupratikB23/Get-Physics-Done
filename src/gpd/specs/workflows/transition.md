@@ -36,7 +36,7 @@ Note accumulated context that may need updating after transition.
 **Extract current phase variables from STATE.md:**
 
 ```bash
-CURRENT_PHASE=$(grep "^Phase:" GPD/STATE.md | head -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+CURRENT_PHASE=$(grep '^\*\*Current Phase:\*\*' GPD/STATE.md | head -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
 PHASE_DIR=$(ls -d GPD/phases/${CURRENT_PHASE}-* 2>/dev/null | head -1)
 ```
 
@@ -373,7 +373,7 @@ Update Project Reference section in STATE.md.
 
 See: GPD/PROJECT.md (updated [today])
 
-**Core question:** [Current core research question from PROJECT.md]
+**Core research question:** [Current core research question from PROJECT.md]
 **Current focus:** [Next phase name]
 ```
 
@@ -434,24 +434,17 @@ After (if regularization was checked in Phase 3):
 **Sync state.json after all STATE.md updates are complete:**
 
 ```bash
-# Backup state.json before regeneration (never delete without backup)
-if [ -f GPD/state.json ]; then
-  mv GPD/state.json GPD/state.json.bak
-fi
+uv run python - <<'PY'
+from pathlib import Path
+from gpd.core.state import save_state_markdown
 
-gpd --raw state snapshot > /dev/null
-if [ $? -ne 0 ]; then
-  echo "WARNING: gpd state snapshot failed — restoring backup"
-  if [ -f GPD/state.json.bak ]; then
-    mv GPD/state.json.bak GPD/state.json
-  fi
-else
-  # Regeneration succeeded — remove backup
-  rm -f GPD/state.json.bak
-fi
+cwd = Path(".")
+state_md = cwd / "GPD" / "STATE.md"
+save_state_markdown(cwd, state_md.read_text(encoding="utf-8"))
+PY
 ```
 
-This is the single markdown-to-json sync point for this workflow. The backup + `gpd --raw state snapshot` sequence intentionally uses the loader's `STATE.md` fallback to merge the schema-backed markdown edits from this workflow into authoritative `state.json` while preserving JSON-only fields from the backup. Earlier steps deliberately skip syncing to avoid multiple writes.
+This is the single markdown-to-json sync point for this workflow. `save_state_markdown()` is the authoritative write path for merging the schema-backed markdown edits from this workflow into `state.json` while preserving JSON-only fields and keeping the dual-write pair in sync. Earlier steps deliberately skip syncing to avoid multiple writes.
 
 </step>
 
@@ -465,14 +458,14 @@ If DECISIONS.md doesn't exist (no decisions logged), it will be silently skipped
 
 ```bash
 # Run pre-commit validation on planning files
-PRE_CHECK=$(gpd pre-commit-check --files GPD/ROADMAP.md GPD/STATE.md GPD/PROJECT.md 2>&1) || true
+PRE_CHECK=$(gpd pre-commit-check --files GPD/ROADMAP.md GPD/STATE.md GPD/state.json GPD/PROJECT.md 2>&1) || true
 echo "$PRE_CHECK"
 ```
 
 If the explicit `PRE_CHECK` command reports issues, treat it as early visibility only. `gpd commit` re-runs the same validation on the requested files and remains the blocking gate, even for metadata-only transitions.
 
 ```bash
-gpd commit "docs(phase-${CURRENT_PHASE}): transition to next phase" --files GPD/ROADMAP.md GPD/STATE.md GPD/PROJECT.md GPD/DECISIONS.md
+gpd commit "docs(phase-${CURRENT_PHASE}): transition to next phase" --files GPD/ROADMAP.md GPD/STATE.md GPD/state.json GPD/PROJECT.md GPD/DECISIONS.md
 ```
 
 If commit fails with "nothing to commit", the changes were already committed — proceed.
@@ -649,15 +642,16 @@ If no DERIVATION-STATE.md was created or updated (step 5 skipped), the commit wi
 <step name="update_session_continuity_after_transition">
 
 Update Session Continuity section in STATE.md to reflect transition completion.
+Update the same values under `GPD/state.json.session`; resume reads JSON first when it is healthy.
 
 **Format:**
 
 ```markdown
-**Last session:** [today]
+**Last session:** [current ISO timestamp]
 **Stopped at:** Phase [X] complete, ready to plan Phase [X+1]
 **Resume file:** —
-**Hostname:** —
-**Platform:** —
+**Hostname:** [current hostname]
+**Platform:** [current platform]
 ```
 
 **Step complete when:**
@@ -665,14 +659,16 @@ Update Session Continuity section in STATE.md to reflect transition completion.
 - [ ] Last session timestamp updated to current date and time
 - [ ] Stopped at describes phase completion and next phase
 - [ ] Resume file confirmed as `—` (transitions don't use resume files)
+- [ ] Hostname and Platform record the current machine identity
+- [ ] `GPD/state.json.session` matches the rendered Session Continuity block
 
 **Commit the session continuity update** (commit_transition already ran, so this is a follow-up commit):
 
 ```bash
-PRE_CHECK=$(gpd pre-commit-check --files GPD/STATE.md 2>&1) || true
+PRE_CHECK=$(gpd pre-commit-check --files GPD/STATE.md GPD/state.json 2>&1) || true
 echo "$PRE_CHECK"
 
-gpd commit "chore: update session continuity after phase-${CURRENT_PHASE} transition" --files GPD/STATE.md
+gpd commit "chore: update session continuity after phase-${CURRENT_PHASE} transition" --files GPD/STATE.md GPD/state.json
 ```
 
 </step>

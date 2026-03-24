@@ -463,12 +463,14 @@ None yet.
 
 ## Session Continuity
 
-**Last session:** [today's date]
+**Last session:** [current ISO timestamp]
 **Stopped at:** Project initialized (minimal)
 **Resume file:** —
-**Hostname:** —
-**Platform:** —
+**Hostname:** [current hostname]
+**Platform:** [current platform]
 ```
+
+Initialize matching continuity fields in `GPD/state.json.session` (`last_session`, `stopped_at`, `resume_file`, `hostname`, `platform`) so `/gpd:resume-work` sees the same state when JSON is healthy.
 
 **config.json** — Create with sensible defaults (no config questions asked):
 

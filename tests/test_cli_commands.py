@@ -188,9 +188,15 @@ def _invoke(*args: str, expect_ok: bool = True) -> None:
         assert result.exit_code == 0, f"gpd {' '.join(args)} failed:\n{result.output}"
 
 
-def _write_review_stage_artifacts(project_root: Path, artifact_names: tuple[str, ...] | None = None) -> None:
+def _write_review_stage_artifacts(
+    project_root: Path,
+    artifact_names: tuple[str, ...] | None = None,
+    *,
+    manuscript_path: str = "paper/main.tex",
+) -> None:
     review_dir = project_root / "GPD" / "review"
     review_dir.mkdir(parents=True, exist_ok=True)
+    written_claim_indexes: set[str] = set()
     for artifact_name in artifact_names or (
         "STAGE-reader.json",
         "STAGE-literature.json",
@@ -198,7 +204,85 @@ def _write_review_stage_artifacts(project_root: Path, artifact_names: tuple[str,
         "STAGE-physics.json",
         "STAGE-interestingness.json",
     ):
-        (review_dir / artifact_name).write_text("{}", encoding="utf-8")
+        artifact_path = review_dir / artifact_name
+        if not artifact_name.startswith("STAGE-") or not artifact_name.endswith(".json"):
+            artifact_path.write_text("{}", encoding="utf-8")
+            continue
+
+        artifact_stem = artifact_name[len("STAGE-") : -len(".json")]
+        if "-R" in artifact_stem:
+            stage_id, round_text = artifact_stem.rsplit("-R", 1)
+            if not round_text.isdigit():
+                artifact_path.write_text("{}", encoding="utf-8")
+                continue
+            round_number = int(round_text)
+            round_suffix = f"-R{round_number}"
+        else:
+            stage_id = artifact_stem
+            round_number = 1
+            round_suffix = ""
+
+        if stage_id not in {"reader", "literature", "math", "physics", "interestingness"}:
+            artifact_path.write_text("{}", encoding="utf-8")
+            continue
+
+        if round_suffix not in written_claim_indexes:
+            (review_dir / f"CLAIMS{round_suffix}.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "manuscript_path": manuscript_path,
+                        "manuscript_sha256": "a" * 64,
+                        "claims": [
+                            {
+                                "claim_id": "CLM-001",
+                                "claim_type": "main_result",
+                                "text": "The manuscript makes a test claim.",
+                                "artifact_path": manuscript_path,
+                                "section": "Conclusion",
+                                "equation_refs": [],
+                                "figure_refs": [],
+                                "supporting_artifacts": [],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            written_claim_indexes.add(round_suffix)
+
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "round": round_number,
+                    "stage_id": stage_id,
+                    "stage_kind": stage_id,
+                    "manuscript_path": manuscript_path,
+                    "manuscript_sha256": "a" * 64,
+                    "claims_reviewed": ["CLM-001"],
+                    "summary": f"{stage_id} review summary.",
+                    "strengths": ["Structured review artifact emitted."],
+                    "findings": [
+                        {
+                            "issue_id": "REF-001",
+                            "claim_ids": ["CLM-001"],
+                            "severity": "minor",
+                            "summary": "Minor concern.",
+                            "rationale": "",
+                            "evidence_refs": [f"{manuscript_path}#Conclusion"],
+                            "manuscript_locations": [],
+                            "support_status": "unclear",
+                            "blocking": False,
+                            "required_action": "",
+                        }
+                    ],
+                    "confidence": "medium",
+                    "recommendation_ceiling": "major_revision",
+                }
+            ),
+            encoding="utf-8",
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1474,6 +1558,22 @@ class TestReviewValidationCommands:
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["artifact_manifest"]["passed"] is False
 
+    def test_review_preflight_peer_review_strict_rejects_invalid_artifact_manifest(self, gpd_project: Path) -> None:
+        paper_dir = gpd_project / "paper"
+        (paper_dir / "ARTIFACT-MANIFEST.json").write_text("{not json", encoding="utf-8")
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "peer-review", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["artifact_manifest"]["passed"] is False
+        assert "could not parse artifact manifest" in checks["artifact_manifest"]["detail"]
+
     def test_review_preflight_peer_review_accepts_explicit_manuscript_path(self, gpd_project: Path) -> None:
         (gpd_project / "paper" / "main.tex").unlink()
 
@@ -1500,6 +1600,30 @@ class TestReviewValidationCommands:
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["manuscript"]["passed"] is True
         assert "submission/main.tex" in checks["manuscript"]["detail"]
+
+    def test_review_preflight_peer_review_strict_does_not_fall_back_to_gpd_paper_for_explicit_manuscript(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        review_dir = gpd_project / "submission"
+        review_dir.mkdir()
+        (review_dir / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\nSubmission manuscript.\n\\end{document}\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "peer-review", "submission/main.tex", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["artifact_manifest"]["passed"] is False
+        assert checks["bibliography_audit"]["passed"] is False
+        assert checks["reproducibility_manifest"]["passed"] is False
 
     def test_review_preflight_peer_review_accepts_explicit_manuscript_directory(self, gpd_project: Path) -> None:
         result = runner.invoke(
@@ -1563,6 +1687,36 @@ class TestReviewValidationCommands:
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["bibliography_audit"]["passed"] is True
         assert checks["bibliography_audit_clean"]["passed"] is False
+
+    def test_review_preflight_peer_review_strict_rejects_invalid_bibliography_audit_shape(self, gpd_project: Path) -> None:
+        paper_dir = gpd_project / "paper"
+        (paper_dir / "BIBLIOGRAPHY-AUDIT.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-03-10T00:00:00+00:00",
+                    "total_sources": "oops",
+                    "resolved_sources": 1,
+                    "partial_sources": 0,
+                    "unverified_sources": 0,
+                    "failed_sources": 0,
+                    "entries": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "peer-review", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["bibliography_audit"]["passed"] is True
+        assert checks["bibliography_audit_clean"]["passed"] is False
+        assert "bibliography audit is invalid" in checks["bibliography_audit_clean"]["detail"]
 
     def test_review_preflight_peer_review_strict_blocks_non_ready_reproducibility_manifest(self, gpd_project: Path) -> None:
         paper_dir = gpd_project / "paper"
@@ -2109,6 +2263,7 @@ class TestReviewValidationCommands:
                 "STAGE-physics-R2.json",
                 "STAGE-interestingness-R2.json",
             ),
+            manuscript_path="submission/main.tex",
         )
         decision_path = gpd_project / "referee-decision-r2.json"
         decision_path.write_text(
