@@ -361,7 +361,11 @@ def _has_literature_review(cwd: Path) -> bool:
 
 def _has_referee_report(cwd: Path) -> bool:
     """Check if any referee report files exist."""
-    candidate_dirs = (_planning_dir(cwd), _planning_dir(cwd) / "paper")
+    candidate_dirs = (
+        _planning_dir(cwd),
+        _planning_dir(cwd) / "paper",
+        cwd / "paper" / "referee-reports",
+    )
     for directory in candidate_dirs:
         if directory.is_dir() and any(f.name.startswith("REFEREE-REPORT") for f in directory.iterdir() if f.is_file()):
             return True

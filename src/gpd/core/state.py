@@ -962,7 +962,6 @@ def _normalize_state_schema(
     raw: dict | None,
     *,
     allow_project_contract_salvage: bool = True,
-    retain_blocking_project_contract_errors: bool = True,
 ) -> tuple[dict, list[str]]:
     """Normalize a raw state dict and capture integrity-affecting coercions."""
     if not raw:
@@ -991,7 +990,6 @@ def _normalize_state_schema(
         normalized,
         integrity_issues,
         allow_project_contract_salvage=allow_project_contract_salvage,
-        retain_blocking_project_contract_errors=retain_blocking_project_contract_errors,
     )
 
     try:
@@ -1029,14 +1027,12 @@ def _normalize_state_schema_with_backup_project_contract(
     backup_raw: dict | None,
     *,
     allow_project_contract_salvage: bool = True,
-    retain_blocking_project_contract_errors: bool = True,
 ) -> tuple[dict, list[str], bool]:
     """Normalize state and recover backup state when the primary root is unreadable."""
 
     normalized, integrity_issues = _normalize_state_schema(
         raw,
         allow_project_contract_salvage=allow_project_contract_salvage,
-        retain_blocking_project_contract_errors=retain_blocking_project_contract_errors,
     )
     recovered_root_from_backup = False
 
@@ -1046,7 +1042,6 @@ def _normalize_state_schema_with_backup_project_contract(
         backup_normalized, backup_issues = _normalize_state_schema(
             backup_raw,
             allow_project_contract_salvage=allow_project_contract_salvage,
-            retain_blocking_project_contract_errors=retain_blocking_project_contract_errors,
         )
     if not isinstance(raw, dict) and backup_normalized is not None and not backup_issues:
         normalized = backup_normalized
@@ -1101,7 +1096,6 @@ def _normalize_project_contract_section(
     integrity_issues: list[str],
     *,
     allow_project_contract_salvage: bool,
-    retain_blocking_project_contract_errors: bool = True,
 ) -> object:
     if value is None or not isinstance(value, dict):
         return value
@@ -1201,14 +1195,12 @@ def _salvage_state_sections(
     integrity_issues: list[str],
     *,
     allow_project_contract_salvage: bool,
-    retain_blocking_project_contract_errors: bool,
 ) -> dict[str, object]:
     if normalized.get("project_contract") is not None:
         normalized["project_contract"] = _normalize_project_contract_section(
             normalized.get("project_contract"),
             integrity_issues,
             allow_project_contract_salvage=allow_project_contract_salvage,
-            retain_blocking_project_contract_errors=retain_blocking_project_contract_errors,
         )
     if normalized.get("intermediate_results") is not None:
         normalized["intermediate_results"] = _normalize_intermediate_results_section(
@@ -1238,7 +1230,6 @@ def _normalize_state_for_persistence(raw: dict | None) -> dict:
     normalized, _issues = _normalize_state_schema(
         raw,
         allow_project_contract_salvage=False,
-        retain_blocking_project_contract_errors=False,
     )
     return normalized
 
@@ -1859,9 +1850,10 @@ def _write_state_pair_locked(cwd: Path, *, state_obj: dict, md_content: str) -> 
         if not isinstance(parsed, dict):
             return None
         project_contract = parsed.get("project_contract")
-        if contract_from_data(project_contract) is None:
+        contract = contract_from_data(project_contract)
+        if contract is None:
             return None
-        return copy.deepcopy(project_contract)
+        return contract.model_dump(mode="python")
 
     if normalized.get("project_contract") is None:
         preserved_contract = _valid_project_contract_from_state_text(json_backup)
@@ -1995,7 +1987,6 @@ def _load_state_json_with_integrity_issues(
                     parsed,
                     backup_parsed,
                     allow_project_contract_salvage=allow_project_contract_salvage,
-                    retain_blocking_project_contract_errors=False,
                 )
             )
             normalized, contract_integrity_issues = _drop_invalid_project_contract(normalized)
@@ -2157,7 +2148,6 @@ def _load_state_json_from_backup(
                 bak_parsed,
                 None,
                 allow_project_contract_salvage=allow_project_contract_salvage,
-                retain_blocking_project_contract_errors=False,
             )
         )
         restored, contract_integrity_issues = _drop_invalid_project_contract(restored)

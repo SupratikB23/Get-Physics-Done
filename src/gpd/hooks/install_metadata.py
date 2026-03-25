@@ -105,6 +105,9 @@ def installed_update_command(config_dir: Path) -> str | None:
     runtime = manifest.get("runtime")
     if not isinstance(runtime, str) or not runtime.strip():
         return None
+    normalized_runtime = normalize_runtime_name(runtime.strip())
+    if normalized_runtime is None:
+        return None
 
     scope = manifest.get("install_scope")
     if scope not in {"local", "global"}:
@@ -122,12 +125,12 @@ def installed_update_command(config_dir: Path) -> str | None:
         install_target = Path(install_target_value)
 
     try:
-        get_adapter(runtime)
+        get_adapter(normalized_runtime)
     except KeyError:
         return None
 
     return build_runtime_install_repair_command(
-        runtime,
+        normalized_runtime,
         install_scope=scope,
         target_dir=install_target,
         explicit_target=explicit_target,

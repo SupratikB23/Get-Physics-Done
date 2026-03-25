@@ -194,6 +194,30 @@ def test_installed_update_command_uses_manifest_runtime_metadata_for_custom_targ
     assert str(explicit_target) in command
 
 
+def test_installed_update_command_normalizes_manifest_runtime_alias(tmp_path: Path) -> None:
+    from gpd.hooks.install_metadata import installed_update_command
+
+    explicit_target = tmp_path / "custom-runtime-dir"
+    explicit_target.mkdir()
+    (explicit_target / "gpd-file-manifest.json").write_text(
+        json.dumps(
+            {
+                "install_scope": "local",
+                "runtime": "Codex",
+                "explicit_target": True,
+                "install_target_dir": str(explicit_target),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    command = installed_update_command(explicit_target)
+
+    assert command is not None
+    assert "--codex" in command
+    assert "--target-dir" in command
+
+
 @pytest.mark.parametrize("runtime_arg", ["Claude Code", "claude"])
 def test_runtime_cli_accepts_display_name_and_alias_runtime_argument(
     tmp_path: Path,

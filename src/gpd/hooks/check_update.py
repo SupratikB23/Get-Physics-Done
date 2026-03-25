@@ -88,6 +88,15 @@ def _version_files() -> list[Path]:
 
 
 def _read_installed_version() -> str:
+    self_config_dir = _self_config_dir()
+    if self_config_dir is not None:
+        version_file = self_config_dir / GPD_INSTALL_DIR_NAME / "VERSION"
+        try:
+            if version_file.exists():
+                return version_file.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            _debug(f"Failed to read self-owned VERSION file {version_file}: {exc}")
+
     # Primary: importlib.metadata (single source of truth)
     try:
         from gpd.version import __version__

@@ -156,6 +156,20 @@ class TestReadInstalledVersion:
             version = _read_installed_version()
         assert version == "3.5.1"
 
+    def test_self_owned_install_version_file_beats_imported_package_version(self, tmp_path: Path) -> None:
+        explicit_target = tmp_path / "custom-runtime-dir"
+        hook_path = explicit_target / "hooks" / "check_update.py"
+        hook_path.parent.mkdir(parents=True)
+        hook_path.write_text("# hook\n", encoding="utf-8")
+        _mark_complete_install(explicit_target, runtime="codex")
+        (explicit_target / "get-physics-done" / "VERSION").write_text("7.7.7\n", encoding="utf-8")
+
+        with (
+            patch("gpd.version.__version__", "9.9.9"),
+            patch("gpd.hooks.check_update.__file__", str(hook_path)),
+        ):
+            assert _read_installed_version() == "7.7.7"
+
     def test_fallback_to_version_file(self, tmp_path: Path) -> None:
         """When metadata returns dev version, falls back to VERSION file."""
         version_file = tmp_path / "VERSION"

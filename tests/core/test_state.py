@@ -883,6 +883,27 @@ def test_save_state_markdown_preserves_last_valid_backup_project_contract_when_p
     assert backup["project_contract"]["references"][0]["id"] == "ref-benchmark"
 
 
+def test_save_state_markdown_preserves_backup_project_contract_in_canonical_form(tmp_path: Path) -> None:
+    state = default_state_dict()
+    state["position"]["status"] = "Executing"
+    save_state_json(tmp_path, state)
+
+    layout = ProjectLayout(tmp_path)
+    persisted = json.loads(layout.state_json.read_text(encoding="utf-8"))
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["claims"][0]["notes"] = "warning-only drift"
+    persisted["project_contract"] = contract
+    layout.state_json.write_text(json.dumps(persisted, indent=2) + "\n", encoding="utf-8")
+
+    md_content = layout.state_md.read_text(encoding="utf-8").replace("**Status:** Executing", "**Status:** Paused", 1)
+    result = save_state_markdown(tmp_path, md_content)
+
+    saved = json.loads(layout.state_json.read_text(encoding="utf-8"))
+    assert result["project_contract"] is not None
+    assert saved["project_contract"] is not None
+    assert "notes" not in saved["project_contract"]["claims"][0]
+
+
 def test_save_state_markdown_does_not_promote_backup_project_contract_when_primary_contract_is_blocked(
     tmp_path: Path,
 ):

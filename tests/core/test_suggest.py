@@ -499,6 +499,21 @@ def test_referee_report_in_planning_root_suggests_response(tmp_path: Path) -> No
     assert "arxiv-submission" not in actions  # referee response takes precedence
 
 
+def test_referee_report_in_paper_referee_reports_dir_suggests_response(tmp_path: Path) -> None:
+    root = _setup_project(tmp_path)
+    _create_roadmap(root)
+    reports_dir = root / "paper" / "referee-reports"
+    reports_dir.mkdir(parents=True)
+    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n")
+    (reports_dir / "REFEREE-REPORT-1.md").write_text("Major revision needed.\n")
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "respond-to-referees" in actions
+    assert "peer-review" not in actions
+
+
 def test_literature_review_suggested_when_all_complete(tmp_path: Path) -> None:
     """All complete + no literature review suggests one."""
     root = _setup_project(tmp_path)

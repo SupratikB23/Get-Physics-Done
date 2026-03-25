@@ -849,6 +849,81 @@ def test_runtime_cli_rejects_corrupt_manifest_before_dispatch(
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_rejects_missing_manifest_before_dispatch(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+    descriptor,
+) -> None:
+    config_dir = tmp_path / descriptor.config_dir_name
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
+    (config_dir / "gpd-file-manifest.json").unlink()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
+    monkeypatch.setattr(
+        "gpd.cli.entrypoint",
+        lambda: (_ for _ in ()).throw(AssertionError("entrypoint should not run for manifestless installs")),
+    )
+
+    exit_code = main(
+        [
+            "--runtime",
+            descriptor.runtime_name,
+            "--config-dir",
+            f"./{descriptor.config_dir_name}",
+            "--install-scope",
+            "local",
+            "state",
+            "load",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 127
+    assert "GPD runtime bridge rejected missing install manifest" in captured.err
+    assert "`gpd-file-manifest.json`" in captured.err
+
+
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_rejects_manifestless_ancestor_local_candidate_before_dispatch(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+    descriptor,
+) -> None:
+    config_dir = tmp_path / descriptor.config_dir_name
+    _mark_complete_install(config_dir, runtime=descriptor.runtime_name)
+    (config_dir / "gpd-file-manifest.json").unlink()
+    nested_cwd = tmp_path / "research" / "notes"
+    nested_cwd.mkdir(parents=True)
+    monkeypatch.chdir(nested_cwd)
+    monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
+    monkeypatch.setattr(
+        "gpd.cli.entrypoint",
+        lambda: (_ for _ in ()).throw(AssertionError("entrypoint should not run for manifestless ancestor installs")),
+    )
+
+    exit_code = main(
+        [
+            "--runtime",
+            descriptor.runtime_name,
+            "--config-dir",
+            f"./{descriptor.config_dir_name}",
+            "--install-scope",
+            "local",
+            "state",
+            "load",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 127
+    assert "GPD runtime bridge rejected missing install manifest" in captured.err
+    assert str(config_dir) in captured.err
+    assert str(nested_cwd / descriptor.config_dir_name) not in captured.err
+
+
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_preserves_custom_global_target_in_untrusted_manifest_repair_guidance(
     monkeypatch,
     tmp_path: Path,

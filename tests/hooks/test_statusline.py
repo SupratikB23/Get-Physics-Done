@@ -1096,6 +1096,25 @@ class TestMain:
 
         assert "[workspace]" in captured.getvalue()
 
+    def test_workspace_from_payload_uses_merged_policy_before_workspace_resolution(self, tmp_path: Path) -> None:
+        process_cwd = tmp_path / "process-cwd"
+        process_cwd.mkdir()
+        _mark_complete_install(process_cwd / ".codex", runtime="codex")
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        _mark_complete_install(workspace / ".claude", runtime="claude-code")
+
+        home = tmp_path / "home"
+        home.mkdir()
+
+        payload = {"workspace": {"current_dir": str(workspace)}}
+        with (
+            patch("gpd.hooks.runtime_detect.Path.cwd", return_value=process_cwd),
+            patch("gpd.hooks.runtime_detect.Path.home", return_value=home),
+        ):
+            assert _workspace_from_payload(payload) == str(workspace)
+
     def test_main_uses_project_root_for_project_state_helpers_when_workspace_is_nested_mapping(self, tmp_path: Path) -> None:
         project = tmp_path / "project"
         nested = project / "src" / "notes"

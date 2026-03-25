@@ -311,7 +311,9 @@ def _read_current_task(session_id: str, workspace_dir: str | None = None) -> str
 
 def _workspace_from_payload(data: dict[str, object], *, cwd: str | None = None) -> str:
     """Extract the workspace directory from a runtime hook payload."""
-    hook_payload = _hook_payload_policy(cwd) if cwd else _hook_payload_policy()
+    from gpd.adapters.runtime_catalog import get_hook_payload_policy
+
+    hook_payload = _hook_payload_policy(cwd) if cwd else get_hook_payload_policy()
     workspace_value = data.get("workspace")
     raw_workspace = (
         workspace_value

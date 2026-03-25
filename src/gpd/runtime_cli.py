@@ -220,6 +220,17 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str, cli_c
     return True
 
 
+def _has_managed_install_markers(config_dir: Path) -> bool:
+    """Return whether *config_dir* already looks like a managed install surface."""
+    return any(
+        (
+            (config_dir / GPD_INSTALL_DIR_NAME).is_dir(),
+            (config_dir / COMMANDS_DIR_NAME / "gpd").is_dir(),
+            (config_dir / FLAT_COMMANDS_DIR_NAME).is_dir(),
+        )
+    )
+
+
 def _resolve_local_config_dir(raw_value: str, *, runtime: str, cli_cwd: Path) -> Path:
     """Resolve a local config dir reference against the nearest matching ancestor."""
     relative = Path(raw_value).expanduser()
@@ -431,6 +442,36 @@ def _missing_manifest_runtime_error_message(
     )
 
 
+def _missing_manifest_error_message(
+    *,
+    runtime: str,
+    raw_config_dir: str,
+    config_dir: Path,
+    install_scope: str,
+    explicit_target: bool,
+    cli_cwd: Path,
+) -> str:
+    """Return repair guidance when a managed install surface has no manifest."""
+    repair_command = build_runtime_install_repair_command(
+        runtime,
+        install_scope=install_scope,
+        target_dir=config_dir,
+        explicit_target=_uses_effective_explicit_target(
+            runtime=runtime,
+            raw_config_dir=raw_config_dir,
+            config_dir=config_dir,
+            install_scope=install_scope,
+            explicit_target=explicit_target,
+            cli_cwd=cli_cwd,
+        ),
+    )
+    return (
+        f"GPD runtime bridge rejected missing install manifest at `{config_dir}`.\n"
+        "Managed installs must include `gpd-file-manifest.json` so runtime identity stays authoritative.\n"
+        f"Repair or reinstall with: `{repair_command}`\n"
+    )
+
+
 def _untrusted_manifest_error_message(
     *,
     runtime: str,
@@ -485,6 +526,18 @@ def main(argv: list[str] | None = None) -> int:
     manifest_install_scope = manifest_payload.get("install_scope")
     if not isinstance(manifest_install_scope, str):
         manifest_install_scope = None
+    if manifest_status == "missing" and _has_managed_install_markers(config_dir):
+        sys.stderr.write(
+            _missing_manifest_error_message(
+                runtime=runtime,
+                raw_config_dir=options.config_dir,
+                config_dir=config_dir,
+                install_scope=options.install_scope,
+                explicit_target=bool(options.explicit_target),
+                cli_cwd=cli_cwd,
+            )
+        )
+        return 127
     if manifest_status in {"corrupt", "invalid"}:
         sys.stderr.write(
             _untrusted_manifest_error_message(
