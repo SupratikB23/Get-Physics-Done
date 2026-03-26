@@ -7,7 +7,7 @@ The final section of this README keeps the full checked-in repository interdepen
 ## Repository Interdependency Graph
 
 <!-- repo-graph-generated-on:start -->
-Generated on `2026-03-25` from the current worktree.
+Generated on `2026-03-26` from the current worktree.
 <!-- repo-graph-generated-on:end -->
 
 ## Status
@@ -26,7 +26,7 @@ This graph therefore includes:
 
 <!-- repo-graph-scope:start -->
 
-- Live repo files analyzed in the current tree: `680`
+- Live repo files analyzed in the current tree: `681`
 - Python files under `src/` and `tests/`: `241`
 - `src/gpd/commands/*.md`: `61`
 - `src/gpd/agents/*.md`: `23`
@@ -216,13 +216,13 @@ flowchart TD
   `authority`
   Locked dependency resolution surface for CI.
 
-- `.github/workflows/test.yml -> actions/checkout@v4`
+- `.github/workflows/test.yml -> actions/checkout@v5`
   `external-service`
 
-- `.github/workflows/test.yml -> actions/setup-python@v5`
+- `.github/workflows/test.yml -> actions/setup-python@v6`
   `external-service`
 
-- `.github/workflows/test.yml -> astral-sh/setup-uv@v4`
+- `.github/workflows/test.yml -> astral-sh/setup-uv@v7`
   `external-service`
 
 - `.github/pull_request_template.md -> src/**`
