@@ -8,7 +8,6 @@ build/
 .venv/
 .env
 *.log
-GPD/
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/

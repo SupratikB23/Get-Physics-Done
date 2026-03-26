@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import gpd.hooks.check_update as check_update
 from gpd.adapters import get_adapter
 from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.hooks.check_update import (
@@ -79,11 +80,20 @@ def _mark_complete_install(config_dir: Path, *, runtime: str, install_scope: str
             artifact.write_text("{}\n" if artifact.suffix == ".json" else "# test\n", encoding="utf-8")
         else:
             artifact.mkdir(parents=True, exist_ok=True)
-    manifest: dict[str, object] = {"install_scope": install_scope, "runtime": runtime}
+    explicit_target = config_dir.name != adapter.config_dir_name
+    manifest: dict[str, object] = {
+        "install_scope": install_scope,
+        "runtime": runtime,
+        "explicit_target": explicit_target,
+        "install_target_dir": str(config_dir),
+    }
     if runtime == "codex":
         skills_dir = config_dir.parent / ".agents" / "skills"
-        (skills_dir / "gpd-help").mkdir(parents=True, exist_ok=True)
+        help_skill_dir = skills_dir / "gpd-help"
+        help_skill_dir.mkdir(parents=True, exist_ok=True)
+        (help_skill_dir / "SKILL.md").write_text("# test\n", encoding="utf-8")
         manifest["codex_skills_dir"] = str(skills_dir)
+        manifest["codex_generated_skill_dirs"] = ["gpd-help"]
     (config_dir / "gpd-file-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 # ─── _is_older_than ────────────────────────────────────────────────────────
@@ -127,6 +137,13 @@ class TestIsOlderThan:
         assert _is_older_than("1.2.3.post1", "1.2.3") is False
 
 
+def test_version_comparison_does_not_depend_on_packaging_modules() -> None:
+    source = inspect.getsource(check_update)
+
+    assert "packaging.version" not in source
+    assert "pip._vendor.packaging" not in source
+
+
 # ─── _read_installed_version ───────────────────────────────────────────────
 
 
@@ -138,6 +155,20 @@ class TestReadInstalledVersion:
         with patch("gpd.version.__version__", "3.5.1"):
             version = _read_installed_version()
         assert version == "3.5.1"
+
+    def test_self_owned_install_version_file_beats_imported_package_version(self, tmp_path: Path) -> None:
+        explicit_target = tmp_path / "custom-runtime-dir"
+        hook_path = explicit_target / "hooks" / "check_update.py"
+        hook_path.parent.mkdir(parents=True)
+        hook_path.write_text("# hook\n", encoding="utf-8")
+        _mark_complete_install(explicit_target, runtime="codex")
+        (explicit_target / "get-physics-done" / "VERSION").write_text("7.7.7\n", encoding="utf-8")
+
+        with (
+            patch("gpd.version.__version__", "9.9.9"),
+            patch("gpd.hooks.check_update.__file__", str(hook_path)),
+        ):
+            assert _read_installed_version() == "7.7.7"
 
     def test_fallback_to_version_file(self, tmp_path: Path) -> None:
         """When metadata returns dev version, falls back to VERSION file."""
@@ -172,6 +203,7 @@ class TestReadInstalledVersion:
         codex_version.parent.mkdir(parents=True)
         claude_version.write_text("1.0.0\n")
         codex_version.write_text("2.0.0\n")
+        _mark_complete_install(codex_version.parent.parent, runtime="codex")
 
         with (
             patch("gpd.version.__version__", "0.0.0-dev"),
@@ -198,6 +230,29 @@ class TestReadInstalledVersion:
             patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="claude-code"),
             patch("gpd.hooks.runtime_detect.Path.cwd", return_value=tmp_path),
             patch("gpd.hooks.runtime_detect.Path.home", return_value=home),
+        ):
+            assert _read_installed_version() == "2.0.0"
+
+    def test_version_file_fallback_ignores_manifestless_candidate_when_authoritative_install_exists(
+        self, tmp_path: Path
+    ) -> None:
+        stale_install_dir = tmp_path / ".codex" / "get-physics-done"
+        trusted_install_dir = tmp_path / ".claude" / "get-physics-done"
+        stale_version = stale_install_dir / "VERSION"
+        trusted_version = trusted_install_dir / "VERSION"
+        stale_version.parent.mkdir(parents=True, exist_ok=True)
+        trusted_version.parent.mkdir(parents=True, exist_ok=True)
+        stale_version.write_text("9.9.9\n", encoding="utf-8")
+        trusted_version.write_text("2.0.0\n", encoding="utf-8")
+        _mark_complete_install(trusted_install_dir.parent, runtime="claude-code")
+
+        with (
+            patch("gpd.version.__version__", "0.0.0-dev"),
+            patch("gpd.hooks.check_update._self_config_dir", return_value=None),
+            patch(
+                "gpd.hooks.runtime_detect.get_gpd_install_dirs",
+                return_value=[stale_install_dir, trusted_install_dir],
+            ),
         ):
             assert _read_installed_version() == "2.0.0"
 
@@ -232,6 +287,15 @@ class TestReadInstalledVersion:
         assert "_local_runtime_dir" not in source
         assert "_global_runtime_dir" not in source
         assert "get_gpd_install_dirs" in source
+
+
+def test_worker_cache_file_arg_runs_do_check_directly(tmp_path: Path) -> None:
+    cache_file = tmp_path / "cache.json"
+
+    with patch("gpd.hooks.check_update._do_check") as mock_do_check:
+        main(["--cache-file", str(cache_file)])
+
+    mock_do_check.assert_called_once_with(cache_file)
 
 
 # ─── _do_check — npm registry unreachable ────────────────────────────────

@@ -40,7 +40,6 @@ from gpd.core.constants import (
     STANDALONE_RESEARCH,
     STANDALONE_VALIDATION,
     STATE_MD_FILENAME,
-    SUMMARY_SUFFIX,
     TODOS_DIR_NAME,
     VALIDATION_SUFFIX,
     VERIFICATION_SUFFIX,
@@ -53,6 +52,7 @@ from gpd.core.contract_validation import (
     validate_project_contract,
 )
 from gpd.core.errors import ValidationError
+from gpd.core.phases import _milestone_completion_snapshot
 from gpd.core.protocol_bundles import render_protocol_bundle_context, select_protocol_bundles
 from gpd.core.reference_ingestion import ingest_reference_artifacts
 from gpd.core.state import EM_DASH, _current_machine_identity, _load_state_json_with_integrity_issues
@@ -61,6 +61,7 @@ from gpd.core.utils import (
     generate_slug as _generate_slug_impl,
 )
 from gpd.core.utils import is_phase_complete as _is_phase_complete
+from gpd.core.utils import matching_phase_artifact_count as _matching_phase_artifact_count
 from gpd.core.utils import phase_normalize as _phase_normalize_impl
 from gpd.core.utils import phase_sort_key as _phase_sort_key
 from gpd.core.utils import safe_read_file as _safe_read_file
@@ -261,14 +262,6 @@ def _load_raw_project_contract_payload(cwd: Path) -> tuple[Path, object] | None:
     if raw_contract is None:
         return source_path, None
     if not isinstance(raw_contract, dict):
-        return source_path, raw_contract
-
-    normalized_contract, schema_findings = salvage_project_contract(raw_contract)
-    _schema_warnings, schema_errors = _split_project_contract_schema_findings(
-        schema_findings,
-        allow_singleton_defaults=False,
-    )
-    if schema_errors or normalized_contract is None:
         return source_path, raw_contract
     return source_path, raw_contract
 
@@ -1856,29 +1849,17 @@ def init_milestone_op(cwd: Path) -> dict:
     """Assemble context for milestone operations (complete, archive, etc.)."""
     config = load_config(cwd)
     milestone = _try_get_milestone_info(cwd)
+    reference_runtime_context = _build_reference_runtime_context(cwd)
 
-    # Count phases
-    phases_dir = cwd / PLANNING_DIR_NAME / PHASES_DIR_NAME
-    phase_count = 0
-    completed_phases = 0
-    try:
-        for d in sorted(phases_dir.iterdir()):
-            if not d.is_dir():
-                continue
-            phase_count += 1
-            phase_files = [f.name for f in d.iterdir() if f.is_file()]
-            plans = [f for f in phase_files if f.endswith(PLAN_SUFFIX) or f == STANDALONE_PLAN]
-            summaries = [f for f in phase_files if f.endswith(SUMMARY_SUFFIX)]
-            if _is_phase_complete(len(plans), len(summaries)):
-                completed_phases += 1
-    except FileNotFoundError:
-        pass
+    milestone_snapshot = _milestone_completion_snapshot(cwd)
 
     # Check archived milestones
     milestones_dir = cwd / PLANNING_DIR_NAME / MILESTONES_DIR_NAME
     archived_milestones: list[str] = []
     try:
-        archived_milestones = sorted(d.name for d in milestones_dir.iterdir() if d.is_dir())
+        archived_milestones = sorted(
+            entry.name for entry in milestones_dir.iterdir() if entry.is_dir() or entry.is_file()
+        )
     except FileNotFoundError:
         pass
 
@@ -1895,9 +1876,9 @@ def init_milestone_op(cwd: Path) -> dict:
         "milestone_name": milestone["name"],
         "milestone_slug": _generate_slug(milestone["name"]),
         # Phase counts
-        "phase_count": phase_count,
-        "completed_phases": completed_phases,
-        "all_phases_complete": phase_count > 0 and phase_count == completed_phases,
+        "phase_count": milestone_snapshot.phase_count,
+        "completed_phases": milestone_snapshot.completed_phases,
+        "all_phases_complete": milestone_snapshot.all_phases_complete,
         # Archive
         "archived_milestones": archived_milestones,
         "archive_count": len(archived_milestones),
@@ -1909,6 +1890,7 @@ def init_milestone_op(cwd: Path) -> dict:
         "phases_dir_exists": _path_exists(cwd, f"{PLANNING_DIR_NAME}/{PHASES_DIR_NAME}"),
         # Platform
         "platform": _detect_platform(cwd),
+        **reference_runtime_context,
     }
 
 
@@ -1959,7 +1941,8 @@ def init_progress(cwd: Path, includes: set[str] | None = None) -> dict:
     milestone = _try_get_milestone_info(cwd)
 
     # Analyze phases
-    phases_dir = cwd / PLANNING_DIR_NAME / PHASES_DIR_NAME
+    layout = ProjectLayout(cwd)
+    phases_dir = layout.phases_dir
     phases: list[dict[str, object]] = []
     current_phase: dict[str, object] | None = None
     next_phase: dict[str, object] | None = None
@@ -1978,10 +1961,12 @@ def init_progress(cwd: Path, includes: set[str] | None = None) -> dict:
             phase_files = [f.name for f in phase_path.iterdir() if f.is_file()]
 
             plans = [f for f in phase_files if f.endswith(PLAN_SUFFIX) or f == STANDALONE_PLAN]
-            summaries = [f for f in phase_files if f.endswith(SUMMARY_SUFFIX)]
+            summaries = [f for f in phase_files if layout.is_summary_file(f)]
             has_research = any(f.endswith(RESEARCH_SUFFIX) or f == STANDALONE_RESEARCH for f in phase_files)
 
-            if _is_phase_complete(len(plans), len(summaries)):
+            summary_count = _matching_phase_artifact_count(plans, summaries)
+
+            if _is_phase_complete(len(plans), summary_count):
                 status = "complete"
             elif plans:
                 status = "in_progress"
@@ -1996,7 +1981,7 @@ def init_progress(cwd: Path, includes: set[str] | None = None) -> dict:
                 "directory": f"{PLANNING_DIR_NAME}/{PHASES_DIR_NAME}/{dir_name}",
                 "status": status,
                 "plan_count": len(plans),
-                "summary_count": len(summaries),
+                "summary_count": summary_count,
                 "has_research": has_research,
             }
             phases.append(phase_entry)

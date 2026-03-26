@@ -11,21 +11,55 @@ from pathlib import Path
 
 from gpd.adapters.install_utils import CACHE_DIR_NAME, GPD_INSTALL_DIR_NAME, UPDATE_CACHE_FILENAME
 from gpd.core.constants import ENV_GPD_DEBUG, PLANNING_DIR_NAME
-
-try:
-    from packaging.version import InvalidVersion, Version
-except ImportError:
-    try:
-        from pip._vendor.packaging.version import InvalidVersion, Version
-    except ImportError:
-        InvalidVersion = ValueError
-        Version = None
+from gpd.hooks.install_metadata import config_dir_has_complete_install
 
 SECONDS_PER_HOUR = 3600
 UPDATE_CHECK_TTL_SECONDS = 12 * SECONDS_PER_HOUR
 UPDATE_CHECK_INFLIGHT_TTL_SECONDS = 5 * 60
 NPM_PACKAGE_NAME = "get-physics-done"
 NPM_LATEST_RELEASE_URL = f"https://registry.npmjs.org/{NPM_PACKAGE_NAME}/latest"
+_VERSION_RELEASE_RE = re.compile(r"^\s*v?(?P<release>\d+(?:\.\d+)*)(?P<suffix>.*)$")
+
+
+def _trim_trailing_zero_segments(parts: tuple[int, ...]) -> tuple[int, ...]:
+    trimmed = parts
+    while len(trimmed) > 1 and trimmed[-1] == 0:
+        trimmed = trimmed[:-1]
+    return trimmed
+
+
+def _suffix_rank(suffix: str) -> tuple[int, int]:
+    normalized = suffix.lower().split("+", 1)[0]
+    if not normalized:
+        return 1, 0
+
+    def _extract_number(tag: str) -> int:
+        match = re.search(rf"{re.escape(tag)}(?:[._-])?(\d+)", normalized)
+        return int(match.group(1)) if match is not None and match.group(1) else 0
+
+    if "post" in normalized:
+        return 2, _extract_number("post")
+    if "dev" in normalized:
+        return -3, _extract_number("dev")
+    if "alpha" in normalized or re.search(r"(?:^|[._-])a\d*", normalized):
+        return -2, _extract_number("alpha") or _extract_number("a")
+    if "beta" in normalized or re.search(r"(?:^|[._-])b\d*", normalized):
+        return -1, _extract_number("beta") or _extract_number("b")
+    if "rc" in normalized:
+        return 0, _extract_number("rc")
+    return -1, 0
+
+
+def _version_key(version: str) -> tuple[tuple[int, ...], int, int, str]:
+    normalized = version.strip().lstrip("v").split("+", 1)[0]
+    match = _VERSION_RELEASE_RE.match(normalized)
+    if match is None:
+        return ((), -1, 0, normalized.casefold())
+
+    release = tuple(int(part) for part in match.group("release").split("."))
+    release = _trim_trailing_zero_segments(release) or (0,)
+    rank, number = _suffix_rank(match.group("suffix"))
+    return (release, rank, number, "")
 
 
 def _debug(msg: str) -> None:
@@ -35,12 +69,27 @@ def _debug(msg: str) -> None:
 
 def _self_config_dir() -> Path | None:
     """Return the installed runtime config dir when this hook runs from one."""
-    from gpd.hooks.install_metadata import config_dir_has_complete_install
+    from gpd.hooks.install_context import detect_self_owned_install
 
-    candidate = Path(__file__).resolve().parent.parent
-    if config_dir_has_complete_install(candidate):
-        return candidate
+    self_install = detect_self_owned_install(__file__)
+    return None if self_install is None else self_install.config_dir
+
+
+def _parse_worker_cache_file(argv: list[str]) -> Path | None:
+    """Return the cache file for worker-mode invocations."""
+    if len(argv) == 2 and argv[0] == "--cache-file" and argv[1]:
+        return Path(argv[1])
     return None
+
+
+def _background_worker_command(cache_file: Path) -> list[str]:
+    """Return the background-worker command anchored to the current hook script."""
+    return [
+        sys.executable,
+        str(Path(__file__).resolve(strict=False)),
+        "--cache-file",
+        str(cache_file),
+    ]
 
 
 def _version_files() -> list[Path]:
@@ -51,10 +100,26 @@ def _version_files() -> list[Path]:
     if self_config_dir is not None:
         return [self_config_dir / GPD_INSTALL_DIR_NAME / "VERSION"]
 
-    return [install_dir / "VERSION" for install_dir in get_gpd_install_dirs(prefer_active=True)]
+    version_files: list[Path] = []
+    for install_dir in get_gpd_install_dirs(prefer_active=True):
+        config_dir = install_dir.parent
+        if not config_dir_has_complete_install(config_dir):
+            _debug(f"Skipping non-authoritative VERSION file candidate {install_dir / 'VERSION'}")
+            continue
+        version_files.append(install_dir / "VERSION")
+    return version_files
 
 
 def _read_installed_version() -> str:
+    self_config_dir = _self_config_dir()
+    if self_config_dir is not None:
+        version_file = self_config_dir / GPD_INSTALL_DIR_NAME / "VERSION"
+        try:
+            if version_file.exists():
+                return version_file.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            _debug(f"Failed to read self-owned VERSION file {version_file}: {exc}")
+
     # Primary: importlib.metadata (single source of truth)
     try:
         from gpd.version import __version__
@@ -76,32 +141,7 @@ def _read_installed_version() -> str:
 
 def _is_older_than(a: str, b: str) -> bool:
     """Return True if version *a* is strictly older than *b*."""
-    normalized_a = a.strip().lstrip("v")
-    normalized_b = b.strip().lstrip("v")
-
-    if Version is not None:
-        try:
-            return Version(normalized_a) < Version(normalized_b)
-        except InvalidVersion as exc:
-            _debug(f"Version parsing failed for {a!r} vs {b!r}: {exc}")
-
-    def parts(v: str) -> tuple[int, int, int, int]:
-        numeric_parts: list[int] = []
-        for segment in v.split("."):
-            digits = []
-            for ch in segment:
-                if not ch.isdigit():
-                    break
-                digits.append(ch)
-            numeric_parts.append(int("".join(digits)) if digits else 0)
-            if len(numeric_parts) == 3:
-                break
-        numeric_parts.extend([0] * (3 - len(numeric_parts)))
-        # Pre-release versions (dev/alpha/beta/rc) sort before final release
-        is_pre = -1 if re.search(r"(?:dev|alpha|beta|rc|\d+[ab]\d+)", v) else 0
-        return (numeric_parts[0], numeric_parts[1], numeric_parts[2], is_pre)
-
-    return parts(normalized_a) < parts(normalized_b)
+    return _version_key(a) < _version_key(b)
 
 
 def _do_check(cache_file: Path) -> None:
@@ -206,8 +246,14 @@ def _clear_inflight_marker(cache_file: Path) -> None:
         return
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Entry point: throttle-check for updates, spawn background worker if needed."""
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    worker_cache_file = _parse_worker_cache_file(raw_argv)
+    if worker_cache_file is not None:
+        _do_check(worker_cache_file)
+        return
+
     from gpd.hooks.runtime_detect import (
         ALL_RUNTIMES,
         RUNTIME_UNKNOWN,
@@ -287,12 +333,7 @@ def main() -> None:
     # Spawn background child to do the actual check
     try:
         subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                "import sys; from gpd.hooks.check_update import _do_check; from pathlib import Path; _do_check(Path(sys.argv[1]))",
-                str(cache_file),
-            ],
+            _background_worker_command(cache_file),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

@@ -19,14 +19,16 @@ from pathlib import Path
 
 from gpd.adapters import get_adapter
 from gpd.adapters.install_utils import (
+    AGENTS_DIR_NAME,
     COMMANDS_DIR_NAME,
     FLAT_COMMANDS_DIR_NAME,
     GPD_INSTALL_DIR_NAME,
+    HOOKS_DIR_NAME,
     build_runtime_install_repair_command,
 )
-from gpd.adapters.runtime_catalog import resolve_global_config_dir
+from gpd.core.cli_args import resolve_root_global_cli_cwd_from_argv as _resolve_cli_cwd_from_argv
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_REEXEC
-from gpd.hooks.install_metadata import load_install_manifest_state
+from gpd.hooks.install_metadata import load_install_manifest_runtime_status
 from gpd.hooks.runtime_detect import normalize_runtime_name
 
 
@@ -64,95 +66,10 @@ def _parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     return options, gpd_args
 
 
-def _split_global_cli_options(argv: list[str]) -> tuple[list[str], list[str]]:
-    """Partition root-global CLI options from the rest of the argv stream."""
-    global_args: list[str] = []
-    remaining_args: list[str] = []
-    passthrough = False
-    index = 0
-
-    while index < len(argv):
-        arg = str(argv[index])
-        if passthrough:
-            remaining_args.append(arg)
-            index += 1
-            continue
-
-        if arg == "--":
-            passthrough = True
-            remaining_args.append(arg)
-            index += 1
-            continue
-
-        if arg == "--raw":
-            global_args.append(arg)
-            index += 1
-            continue
-
-        if arg == "--cwd":
-            global_args.append(arg)
-            if index + 1 < len(argv):
-                global_args.append(str(argv[index + 1]))
-                index += 2
-            else:
-                index += 1
-            continue
-
-        if arg.startswith("--cwd="):
-            global_args.append(arg)
-            index += 1
-            continue
-
-        remaining_args.append(arg)
-        index += 1
-
-    return global_args, remaining_args
-
-
-def _resolve_cli_cwd_from_argv(argv: list[str]) -> Path:
-    """Resolve the effective CLI cwd from raw argv before Typer parses it."""
-    raw_cwd = "."
-    global_args, _ = _split_global_cli_options(argv)
-    for index, arg in enumerate(global_args):
-        if arg == "--cwd" and index + 1 < len(global_args):
-            raw_cwd = global_args[index + 1]
-            continue
-        if arg.startswith("--cwd="):
-            raw_cwd = arg.split("=", 1)[1]
-
-    candidate = Path(raw_cwd).expanduser()
-    if candidate.is_absolute():
-        return candidate.resolve(strict=False)
-    return (Path.cwd() / candidate).resolve(strict=False)
-
-
-def _load_install_manifest(config_dir: Path) -> dict[str, object]:
-    """Return install metadata for *config_dir* when the manifest is valid JSON."""
-    manifest_state, payload = load_install_manifest_state(config_dir)
-    if manifest_state != "ok":
-        return {}
-    return payload
-
-
 def _manifest_runtime_status(config_dir: Path) -> tuple[str | None, str]:
     """Return the persisted runtime plus the manifest contract status."""
-    manifest_state, manifest = load_install_manifest_state(config_dir)
-    if manifest_state != "ok":
-        return None, manifest_state
-    if "runtime" not in manifest:
-        return None, "missing_runtime"
-
-    runtime = manifest.get("runtime")
-    if not isinstance(runtime, str):
-        return None, "malformed_runtime"
-
-    normalized = runtime.strip()
-    if not normalized:
-        return None, "malformed_runtime"
-    canonical_runtime = normalize_runtime_name(normalized)
-    if canonical_runtime is None:
-        return None, "malformed_runtime"
-    return canonical_runtime, "ok"
+    manifest_state, _manifest, runtime = load_install_manifest_runtime_status(config_dir)
+    return runtime, manifest_state
 
 
 def _runtime_display_name(runtime: str) -> str:
@@ -191,14 +108,13 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str, cli_c
     if not candidate.is_dir():
         return False
 
-    manifest_runtime, manifest_status = _manifest_runtime_status(candidate)
     adapter = get_adapter(runtime)
-    canonical_global_dir = resolve_global_config_dir(adapter.runtime_descriptor, home=Path.home(), environ={})
+    manifest_status, manifest, manifest_runtime = load_install_manifest_runtime_status(candidate)
+    canonical_global_dir = adapter.resolve_global_config_dir(home=Path.home())
     if manifest_status == "ok":
         if manifest_runtime != runtime:
             return False
 
-        manifest = _load_install_manifest(candidate)
         manifest_scope = manifest.get("install_scope")
         if manifest_scope == "global":
             return False
@@ -206,18 +122,25 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str, cli_c
             return False
         return True
 
-    has_install_markers = any(
-        (
-            (candidate / GPD_INSTALL_DIR_NAME).is_dir(),
-            (candidate / COMMANDS_DIR_NAME / "gpd").is_dir(),
-            (candidate / FLAT_COMMANDS_DIR_NAME).is_dir(),
-        )
-    )
+    has_install_markers = _has_managed_install_markers(candidate)
     if not has_install_markers:
         return False
     if _paths_equal(candidate, canonical_global_dir):
         return False
     return True
+
+
+def _has_managed_install_markers(config_dir: Path) -> bool:
+    """Return whether *config_dir* already looks like a managed install surface."""
+    return any(
+        (
+            (config_dir / GPD_INSTALL_DIR_NAME).is_dir(),
+            (config_dir / COMMANDS_DIR_NAME / "gpd").is_dir(),
+            (config_dir / FLAT_COMMANDS_DIR_NAME).is_dir(),
+            (config_dir / AGENTS_DIR_NAME).is_dir(),
+            (config_dir / HOOKS_DIR_NAME).is_dir(),
+        )
+    )
 
 
 def _resolve_local_config_dir(raw_value: str, *, runtime: str, cli_cwd: Path) -> Path:
@@ -230,7 +153,7 @@ def _resolve_local_config_dir(raw_value: str, *, runtime: str, cli_cwd: Path) ->
         candidate = (base / relative).resolve(strict=False)
         if not _is_matching_local_install_candidate(candidate, runtime=runtime, cli_cwd=resolved_cwd):
             continue
-        manifest_runtime, manifest_status = _manifest_runtime_status(candidate)
+        _, manifest_status = _manifest_runtime_status(candidate)
         if manifest_status == "ok" and adapter.has_complete_install(candidate):
             return candidate
         if fallback is None:
@@ -272,7 +195,7 @@ def _uses_effective_explicit_target(
 
     adapter = get_adapter(runtime)
     if install_scope == "global":
-        canonical_global_dir = resolve_global_config_dir(adapter.runtime_descriptor, home=Path.home(), environ={})
+        canonical_global_dir = adapter.resolve_global_config_dir(home=Path.home())
         return not _paths_equal(config_dir, canonical_global_dir)
 
     default_local_config_dir = adapter.resolve_local_config_dir(cli_cwd).resolve(strict=False)
@@ -431,6 +354,36 @@ def _missing_manifest_runtime_error_message(
     )
 
 
+def _missing_manifest_error_message(
+    *,
+    runtime: str,
+    raw_config_dir: str,
+    config_dir: Path,
+    install_scope: str,
+    explicit_target: bool,
+    cli_cwd: Path,
+) -> str:
+    """Return repair guidance when a managed install surface has no manifest."""
+    repair_command = build_runtime_install_repair_command(
+        runtime,
+        install_scope=install_scope,
+        target_dir=config_dir,
+        explicit_target=_uses_effective_explicit_target(
+            runtime=runtime,
+            raw_config_dir=raw_config_dir,
+            config_dir=config_dir,
+            install_scope=install_scope,
+            explicit_target=explicit_target,
+            cli_cwd=cli_cwd,
+        ),
+    )
+    return (
+        f"GPD runtime bridge rejected missing install manifest at `{config_dir}`.\n"
+        "Managed installs must include `gpd-file-manifest.json` so runtime identity stays authoritative.\n"
+        f"Repair or reinstall with: `{repair_command}`\n"
+    )
+
+
 def _untrusted_manifest_error_message(
     *,
     runtime: str,
@@ -480,11 +433,22 @@ def main(argv: list[str] | None = None) -> int:
         explicit_target=bool(options.explicit_target),
         cli_cwd=cli_cwd,
     )
-    manifest_runtime, manifest_status = _manifest_runtime_status(config_dir)
-    manifest_payload = _load_install_manifest(config_dir) if manifest_status == "ok" else {}
-    manifest_install_scope = manifest_payload.get("install_scope")
+    manifest_status, manifest_payload, manifest_runtime = load_install_manifest_runtime_status(config_dir)
+    manifest_install_scope = manifest_payload.get("install_scope") if manifest_status == "ok" else None
     if not isinstance(manifest_install_scope, str):
         manifest_install_scope = None
+    if manifest_status == "missing" and _has_managed_install_markers(config_dir):
+        sys.stderr.write(
+            _missing_manifest_error_message(
+                runtime=runtime,
+                raw_config_dir=options.config_dir,
+                config_dir=config_dir,
+                install_scope=options.install_scope,
+                explicit_target=bool(options.explicit_target),
+                cli_cwd=cli_cwd,
+            )
+        )
+        return 127
     if manifest_status in {"corrupt", "invalid"}:
         sys.stderr.write(
             _untrusted_manifest_error_message(

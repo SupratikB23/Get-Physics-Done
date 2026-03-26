@@ -26,6 +26,7 @@ from gpd.hooks.runtime_detect import (
     TodoCandidate,
     UpdateCacheCandidate,
     _has_gpd_install,
+    _runtime_from_manifest_or_path,
     all_runtime_dirs,
     detect_active_runtime,
     detect_active_runtime_with_gpd_install,
@@ -106,39 +107,49 @@ def _mark_gpd_install(config_dir: Path, *, runtime: str | None = None, install_s
             artifact.write_text("{}\n" if artifact.suffix == ".json" else "# test\n", encoding="utf-8")
         else:
             artifact.mkdir(parents=True, exist_ok=True)
-    manifest: dict[str, object] = {"install_scope": install_scope, "runtime": runtime}
+    explicit_target = config_dir.name != adapter.config_dir_name
+    manifest: dict[str, object] = {
+        "install_scope": install_scope,
+        "runtime": runtime,
+        "explicit_target": explicit_target,
+        "install_target_dir": str(config_dir),
+    }
     if runtime == RUNTIME_CODEX:
         skills_dir = config_dir.parent / ".agents" / "skills"
-        (skills_dir / "gpd-help").mkdir(parents=True, exist_ok=True)
+        help_skill_dir = skills_dir / "gpd-help"
+        help_skill_dir.mkdir(parents=True, exist_ok=True)
+        (help_skill_dir / "SKILL.md").write_text("# test\n", encoding="utf-8")
         manifest["codex_skills_dir"] = str(skills_dir)
+        manifest["codex_generated_skill_dirs"] = ["gpd-help"]
     (config_dir / "gpd-file-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 
 def _write_install_manifest(config_dir: Path, *, install_scope: str) -> None:
     """Write a minimal manifest describing the install scope."""
     config_dir.mkdir(parents=True, exist_ok=True)
-    runtime = None
     try:
         existing_manifest = json.loads((config_dir / "gpd-file-manifest.json").read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, json.JSONDecodeError):
         existing_manifest = {}
-    if isinstance(existing_manifest, dict):
-        value = existing_manifest.get("runtime")
-        if isinstance(value, str):
-            runtime = value
+    manifest: dict[str, object] = existing_manifest if isinstance(existing_manifest, dict) else {}
+    runtime = manifest.get("runtime") if isinstance(manifest.get("runtime"), str) else None
     if runtime is None:
         for descriptor in _RUNTIME_DESCRIPTORS:
             candidate = descriptor.runtime_name
             if config_dir.name == get_adapter(candidate).local_config_dir_name:
                 runtime = candidate
                 break
+    explicit_target = manifest.get("explicit_target")
+    if not isinstance(explicit_target, bool) and runtime is not None:
+        explicit_target = config_dir.name != get_adapter(runtime).config_dir_name
+    manifest["install_scope"] = install_scope
+    if runtime is not None:
+        manifest["runtime"] = runtime
+    if explicit_target is not None:
+        manifest["explicit_target"] = explicit_target
+    manifest["install_target_dir"] = str(config_dir)
     (config_dir / "gpd-file-manifest.json").write_text(
-        json.dumps(
-            {
-                "install_scope": install_scope,
-                **({"runtime": runtime} if runtime is not None else {}),
-            }
-        ),
+        json.dumps(manifest),
         encoding="utf-8",
     )
 
@@ -554,6 +565,21 @@ class TestDetectActiveRuntimeWithInstall:
             patch("gpd.hooks.runtime_detect.Path.home", return_value=tmp_path / "home"),
         ):
             assert installed_runtime(canonical_local_dir) is None
+
+    def test_runtime_from_manifest_or_path_does_not_fall_back_to_manifestless_local_path(
+        self, tmp_path: Path
+    ) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        candidate = workspace / ".codex"
+        candidate.mkdir()
+
+        with (
+            patch.dict(os.environ, _clean_runtime_env(), clear=True),
+            patch("gpd.hooks.runtime_detect.Path.cwd", return_value=workspace),
+            patch("gpd.hooks.runtime_detect.Path.home", return_value=tmp_path / "home"),
+        ):
+            assert _runtime_from_manifest_or_path(candidate, cwd=workspace, home=tmp_path / "home") is None
 
     def test_installed_runtime_fails_closed_for_runtime_less_manifest_without_prefix_evidence(
         self, tmp_path: Path

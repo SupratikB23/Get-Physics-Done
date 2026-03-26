@@ -414,10 +414,39 @@ def test_contract_tools_reject_coercive_contract_scalars() -> None:
     assert suggest_result == expected
 
 
+@pytest.mark.parametrize("field_name", ["regime", "units"])
+def test_contract_tools_reject_blank_observable_regime_and_units(field_name: str) -> None:
+    from gpd.mcp.servers.verification_server import run_contract_check, suggest_contract_checks
+
+    contract = _load_project_contract_fixture()
+    contract["observables"][0][field_name] = " "
+
+    expected = {
+        "error": f"Invalid contract payload: observables.0.{field_name} must be a non-empty string",
+        "schema_version": 1,
+    }
+
+    run_result = run_contract_check(
+        {
+            "check_key": "contract.benchmark_reproduction",
+            "contract": contract,
+            "binding": {"claim_ids": ["claim-benchmark"]},
+            "metadata": {"source_reference_id": "ref-benchmark"},
+            "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+        }
+    )
+    suggest_result = suggest_contract_checks(contract)
+
+    assert run_result == expected
+    assert suggest_result == expected
+
+
 @pytest.mark.parametrize(
     ("path", "value"),
     [
         ("claims.0.references", "ref-benchmark"),
+        ("deliverables.0.must_contain", "benchmark curve"),
+        ("acceptance_tests.0.evidence_required", "ref-benchmark"),
         ("references.0.aliases", "benchmark-paper"),
         ("references.0.required_actions", "read"),
     ],
@@ -430,6 +459,10 @@ def test_contract_tools_accept_recoverable_scalar_to_list_contract_drift(
 
     if path == "claims.0.references":
         contract["claims"][0]["references"] = value
+    elif path == "deliverables.0.must_contain":
+        contract["deliverables"][0]["must_contain"] = value
+    elif path == "acceptance_tests.0.evidence_required":
+        contract["acceptance_tests"][0]["evidence_required"] = value
     elif path == "references.0.aliases":
         contract["references"][0]["aliases"] = value
     elif path == "references.0.required_actions":
@@ -1033,7 +1066,29 @@ def test_run_contract_check_keyword_fallback_reaches_warning_when_prose_evidence
     assert "observed.metric_value" in benchmark["missing_inputs"]
 
 
-def test_suggest_contract_checks_surfaces_salvage_warnings() -> None:
+def test_contract_tools_reject_unknown_nested_contract_fields() -> None:
+    from gpd.mcp.servers.verification_server import run_contract_check, suggest_contract_checks
+
+    contract = _load_project_contract_fixture()
+    contract["references"][0]["notes"] = "legacy extra field"
+
+    request = {
+        "check_key": "contract.benchmark_reproduction",
+        "contract": contract,
+        "binding": {"claim_ids": ["claim-benchmark"]},
+        "metadata": {"source_reference_id": "ref-benchmark"},
+        "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+    }
+
+    expected = {
+        "error": "Invalid contract payload: references.0.notes: Extra inputs are not permitted",
+        "schema_version": 1,
+    }
+    assert run_contract_check(request) == expected
+    assert suggest_contract_checks(contract) == expected
+
+
+def test_suggest_contract_checks_rejects_unknown_nested_contract_fields_at_mcp_boundary() -> None:
     from gpd.mcp.servers.verification_server import suggest_contract_checks
 
     contract = _load_project_contract_fixture()
@@ -1041,14 +1096,26 @@ def test_suggest_contract_checks_surfaces_salvage_warnings() -> None:
 
     result = suggest_contract_checks(contract)
 
-    assert "error" not in result
-    assert result["contract_salvaged"] is True
-    assert result["contract_salvage_findings"] == ["references.0.notes: Extra inputs are not permitted"]
-    assert any("salvaged before check suggestion" in warning for warning in result["contract_warnings"])
-    assert any(entry["check_key"] == "contract.benchmark_reproduction" for entry in result["suggested_checks"])
+    assert result == {
+        "error": "Invalid contract payload: references.0.notes: Extra inputs are not permitted",
+        "schema_version": 1,
+    }
 
 
-def test_contract_tools_salvage_unknown_top_level_contract_fields() -> None:
+def test_contract_from_data_drops_nested_unknown_scope_fields() -> None:
+    from gpd.contracts import contract_from_data
+
+    contract = _load_project_contract_fixture()
+    contract["scope"]["legacy_notes"] = "nested extra field"
+
+    parsed = contract_from_data(contract)
+
+    assert parsed is not None
+    assert parsed.scope.question == contract["scope"]["question"]
+    assert "legacy_notes" not in parsed.scope.model_dump()
+
+
+def test_contract_tools_reject_unknown_top_level_contract_fields() -> None:
     from gpd.mcp.servers.verification_server import run_contract_check, suggest_contract_checks
 
     contract = _load_project_contract_fixture()
@@ -1065,10 +1132,39 @@ def test_contract_tools_salvage_unknown_top_level_contract_fields() -> None:
     )
     suggest_result = suggest_contract_checks(contract)
 
-    assert run_result["contract_salvaged"] is True
-    assert "legacy_notes: Extra inputs are not permitted" in run_result["contract_salvage_findings"]
-    assert suggest_result["contract_salvaged"] is True
-    assert "legacy_notes: Extra inputs are not permitted" in suggest_result["contract_salvage_findings"]
+    expected_error = {
+        "error": "Invalid contract payload: legacy_notes: Extra inputs are not permitted",
+        "schema_version": 1,
+    }
+    assert run_result == expected_error
+    assert suggest_result == expected_error
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected_error"),
+    [
+        (
+            lambda contract: contract["deliverables"][0].__setitem__("kind", "Figure"),
+            "deliverables.0.kind must be one of figure, table, dataset, data, derivation, code, note, report, other",
+        ),
+        (
+            lambda contract: contract["acceptance_tests"][0].__setitem__("automation", "Automated"),
+            "acceptance_tests.0.automation must be one of automated, hybrid, human",
+        ),
+        (
+            lambda contract: contract["references"][0].__setitem__("required_actions", "Read"),
+            "references.0.required_actions must be one of read, use, compare, cite, avoid",
+        ),
+    ],
+)
+def test_contract_tools_reject_non_exact_enum_literals(
+    mutator,
+    expected_error: str,
+) -> None:
+    contract = _load_project_contract_fixture()
+    mutator(contract)
+
+    _assert_contract_tools_reject(contract, expected_error)
 
 
 @pytest.mark.parametrize("payload", ["not-a-dict", ["claim-benchmark"], 3])
@@ -1525,11 +1621,11 @@ def test_contract_tools_reject_shared_integrity_errors_after_salvage() -> None:
 
     _assert_contract_tools_reject(
         contract,
-        "contract id claim-benchmark is reused across claim, deliverable; target resolution is ambiguous",
+        "references.0.notes: Extra inputs are not permitted",
     )
 
 
-def test_verification_server_success_responses_keep_stable_envelope_equality() -> None:
+def test_verification_server_success_responses_keep_strict_stable_envelopes() -> None:
     from gpd.mcp.servers.verification_server import get_checklist, run_contract_check, suggest_contract_checks
 
     run_result = run_contract_check(
@@ -1542,17 +1638,20 @@ def test_verification_server_success_responses_keep_stable_envelope_equality() -
     )
     run_expected = dict(run_result)
     run_expected.pop("schema_version")
-    assert run_result == run_expected
+    assert run_result != run_expected
+    assert run_result == {"schema_version": 1, **run_expected}
 
     suggest_result = suggest_contract_checks(_derived_template_contract())
     suggest_expected = dict(suggest_result)
     suggest_expected.pop("schema_version")
-    assert suggest_result == suggest_expected
+    assert suggest_result != suggest_expected
+    assert suggest_result == {"schema_version": 1, **suggest_expected}
 
     checklist_result = get_checklist("qft")
     checklist_expected = dict(checklist_result)
     checklist_expected.pop("schema_version")
-    assert checklist_result == checklist_expected
+    assert checklist_result != checklist_expected
+    assert checklist_result == {"schema_version": 1, **checklist_expected}
 
 
 def test_checklist_helpers_return_defensive_copies() -> None:
@@ -1571,7 +1670,7 @@ def test_checklist_helpers_return_defensive_copies() -> None:
     assert "poisoned" not in fresh_bundle_checklist["bundle_checks"][0]["check_ids"]
 
 
-def test_run_contract_check_surfaces_machine_readable_contract_salvage_findings() -> None:
+def test_run_contract_check_rejects_unknown_nested_contract_fields_before_salvage_metadata() -> None:
     from gpd.mcp.servers.verification_server import run_contract_check
 
     contract = _load_project_contract_fixture()
@@ -1587,18 +1686,10 @@ def test_run_contract_check_surfaces_machine_readable_contract_salvage_findings(
         }
     )
 
-    assert result["contract_salvaged"] is True
-    assert result["contract_salvage_findings"] == ["claims.0.notes: Extra inputs are not permitted"]
-    assert result["supported_binding_fields"] == [
-        "binding.claim_id",
-        "binding.claim_ids",
-        "binding.deliverable_id",
-        "binding.deliverable_ids",
-        "binding.acceptance_test_id",
-        "binding.acceptance_test_ids",
-        "binding.reference_id",
-        "binding.reference_ids",
-    ]
+    assert result == {
+        "error": "Invalid contract payload: claims.0.notes: Extra inputs are not permitted",
+        "schema_version": 1,
+    }
 
 
 def test_verification_server_pure_success_tools_return_stable_envelopes() -> None:

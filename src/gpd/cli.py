@@ -33,6 +33,15 @@ from rich.table import Table
 from rich.text import Text
 
 from gpd.command_labels import canonical_command_label
+from gpd.core.cli_args import (
+    normalize_root_global_cli_options as _normalize_root_global_cli_options,
+)
+from gpd.core.cli_args import (
+    resolve_root_global_cli_cwd_from_argv as _resolve_root_global_cli_cwd_from_argv,
+)
+from gpd.core.cli_args import (
+    split_root_global_cli_options as _split_root_global_cli_options,
+)
 from gpd.core.constants import ENV_GPD_DISABLE_CHECKOUT_REEXEC
 from gpd.core.errors import ConfigError, GPDError
 from gpd.hooks.runtime_detect import detect_runtime_for_gpd_use, normalize_runtime_name
@@ -110,75 +119,18 @@ def _get_cwd() -> Path:
 
 
 def _split_global_cli_options(argv: list[str]) -> tuple[list[str], list[str]]:
-    """Partition root-global CLI options from the rest of the argv stream.
-
-    This keeps ``--raw`` and ``--cwd`` usable even when agents append them after
-    the subcommand, while still respecting the ``--`` end-of-options marker.
-    """
-    global_args: list[str] = []
-    remaining_args: list[str] = []
-    passthrough = False
-    index = 0
-
-    while index < len(argv):
-        arg = str(argv[index])
-        if passthrough:
-            remaining_args.append(arg)
-            index += 1
-            continue
-
-        if arg == "--":
-            passthrough = True
-            remaining_args.append(arg)
-            index += 1
-            continue
-
-        if arg == "--raw":
-            global_args.append(arg)
-            index += 1
-            continue
-
-        if arg == "--cwd":
-            global_args.append(arg)
-            if index + 1 < len(argv):
-                global_args.append(str(argv[index + 1]))
-                index += 2
-            else:
-                index += 1
-            continue
-
-        if arg.startswith("--cwd="):
-            global_args.append(arg)
-            index += 1
-            continue
-
-        remaining_args.append(arg)
-        index += 1
-
-    return global_args, remaining_args
+    """Partition root-global CLI options from the rest of the argv stream."""
+    return _split_root_global_cli_options(argv)
 
 
 def _normalize_global_cli_options(argv: list[str]) -> list[str]:
     """Move root-global options to the front of the argv stream."""
-    global_args, remaining_args = _split_global_cli_options(argv)
-    return [*global_args, *remaining_args]
+    return _normalize_root_global_cli_options(argv)
 
 
 def _resolve_cli_cwd_from_argv(argv: list[str]) -> Path:
     """Resolve the effective CLI cwd from raw argv before Typer parses it."""
-    raw_cwd = "."
-    global_args, _ = _split_global_cli_options(argv)
-    for index, arg in enumerate(global_args):
-        if arg == "--cwd" and index + 1 < len(global_args):
-            raw_cwd = global_args[index + 1]
-            continue
-        if arg.startswith("--cwd="):
-            raw_cwd = arg.split("=", 1)[1]
-
-    candidate = Path(raw_cwd).expanduser()
-    if candidate.is_absolute():
-        return candidate.resolve(strict=False)
-    return (Path.cwd() / candidate).resolve(strict=False)
+    return _resolve_root_global_cli_cwd_from_argv(argv)
 
 
 def _maybe_reexec_from_checkout(argv: list[str] | None = None) -> None:
@@ -3002,18 +2954,18 @@ def _default_paper_output_dir(config_file: Path) -> Path:
 
 def _reject_legacy_paper_config_location(config_file: Path) -> None:
     """Reject removed paper-config locations under internal planning storage."""
-    from gpd.core.storage_paths import ProjectStorageLayout
-
-    legacy_config_root = ProjectStorageLayout(_get_cwd()).internal_root / "paper"
     resolved_config = config_file.resolve(strict=False)
-    try:
-        resolved_config.relative_to(legacy_config_root)
-    except ValueError:
-        return
-    raise GPDError(
-        "Paper configs under `GPD/paper/` are no longer supported. "
-        "Move the config to `paper/`, `manuscript/`, or `draft/`."
-    )
+    project_root = _get_cwd().resolve(strict=False)
+    for legacy_config_root in (project_root / "GPD" / "paper", project_root / ".gpd" / "paper"):
+        try:
+            resolved_config.relative_to(legacy_config_root)
+        except ValueError:
+            continue
+        planning_dir_name = legacy_config_root.parent.name
+        raise GPDError(
+            f"Paper configs under `{planning_dir_name}/paper/` are no longer supported. "
+            "Move the config to `paper/`, `manuscript/`, or `draft/`."
+        )
 
 
 def _split_command_arguments(arguments: str | None) -> list[str]:
@@ -4387,7 +4339,7 @@ def resolve_model_cmd(
     runtime model parameter and let the platform use its default model.
     """
     from gpd.core.config import resolve_model, validate_agent_name
-    from gpd.hooks.runtime_detect import detect_runtime_for_gpd_use
+    from gpd.core.context import _resolve_model as resolve_context_model
 
     supported_runtimes = _supported_runtime_names()
     if runtime is not None:
@@ -4400,10 +4352,14 @@ def resolve_model_cmd(
         supported = ", ".join(supported_runtimes)
         _error(f"Unknown runtime {runtime!r}. Supported: {supported}")
 
-    active_runtime = runtime or detect_runtime_for_gpd_use(cwd=_get_cwd())
     try:
         validate_agent_name(agent_name)
-        _output(resolve_model(_get_cwd(), agent_name, runtime=active_runtime))
+        resolved_model = (
+            resolve_model(_get_cwd(), agent_name, runtime=runtime)
+            if runtime is not None
+            else resolve_context_model(_get_cwd(), agent_name)
+        )
+        _output(resolved_model)
     except ConfigError as exc:
         _error(str(exc))
 
@@ -4870,21 +4826,14 @@ def _target_dir_matches_global(runtime_name: str, target_dir: str, *, action: st
     """Return whether an explicit target-dir names the runtime's canonical global dir."""
     adapter = _get_adapter_or_error(runtime_name, action=action)
     resolved_target = _resolve_cli_target_dir(target_dir)
-    runtime_descriptor = getattr(adapter, "runtime_descriptor", None)
-    if runtime_descriptor is not None:
-        from gpd.adapters.runtime_catalog import resolve_global_config_dir
-
-        try:
-            canonical_global_target = resolve_global_config_dir(runtime_descriptor, home=Path.home(), environ={})
-        except (AttributeError, TypeError, ValueError):
-            canonical_global_target = None
-        if canonical_global_target is not None:
-            return resolved_target == canonical_global_target.expanduser().resolve(strict=False)
-
     resolve_target_dir = getattr(adapter, "resolve_target_dir", None)
     if not callable(resolve_target_dir):
         return False
-    return resolved_target == resolve_target_dir(True, _get_cwd()).expanduser().resolve(strict=False)
+    try:
+        canonical_global_target = resolve_target_dir(True, _get_cwd())
+    except (AttributeError, TypeError, ValueError):
+        return False
+    return resolved_target == canonical_global_target.expanduser().resolve(strict=False)
 
 
 @app.command("install")

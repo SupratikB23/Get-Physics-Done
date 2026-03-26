@@ -1263,21 +1263,21 @@ class TestStateServer:
 
         with patch("gpd.mcp.servers.state_server.load_state_json", side_effect=GPDError("boom")):
             result = get_state("/fake/project")
-        assert result == {"error": "boom"}
+        assert result == {"error": "boom", "schema_version": 1}
 
     def test_get_state_os_error(self):
         from gpd.mcp.servers.state_server import get_state
 
         with patch("gpd.mcp.servers.state_server.load_state_json", side_effect=OSError("permission denied")):
             result = get_state("/fake/project")
-        assert result == {"error": "permission denied"}
+        assert result == {"error": "permission denied", "schema_version": 1}
 
     def test_get_state_value_error(self):
         from gpd.mcp.servers.state_server import get_state
 
         with patch("gpd.mcp.servers.state_server.load_state_json", side_effect=ValueError("bad json")):
             result = get_state("/fake/project")
-        assert result == {"error": "bad json"}
+        assert result == {"error": "bad json", "schema_version": 1}
 
     def test_get_phase_info_gpd_error(self):
         from gpd.core.errors import GPDError
@@ -1285,29 +1285,29 @@ class TestStateServer:
 
         with patch("gpd.core.phases.find_phase", side_effect=GPDError("phase read failed")):
             result = get_phase_info("/fake/project", "01")
-        assert result == {"error": "phase read failed"}
+        assert result == {"error": "phase read failed", "schema_version": 1}
 
     def test_get_phase_info_os_error(self):
         from gpd.mcp.servers.state_server import get_phase_info
 
         with patch("gpd.core.phases.find_phase", side_effect=OSError("disk error")):
             result = get_phase_info("/fake/project", "01")
-        assert result == {"error": "disk error"}
+        assert result == {"error": "disk error", "schema_version": 1}
 
     def test_get_progress_gpd_error(self):
         from gpd.core.errors import GPDError
         from gpd.mcp.servers.state_server import get_progress
 
-        with patch("gpd.mcp.servers.state_server.state_update_progress", side_effect=GPDError("no state")):
+        with patch("gpd.mcp.servers.state_server.progress_render", side_effect=GPDError("no state")):
             result = get_progress("/fake/project")
-        assert result == {"error": "no state"}
+        assert result == {"error": "no state", "schema_version": 1}
 
     def test_get_progress_os_error(self):
         from gpd.mcp.servers.state_server import get_progress
 
-        with patch("gpd.mcp.servers.state_server.state_update_progress", side_effect=OSError("read only")):
+        with patch("gpd.mcp.servers.state_server.progress_render", side_effect=OSError("read only")):
             result = get_progress("/fake/project")
-        assert result == {"error": "read only"}
+        assert result == {"error": "read only", "schema_version": 1}
 
     def test_run_health_check_gpd_error(self):
         from gpd.core.errors import GPDError
@@ -1315,14 +1315,14 @@ class TestStateServer:
 
         with patch("gpd.mcp.servers.state_server.run_health", side_effect=GPDError("health broke")):
             result = run_health_check("/fake/project")
-        assert result == {"error": "health broke"}
+        assert result == {"error": "health broke", "schema_version": 1}
 
     def test_run_health_check_os_error(self):
         from gpd.mcp.servers.state_server import run_health_check
 
         with patch("gpd.mcp.servers.state_server.run_health", side_effect=OSError("no access")):
             result = run_health_check("/fake/project")
-        assert result == {"error": "no access"}
+        assert result == {"error": "no access", "schema_version": 1}
 
     def test_get_config_gpd_error(self):
         from gpd.core.errors import GPDError
@@ -1330,21 +1330,21 @@ class TestStateServer:
 
         with patch("gpd.mcp.servers.state_server.load_config", side_effect=GPDError("config missing")):
             result = get_config("/fake/project")
-        assert result == {"error": "config missing"}
+        assert result == {"error": "config missing", "schema_version": 1}
 
     def test_get_config_os_error(self):
         from gpd.mcp.servers.state_server import get_config
 
         with patch("gpd.mcp.servers.state_server.load_config", side_effect=OSError("not found")):
             result = get_config("/fake/project")
-        assert result == {"error": "not found"}
+        assert result == {"error": "not found", "schema_version": 1}
 
     def test_get_config_value_error(self):
         from gpd.mcp.servers.state_server import get_config
 
         with patch("gpd.mcp.servers.state_server.load_config", side_effect=ValueError("invalid toml")):
             result = get_config("/fake/project")
-        assert result == {"error": "invalid toml"}
+        assert result == {"error": "invalid toml", "schema_version": 1}
 
     def test_get_phase_info_found(self):
         from gpd.mcp.servers.state_server import get_phase_info
@@ -1386,11 +1386,11 @@ class TestStateServer:
         from gpd.mcp.servers.state_server import get_progress
 
         mock_result = MagicMock()
-        mock_result.model_dump.return_value = {"updated": True, "progress_percent": 50}
+        mock_result.model_dump.return_value = {"milestone_version": "v1.0", "milestone_name": "Test", "percent": 50}
 
-        with patch("gpd.mcp.servers.state_server.state_update_progress", return_value=mock_result):
+        with patch("gpd.mcp.servers.state_server.progress_render", return_value=mock_result):
             result = get_progress("/fake/project")
-        assert result["progress_percent"] == 50
+        assert result["percent"] == 50
 
     def test_validate_state(self):
         from gpd.mcp.servers.state_server import validate_state
@@ -1588,6 +1588,30 @@ class TestVerificationServer:
         assert result["schema_version"] == 1
         assert result["error"] == "symmetries[1] must be a string"
 
+    def test_dimensional_check_rejects_whitespace_only_expression(self):
+        from gpd.mcp.servers.verification_server import dimensional_check
+
+        result = dimensional_check(["  "])
+
+        assert result["schema_version"] == 1
+        assert result["error"] == "expressions[0] must be a non-empty string"
+
+    def test_limiting_case_check_rejects_whitespace_only_expression(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        result = limiting_case_check("   ", {"hbar -> 0": "classical limit"})
+
+        assert result["schema_version"] == 1
+        assert result["error"] == "expression must be a non-empty string"
+
+    def test_symmetry_check_rejects_whitespace_only_symmetry(self):
+        from gpd.mcp.servers.verification_server import symmetry_check
+
+        result = symmetry_check("expression", ["  "])
+
+        assert result["schema_version"] == 1
+        assert result["error"] == "symmetries[0] must be a non-empty string"
+
     # --- run_check ---
 
     def test_run_check_dimensional(self):
@@ -1655,6 +1679,14 @@ class TestVerificationServer:
 
         assert "required_request_fields" not in result
         assert "request_template" not in result
+
+    def test_get_verification_coverage_rejects_whitespace_only_active_check(self):
+        from gpd.mcp.servers.verification_server import get_verification_coverage
+
+        result = get_verification_coverage([1], ["  "])
+
+        assert result["schema_version"] == 1
+        assert result["error"] == "active_checks[0] must be a non-empty string"
 
     def test_run_contract_check_benchmark_reproduction(self):
         from gpd.mcp.servers.verification_server import run_contract_check
@@ -2126,7 +2158,7 @@ class TestVerificationServer:
 
         assert result == {"error": expected_error, "schema_version": 1}
 
-    def test_run_contract_check_salvages_mildly_drifted_contract_payload(self):
+    def test_run_contract_check_rejects_unknown_nested_contract_fields(self):
         from gpd.mcp.servers.verification_server import run_contract_check
 
         contract = copy.deepcopy(_load_project_contract_fixture())
@@ -2142,8 +2174,10 @@ class TestVerificationServer:
             }
         )
 
-        assert result["status"] == "pass"
-        assert any("salvaged before verification" in issue for issue in result["automated_issues"])
+        assert result == {
+            "error": "Invalid contract payload: claims.0.notes: Extra inputs are not permitted",
+            "schema_version": 1,
+        }
 
     def test_suggest_contract_checks_from_contract(self):
         import json
@@ -2188,7 +2222,7 @@ class TestVerificationServer:
 
         assert fresh["request_template"]["metadata"]["source_reference_id"] == "ref-benchmark"
 
-    def test_suggest_contract_checks_salvages_mildly_drifted_contract_payload(self):
+    def test_suggest_contract_checks_rejects_unknown_nested_contract_fields(self):
         from gpd.mcp.servers.verification_server import suggest_contract_checks
 
         contract = copy.deepcopy(_load_project_contract_fixture())
@@ -2196,8 +2230,10 @@ class TestVerificationServer:
 
         result = suggest_contract_checks(contract)
 
-        assert "error" not in result
-        assert any(entry["check_key"] == "contract.benchmark_reproduction" for entry in result["suggested_checks"])
+        assert result == {
+            "error": "Invalid contract payload: references.0.notes: Extra inputs are not permitted",
+            "schema_version": 1,
+        }
 
     @pytest.mark.parametrize("payload", ["not-a-dict", ["claim-benchmark"], 3])
     def test_suggest_contract_checks_rejects_non_mapping_payloads(self, payload):

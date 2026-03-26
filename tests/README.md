@@ -7,7 +7,7 @@ The final section of this README keeps the full checked-in repository interdepen
 ## Repository Interdependency Graph
 
 <!-- repo-graph-generated-on:start -->
-Generated on `2026-03-24` from the current worktree.
+Generated on `2026-03-25` from the current worktree.
 <!-- repo-graph-generated-on:end -->
 
 ## Status
@@ -26,17 +26,17 @@ This graph therefore includes:
 
 <!-- repo-graph-scope:start -->
 
-- Live repo files analyzed in the current tree: `677`
-- Python files under `src/` and `tests/`: `238`
+- Live repo files analyzed in the current tree: `680`
+- Python files under `src/` and `tests/`: `241`
 - `src/gpd/commands/*.md`: `61`
 - `src/gpd/agents/*.md`: `23`
 - `src/gpd/specs/workflows/*.md`: `62`
 - `src/gpd/specs/templates/**/*.md`: `71`
 - `src/gpd/specs/references/**/*.md`: `160`
 - `src/gpd/adapters/*.py`: `9`
-- `src/gpd/hooks/*.py`: `6`
+- `src/gpd/hooks/*.py`: `7`
 - `src/gpd/mcp/servers/*.py`: `8`
-- `tests/**` files: `169`
+- `tests/**` files: `170`
 - `infra/gpd-*.json`: `8`
 
 Excluded as noise from node counting, but still modeled where contractually relevant:
@@ -1044,7 +1044,7 @@ flowchart TD
 
 - `src/gpd/adapters/codex.py -> gpd-file-manifest.json::codex_generated_skill_dirs`
   `manifest-contract`
-  Codex uninstall and completeness checks use these manifest-owned skill directory names, with `files["skills/gpd-*/SKILL.md"]` as the legacy fallback when older manifests lack the explicit metadata key.
+  Codex uninstall and completeness checks use these manifest-owned skill directory names as the authoritative skill inventory.
 
 - `src/gpd/adapters/install_utils.py::write_manifest -> gpd-file-manifest.json["files"]["skills/gpd-*/SKILL.md"]`
   `manifest-contract`
@@ -1138,13 +1138,17 @@ They explicitly preserve:
 - `src/gpd/hooks/statusline.py -> <workspace>/GPD/state.json`
   `candidate-set`
 
+- `src/gpd/hooks/statusline.py -> src/gpd/hooks/install_context.py`
+  `hard-import`
+  Shared self-owned install detection and todo/update-cache layout selection.
+
 - `src/gpd/hooks/statusline.py -> src/gpd/hooks/runtime_detect.py`
   `hard-import`
 
-- `src/gpd/hooks/statusline.py -> freshest valid update-cache candidate from runtime_detect.get_update_cache_files()`
+- `src/gpd/hooks/statusline.py -> shared self-owned install context + freshest valid update-cache candidate from runtime_detect.get_update_cache_files()`
   `candidate-set`
 
-- `src/gpd/hooks/statusline.py -> candidate todo family {local,global runtime dirs}/todos/<session>-agent-*.json`
+- `src/gpd/hooks/statusline.py -> shared self-owned todo directory + candidate todo family {local,global runtime dirs}/todos/<session>-agent-*.json`
   `candidate-set`
 
 - `src/gpd/hooks/statusline.py -> stdin payload schema {model, workspace, session_id, context_window}`
@@ -1179,6 +1183,10 @@ They explicitly preserve:
 - `src/gpd/hooks/notify.py -> src/gpd/hooks/check_update.py`
   `spawn`
 
+- `src/gpd/hooks/notify.py -> src/gpd/hooks/install_context.py`
+  `hard-import`
+  Shared self-owned install detection and update-cache layout selection.
+
 - `src/gpd/hooks/notify.py -> freshest valid update-cache candidate set`
   `candidate-set`
 
@@ -1188,6 +1196,10 @@ They explicitly preserve:
 - `src/gpd/hooks/notify.py -> src/gpd/hooks/runtime_detect.py`
   `hard-import`
   Reads cache candidates and runtime-scoped update commands through runtime-detection helpers.
+
+- `src/gpd/hooks/notify.py -> src/gpd/core/constants.py::ProjectLayout.last_observability_notification`
+  `layout-authority`
+  Duplicate notification suppression follows the shared observability layout helper instead of a hard-coded GPD path.
 
 - `src/gpd/core/context.py -> src/gpd/adapters/__init__.py`
   `authority`

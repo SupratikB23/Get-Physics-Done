@@ -143,6 +143,9 @@ OBSERVABILITY_CURRENT_SESSION_FILENAME = "current-session.json"
 OBSERVABILITY_CURRENT_EXECUTION_FILENAME = "current-execution.json"
 """Pointer to the latest active or resumable execution-state snapshot."""
 
+OBSERVABILITY_LAST_NOTIFY_FILENAME = "last-notify.json"
+"""Marker used by notify hooks to suppress duplicate execution notifications."""
+
 MILESTONES_DIR_NAME = "milestones"
 """Subdirectory under GPD/ for archived milestone snapshots."""
 
@@ -444,6 +447,10 @@ class ProjectLayout:
         return self.observability_dir / OBSERVABILITY_CURRENT_EXECUTION_FILENAME
 
     @property
+    def last_observability_notification(self) -> Path:
+        return self.observability_dir / OBSERVABILITY_LAST_NOTIFY_FILENAME
+
+    @property
     def milestones_dir(self) -> Path:
         return self.gpd / MILESTONES_DIR_NAME
 
@@ -508,11 +515,11 @@ class ProjectLayout:
 
     def is_summary_file(self, filename: str) -> bool:
         """Check if a filename matches the summary naming convention."""
-        return filename.endswith(SUMMARY_SUFFIX)
+        return filename.endswith(SUMMARY_SUFFIX) or filename == STANDALONE_SUMMARY
 
     def is_verification_file(self, filename: str) -> bool:
         """Check if a filename matches the verification naming convention."""
-        return filename.endswith(VERIFICATION_SUFFIX)
+        return filename.endswith(VERIFICATION_SUFFIX) or filename == STANDALONE_VERIFICATION
 
     def strip_plan_suffix(self, filename: str) -> str:
         """Remove plan suffix from filename to get the plan ID."""
@@ -526,4 +533,6 @@ class ProjectLayout:
         """Remove summary suffix from filename to get the plan ID."""
         if filename.endswith(SUMMARY_SUFFIX):
             return filename[: -len(SUMMARY_SUFFIX)]
+        if filename == STANDALONE_SUMMARY:
+            return ""
         return filename

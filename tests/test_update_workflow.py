@@ -19,6 +19,13 @@ def _install_and_finalize(adapter, gpd_root: Path, target: Path, **install_kwarg
     return result
 
 
+def _install_kwargs_for_descriptor(descriptor, tmp_path: Path) -> dict[str, object]:
+    install_kwargs: dict[str, object] = {}
+    if "skills/" in descriptor.manifest_file_prefixes:
+        install_kwargs["skills_dir"] = tmp_path / "shared-skills"
+    return install_kwargs
+
+
 def test_update_workflow_uses_current_runtime_agnostic_contract() -> None:
     content = (GPD_ROOT / "specs" / "workflows" / "update.md").read_text(encoding="utf-8")
 
@@ -58,18 +65,21 @@ def test_default_local_install_keeps_local_update_scope_and_manifest(
     target = tmp_path / adapter.config_dir_name
     target.mkdir(parents=True)
 
-    if "skills/" in descriptor.manifest_file_prefixes:
-        monkeypatch.setenv("CODEX_SKILLS_DIR", str(tmp_path / "shared-skills"))
+    _install_and_finalize(adapter, GPD_ROOT, target, is_global=False, **_install_kwargs_for_descriptor(descriptor, tmp_path))
 
-    _install_and_finalize(adapter, GPD_ROOT, target, is_global=False)
-
-    content = (target / "get-physics-done" / "workflows" / "update.md").read_text(encoding="utf-8")
+    update_content = (target / "get-physics-done" / "workflows" / "update.md").read_text(encoding="utf-8")
+    reapply_content = (target / "get-physics-done" / "workflows" / "reapply-patches.md").read_text(
+        encoding="utf-8"
+    )
     manifest = json.loads((target / "gpd-file-manifest.json").read_text(encoding="utf-8"))
 
-    assert 'INSTALL_SCOPE="--local"' in content
-    assert 'INSTALL_SCOPE="--global"' not in content
+    assert 'INSTALL_SCOPE="--local"' in update_content
+    assert 'INSTALL_SCOPE="--global"' not in update_content
     assert manifest["install_scope"] == "local"
     assert installed_update_command(target) == f"{adapter.update_command} --local"
+    assert f'GPD_CONFIG_DIR="{target.as_posix()}"' in update_content
+    assert f'GPD_INSTALL_DIR="{(target / "get-physics-done").as_posix()}"' in update_content
+    assert f'PATCHES_DIR="{target.as_posix()}/gpd-local-patches"' in reapply_content
     if "skills/" in descriptor.manifest_file_prefixes:
         files = manifest.get("files", {})
         assert isinstance(files, dict)
@@ -86,10 +96,7 @@ def test_installed_update_command_is_derived_from_adapter_metadata(
     target = tmp_path / adapter.config_dir_name
     target.mkdir(parents=True)
 
-    if "skills/" in descriptor.manifest_file_prefixes:
-        monkeypatch.setenv("CODEX_SKILLS_DIR", str(tmp_path / "shared-skills"))
-
-    _install_and_finalize(adapter, GPD_ROOT, target, is_global=False)
+    _install_and_finalize(adapter, GPD_ROOT, target, is_global=False, **_install_kwargs_for_descriptor(descriptor, tmp_path))
 
     assert installed_update_command(target) == f"{adapter.update_command} --local"
 
@@ -104,17 +111,14 @@ def test_legacy_local_install_without_install_scope_keeps_local_update_scope(
     target = tmp_path / adapter.config_dir_name
     target.mkdir(parents=True)
 
-    if "skills/" in descriptor.manifest_file_prefixes:
-        monkeypatch.setenv("CODEX_SKILLS_DIR", str(tmp_path / "shared-skills"))
-
-    _install_and_finalize(adapter, GPD_ROOT, target, is_global=False)
+    _install_and_finalize(adapter, GPD_ROOT, target, is_global=False, **_install_kwargs_for_descriptor(descriptor, tmp_path))
 
     manifest_path = target / "gpd-file-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest.pop("install_scope", None)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    assert installed_update_command(target) == f"{adapter.update_command} --local"
+    assert installed_update_command(target) is None
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
@@ -139,7 +143,7 @@ def test_explicit_target_local_install_without_install_scope_keeps_local_update_
     manifest.pop("install_scope", None)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    assert installed_update_command(target) == f"{adapter.update_command} --local --target-dir {target.as_posix()}"
+    assert installed_update_command(target) is None
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
@@ -164,7 +168,7 @@ def test_explicit_target_global_install_without_install_scope_keeps_global_updat
     manifest.pop("install_scope", None)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    assert installed_update_command(target) == f"{adapter.update_command} --global --target-dir {target.as_posix()}"
+    assert installed_update_command(target) is None
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
@@ -194,6 +198,7 @@ def test_explicit_target_global_install_keeps_global_update_scope(tmp_path: Path
     adapter = get_adapter(descriptor.runtime_name)
     target = tmp_path / "explicit-global" / f"{descriptor.runtime_name}-config"
     target.mkdir(parents=True)
+    canonical_global = resolve_global_config_dir(descriptor)
 
     install_kwargs: dict[str, object] = {"is_global": True, "explicit_target": True}
     if "skills/" in descriptor.manifest_file_prefixes:
@@ -209,6 +214,7 @@ def test_explicit_target_global_install_keeps_global_update_scope(tmp_path: Path
 
     assert 'INSTALL_SCOPE="--global"' in content
     assert f'GPD_CONFIG_DIR="{target.as_posix()}"' in content
+    assert f'GPD_GLOBAL_CONFIG_DIR="{canonical_global.as_posix()}"' in content
     assert "{GPD_INSTALL_SCOPE_FLAG}" not in content
     assert 'TARGET_DIR_ARG=$("$PYTHON_BIN" - "$INSTALL_SCOPE" "$GPD_CONFIG_DIR" "$GPD_GLOBAL_CONFIG_DIR"' in content
     assert manifest["install_scope"] == "global"
@@ -260,8 +266,7 @@ def test_legacy_global_install_without_explicit_target_ignores_current_env_overr
         ctx.setattr("gpd.hooks.install_metadata.Path.home", lambda: home_dir)
         command = installed_update_command(canonical_target)
 
-    assert command == f"{adapter.update_command} --global"
-    assert "--target-dir" not in command
+    assert command is None
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
@@ -307,8 +312,7 @@ def test_legacy_global_install_without_explicit_target_ignores_env_leak_captured
         ctx.setattr("gpd.hooks.install_metadata.Path.home", lambda: home_dir)
         command = installed_update_command(canonical_target)
 
-    assert command == f"{adapter.update_command} --global"
-    assert "--target-dir" not in command
+    assert command is None
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)

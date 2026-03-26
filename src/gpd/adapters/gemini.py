@@ -104,7 +104,8 @@ _GEMINI_STATIC_POLICY_COMMAND_PREFIXES: tuple[str, ...] = (
     "mkdir -p GPD/research",
     "printf '%s\\n' \"$PROJECT_CONTRACT_JSON\"",
 )
-_GPD_CLI_INVOCATION_RE = re.compile(r'(?<![A-Za-z0-9_./:-])gpd(?=(?:\s|["\'`]|$))')
+_SHELL_FENCE_LANGUAGES = frozenset({"bash", "sh", "shell", "zsh"})
+_INLINE_GPD_COMMAND_RE = re.compile(r"`(?P<command>gpd(?=\s)[^`]*?)`")
 _GEMINI_COMMAND_RUNTIME_NOTE = (
     "<gemini_runtime_notes>\n"
     "Gemini shell compatibility:\n"
@@ -208,8 +209,103 @@ def _gemini_policy_command_prefixes(bridge_command: str) -> tuple[str, ...]:
 
 
 def _rewrite_gpd_cli_invocations(content: str, bridge_command: str) -> str:
-    """Rewrite bare ``gpd`` CLI calls to the shared runtime CLI bridge."""
-    return _GPD_CLI_INVOCATION_RE.sub(lambda m: bridge_command, content)
+    """Rewrite shell-command ``gpd`` calls to the shared runtime CLI bridge.
+
+    Restrict rewrites to fenced shell code blocks and inline code spans that
+    actually contain runnable commands. This keeps prose and quoted strings
+    intact while still rewriting command positions.
+    """
+    rewritten: list[str] = []
+    in_shell_fence = False
+
+    for line in content.splitlines(keepends=True):
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            if in_shell_fence:
+                in_shell_fence = False
+            else:
+                fence_language = stripped[3:].strip().lower()
+                in_shell_fence = fence_language in _SHELL_FENCE_LANGUAGES
+            rewritten.append(line)
+            continue
+
+        if in_shell_fence:
+            rewritten.append(_rewrite_gemini_shell_line(line, bridge_command))
+            continue
+
+        rewritten.append(_rewrite_inline_gpd_command_spans(line, bridge_command))
+
+    return "".join(rewritten)
+
+
+def _rewrite_inline_gpd_command_spans(content: str, bridge_command: str) -> str:
+    """Rewrite inline markdown code spans that execute ``gpd`` commands."""
+    return _INLINE_GPD_COMMAND_RE.sub(lambda match: f"`{bridge_command}{match.group('command')[3:]}`", content)
+
+
+def _rewrite_gemini_shell_line(line: str, bridge_command: str) -> str:
+    """Rewrite only command-position ``gpd`` tokens on a shell line."""
+    pieces: list[str] = []
+    index = 0
+    in_single = False
+    in_double = False
+
+    while index < len(line):
+        char = line[index]
+        previous = line[index - 1] if index > 0 else ""
+
+        if char == "'" and not in_double:
+            in_single = not in_single
+            pieces.append(char)
+            index += 1
+            continue
+
+        if char == '"' and not in_single and previous != "\\":
+            in_double = not in_double
+            pieces.append(char)
+            index += 1
+            continue
+
+        if (
+            not in_single
+            and not in_double
+            and line.startswith("gpd", index)
+            and _is_gpd_command_start(line, index)
+            and _is_gpd_token_end(line, index + 3)
+        ):
+            pieces.append(bridge_command)
+            index += 3
+            continue
+
+        pieces.append(char)
+        index += 1
+
+    return "".join(pieces)
+
+
+def _is_gpd_command_start(line: str, index: int) -> bool:
+    """Return whether ``gpd`` starts a shell command token at *index*."""
+    probe = index - 1
+    while probe >= 0 and line[probe] in " \t":
+        probe -= 1
+
+    if probe < 0:
+        return True
+
+    if line[probe] in "|;(!":
+        return True
+
+    if probe >= 1 and line[probe - 1 : probe + 1] in {"&&", "||", "$("}:
+        return True
+
+    return False
+
+
+def _is_gpd_token_end(line: str, end_index: int) -> bool:
+    """Return whether the token ending at *end_index* is a standalone ``gpd``."""
+    if end_index >= len(line):
+        return True
+    return line[end_index].isspace() or line[end_index] in {'"', "'", "`", ";", "|", "&", ")", "<", ">"}
 
 
 def _inject_gemini_command_runtime_note(content: str, bridge_command: str) -> str:
@@ -796,6 +892,7 @@ def _install_commands_as_toml(
     commands_src: Path,
     commands_dest: Path,
     path_prefix: str,
+    workflow_target_dir: Path,
     gpd_src_root: Path,
     attribution: str | None = "",
     install_scope: str | None = None,
@@ -818,6 +915,7 @@ def _install_commands_as_toml(
         commands_src,
         commands_dest,
         path_prefix,
+        workflow_target_dir,
         attribution,
         gpd_src_root,
         install_scope,
@@ -829,6 +927,7 @@ def _copy_commands_recursive(
     src_dir: Path,
     dest_dir: Path,
     path_prefix: str,
+    workflow_target_dir: Path,
     attribution: str | None,
     gpd_src_root: Path,
     install_scope: str | None = None,
@@ -844,6 +943,7 @@ def _copy_commands_recursive(
                 entry,
                 sub_dest,
                 path_prefix,
+                workflow_target_dir,
                 attribution,
                 gpd_src_root,
                 install_scope,
@@ -856,6 +956,7 @@ def _copy_commands_recursive(
                 path_prefix=path_prefix,
                 install_scope=install_scope,
                 src_root=gpd_src_root,
+                workflow_target_dir=workflow_target_dir,
             )
             content = process_attribution(content, attribution)
             content = strip_sub_tags(content)
@@ -927,6 +1028,7 @@ class GeminiAdapter(RuntimeAdapter):
             commands_src,
             commands_dest,
             path_prefix,
+            target_dir,
             gpd_root / "specs",
             attribution=self.get_commit_attribution(),
             install_scope=self._current_install_scope_flag(),

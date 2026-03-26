@@ -140,7 +140,7 @@ class TestCheckStoragePaths:
         assert any("GPD/phases/01-setup/results/out.json" in warning for warning in result.warnings)
         assert any("GPD/tmp/final.csv" in warning for warning in result.warnings)
 
-    def test_repo_gitignore_keeps_checkpoint_outputs_under_gpd_only(self, tmp_path: Path) -> None:
+    def test_repo_gitignore_does_not_hide_checkpoint_outputs_under_gpd(self, tmp_path: Path) -> None:
         repo = _init_git_repo(tmp_path)
 
         result = subprocess.run(
@@ -155,11 +155,12 @@ class TestCheckStoragePaths:
             cwd=repo,
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
         )
 
-        assert "GPD/CHECKPOINTS.md" in result.stdout
-        assert "GPD/phase-checkpoints/01-test-phase.md" in result.stdout
+        assert result.returncode == 1
+        assert result.stdout == ""
+        assert result.stderr == ""
 
     def test_git_status_reports_dirty_tracked_checkpoint_artifacts(self, tmp_path: Path) -> None:
         repo = _init_git_repo(tmp_path)
@@ -500,7 +501,9 @@ class TestRunHealth:
         assert report.fixes_applied == []
         assert state_check.details["state_source"] == "state.json"
 
-    def test_read_only_health_does_not_consume_intent_marker(self, tmp_path: Path) -> None:
+    def test_read_only_health_recovers_intent_marker_and_reports_current_state(
+        self, tmp_path: Path
+    ) -> None:
         cwd = _bootstrap_health_project(tmp_path)
         layout = ProjectLayout(cwd)
 
@@ -513,15 +516,14 @@ class TestRunHealth:
 
         before_state = layout.state_json.read_text(encoding="utf-8")
         before_md = layout.state_md.read_text(encoding="utf-8")
-        before_intent = layout.state_intent.read_text(encoding="utf-8")
 
         report = run_health(cwd, fix=False)
         state_check = next(check for check in report.checks if check.label == "State Validity")
 
-        assert layout.state_json.read_text(encoding="utf-8") == before_state
-        assert layout.state_md.read_text(encoding="utf-8") == before_md
-        assert layout.state_intent.exists()
-        assert layout.state_intent.read_text(encoding="utf-8") == before_intent
+        assert layout.state_json.read_text(encoding="utf-8") != before_state
+        assert layout.state_md.read_text(encoding="utf-8") != before_md
+        assert not layout.state_intent.exists()
+        assert json.loads(layout.state_json.read_text(encoding="utf-8"))["position"]["current_phase"] == "05"
         assert state_check.details["state_source"] == "state.json"
 
     def test_fix_mode_restores_backup_state_and_refreshes_report_details(self, tmp_path: Path) -> None:

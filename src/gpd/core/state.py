@@ -33,16 +33,13 @@ from gpd.contracts import (
 from gpd.core.constants import (
     ENV_GPD_DEBUG,
     PHASES_DIR_NAME,
-    PLAN_SUFFIX,
     PLANNING_DIR_NAME,
     PROJECT_FILENAME,
-    STANDALONE_PLAN,
     STATE_ARCHIVE_FILENAME,
     STATE_JSON_BACKUP_FILENAME,
     STATE_JSON_FILENAME,
     STATE_LINES_BUDGET,
     STATE_LINES_TARGET,
-    SUMMARY_SUFFIX,
     ProjectLayout,
 )
 from gpd.core.contract_validation import (
@@ -62,6 +59,7 @@ from gpd.core.utils import (
     atomic_write,
     compare_phase_numbers,
     file_lock,
+    matching_phase_artifact_count,
     phase_normalize,
     safe_parse_int,
     safe_read_file,
@@ -961,7 +959,6 @@ def _normalize_state_schema(
     raw: dict | None,
     *,
     allow_project_contract_salvage: bool = True,
-    retain_blocking_project_contract_errors: bool = True,
 ) -> tuple[dict, list[str]]:
     """Normalize a raw state dict and capture integrity-affecting coercions."""
     if not raw:
@@ -990,7 +987,6 @@ def _normalize_state_schema(
         normalized,
         integrity_issues,
         allow_project_contract_salvage=allow_project_contract_salvage,
-        retain_blocking_project_contract_errors=retain_blocking_project_contract_errors,
     )
 
     try:
@@ -1028,16 +1024,15 @@ def _normalize_state_schema_with_backup_project_contract(
     backup_raw: dict | None,
     *,
     allow_project_contract_salvage: bool = True,
-    retain_blocking_project_contract_errors: bool = True,
-) -> tuple[dict, list[str], bool]:
+) -> tuple[dict, list[str], bool, bool]:
     """Normalize state and recover backup state when the primary root is unreadable."""
 
     normalized, integrity_issues = _normalize_state_schema(
         raw,
         allow_project_contract_salvage=allow_project_contract_salvage,
-        retain_blocking_project_contract_errors=retain_blocking_project_contract_errors,
     )
     recovered_root_from_backup = False
+    recovered_session_from_backup = False
 
     backup_normalized: dict | None = None
     backup_issues: list[str] = []
@@ -1045,15 +1040,39 @@ def _normalize_state_schema_with_backup_project_contract(
         backup_normalized, backup_issues = _normalize_state_schema(
             backup_raw,
             allow_project_contract_salvage=allow_project_contract_salvage,
-            retain_blocking_project_contract_errors=retain_blocking_project_contract_errors,
         )
-    if not isinstance(raw, dict) and backup_normalized is not None and not backup_issues:
+    if (
+        backup_normalized is not None
+        and not backup_issues
+        and (
+            not isinstance(raw, dict)
+            or "schema normalization: irrecoverable validation failure; reset to defaults" in integrity_issues
+        )
+    ):
         normalized = backup_normalized
         integrity_issues = []
         recovered_root_from_backup = True
         logger.warning("Recovered state.json from state.json.bak after primary state.json required normalization")
+    else:
+        primary_session_issues = [
+            issue
+            for issue in integrity_issues
+            if issue.startswith('schema normalization: dropped "session" because expected object, got ')
+            or issue == 'schema normalization: removed invalid top-level sections "session"'
+        ]
+        if (
+            isinstance(raw, dict)
+            and backup_normalized is not None
+            and primary_session_issues
+            and isinstance(backup_normalized.get("session"), dict)
+            and any(value is not None for value in backup_normalized["session"].values())
+        ):
+            normalized = copy.deepcopy(normalized)
+            normalized["session"] = copy.deepcopy(backup_normalized["session"])
+            integrity_issues = [issue for issue in integrity_issues if issue not in primary_session_issues]
+            recovered_session_from_backup = True
 
-    return normalized, integrity_issues, recovered_root_from_backup
+    return normalized, integrity_issues, recovered_root_from_backup, recovered_session_from_backup
 
 
 def _format_validation_location(loc: tuple[object, ...]) -> str:
@@ -1100,7 +1119,6 @@ def _normalize_project_contract_section(
     integrity_issues: list[str],
     *,
     allow_project_contract_salvage: bool,
-    retain_blocking_project_contract_errors: bool = True,
 ) -> object:
     if value is None or not isinstance(value, dict):
         return value
@@ -1128,8 +1146,6 @@ def _normalize_project_contract_section(
         allow_singleton_defaults=allow_project_contract_salvage,
     )
     if schema_errors:
-        if retain_blocking_project_contract_errors:
-            return normalized_contract_dump
         integrity_issues.append(
             'schema normalization: dropped "project_contract" because contract schema required normalization'
         )
@@ -1202,14 +1218,12 @@ def _salvage_state_sections(
     integrity_issues: list[str],
     *,
     allow_project_contract_salvage: bool,
-    retain_blocking_project_contract_errors: bool,
 ) -> dict[str, object]:
     if normalized.get("project_contract") is not None:
         normalized["project_contract"] = _normalize_project_contract_section(
             normalized.get("project_contract"),
             integrity_issues,
             allow_project_contract_salvage=allow_project_contract_salvage,
-            retain_blocking_project_contract_errors=retain_blocking_project_contract_errors,
         )
     if normalized.get("intermediate_results") is not None:
         normalized["intermediate_results"] = _normalize_intermediate_results_section(
@@ -1239,7 +1253,6 @@ def _normalize_state_for_persistence(raw: dict | None) -> dict:
     normalized, _issues = _normalize_state_schema(
         raw,
         allow_project_contract_salvage=False,
-        retain_blocking_project_contract_errors=False,
     )
     return normalized
 
@@ -1738,11 +1751,25 @@ def _recover_intent_locked(cwd: Path) -> None:
     except OSError:
         md_valid = False
 
-    if json_tmp_exists and md_tmp_exists and json_valid and md_valid:
+    conflict_with_current = False
+    if json_tmp_exists and md_tmp_exists:
+        try:
+            current_json_is_newer = json_path.exists() and json_path.stat().st_mtime_ns > json_tmp.stat().st_mtime_ns
+        except OSError:
+            current_json_is_newer = False
+        try:
+            current_md_is_newer = md_path.exists() and md_path.stat().st_mtime_ns > md_tmp.stat().st_mtime_ns
+        except OSError:
+            current_md_is_newer = False
+        conflict_with_current = current_json_is_newer or current_md_is_newer
+
+    if json_tmp_exists and md_tmp_exists and json_valid and md_valid and not conflict_with_current:
         # Both temp files ready and valid — complete the interrupted write
-        os.rename(json_tmp, json_path)
-        os.rename(md_tmp, md_path)
+        json_tmp.replace(json_path)
+        md_tmp.replace(md_path)
     else:
+        if conflict_with_current:
+            logger.warning("Ignoring stale state write intent because current state files are newer than temp files")
         # Partial or corrupt — rollback by cleaning up temp files
         if json_tmp_exists:
             try:
@@ -1761,29 +1788,46 @@ def _recover_intent_locked(cwd: Path) -> None:
         pass
 
 
-def _build_state_from_markdown(cwd: Path, md_content: str) -> dict:
+def _build_state_from_markdown(cwd: Path, md_content: str, *, recover_intent: bool = True) -> dict:
     """Merge markdown-derived state into the existing JSON state."""
     json_path = _state_json_path(cwd)
+    backup_path = json_path.parent / STATE_JSON_BACKUP_FILENAME
     parsed = parse_state_to_json(md_content)
     has_convention_lock = _has_bold_block(md_content, "Convention Lock")
     has_approximations = _has_subsection(md_content, "Active Approximations")
     has_uncertainties = _has_subsection(md_content, "Propagated Uncertainties")
     has_pending_todos = _has_subsection(md_content, "Pending Todos")
+    if recover_intent:
+        _recover_intent_locked(cwd)
 
     existing = None
+    primary_unreadable = False
     try:
         existing = json.loads(json_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        pass
+        primary_unreadable = True
     except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
-        logger.warning("state.json is corrupt, attempting backup restore: %s", e)
-        bak_path = json_path.parent / STATE_JSON_BACKUP_FILENAME
+        logger.warning("state.json is unreadable during markdown merge; ignoring existing JSON state: %s", e)
+        primary_unreadable = True
+
+    if existing is not None and not isinstance(existing, dict):
+        logger.warning(
+            "state.json root is not an object during markdown merge; treating existing JSON state as unreadable: %s",
+            type(existing).__name__,
+        )
+        existing = None
+        primary_unreadable = True
+
+    if primary_unreadable:
         try:
-            existing = json.loads(bak_path.read_text(encoding="utf-8"))
-            logger.info("Restored from state.json.bak")
+            backup_existing = json.loads(backup_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
-            if os.environ.get(ENV_GPD_DEBUG):
-                logger.debug("state.json.bak also unavailable")
+            backup_existing = None
+        if isinstance(backup_existing, dict):
+            existing = copy.deepcopy(backup_existing)
+            # project_contract exists only in JSON, so a corrupt primary file must
+            # not resurrect stale backup contract state during a markdown sync.
+            existing["project_contract"] = None
 
     if existing and isinstance(existing, dict):
         merged = {**existing}
@@ -1850,26 +1894,6 @@ def _write_state_pair_locked(cwd: Path, *, state_obj: dict, md_content: str) -> 
 
     normalized = _normalize_state_for_persistence(state_obj)
 
-    def _valid_project_contract_from_state_text(state_text: str | None) -> object | None:
-        if state_text is None:
-            return None
-        try:
-            parsed = json.loads(state_text)
-        except (TypeError, json.JSONDecodeError):
-            return None
-        if not isinstance(parsed, dict):
-            return None
-        project_contract = parsed.get("project_contract")
-        if contract_from_data(project_contract) is None:
-            return None
-        return copy.deepcopy(project_contract)
-
-    if normalized.get("project_contract") is None:
-        preserved_contract = _valid_project_contract_from_state_text(json_backup)
-        if preserved_contract is not None:
-            normalized = copy.deepcopy(normalized)
-            normalized["project_contract"] = preserved_contract
-
     json_rendered = json.dumps(normalized, indent=2) + "\n"
     backup_rendered = json_rendered
 
@@ -1878,8 +1902,8 @@ def _write_state_pair_locked(cwd: Path, *, state_obj: dict, md_content: str) -> 
         atomic_write(md_tmp, md_content)
 
         intent_file.write_text(f"{json_tmp}\n{md_tmp}\n", encoding="utf-8")
-        os.rename(json_tmp, json_path)
-        os.rename(md_tmp, md_path)
+        json_tmp.replace(json_path)
+        md_tmp.replace(md_path)
         try:
             intent_file.unlink(missing_ok=True)
         except OSError:
@@ -1919,6 +1943,7 @@ def sync_state_json_core(cwd: Path, md_content: str) -> dict:
     """
     json_path = _state_json_path(cwd)
     backup_path = json_path.parent / STATE_JSON_BACKUP_FILENAME
+    _recover_intent_locked(cwd)
     merged = _build_state_from_markdown(cwd, md_content)
 
     json_content = json.dumps(merged, indent=2) + "\n"
@@ -1977,6 +2002,7 @@ def _load_state_json_with_integrity_issues(
         # Read paths must not silently default malformed singleton contract sections.
         allow_project_contract_salvage = False
         parse_issue: str | None = None
+        primary_unreadable = False
 
         try:
             raw = json_path.read_text(encoding="utf-8")
@@ -1991,12 +2017,11 @@ def _load_state_json_with_integrity_issues(
                 bak_parsed = None
             if isinstance(bak_parsed, dict):
                 backup_parsed = bak_parsed
-            normalized, integrity_issues, recovered_root_from_backup = (
+            normalized, integrity_issues, recovered_root_from_backup, recovered_session_from_backup = (
                 _normalize_state_schema_with_backup_project_contract(
                     parsed,
                     backup_parsed,
                     allow_project_contract_salvage=allow_project_contract_salvage,
-                    retain_blocking_project_contract_errors=False,
                 )
             )
             normalized, contract_integrity_issues = _drop_invalid_project_contract(normalized)
@@ -2006,9 +2031,13 @@ def _load_state_json_with_integrity_issues(
                 integrity_issues.append(
                     "state.json root was recovered from state.json.bak after primary state.json required normalization"
                 )
+            elif recovered_session_from_backup and integrity_mode != "review":
+                integrity_issues.append(
+                    "state.json session was recovered from state.json.bak after primary session required normalization"
+                )
             if integrity_mode == "review" and integrity_issues:
                 logger.warning("state.json failed review-mode integrity checks: %s", "; ".join(integrity_issues))
-            if persist_recovery and state_source != "state.json":
+            if persist_recovery and (state_source != "state.json" or recovered_session_from_backup):
                 atomic_write(json_path, json.dumps(normalized, indent=2) + "\n")
             return normalized, integrity_issues, state_source
         except FileNotFoundError:
@@ -2025,6 +2054,7 @@ def _load_state_json_with_integrity_issues(
                     atomic_write(json_path, json.dumps(restored, indent=2) + "\n")
                 return restored, integrity_issues, "state.json.bak"
         except TypeError as e:
+            primary_unreadable = True
             if os.environ.get(ENV_GPD_DEBUG):
                 logger.debug("state.json structural error: %s", e)
             structural_issue = f"state.json structural error: {e}"
@@ -2046,6 +2076,7 @@ def _load_state_json_with_integrity_issues(
                 logger.warning("state.json structural error blocks review-mode loading: %s", e)
                 return None, [structural_issue], None
         except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+            primary_unreadable = True
             if os.environ.get(ENV_GPD_DEBUG):
                 logger.debug("state.json parse error: %s", e)
             parse_issue = f"state.json parse error: {e}"
@@ -2076,11 +2107,11 @@ def _load_state_json_with_integrity_issues(
                 logger.warning("STATE.md fallback is disabled in review integrity mode")
                 return None, [], None
             content = md_path.read_text(encoding="utf-8")
-            state_from_md = _build_state_from_markdown(cwd, content)
+            state_from_md = _build_state_from_markdown(cwd, content, recover_intent=recover_intent)
             integrity_issues = ["state.json root was recovered from STATE.md after primary state.json was unavailable or unreadable"]
             if parse_issue is not None:
                 integrity_issues.insert(0, parse_issue)
-            if persist_recovery:
+            if persist_recovery and not primary_unreadable:
                 atomic_write(json_path, json.dumps(state_from_md, indent=2) + "\n")
             return state_from_md, integrity_issues, "STATE.md"
         except (FileNotFoundError, OSError, UnicodeDecodeError):
@@ -2115,33 +2146,6 @@ def _drop_invalid_project_contract(state_obj: dict) -> tuple[dict, list[str]]:
     ]
 
 
-def _restore_recoverable_project_contract(
-    state_obj: dict,
-    raw_project_contract: object,
-) -> tuple[dict, list[str]]:
-    """Restore recoverable project_contract drift while leaving blocking drift dropped."""
-
-    if not isinstance(raw_project_contract, dict):
-        return state_obj, []
-    if state_obj.get("project_contract") is not None:
-        return state_obj, []
-
-    list_shape_drift_errors = _collect_list_shape_drift_errors(raw_project_contract)
-    normalized_contract, schema_findings = salvage_project_contract(raw_project_contract)
-    schema_findings = list(dict.fromkeys([*schema_findings, *list_shape_drift_errors]))
-    schema_warnings, schema_errors = _split_project_contract_schema_findings(
-        schema_findings,
-        allow_singleton_defaults=False,
-    )
-    if schema_errors or normalized_contract is None:
-        return state_obj, []
-
-    restored_state = dict(state_obj)
-    restored_state["project_contract"] = normalized_contract.model_dump(mode="python")
-    integrity_issues = [_integrity_issue_from_contract_error(issue) for issue in schema_warnings]
-    return restored_state, integrity_issues
-
-
 def _load_state_json_from_backup(
     bak_path: Path,
     *,
@@ -2153,12 +2157,11 @@ def _load_state_json_from_backup(
         bak_parsed = json.loads(bak_raw)
         if not isinstance(bak_parsed, dict):
             raise TypeError(f"state root must be an object, got {type(bak_parsed).__name__}")
-        restored, integrity_issues, _recovered_root_from_backup = (
+        restored, integrity_issues, _recovered_root_from_backup, _recovered_session_from_backup = (
             _normalize_state_schema_with_backup_project_contract(
                 bak_parsed,
                 None,
                 allow_project_contract_salvage=allow_project_contract_salvage,
-                retain_blocking_project_contract_errors=False,
             )
         )
         restored, contract_integrity_issues = _drop_invalid_project_contract(restored)
@@ -2192,13 +2195,62 @@ def save_state_json_locked(cwd: Path, state_obj: dict) -> None:
 
     Caller MUST hold the canonical state lock.
     """
+    _recover_intent_locked(cwd)
     normalized = _normalize_state_for_persistence(state_obj)
     _write_state_pair_locked(cwd, state_obj=normalized, md_content=generate_state_markdown(normalized))
 
 
+def _preserved_project_contract_for_markdown_save(cwd: Path) -> dict[str, object] | None:
+    """Return the canonical project contract to carry through a markdown save.
+
+    Primary ``state.json`` remains authoritative when it is readable. The backup
+    is consulted only when the primary file is unavailable or unreadable, so a
+    stale backup cannot override an explicit primary drop/block.
+    """
+
+    layout = ProjectLayout(cwd)
+    primary_unreadable = False
+
+    try:
+        existing = json.loads(layout.state_json.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+        existing = None
+        primary_unreadable = True
+    else:
+        if not isinstance(existing, dict):
+            existing = None
+            primary_unreadable = True
+
+    if isinstance(existing, dict):
+        project_contract = existing.get("project_contract")
+        contract = contract_from_data(project_contract)
+        return contract.model_dump(mode="python") if contract is not None else None
+
+    if not primary_unreadable:
+        return None
+
+    try:
+        backup = json.loads(layout.state_json_backup.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+    if not isinstance(backup, dict):
+        return None
+
+    project_contract = backup.get("project_contract")
+    contract = contract_from_data(project_contract)
+    return contract.model_dump(mode="python") if contract is not None else None
+
+
 def save_state_markdown_locked(cwd: Path, md_content: str) -> dict:
     """Atomically write markdown-derived state while holding the canonical state lock."""
+    _recover_intent_locked(cwd)
     merged = _build_state_from_markdown(cwd, md_content)
+    preserved_contract = None
+    if merged.get("project_contract") is None:
+        preserved_contract = _preserved_project_contract_for_markdown_save(cwd)
+    if preserved_contract is not None:
+        merged = copy.deepcopy(merged)
+        merged["project_contract"] = preserved_contract
     return _write_state_pair_locked(cwd, state_obj=merged, md_content=md_content)
 
 
@@ -2301,10 +2353,11 @@ def state_update(cwd: Path, field: str, value: str) -> StateUpdateResult:
         )
 
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        return StateUpdateResult(updated=False, reason="STATE.md not found")
 
     with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        if not md_path.exists():
+            return StateUpdateResult(updated=False, reason="STATE.md not found")
         content = md_path.read_text(encoding="utf-8")
         field_norm = field.replace("_", " ")
 
@@ -2331,13 +2384,14 @@ def state_update(cwd: Path, field: str, value: str) -> StateUpdateResult:
 def state_patch(cwd: Path, patches: dict[str, str]) -> StatePatchResult:
     """Batch-update multiple **Field:** values in STATE.md."""
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        raise StateError(
-            f"STATE.md not found at {md_path}. "
-            "Run 'gpd init' to create the project state file before patching."
-        )
 
     with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        if not md_path.exists():
+            raise StateError(
+                f"STATE.md not found at {md_path}. "
+                "Run 'gpd init' to create the project state file before patching."
+            )
         content = md_path.read_text(encoding="utf-8")
         updated: list[str] = []
         failed: list[str] = []
@@ -2410,9 +2464,11 @@ def state_set_project_contract(cwd: Path, contract_data: dict[str, object] | Res
             _integrity_issue_from_contract_error(error) for error in list_shape_drift_errors
         )
         if normalized_contract is None:
-            parsed = ResearchContract.model_validate(contract_payload)
-        else:
-            parsed = normalized_contract
+            return StateUpdateResult(
+                updated=False,
+                reason="Invalid project contract schema: project contract could not be normalized",
+            )
+        parsed = normalized_contract
     except PydanticValidationError as exc:
         first_error = exc.errors()[0] if exc.errors() else {}
         location = ".".join(str(part) for part in first_error.get("loc", ())) or "project_contract"
@@ -2468,10 +2524,11 @@ def state_set_project_contract(cwd: Path, contract_data: dict[str, object] | Res
 def state_advance_plan(cwd: Path) -> AdvancePlanResult:
     """Advance to the next plan, or mark phase complete if on last plan."""
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        return AdvancePlanResult(advanced=False, error="STATE.md not found")
 
     with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        if not md_path.exists():
+            return AdvancePlanResult(advanced=False, error="STATE.md not found")
         content = md_path.read_text(encoding="utf-8")
         current_plan_raw = state_extract_field(content, "Current Plan")
         total_plans_raw = state_extract_field(content, "Total Plans in Phase")
@@ -2530,13 +2587,14 @@ def state_record_metric(
 ) -> RecordMetricResult:
     """Record a performance metric in STATE.md."""
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        return RecordMetricResult(recorded=False, error="STATE.md not found")
 
     if not phase or not plan or not duration:
         return RecordMetricResult(recorded=False, error="phase, plan, and duration required")
 
     with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        if not md_path.exists():
+            return RecordMetricResult(recorded=False, error="STATE.md not found")
         content = md_path.read_text(encoding="utf-8")
 
         pattern = re.compile(
@@ -2566,10 +2624,11 @@ def state_record_metric(
 def state_update_progress(cwd: Path) -> UpdateProgressResult:
     """Recalculate progress from plan/summary counts across all phases."""
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        return UpdateProgressResult(updated=False, error="STATE.md not found")
 
     with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        if not md_path.exists():
+            return UpdateProgressResult(updated=False, error="STATE.md not found")
         content = md_path.read_text(encoding="utf-8")
 
         phases_dir = ProjectLayout(cwd).phases_dir
@@ -2581,10 +2640,10 @@ def state_update_progress(cwd: Path) -> UpdateProgressResult:
                 if not phase_dir.is_dir():
                     continue
                 phase_files = [f.name for f in phase_dir.iterdir() if f.is_file()]
-                phase_plans = sum(1 for f in phase_files if f.endswith(PLAN_SUFFIX) or f == STANDALONE_PLAN)
-                phase_summaries = sum(1 for f in phase_files if f.endswith(SUMMARY_SUFFIX))
-                total_plans += phase_plans
-                total_completed += min(phase_plans, phase_summaries)
+                phase_plans = [f for f in phase_files if f.endswith("-PLAN.md") or f == "PLAN.md"]
+                phase_summaries = [f for f in phase_files if f.endswith("-SUMMARY.md") or f == "SUMMARY.md"]
+                total_plans += len(phase_plans)
+                total_completed += matching_phase_artifact_count(phase_plans, phase_summaries)
 
         percent = min(100, round((total_completed / total_plans) * 100)) if total_plans > 0 else 0
         bar_width = 10
@@ -2617,8 +2676,6 @@ def state_add_decision(
 ) -> AddDecisionResult:
     """Add a decision to STATE.md."""
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        return AddDecisionResult(added=False, error="STATE.md not found")
     if not summary:
         return AddDecisionResult(added=False, error="summary required")
 
@@ -2627,6 +2684,9 @@ def state_add_decision(
     entry = f"- [Phase {phase or '?'}]: {summary_clean}{rat_str}"
 
     with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        if not md_path.exists():
+            return AddDecisionResult(added=False, error="STATE.md not found")
         content = md_path.read_text(encoding="utf-8")
         pattern = re.compile(
             r"(###?\s*Decisions\s*\n)([\s\S]*?)(?=\n###?|\n##[^#]|$)",
@@ -2650,8 +2710,6 @@ def state_add_decision(
 def state_add_blocker(cwd: Path, text: str) -> AddBlockerResult:
     """Add a blocker to STATE.md."""
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        return AddBlockerResult(added=False, error="STATE.md not found")
     if not text:
         return AddBlockerResult(added=False, error="text required")
 
@@ -2659,6 +2717,9 @@ def state_add_blocker(cwd: Path, text: str) -> AddBlockerResult:
     entry = f"- {text_clean}"
 
     with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        if not md_path.exists():
+            return AddBlockerResult(added=False, error="STATE.md not found")
         content = md_path.read_text(encoding="utf-8")
         pattern = re.compile(
             r"(###?\s*Blockers/Concerns\s*\n)([\s\S]*?)(?=\n###?|\n##[^#]|$)",
@@ -2683,8 +2744,6 @@ def state_add_blocker(cwd: Path, text: str) -> AddBlockerResult:
 def state_resolve_blocker(cwd: Path, text: str) -> ResolveBlockerResult:
     """Resolve (remove) a blocker from STATE.md."""
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        return ResolveBlockerResult(resolved=False, error="STATE.md not found")
     if not text:
         return ResolveBlockerResult(resolved=False, error="text required")
     if len(text) < 3:
@@ -2693,6 +2752,9 @@ def state_resolve_blocker(cwd: Path, text: str) -> ResolveBlockerResult:
         )
 
     with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        if not md_path.exists():
+            return ResolveBlockerResult(resolved=False, error="STATE.md not found")
         content = md_path.read_text(encoding="utf-8")
         pattern = re.compile(
             r"(###?\s*Blockers/Concerns\s*\n)([\s\S]*?)(?=\n###?|\n##[^#]|$)",
@@ -2791,17 +2853,18 @@ def state_record_session(
 ) -> RecordSessionResult:
     """Record session info in STATE.md."""
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        with gpd_span(
-            "session.continuity.missing_state",
-            cwd=str(cwd),
-            stopped_at=stopped_at or "",
-            resume_file=resume_file or EM_DASH,
-        ):
-            pass
-        return RecordSessionResult(recorded=False, error="STATE.md not found")
 
     with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        if not md_path.exists():
+            with gpd_span(
+                "session.continuity.missing_state",
+                cwd=str(cwd),
+                stopped_at=stopped_at or "",
+                resume_file=resume_file or EM_DASH,
+            ):
+                pass
+            return RecordSessionResult(recorded=False, error="STATE.md not found")
         content = md_path.read_text(encoding="utf-8")
         now = datetime.now(tz=UTC).isoformat()
         machine = _current_machine_identity()
@@ -2871,7 +2934,7 @@ def state_record_session(
 @instrument_gpd_function("state.snapshot")
 def state_snapshot(cwd: Path) -> StateSnapshotResult:
     """Fast snapshot of state for progress/routing commands."""
-    state_obj, _issues, _state_source = peek_state_json(cwd, recover_intent=False)
+    state_obj, _issues, _state_source = peek_state_json(cwd, recover_intent=True)
     if state_obj is None:
         return StateSnapshotResult(error="STATE.md not found")
 
@@ -3107,11 +3170,11 @@ def state_validate(
 def state_compact(cwd: Path) -> StateCompactResult:
     """Compact STATE.md by archiving old decisions, blockers, metrics, and sessions."""
     md_path = _state_md_path(cwd)
-    if not md_path.exists():
-        return StateCompactResult(compacted=False, error="STATE.md not found")
 
     with _state_lock(cwd):
         _recover_intent_locked(cwd)
+        if not md_path.exists():
+            return StateCompactResult(compacted=False, error="STATE.md not found")
         content = md_path.read_text(encoding="utf-8")
         lines = content.split("\n")
         total_lines = len(lines)
