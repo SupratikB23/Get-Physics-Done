@@ -1,6 +1,6 @@
 ---
 name: gpd:settings
-description: Configure autonomy, unattended execution budgets, runtime permission sync, runtime-specific tier model overrides, review cadence, and git preferences
+description: Configure autonomy, unattended execution budgets, runtime permission sync, model-cost posture, runtime-specific tier model overrides, review cadence, and git preferences
 context_mode: projectless
 allowed-tools:
   - file_read
@@ -13,13 +13,13 @@ allowed-tools:
 <!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Interactive configuration of autonomy, unattended execution budgets, runtime permission sync, GPD workflow agents, runtime-specific tier model overrides, `execution.review_cadence`, and workflow/git preferences via multi-question prompt.
+Interactive configuration of autonomy, unattended execution budgets, runtime permission sync, GPD workflow agents, model-cost posture, runtime-specific tier model overrides, `execution.review_cadence`, and workflow/git preferences via multi-question prompt.
 
 Routes to the settings workflow which handles:
 
 - Config existence ensuring
 - Current settings reading and parsing
-- Interactive prompt covering autonomy mode, unattended budgets, research profile, runtime-specific tier models, review cadence, and workflow/git toggles
+- Interactive prompt covering autonomy mode, unattended budgets, research profile, model-cost posture, runtime-specific tier models, review cadence, and workflow/git toggles
 - Runtime permission sync status plus relaunch-readiness guidance for unattended use
 - Config merging and writing
 - Confirmation display with quick command references
@@ -42,6 +42,7 @@ The workflow handles all logic including:
    - **Unattended budgets**: review bounded continuation limits such as per-plan and per-wave unattended minutes
    - **Runtime permission sync**: align runtime-owned approvals with the chosen autonomy level
    - **Research profile**: deep-theory / numerical / exploratory / review / paper-writing
+   - **Model cost posture**: Max quality / Balanced / Budget-aware
    - **Tier models for the active runtime**: leave unchanged / use runtime defaults / configure explicit tier-1, tier-2, tier-3 model strings
    - **Plan researcher**: on / off
    - **Plan checker**: on / off
@@ -53,6 +54,7 @@ The workflow handles all logic including:
    - Ask for the exact model string the active runtime accepts
    - Preserve provider prefixes, slash-delimited ids, brackets, and alias syntax already used by that runtime
    - Prefer runtime defaults unless the user explicitly wants pinned tier overrides
+   - Treat `Balanced` as the default qualitative posture, `Budget-aware` as a prompt to keep runtime defaults and avoid pinning overrides unless needed, and `Max quality` as a prompt to favor the strongest acceptable runtime-native models when the user is already ready to pin them
    - When the runtime routes through multiple providers, confirm the provider before suggesting provider-native ids
 5. Answer parsing and config merging
 6. File writing plus runtime permission synchronization

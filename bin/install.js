@@ -1127,6 +1127,7 @@ function printHelp() {
   console.log(` ${yellow}After install:${reset}`);
   console.log(` ${dim}# Recommended unattended configuration${reset}`);
   console.log(" Use the runtime-specific `settings` command to keep autonomy at Balanced (`balanced`).");
+  console.log(" Also use `settings` after startup to choose your model-cost posture; runtime defaults are the safest starting point.");
   console.log(" Then run `gpd permissions status --runtime <runtime> --autonomy balanced`.");
   console.log(" If it reports drift, run `gpd permissions sync --runtime <runtime> --autonomy balanced`.");
   console.log(" If it reports `requires_relaunch`, exit and relaunch the runtime before unattended use.");

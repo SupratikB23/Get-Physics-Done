@@ -5161,6 +5161,11 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                 f"[bold]gpd doctor --runtime {single_runtime_name} --{doctor_scope}[/].",
                 soft_wrap=True,
             )
+            console.print(
+                "6. After startup, use the runtime `settings` command to choose your model-cost posture. "
+                "The safest starting point is `review` plus runtime defaults.",
+                soft_wrap=True,
+            )
         else:
             for display_name, launch_command, help_command, new_project_command, map_research_command in next_step_entries:
                 console.print(
@@ -5178,6 +5183,11 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
             )
             console.print(
                 "Run [bold]gpd doctor --runtime <runtime> --local|--global[/] for a focused readiness check.",
+                soft_wrap=True,
+            )
+            console.print(
+                "After startup, use the runtime `settings` command to choose your model-cost posture. "
+                "The safest starting point is `review` plus runtime defaults.",
                 soft_wrap=True,
             )
         console.print()

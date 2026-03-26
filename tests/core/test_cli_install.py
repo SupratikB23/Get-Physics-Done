@@ -118,7 +118,9 @@ def _assert_single_runtime_next_steps(
         rf"Use gpd --help for local install, validation, permissions, and diagnostics\..*?"
         rf"Use {re.escape(adapter.help_command)} inside {re.escape(descriptor.display_name)} for workflow help\..*?"
         rf"Verify or troubleshoot this machine with gpd doctor --runtime "
-        rf"{re.escape(descriptor.runtime_name)} --{re.escape(doctor_scope)}\.",
+        rf"{re.escape(descriptor.runtime_name)} --{re.escape(doctor_scope)}\..*?"
+        rf"After startup, use the runtime `settings` command to choose your model-cost posture\. "
+        rf"The safest starting point is `review` plus runtime defaults\.",
         re.S,
     )
     assert pattern.search(output), output
@@ -351,9 +353,10 @@ def test_install_summary_surfaces_help_then_new_or_existing_entry_points(tmp_pat
 
     assert result.exit_code == 0
     _assert_single_runtime_next_steps(result.output)
-    assert "\n   Fast bootstrap:" in result.output
-    assert "Use gpd --help for local install, validation, permissions, and diagnostics." in result.output
-    assert f"gpd doctor --runtime {_PRIMARY_INSTALL_DESCRIPTOR.runtime_name} --local" in result.output
+    assert (
+        "After startup, use the runtime `settings` command to choose your model-cost posture. "
+        "The safest starting point is `review` plus runtime defaults."
+    ) in result.output
 
 
 def test_install_summary_lists_runtime_specific_help_for_multi_runtime_install(tmp_path: Path):
@@ -390,6 +393,10 @@ def test_install_summary_lists_runtime_specific_help_for_multi_runtime_install(t
     for descriptor in descriptors:
         _assert_multi_runtime_next_step_line(result.output, descriptor)
     assert "1. From your system terminal" not in result.output
+    assert (
+        "After startup, use the runtime `settings` command to choose your model-cost posture. "
+        "The safest starting point is `review` plus runtime defaults."
+    ) in result.output
     assert "Use gpd --help for local install, validation, permissions, and diagnostics." in result.output
     assert "Run gpd doctor --runtime <runtime> --local|--global for a focused readiness check." in result.output
 

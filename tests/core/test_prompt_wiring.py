@@ -2192,6 +2192,31 @@ def test_stage9_adaptive_mode_and_review_cadence_docs_stay_aligned() -> None:
     assert "Proxy-only or sanity-only passes do NOT satisfy this." in meta_orchestration
 
 
+def test_settings_workflow_surfaces_qualitative_model_cost_onboarding_and_runtime_defaults() -> None:
+    settings_command = (COMMANDS_DIR / "settings.md").read_text(encoding="utf-8")
+    settings_workflow = (WORKFLOWS_DIR / "settings.md").read_text(encoding="utf-8")
+
+    assert "**Model cost posture**: Max quality / Balanced / Budget-aware" in settings_command
+    assert "Prefer runtime defaults unless the user explicitly wants pinned tier overrides" in settings_command
+    assert "Treat `Balanced` as the default qualitative posture" in settings_command
+    assert "dollar" not in settings_command.lower()
+
+    assert "Balanced (Recommended)" in settings_workflow
+    assert "runtime defaults" in settings_workflow
+    assert "tier-1" in settings_workflow
+    assert "tier-2" in settings_workflow
+    assert "tier-3" in settings_workflow
+    assert "dollar" not in settings_workflow.lower()
+
+    assert "Tier models for the active runtime" in settings_command
+    assert "Tier Models" in settings_workflow
+    assert "Step-by-step setup for runtime-specific tier-1, tier-2, and tier-3 model strings" in settings_workflow
+    assert "use runtime defaults" in settings_command
+    assert "Use runtime defaults" in settings_workflow
+    assert "configure explicit tier-1, tier-2, tier-3 model strings" in settings_command
+    assert "Configure explicit tier models" in settings_workflow
+
+
 def test_help_surfaces_distinguish_runtime_slash_commands_from_local_cli_subcommands() -> None:
     help_command = (COMMANDS_DIR / "help.md").read_text(encoding="utf-8")
     help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8")

@@ -37,3 +37,23 @@ def test_settings_and_planning_config_keep_conventions_outside_config_json() -> 
     assert "Project conventions are not part of `config.json`." in planning_config
     assert "Do **not** introduce a `physics` block there." in planning_config
     assert "The user can run `gpd convention set ...` or `/gpd:validate-conventions` later to complete convention setup." in new_project
+
+
+def test_settings_model_cost_onboarding_stays_qualitative_and_runtime_default_first() -> None:
+    settings_command = (COMMANDS_DIR / "settings.md").read_text(encoding="utf-8")
+    settings_workflow = (WORKFLOWS_DIR / "settings.md").read_text(encoding="utf-8")
+
+    assert "**Model cost posture**: Max quality / Balanced / Budget-aware" in settings_command
+    assert "Prefer runtime defaults unless the user explicitly wants pinned tier overrides" in settings_command
+    assert "Treat `Balanced` as the default qualitative posture" in settings_command
+    assert "dollar" not in settings_command.lower()
+
+    assert "Balanced (Recommended)" in settings_workflow
+    assert "runtime defaults" in settings_workflow
+    assert "Step-by-step setup for runtime-specific tier-1, tier-2, and tier-3 model strings" in settings_workflow
+    assert "Prefer leaving overrides unset unless the user explicitly asks to pin concrete model ids." in settings_workflow
+    assert "use runtime defaults" in settings_command
+    assert "Use runtime defaults" in settings_workflow
+    assert "configure explicit tier-1, tier-2, tier-3 model strings" in settings_command
+    assert "Configure explicit tier models" in settings_workflow
+    assert "dollar" not in settings_workflow.lower()

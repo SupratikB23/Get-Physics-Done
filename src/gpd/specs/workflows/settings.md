@@ -1,5 +1,5 @@
 <purpose>
-Interactive configuration of autonomy, unattended execution budgets, GPD workflow agents (research, plan_checker, verifier), research profile selection, runtime-specific tier model overrides, `execution.review_cadence`, git branching, and runtime-permission sync guidance. `/gpd:settings` is the primary guided entrypoint for unattended-use setup. Recommend `Balanced` unless the user explicitly wants tighter supervision or YOLO-style speed. Updates `GPD/config.json` with user preferences including model profile, optional `model_overrides`, workflow toggles, execution cadence, and branching strategy.
+Interactive configuration of autonomy, unattended execution budgets, GPD workflow agents (research, plan_checker, verifier), research profile selection, qualitative model-cost posture, runtime-specific tier model overrides, `execution.review_cadence`, git branching, and runtime-permission sync guidance. `/gpd:settings` is the primary guided entrypoint for unattended-use setup. Recommend `Balanced` unless the user explicitly wants tighter supervision or YOLO-style speed. Updates `GPD/config.json` with user preferences including model profile, optional `model_overrides`, workflow toggles, execution cadence, and branching strategy.
 </purpose>
 
 <required_reading>
@@ -42,6 +42,7 @@ Parse current values (default to `true` / first option if not present):
 - `planning.commit_docs` -- whether planning artifacts are committed to git (default: `true`)
 - `parallelization` -- execute wave plans in parallel (default: `true`)
 - `model_profile` -- which agent model profile to use (default: `review`)
+- `model-cost posture` is a qualitative guidance layer only; it maps onto the existing `model_profile` and `model_overrides` choices and does not add a new persisted config key.
 - `git.branching_strategy` -- branching approach (default: `"none"`)
 
 `execution.review_cadence` is independent of `model_profile` and `research_mode`: it controls bounded review stop density, not agent tiering or verification rigor.
@@ -100,6 +101,16 @@ ask_user([
       { label: "Exploratory", description: "Rapid prototyping, hypothesis testing, parameter scanning" },
       { label: "Review (Recommended)", description: "Critical assessment, error checking, literature comparison (default)" },
       { label: "Paper Writing", description: "LaTeX production, figures, narrative flow" }
+    ]
+  },
+  {
+    question: "What model-cost posture should GPD optimize for?",
+    header: "Model Cost Posture",
+    multiSelect: false,
+    options: [
+      { label: "Max Quality", description: "Favor the strongest acceptable runtime-native models. Use explicit tier overrides only when you already know the exact ids you want." },
+      { label: "Balanced (Recommended)", description: "Keep the default `review` profile guidance and runtime defaults unless there is a concrete reason to pin tier models." },
+      { label: "Budget-aware", description: "Prefer runtime defaults and avoid explicit tier pinning unless it clearly improves the result for this runtime." }
     ]
   },
   {
@@ -209,6 +220,12 @@ Suggested defaults when the user wants a recommendation:
 - When the user does want explicit overrides, suggest exact ids already known to work in the active runtime and preserve its native identifier format.
 - If the runtime routes through multiple providers, confirm the provider first before suggesting provider-native ids.
 
+Qualitative posture guidance:
+
+- **Balanced** is the default recommendation and should usually keep the runtime on its own defaults unless the user has a concrete reason to pin models.
+- **Budget-aware** should push the flow toward runtime defaults and away from explicit tier pinning unless the user asks for a specific override.
+- **Max Quality** should bias toward the strongest acceptable runtime-native model strings only when the user is already opting into explicit overrides.
+
 Normalization rules:
 
 - Trim surrounding whitespace only.
@@ -288,6 +305,7 @@ Display:
 |----------------------|-------|
 | Active Runtime       | {detected runtime id} |
 | Research Profile     | {deep-theory/numerical/exploratory/review/paper-writing} |
+| Model Cost Posture   | {Max Quality/Balanced/Budget-aware} |
 | Tier Models          | {runtime default / tier-1=..., tier-2=..., tier-3=...} |
 | Plan Researcher      | {On/Off} |
 | Plan Checker         | {On/Off} |
@@ -299,6 +317,8 @@ Display:
 | Runtime Permissions  | {aligned / changed / manual follow-up required} |
 
 These settings apply to future /gpd:plan-phase and /gpd:execute-phase runs.
+
+Model-cost posture is qualitative guidance only. It maps onto the existing `model_profile` and `model_overrides` decisions, not a new persisted config key or pricing system.
 
 Concrete tier model strings are passed through to the active runtime unchanged, so they should always use that runtime's native model syntax.
 
@@ -337,7 +357,7 @@ Project conventions propagate separately through `GPD/CONVENTIONS.md` and `GPD/s
 
 - [ ] Current config read
 - [ ] Active runtime inferred or explicitly confirmed before model override guidance
-- [ ] User presented with autonomy guidance (`Balanced` recommended), unattended budget review, profile, runtime-specific tier-model handling, workflow toggles, review cadence, and git branching
+- [ ] User presented with autonomy guidance (`Balanced` recommended), unattended budget review, profile, model-cost posture, runtime-specific tier-model handling, workflow toggles, review cadence, and git branching
 - [ ] Config updated with model_profile, optional model_overrides, workflow, execution, and git sections
 - [ ] Runtime permissions sync attempted after autonomy is written, with relaunch guidance surfaced when required
 - [ ] Relaunch-required state explained as not unattended-ready yet

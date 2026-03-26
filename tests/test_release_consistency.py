@@ -623,7 +623,8 @@ def test_public_readme_quick_start_surfaces_step_one_entry_points() -> None:
     assert "| Returning to an existing GPD project | `resume-work` |" in quick_start
     assert "| Existing research folder or codebase | `map-research` |" in quick_start
     assert "Guided unattended configuration path: use `settings` after startup" in quick_start
-    assert "Start there if you are deciding how much unattended execution to allow." in quick_start
+    assert "For model choice, the safe default is `review` plus runtime defaults." in quick_start
+    assert "Use `settings` to move toward `Max quality`, `Balanced`, or `Budget-aware` only if you want to trade off quality against cost or model access." in quick_start
     assert "Use the exact runtime-specific command syntax below for your first command." in quick_start
     assert "If you are starting from existing work, run `map-research` first" in quick_start
     assert "/gpd:new-project --minimal" in quick_start
@@ -670,6 +671,8 @@ def test_public_help_surfaces_keep_settings_as_guided_post_startup_path() -> Non
     for content in (help_command, help_workflow):
         assert "3. `/gpd:settings` - Primary guided unattended/autonomy setup after project creation" in content
         assert "Balanced (Recommended)" in content
+        assert "Choose a model-cost posture: `Max quality`, `Balanced`, or `Budget-aware`" in content
+        assert "review` with runtime defaults is the safest first choice" in content
 
 
 def test_public_settings_workflow_keeps_balanced_recommendation_and_relaunch_guidance() -> None:
@@ -683,6 +686,8 @@ def test_public_settings_workflow_keeps_balanced_recommendation_and_relaunch_gui
     assert 'gpd --raw permissions sync --autonomy "$SELECTED_AUTONOMY"' in settings_workflow
     assert "If `requires_relaunch` is `true`, surface `next_step` verbatim" in settings_workflow
     assert "Runtime permissions sync attempted after autonomy is written, with relaunch guidance surfaced when required" in settings_workflow
+    assert "What model-cost posture should GPD optimize for?" in settings_workflow
+    assert "Use runtime defaults" in settings_workflow
 
 
 def test_public_bootstrap_help_examples_cover_install_and_readiness_handoff() -> None:
@@ -697,6 +702,7 @@ def test_public_bootstrap_help_examples_cover_install_and_readiness_handoff() ->
     assert "# Interactive uninstall" in content
     assert "# Uninstall from all runtimes globally" in content
     assert "# Equivalent uninstall subcommand form" in content
+    assert "Also use `settings` after startup to choose your model-cost posture; runtime defaults are the safest starting point." in content
 
 
 def test_public_runtime_docs_explain_runtime_specific_command_syntax() -> None:

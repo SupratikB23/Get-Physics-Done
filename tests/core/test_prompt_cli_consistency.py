@@ -306,7 +306,13 @@ def test_help_prompt_workflow_modes_match_current_settings_vocabulary() -> None:
         assert "YOLO Mode" not in content
         assert "Change anytime by editing `GPD/config.json`" not in content
         assert "Supervised" in content
-        assert "Balanced (Recommended)" in content
+        assert "Max quality" in content
+        assert "Balanced" in content
+        assert "Budget-aware" in content
+        assert "runtime defaults" in content
+        assert "tier-1" in content
+        assert "tier-2" in content
+        assert "tier-3" in content
         assert "YOLO" in content
         assert "/gpd:settings" in content
         assert "/gpd:discuss-phase" in content
