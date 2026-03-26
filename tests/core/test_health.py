@@ -8,8 +8,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.core.constants import ProjectLayout
 from gpd.core.contract_validation import validate_project_contract
+from gpd.core.errors import ValidationError
 from gpd.core.health import (
     CheckStatus,
     HealthCheck,
@@ -33,6 +37,8 @@ from gpd.core.health import (
 )
 from gpd.core.state import default_state_dict, generate_state_markdown, save_state_json
 from gpd.core.storage_paths import ProjectStorageLayout
+
+_PRIMARY_RUNTIME = iter_runtime_descriptors()[0].runtime_name
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
 
@@ -700,6 +706,8 @@ class TestRunDoctor:
 
         assert checks["Specs Structure"].status == CheckStatus.OK
         assert checks["Key References"].status == CheckStatus.OK
+        assert report.mode == "installation"
+        assert report.runtime is None
 
     def test_missing_required_specs_subdir_fails(self, tmp_path: Path):
         report = run_doctor(specs_dir=self._make_specs_dir(tmp_path, include_templates=False), version="0.1.0")
@@ -916,6 +924,299 @@ trigger:
 
         assert checks["Protocol Bundles"].status == CheckStatus.FAIL
         assert any("unknown exclusive_with bundle missing-bundle" in issue for issue in checks["Protocol Bundles"].issues)
+
+    def test_default_mode_excludes_runtime_readiness_checks(self, tmp_path: Path):
+        report = run_doctor(specs_dir=self._make_specs_dir(tmp_path), version="0.1.0")
+        labels = {check.label for check in report.checks}
+
+        assert report.mode == "installation"
+        assert report.runtime is None
+        assert report.install_scope is None
+        assert report.target is None
+        assert "Runtime Launcher" not in labels
+        assert "Runtime Config Target" not in labels
+        assert "Bootstrap Network Access" not in labels
+        assert "Provider/Auth Guidance" not in labels
+        assert "LaTeX Toolchain" not in labels
+
+    def test_runtime_mode_records_virtualenv_state_without_blocking(self, tmp_path: Path):
+        target_dir = tmp_path / ".codex"
+        specs_dir = self._make_specs_dir(tmp_path)
+
+        with (
+            patch("gpd.core.health._doctor_active_virtualenv", return_value=False),
+            patch("gpd.core.health.shutil.which", return_value="/usr/bin/codex"),
+            patch(
+                "gpd.core.health._doctor_check_bootstrap_network_access",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_provider_auth",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Provider/Auth Guidance"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_latex_toolchain",
+                return_value=HealthCheck(status=CheckStatus.OK, label="LaTeX Toolchain"),
+            ),
+        ):
+            report = run_doctor(
+                specs_dir=specs_dir,
+                version="0.1.0",
+                runtime="codex",
+                install_scope="global",
+                target_dir=target_dir,
+            )
+
+        checks = {check.label: check for check in report.checks}
+
+        assert report.mode == "runtime-readiness"
+        assert report.runtime == "codex"
+        assert report.install_scope == "global"
+        assert report.target == str(target_dir.resolve(strict=False))
+        assert checks["Python Runtime"].status in {CheckStatus.OK, CheckStatus.WARN}
+        assert checks["Python Runtime"].details["active_virtualenv"] is False
+        assert not checks["Python Runtime"].issues
+        assert checks["Runtime Launcher"].status == CheckStatus.OK
+        assert checks["Runtime Config Target"].status == CheckStatus.OK
+
+    def test_runtime_mode_fails_when_runtime_launcher_is_missing(self, tmp_path: Path):
+        specs_dir = self._make_specs_dir(tmp_path)
+
+        with (
+            patch("gpd.core.health._doctor_active_virtualenv", return_value=True),
+            patch("gpd.core.health.shutil.which", return_value=None),
+            patch(
+                "gpd.core.health._doctor_check_bootstrap_network_access",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_provider_auth",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Provider/Auth Guidance"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_latex_toolchain",
+                return_value=HealthCheck(status=CheckStatus.OK, label="LaTeX Toolchain"),
+            ),
+        ):
+            report = run_doctor(specs_dir=specs_dir, version="0.1.0", runtime=_PRIMARY_RUNTIME, install_scope="global")
+
+        launcher_check = next(check for check in report.checks if check.label == "Runtime Launcher")
+        assert launcher_check.status == CheckStatus.FAIL
+        assert any("not found on PATH" in issue for issue in launcher_check.issues)
+
+    def test_runtime_mode_fails_when_target_parent_is_not_writable(self, tmp_path: Path):
+        specs_dir = self._make_specs_dir(tmp_path)
+        blocked_parent = tmp_path / "blocked"
+        blocked_parent.mkdir()
+        target_dir = blocked_parent / ".codex"
+        blocked_parent_resolved = blocked_parent.resolve(strict=False)
+
+        def _access(path: str | Path, mode: int) -> bool:
+            candidate = Path(path).resolve(strict=False)
+            if candidate == blocked_parent_resolved:
+                return False
+            return True
+
+        with (
+            patch("gpd.core.health._doctor_active_virtualenv", return_value=True),
+            patch("gpd.core.health.shutil.which", return_value="/usr/bin/codex"),
+            patch("gpd.core.health.os.access", side_effect=_access),
+            patch(
+                "gpd.core.health._doctor_check_bootstrap_network_access",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_provider_auth",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Provider/Auth Guidance"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_latex_toolchain",
+                return_value=HealthCheck(status=CheckStatus.OK, label="LaTeX Toolchain"),
+            ),
+        ):
+            report = run_doctor(
+                specs_dir=specs_dir,
+                version="0.1.0",
+                runtime="codex",
+                install_scope="global",
+                target_dir=target_dir,
+            )
+
+        target_check = next(check for check in report.checks if check.label == "Runtime Config Target")
+        assert target_check.status == CheckStatus.FAIL
+        assert any(str(blocked_parent_resolved) in issue for issue in target_check.issues)
+
+    def test_runtime_advisories_are_non_blocking(self, tmp_path: Path):
+        specs_dir = self._make_specs_dir(tmp_path)
+
+        with (
+            patch("gpd.core.health._doctor_active_virtualenv", return_value=True),
+            patch("gpd.core.health.shutil.which", return_value="/usr/bin/codex"),
+            patch(
+                "gpd.core.health._doctor_check_bootstrap_network_access",
+                return_value=HealthCheck(
+                    status=CheckStatus.WARN,
+                    label="Bootstrap Network Access",
+                    warnings=["registry unavailable"],
+                ),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_provider_auth",
+                return_value=HealthCheck(
+                    status=CheckStatus.OK,
+                    label="Provider/Auth Guidance",
+                    warnings=["manual verification required"],
+                ),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_latex_toolchain",
+                return_value=HealthCheck(
+                    status=CheckStatus.WARN,
+                    label="LaTeX Toolchain",
+                    warnings=["latex not installed"],
+                ),
+            ),
+        ):
+            report = run_doctor(specs_dir=specs_dir, version="0.1.0", runtime="codex", install_scope="global")
+
+        checks = {check.label: check for check in report.checks}
+
+        assert report.overall == CheckStatus.WARN
+        assert checks["Bootstrap Network Access"].status == CheckStatus.WARN
+        assert checks["Provider/Auth Guidance"].status == CheckStatus.OK
+        assert checks["LaTeX Toolchain"].status == CheckStatus.WARN
+        assert all(
+            checks[label].status != CheckStatus.FAIL
+            for label in ("Bootstrap Network Access", "Provider/Auth Guidance", "LaTeX Toolchain")
+        )
+
+    def test_runtime_mode_with_explicit_target_does_not_invent_scope(self, tmp_path: Path):
+        target_dir = tmp_path / ".runtime-config"
+        specs_dir = self._make_specs_dir(tmp_path)
+
+        with (
+            patch("gpd.core.health._doctor_active_virtualenv", return_value=True),
+            patch("gpd.core.health.shutil.which", return_value="/usr/bin/runtime"),
+            patch(
+                "gpd.core.health._doctor_check_bootstrap_network_access",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_provider_auth",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Provider/Auth Guidance"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_latex_toolchain",
+                return_value=HealthCheck(status=CheckStatus.OK, label="LaTeX Toolchain"),
+            ),
+        ):
+            report = run_doctor(
+                specs_dir=specs_dir,
+                version="0.1.0",
+                runtime=_PRIMARY_RUNTIME,
+                target_dir=target_dir,
+            )
+
+        assert report.mode == "runtime-readiness"
+        assert report.runtime == _PRIMARY_RUNTIME
+        assert report.install_scope is None
+        assert report.target == str(target_dir.resolve(strict=False))
+
+    def test_runtime_mode_rejects_scope_without_runtime(self, tmp_path: Path):
+        specs_dir = self._make_specs_dir(tmp_path)
+
+        with pytest.raises(ValidationError, match="install_scope and target_dir require runtime"):
+            run_doctor(specs_dir=specs_dir, version="0.1.0", install_scope="local")
+
+    def test_runtime_readiness_mode_adds_selected_runtime_checks(self, tmp_path: Path, monkeypatch):
+        specs_dir = self._make_specs_dir(tmp_path)
+        monkeypatch.setattr("gpd.core.health.shutil.which", lambda *_args: "/usr/bin/runtime")
+        monkeypatch.setattr("gpd.core.health.os.access", lambda *_args: True)
+        monkeypatch.setattr(
+            "gpd.core.health._doctor_check_bootstrap_network_access",
+            lambda: HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
+        )
+        monkeypatch.setattr(
+            "gpd.core.health._doctor_check_latex_toolchain",
+            lambda: HealthCheck(status=CheckStatus.WARN, label="LaTeX Toolchain", warnings=["optional"]),
+        )
+
+        report = run_doctor(
+            specs_dir=specs_dir,
+            version="0.1.0",
+            runtime=_PRIMARY_RUNTIME,
+            install_scope="local",
+            cwd=tmp_path,
+        )
+
+        checks = {check.label: check for check in report.checks}
+        assert report.mode == "runtime-readiness"
+        assert report.runtime == _PRIMARY_RUNTIME
+        assert report.install_scope == "local"
+        assert report.target is not None
+        for label in (
+            "Runtime Launcher",
+            "Runtime Config Target",
+            "Bootstrap Network Access",
+            "Provider/Auth Guidance",
+            "LaTeX Toolchain",
+        ):
+            assert label in checks
+        assert checks["Runtime Launcher"].status == CheckStatus.OK
+        assert checks["Runtime Config Target"].status == CheckStatus.OK
+        assert checks["LaTeX Toolchain"].status == CheckStatus.WARN
+
+    def test_runtime_readiness_fails_when_launcher_missing(self, tmp_path: Path, monkeypatch):
+        specs_dir = self._make_specs_dir(tmp_path)
+        monkeypatch.setattr("gpd.core.health.shutil.which", lambda *_args: None)
+        monkeypatch.setattr("gpd.core.health.os.access", lambda *_args: True)
+        monkeypatch.setattr(
+            "gpd.core.health._doctor_check_bootstrap_network_access",
+            lambda: HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
+        )
+        monkeypatch.setattr(
+            "gpd.core.health._doctor_check_latex_toolchain",
+            lambda: HealthCheck(status=CheckStatus.OK, label="LaTeX Toolchain"),
+        )
+
+        report = run_doctor(
+            specs_dir=specs_dir,
+            version="0.1.0",
+            runtime=_PRIMARY_RUNTIME,
+            install_scope="local",
+            cwd=tmp_path,
+        )
+
+        checks = {check.label: check for check in report.checks}
+        assert report.overall == CheckStatus.FAIL
+        assert checks["Runtime Launcher"].status == CheckStatus.FAIL
+        assert any("not found on PATH" in issue for issue in checks["Runtime Launcher"].issues)
+
+    def test_runtime_readiness_fails_when_target_is_not_writable(self, tmp_path: Path, monkeypatch):
+        specs_dir = self._make_specs_dir(tmp_path)
+        monkeypatch.setattr("gpd.core.health.shutil.which", lambda *_args: "/usr/bin/runtime")
+        monkeypatch.setattr("gpd.core.health.os.access", lambda *_args: False)
+        monkeypatch.setattr(
+            "gpd.core.health._doctor_check_bootstrap_network_access",
+            lambda: HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
+        )
+        monkeypatch.setattr(
+            "gpd.core.health._doctor_check_latex_toolchain",
+            lambda: HealthCheck(status=CheckStatus.OK, label="LaTeX Toolchain"),
+        )
+
+        report = run_doctor(
+            specs_dir=specs_dir,
+            version="0.1.0",
+            runtime=_PRIMARY_RUNTIME,
+            install_scope="local",
+            cwd=tmp_path,
+        )
+
+        checks = {check.label: check for check in report.checks}
+        assert report.overall == CheckStatus.FAIL
+        assert checks["Runtime Config Target"].status == CheckStatus.FAIL
+        assert any("not writable" in issue for issue in checks["Runtime Config Target"].issues)
 
 
 def _bootstrap_health_project(tmp_path: Path) -> Path:

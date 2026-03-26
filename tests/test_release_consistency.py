@@ -205,6 +205,12 @@ def _markdown_section(content: str, heading: str) -> str:
     return "\n".join(collected)
 
 
+def _extract_between(content: str, start_marker: str, end_marker: str) -> str:
+    start = content.index(start_marker)
+    end = content.index(end_marker, start)
+    return content[start:end]
+
+
 def test_required_public_release_artifacts_exist() -> None:
     repo_root = _repo_root()
     required = (
@@ -567,14 +573,45 @@ def test_public_readme_quick_start_keeps_runtime_first_next_steps() -> None:
     assert "npx -y get-physics-done" in quick_start
     assert "Requires Node.js 20+, Python 3.11+ with `venv`" in quick_start
     assert "**Next steps after install**" in quick_start
+    assert "The installer adds GPD to your runtime config" in quick_start
     assert "it does not launch the runtime for you" in quick_start
     assert "Open your chosen runtime from your normal system terminal" in quick_start
+    assert "Run its help command first: Claude Code / Gemini CLI use `/gpd:help`" in quick_start
+    assert "Codex uses `$gpd-help`, and OpenCode uses `/gpd-help`." in quick_start
+    assert "For best performance, run both this install step and your chosen runtime" in quick_start
     assert "`claude` for Claude Code" in quick_start
     assert "`gemini` for Gemini CLI" in quick_start
-    assert "Run its help command first" in quick_start
     assert "/gpd:help" in quick_start
     assert "$gpd-help" in quick_start
     assert "/gpd-help" in quick_start
+
+
+def test_public_help_default_quick_start_keeps_runtime_surface_readiness_path() -> None:
+    help_command = (_repo_root() / "src/gpd/commands/help.md").read_text(encoding="utf-8")
+    quick_start = _extract_between(
+        help_command,
+        "## Step 2: Quick Start (Default Output)",
+        "## Step 3: Full Command Reference (--all)",
+    )
+
+    assert "Choose the path that matches your starting point:" in quick_start
+    assert "**New work**" in quick_start
+    assert "**Existing work**" in quick_start
+    assert "**Returning work**" in quick_start
+    assert "**Optional setup**" in quick_start
+    assert "/gpd:new-project" in quick_start
+    assert "/gpd:new-project --minimal" in quick_start
+    assert "/gpd:map-research" in quick_start
+    assert "/gpd:resume-work" in quick_start
+    assert "/gpd:progress" in quick_start
+    assert "/gpd:suggest-next" in quick_start
+    assert "/gpd:settings" in quick_start
+    assert "/gpd:help --all" in quick_start
+    assert "**Core workflow:**" in quick_start
+    assert "**Publication:**" in quick_start
+    assert "canonical in-runtime slash-command names" in quick_start
+    assert "not a promise that the local `gpd` CLI exposes matching top-level subcommands." in quick_start
+    assert "## Invocation Surfaces" not in quick_start
 
 
 def test_public_readme_quick_start_surfaces_step_one_entry_points() -> None:
@@ -591,6 +628,20 @@ def test_public_readme_quick_start_surfaces_step_one_entry_points() -> None:
     assert "/gpd:new-project --minimal" in quick_start
     assert "$gpd-resume-work" in quick_start
     assert "/gpd:map-research" in quick_start
+
+
+def test_public_bootstrap_help_examples_cover_install_and_readiness_handoff() -> None:
+    content = (_repo_root() / "bin/install.js").read_text(encoding="utf-8")
+
+    assert "[install|uninstall] [options]" in content
+    assert "# Interactive install" in content
+    assert "# Install for all runtimes globally" in content
+    assert "# Install into an explicit local target directory" in content
+    assert "# Reinstall the matching managed GitHub source" in content
+    assert "# Upgrade to the latest GitHub main source" in content
+    assert "# Interactive uninstall" in content
+    assert "# Uninstall from all runtimes globally" in content
+    assert "# Equivalent uninstall subcommand form" in content
 
 
 def test_public_runtime_docs_explain_runtime_specific_command_syntax() -> None:

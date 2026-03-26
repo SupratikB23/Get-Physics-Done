@@ -132,13 +132,25 @@ def test_help_surfaces_local_setup_and_preflight_commands() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "doctor" in result.output
-    assert "Check GPD installation and environment health." in result.output
+    assert "Check GPD installation and environment health" in result.output
+    assert "inspect runtime readiness" in result.output
     assert "install" in result.output
     assert "Install GPD skills, agents, and hooks into runtime" in result.output
     assert "uninstall" in result.output
     assert "Remove GPD skills, agents, and hooks from runtime" in result.output
     assert "init" in result.output
     assert "validate" in result.output
+
+
+def test_doctor_help_surfaces_runtime_readiness_mode() -> None:
+    result = runner.invoke(app, ["doctor", "--help"])
+    assert result.exit_code == 0
+    assert "Check GPD installation and environment health" in result.output
+    assert "inspect runtime readiness" in result.output
+    assert "--runtime" in result.output
+    assert "--local" in result.output
+    assert "--global" in result.output
+    assert "--target-dir" in result.output
 
 
 def test_init_help_surfaces_local_onboarding_entrypoints() -> None:
@@ -539,12 +551,100 @@ def test_health(mock_health):
 
 @patch("gpd.core.health.run_doctor")
 def test_doctor(mock_doctor):
+    from gpd.specs import SPECS_DIR
+
     mock_result = MagicMock()
     mock_result.model_dump.return_value = {"ok": True}
     mock_doctor.return_value = mock_result
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
     mock_doctor.assert_called_once()
+    assert mock_doctor.call_args.kwargs == {"specs_dir": SPECS_DIR}
+
+
+@patch("gpd.core.health.run_doctor")
+def test_doctor_runtime_mode_uses_run_doctor(mock_doctor, tmp_path: Path) -> None:
+    from gpd.specs import SPECS_DIR
+
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {"mode": "runtime-readiness", "overall": "ok"}
+    mock_doctor.return_value = mock_result
+
+    result = runner.invoke(app, ["--cwd", str(tmp_path), "--raw", "doctor", "--runtime", "codex", "--local"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"mode": "runtime-readiness", "overall": "ok"}
+    mock_doctor.assert_called_once_with(
+        specs_dir=SPECS_DIR,
+        runtime="codex",
+        install_scope="local",
+        target_dir=None,
+        cwd=tmp_path,
+    )
+
+
+@patch("gpd.core.health.run_doctor")
+def test_doctor_runtime_readiness_mode(mock_doctor, tmp_path: Path):
+    from gpd.specs import SPECS_DIR
+
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {"mode": "runtime-readiness", "overall": "ok"}
+    mock_doctor.return_value = mock_result
+    runtime_name = list_runtimes()[0]
+
+    result = runner.invoke(app, ["--cwd", str(tmp_path), "--raw", "doctor", "--runtime", runtime_name, "--global"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"mode": "runtime-readiness", "overall": "ok"}
+    mock_doctor.assert_called_once_with(
+        specs_dir=SPECS_DIR,
+        runtime=runtime_name,
+        install_scope="global",
+        target_dir=None,
+        cwd=tmp_path,
+    )
+
+
+@patch("gpd.core.health.run_doctor")
+def test_doctor_target_dir_infers_install_scope(mock_doctor, tmp_path: Path) -> None:
+    from gpd.specs import SPECS_DIR
+
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {"mode": "runtime-readiness", "overall": "ok"}
+    mock_doctor.return_value = mock_result
+    runtime_name = list_runtimes()[0]
+    target_dir = tmp_path / ".gpd-target"
+
+    with patch("gpd.cli._target_dir_matches_global", return_value=True) as mock_matches_global:
+        result = runner.invoke(
+            app,
+            ["--cwd", str(tmp_path), "--raw", "doctor", "--runtime", runtime_name, "--target-dir", str(target_dir)],
+        )
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"mode": "runtime-readiness", "overall": "ok"}
+    mock_matches_global.assert_called_once_with(runtime_name, str(target_dir), action="doctor")
+    mock_doctor.assert_called_once_with(
+        specs_dir=SPECS_DIR,
+        runtime=runtime_name,
+        install_scope="global",
+        target_dir=target_dir.resolve(strict=False),
+        cwd=tmp_path,
+    )
+
+
+def test_doctor_rejects_scope_without_runtime() -> None:
+    result = runner.invoke(app, ["doctor", "--global"])
+
+    assert result.exit_code == 1
+    assert "--runtime is required" in result.output
+
+
+def test_doctor_rejects_target_dir_without_runtime(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["doctor", "--target-dir", str(tmp_path / ".gpd-target")])
+
+    assert result.exit_code == 1
+    assert "--runtime is required" in result.output
 
 
 # ─── trace subcommands ──────────────────────────────────────────────────────

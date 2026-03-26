@@ -99,7 +99,12 @@ def _first_installed_file(target: Path) -> Path:
     return next(path for path in target.rglob("*") if path.is_file() and path.name != "gpd-file-manifest.json")
 
 
-def _assert_single_runtime_next_steps(output: str, descriptor=_PRIMARY_INSTALL_DESCRIPTOR) -> None:
+def _assert_single_runtime_next_steps(
+    output: str,
+    descriptor=_PRIMARY_INSTALL_DESCRIPTOR,
+    *,
+    doctor_scope: str = "local",
+) -> None:
     adapter = _install_adapter(descriptor)
     resume_work_command = adapter.format_command("resume-work")
     pattern = re.compile(
@@ -111,7 +116,9 @@ def _assert_single_runtime_next_steps(output: str, descriptor=_PRIMARY_INSTALL_D
         rf"{re.escape(resume_work_command)} to continue paused work\..*?"
         rf"Fast bootstrap: use {re.escape(adapter.new_project_command)} --minimal.*?"
         rf"Use gpd --help for local install, validation, permissions, and diagnostics\..*?"
-        rf"Use {re.escape(adapter.help_command)} inside {re.escape(descriptor.display_name)} for workflow help\.",
+        rf"Use {re.escape(adapter.help_command)} inside {re.escape(descriptor.display_name)} for workflow help\..*?"
+        rf"Verify or troubleshoot this machine with gpd doctor --runtime "
+        rf"{re.escape(descriptor.runtime_name)} --{re.escape(doctor_scope)}\.",
         re.S,
     )
     assert pattern.search(output), output
@@ -346,6 +353,7 @@ def test_install_summary_surfaces_help_then_new_or_existing_entry_points(tmp_pat
     _assert_single_runtime_next_steps(result.output)
     assert "\n   Fast bootstrap:" in result.output
     assert "Use gpd --help for local install, validation, permissions, and diagnostics." in result.output
+    assert f"gpd doctor --runtime {_PRIMARY_INSTALL_DESCRIPTOR.runtime_name} --local" in result.output
 
 
 def test_install_summary_lists_runtime_specific_help_for_multi_runtime_install(tmp_path: Path):
@@ -383,6 +391,23 @@ def test_install_summary_lists_runtime_specific_help_for_multi_runtime_install(t
         _assert_multi_runtime_next_step_line(result.output, descriptor)
     assert "1. From your system terminal" not in result.output
     assert "Use gpd --help for local install, validation, permissions, and diagnostics." in result.output
+    assert "Run gpd doctor --runtime <runtime> --local|--global for a focused readiness check." in result.output
+
+
+def test_install_help_surfaces_interactive_batch_and_targeting_guidance() -> None:
+    """Install help should keep local/global targeting and interactive guidance visible."""
+    result = runner.invoke(app, ["install", "--help"])
+    normalized_output = " ".join(result.output.split())
+
+    assert result.exit_code == 0
+    assert "Install GPD skills, agents, and hooks into runtime config directories." in normalized_output
+    assert "Run without arguments for interactive mode." in normalized_output
+    assert "Specify runtime name(s) or --all for batch mode." in normalized_output
+    assert "gpd install --all --global" in normalized_output
+    assert "Runtime(s) to install. Omit for interactive" in normalized_output
+    assert "--local" in result.output
+    assert "--global" in result.output
+    assert "--target-dir" in result.output
 
 
 # ─── 4. Uninstall without manifest ──────────────────────────────────────────
@@ -716,6 +741,27 @@ def test_uninstall_raw_outputs_json(tmp_path: Path):
     assert payload["uninstalled"][0]["target"] == str(target)
     assert payload["uninstalled"][0]["reason"] == "nothing to remove"
     assert payload["uninstalled"][0]["removed"] == []
+
+
+@patch("gpd.core.health.run_doctor")
+def test_doctor_raw_outputs_structured_readiness_payload(mock_doctor) -> None:
+    """The readiness entrypoint should preserve doctor payloads in raw mode."""
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {
+        "ok": True,
+        "checks": [{"label": "Python", "status": "ok"}],
+    }
+    mock_doctor.return_value = mock_result
+
+    result = runner.invoke(app, ["--raw", "doctor"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload == {
+        "ok": True,
+        "checks": [{"label": "Python", "status": "ok"}],
+    }
+    mock_doctor.assert_called_once()
 
 
 # ─── 7. is_global forwarding ────────────────────────────────────────────────

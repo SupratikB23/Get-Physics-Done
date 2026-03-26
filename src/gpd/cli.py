@@ -1425,12 +1425,49 @@ def health(
 
 
 @app.command("doctor")
-def doctor() -> None:
-    """Check GPD installation and environment health."""
+def doctor(
+    runtime: str | None = typer.Option(None, "--runtime", help=_runtime_override_help()),
+    global_install: bool = typer.Option(False, "--global", help="Check the runtime's global install target"),
+    local_install: bool = typer.Option(False, "--local", help="Check the runtime's local install target (default)"),
+    target_dir: str | None = typer.Option(
+        None,
+        "--target-dir",
+        help="Override the runtime config directory to inspect",
+    ),
+) -> None:
+    """Check GPD installation and environment health, or inspect runtime readiness."""
     from gpd.core.health import run_doctor
     from gpd.specs import SPECS_DIR
 
-    _output(run_doctor(specs_dir=SPECS_DIR))
+    if global_install and local_install:
+        _error("Cannot specify both --global and --local")
+
+    if runtime is None:
+        if global_install or local_install or target_dir is not None:
+            _error("--runtime is required when using --global, --local, or --target-dir")
+        _output(run_doctor(specs_dir=SPECS_DIR))
+        return
+
+    normalized_runtime = _normalize_runtime_selection([runtime], action="doctor")[0]
+    resolved_target = _resolve_cli_target_dir(target_dir) if target_dir is not None else None
+    install_scope = (
+        "global"
+        if global_install
+        else "local"
+        if local_install
+        else "global"
+        if target_dir and _target_dir_matches_global(normalized_runtime, target_dir, action="doctor")
+        else "local"
+    )
+    _output(
+        run_doctor(
+            specs_dir=SPECS_DIR,
+            runtime=normalized_runtime,
+            install_scope=install_scope,
+            target_dir=resolved_target,
+            cwd=_get_cwd(),
+        )
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2337,7 +2374,6 @@ def _runtime_permissions_payload(
         "autonomy": autonomy_value,
         **payload,
     }
-
 
 permissions_app = typer.Typer(help="Runtime permission sync for autonomy")
 app.add_typer(permissions_app, name="permissions")
@@ -4783,8 +4819,15 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
         console.print()
         console.print("[bold]Next steps[/]")
         if len(next_step_entries) == 1:
+            single_runtime_name, single_result = results[0]
             display_name, launch_command, help_command, new_project_command, map_research_command = next_step_entries[0]
-            resume_work_command = _get_adapter_or_error(results[0][0], action="install summary").format_command("resume-work")
+            resume_work_command = _get_adapter_or_error(single_runtime_name, action="install summary").format_command("resume-work")
+            target_value = single_result.get("target")
+            doctor_scope = (
+                "global"
+                if target_value and _target_dir_matches_global(single_runtime_name, str(target_value), action="install summary")
+                else "local"
+            )
             console.print(
                 f"1. Open [bold]{display_name}[/] from your system terminal "
                 f"([{_INSTALL_ACCENT_COLOR} bold]{launch_command}[/]).",
@@ -4815,6 +4858,11 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                 f"Use [{_INSTALL_ACCENT_COLOR} bold]{help_command}[/] inside {display_name} for workflow help.",
                 soft_wrap=True,
             )
+            console.print(
+                "5. Verify or troubleshoot this machine with "
+                f"[bold]gpd doctor --runtime {single_runtime_name} --{doctor_scope}[/].",
+                soft_wrap=True,
+            )
         else:
             for display_name, launch_command, help_command, new_project_command, map_research_command in next_step_entries:
                 console.print(
@@ -4828,6 +4876,10 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                 )
             console.print(
                 "\nUse [bold]gpd --help[/] for local install, validation, permissions, and diagnostics.",
+                soft_wrap=True,
+            )
+            console.print(
+                "Run [bold]gpd doctor --runtime <runtime> --local|--global[/] for a focused readiness check.",
                 soft_wrap=True,
             )
         console.print()

@@ -773,6 +773,221 @@ function formatLocationExample(runtimes, scope) {
   return `./${runtimeConfigDirName(runtime)}`;
 }
 
+function stripAnsi(text) {
+  return String(text || "").replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function parseJsonText(text) {
+  const cleaned = stripAnsi(text).trim();
+  if (!cleaned) {
+    return null;
+  }
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+}
+
+function shellQuote(arg) {
+  const text = String(arg);
+  if (text === "") {
+    return "''";
+  }
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(text)) {
+    return text;
+  }
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+function formatShellCommand(argv) {
+  return argv.map((arg) => shellQuote(arg)).join(" ");
+}
+
+function runtimeDoctorHint(runtime, scope, targetDir = null) {
+  const parts = ["gpd", "doctor", "--runtime", runtime, `--${scope}`];
+  if (targetDir) {
+    parts.push("--target-dir", targetDir);
+  }
+  return formatShellCommand(parts);
+}
+
+function buildRuntimeDoctorArgs(runtime, scope, targetDir = null) {
+  const args = ["-m", "gpd.cli", "--raw", "doctor", "--runtime", runtime, `--${scope}`];
+  if (targetDir) {
+    args.push("--target-dir", targetDir);
+  }
+  return args;
+}
+
+function doctorCheckMessages(check, field) {
+  if (!check || typeof check !== "object") {
+    return [];
+  }
+  const messages = Array.isArray(check[field]) ? check[field] : [];
+  const label = typeof check.label === "string" && check.label.trim() ? check.label.trim() : "Readiness Check";
+  return messages
+    .filter((message) => typeof message === "string" && message.trim())
+    .map((message) => `${label}: ${message.trim()}`);
+}
+
+function collectDoctorAdvisories(report) {
+  const advisories = [];
+  const seen = new Set();
+  const checks = Array.isArray(report && report.checks) ? report.checks : [];
+
+  for (const check of checks) {
+    for (const message of doctorCheckMessages(check, "warnings")) {
+      if (!seen.has(message)) {
+        seen.add(message);
+        advisories.push(message);
+      }
+    }
+    if ((check && check.status) === "warn") {
+      for (const message of doctorCheckMessages(check, "issues")) {
+        if (!seen.has(message)) {
+          seen.add(message);
+          advisories.push(message);
+        }
+      }
+    }
+  }
+
+  return advisories;
+}
+
+function collectDoctorBlockers(report) {
+  const blockers = [];
+  const seen = new Set();
+  const checks = Array.isArray(report && report.checks) ? report.checks : [];
+
+  for (const check of checks) {
+    if ((check && check.status) !== "fail") {
+      continue;
+    }
+    const messages = [
+      ...doctorCheckMessages(check, "issues"),
+      ...doctorCheckMessages(check, "warnings"),
+    ];
+    if (messages.length === 0) {
+      const label = typeof check.label === "string" && check.label.trim() ? check.label.trim() : "Readiness Check";
+      messages.push(`${label}: readiness check failed.`);
+    }
+    for (const message of messages) {
+      if (!seen.has(message)) {
+        seen.add(message);
+        blockers.push(message);
+      }
+    }
+  }
+
+  return blockers;
+}
+
+function extractDoctorErrorMessage(result) {
+  const stderrJson = parseJsonText(result.stderr);
+  if (stderrJson && typeof stderrJson.error === "string" && stderrJson.error.trim()) {
+    return stderrJson.error.trim();
+  }
+
+  const stdoutJson = parseJsonText(result.stdout);
+  if (stdoutJson && typeof stdoutJson.error === "string" && stdoutJson.error.trim()) {
+    return stdoutJson.error.trim();
+  }
+
+  const stderrText = stripAnsi(result.stderr).trim();
+  if (stderrText) {
+    return stderrText;
+  }
+
+  const stdoutText = stripAnsi(result.stdout).trim();
+  if (stdoutText) {
+    return stdoutText;
+  }
+
+  return `managed doctor exited with status ${result.status}`;
+}
+
+function runManagedDoctorReadinessCheck(managedPython, runtime, scope, targetDir = null) {
+  const result = spawnSync(managedPython, buildRuntimeDoctorArgs(runtime, scope, targetDir), {
+    encoding: "utf-8",
+    env: process.env,
+  });
+
+  if (result.error) {
+    return {
+      ok: false,
+      errorMessage: result.error.message,
+    };
+  }
+
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      errorMessage: extractDoctorErrorMessage(result),
+    };
+  }
+
+  const report = parseJsonText(result.stdout);
+  if (!report || typeof report !== "object" || !Array.isArray(report.checks)) {
+    return {
+      ok: false,
+      errorMessage: "managed doctor did not return a valid readiness report.",
+    };
+  }
+
+  return {
+    ok: true,
+    report,
+  };
+}
+
+function runInstallReadinessPreflight(managedPython, runtimes, scope, targetDir = null) {
+  console.log(` ${bold}${brandTitle}Runtime readiness preflight${reset}`);
+  console.log("");
+
+  const blockers = [];
+
+  for (const runtime of runtimes) {
+    const displayName = runtimeDisplayName(runtime);
+    const doctorCheck = runManagedDoctorReadinessCheck(managedPython, runtime, scope, targetDir);
+    if (!doctorCheck.ok) {
+      blockers.push(`${displayName}: ${doctorCheck.errorMessage}`);
+      continue;
+    }
+
+    const report = doctorCheck.report;
+    const reportBlockers = collectDoctorBlockers(report);
+    if (reportBlockers.length > 0 || report.overall === "fail") {
+      const messages = reportBlockers.length > 0
+        ? reportBlockers
+        : ["Runtime readiness reported a failure without blocking details."];
+      blockers.push(...messages.map((message) => `${displayName}: ${message}`));
+      continue;
+    }
+
+    const advisories = collectDoctorAdvisories(report);
+    success(`${displayName}: readiness check passed${advisories.length > 0 ? " with advisories" : ""}.`);
+    advisories.forEach((message) => warn(`${displayName}: ${message}`));
+  }
+
+  if (blockers.length > 0) {
+    console.log("");
+    error("Runtime readiness preflight failed.");
+    [...new Set(blockers)].forEach((message) => error(message));
+    const doctorHints = runtimes.map((runtime) => `\`${runtimeDoctorHint(runtime, scope, targetDir)}\``).join(", ");
+    log(`Fix the blocking readiness issue(s) above, then rerun the bootstrap installer. Inspect directly with ${doctorHints}.`);
+    return false;
+  }
+
+  console.log("");
+  success(`Runtime readiness preflight passed for ${formatRuntimeList(runtimes)}.`);
+  const doctorHints = runtimes.map((runtime) => `\`${runtimeDoctorHint(runtime, scope, targetDir)}\``).join(", ");
+  log(`For deeper local diagnostics after install, use ${doctorHints}.`);
+  console.log("");
+  return true;
+}
+
 function formatMenuOption(index, label, details = [], options = {}) {
   const { labelWidth = label.length } = options;
   const filteredDetails = details.filter(Boolean);
@@ -1169,6 +1384,13 @@ async function main() {
   if (!packageInstall.ok) {
     error(`Failed to install GPD v${packageInstall.requestedVersion} from GitHub sources.`);
     process.exit(1);
+  }
+
+  if (!isUninstall) {
+    const readinessOk = runInstallReadinessPreflight(managedEnv.python, selectedRuntimes, scope, targetDir);
+    if (!readinessOk) {
+      process.exit(1);
+    }
   }
 
   if (isUninstall) {

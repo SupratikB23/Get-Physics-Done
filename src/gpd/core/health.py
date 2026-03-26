@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -982,11 +985,220 @@ class DoctorReport(BaseModel):
 
     overall: CheckStatus
     version: str | None = None
+    mode: str = "installation"
+    runtime: str | None = None
+    install_scope: str | None = None
+    target: str | None = None
     summary: HealthSummary
     checks: list[HealthCheck] = Field(default_factory=list)
 
 
-def run_doctor(specs_dir: Path | None = None, version: str | None = None) -> DoctorReport:
+def _doctor_active_virtualenv() -> bool:
+    """Return whether the active interpreter is running inside a virtualenv."""
+    return bool(
+        getattr(sys, "real_prefix", None) is not None
+        or getattr(sys, "base_prefix", sys.prefix) != sys.prefix
+        or os.environ.get("VIRTUAL_ENV")
+    )
+
+
+def _doctor_check_python_runtime() -> HealthCheck:
+    """Check the active Python interpreter and stdlib venv availability."""
+    issues: list[str] = []
+    warnings: list[str] = []
+    active_virtualenv = _doctor_active_virtualenv()
+    details = {
+        "version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "venv_available": True,
+        "active_virtualenv": active_virtualenv,
+        "python_executable": sys.executable,
+    }
+
+    if sys.version_info < (MIN_PYTHON_MAJOR, MIN_PYTHON_MINOR):
+        issues.append(f"Python {sys.version_info.major}.{sys.version_info.minor} < {MIN_PYTHON_MAJOR}.{MIN_PYTHON_MINOR}")
+    elif sys.version_info < RECOMMENDED_PYTHON_VERSION:
+        warnings.append(f"Python >= {RECOMMENDED_PYTHON_VERSION[0]}.{RECOMMENDED_PYTHON_VERSION[1]} recommended")
+
+    try:
+        import venv as _venv  # noqa: F401
+    except Exception as exc:  # pragma: no cover - stdlib import failure is rare
+        details["venv_available"] = False
+        issues.append(f"Standard library venv module unavailable: {exc}")
+
+    return HealthCheck(
+        status=CheckStatus.FAIL if issues else CheckStatus.WARN if warnings else CheckStatus.OK,
+        label="Python Runtime",
+        details=details,
+        issues=issues,
+        warnings=warnings,
+    )
+
+
+def _doctor_check_package_imports() -> HealthCheck:
+    """Verify core package modules import correctly."""
+    import_issues: list[str] = []
+    for module in ("gpd.core.utils", "gpd.core.config", "gpd.core.state", "gpd.core.conventions"):
+        try:
+            __import__(module)
+        except ImportError as exc:
+            import_issues.append(f"Cannot import {module}: {exc}")
+    return HealthCheck(
+        status=CheckStatus.FAIL if import_issues else CheckStatus.OK,
+        label="Package Imports",
+        details={"modules_checked": 4},
+        issues=import_issues,
+    )
+
+
+def _nearest_existing_ancestor(path: Path) -> Path:
+    """Return the nearest existing ancestor for *path* or the filesystem root."""
+    candidate = path.expanduser().resolve(strict=False)
+    while not candidate.exists() and candidate != candidate.parent:
+        candidate = candidate.parent
+    return candidate
+
+
+def _doctor_normalize_runtime(runtime: str) -> str:
+    """Resolve a runtime alias to its canonical runtime id."""
+    from gpd.hooks.runtime_detect import normalize_runtime_name
+
+    normalized = normalize_runtime_name(runtime)
+    if normalized is None:
+        raise ValidationError(f"Unknown runtime {runtime!r}")
+    return normalized
+
+
+def _doctor_check_runtime_launcher(runtime: str) -> HealthCheck:
+    """Verify the selected runtime launcher is available on PATH."""
+    from gpd.adapters.runtime_catalog import get_runtime_descriptor
+
+    descriptor = get_runtime_descriptor(runtime)
+    try:
+        launch_argv = shlex.split(descriptor.launch_command)
+    except ValueError:
+        launch_argv = []
+    launch_executable = launch_argv[0] if launch_argv else descriptor.launch_command.strip()
+    launch_path = shutil.which(launch_executable) if launch_executable else None
+    issues = [] if launch_path else [f"{launch_executable or descriptor.launch_command} not found on PATH"]
+    return HealthCheck(
+        status=CheckStatus.OK if launch_path else CheckStatus.FAIL,
+        label="Runtime Launcher",
+        details={
+            "runtime": descriptor.runtime_name,
+            "display_name": descriptor.display_name,
+            "launch_command": descriptor.launch_command,
+            "launch_executable": launch_executable or None,
+            "launcher_path": launch_path,
+        },
+        issues=issues,
+        warnings=[] if launch_path else [f"Install or expose {descriptor.display_name} before running GPD there."],
+    )
+
+
+def _doctor_check_runtime_target(target_dir: Path) -> HealthCheck:
+    """Verify the selected install target can be created or written."""
+    resolved = target_dir.expanduser().resolve(strict=False)
+    details: dict[str, object] = {
+        "target": str(resolved),
+        "exists": resolved.exists(),
+    }
+    issues: list[str] = []
+    warnings: list[str] = []
+
+    if resolved.exists() and not resolved.is_dir():
+        issues.append(f"{resolved} exists but is not a directory")
+        details["probe_dir"] = str(resolved)
+        return HealthCheck(status=CheckStatus.FAIL, label="Runtime Config Target", details=details, issues=issues)
+
+    probe_dir = resolved if resolved.exists() else _nearest_existing_ancestor(resolved.parent)
+    details["probe_dir"] = str(probe_dir)
+    if not probe_dir.exists():
+        issues.append(f"No existing parent directory found for {resolved}")
+    elif not probe_dir.is_dir():
+        issues.append(f"{probe_dir} is not a directory")
+    elif not os.access(probe_dir, os.W_OK | os.X_OK):
+        issues.append(f"{probe_dir} is not writable")
+    elif not resolved.exists():
+        warnings.append(f"{resolved} does not exist yet; GPD will create it during install.")
+
+    return HealthCheck(
+        status=CheckStatus.FAIL if issues else CheckStatus.OK,
+        label="Runtime Config Target",
+        details=details,
+        issues=issues,
+        warnings=warnings,
+    )
+
+
+def _doctor_check_bootstrap_network_access() -> HealthCheck:
+    """Provide manual guidance for bootstrap/update network readiness."""
+    return HealthCheck(
+        status=CheckStatus.OK,
+        label="Bootstrap Network Access",
+        details={
+            "verification": "manual",
+            "note": "doctor does not perform live outbound network probes",
+        },
+        warnings=[
+            "Bootstrap/update network reachability is not verified automatically; confirm outbound access if installs or updates fail."
+        ],
+    )
+
+
+def _doctor_check_provider_auth(runtime: str, launch_command: str, target_dir: Path) -> HealthCheck:
+    """Provide non-blocking guidance for provider authentication readiness."""
+    return HealthCheck(
+        status=CheckStatus.OK,
+        label="Provider/Auth Guidance",
+        details={
+            "runtime": runtime,
+            "launch_command": launch_command,
+            "target": str(target_dir.expanduser().resolve(strict=False)),
+            "verification": "manual",
+        },
+        warnings=[
+            (
+                f"GPD does not verify provider credentials automatically for {runtime}. "
+                f"Launch `{launch_command}` once and confirm your account or API provider is configured."
+            )
+        ],
+    )
+
+
+def _doctor_check_latex_toolchain() -> HealthCheck:
+    """Report LaTeX compiler availability as an advisory capability check."""
+    try:
+        from gpd.mcp.paper.compiler import detect_latex_toolchain
+    except Exception as exc:  # pragma: no cover - import failure is environment specific
+        return HealthCheck(
+            status=CheckStatus.WARN,
+            label="LaTeX Toolchain",
+            details={"available": False},
+            warnings=[f"Could not load LaTeX detection helpers: {exc}"],
+        )
+
+    latex_status = detect_latex_toolchain()
+    return HealthCheck(
+        status=CheckStatus.OK if latex_status.available else CheckStatus.WARN,
+        label="LaTeX Toolchain",
+        details={
+            "available": latex_status.available,
+            "compiler_path": latex_status.compiler_path,
+            "distribution": latex_status.distribution,
+        },
+        warnings=[] if latex_status.available else [latex_status.message],
+    )
+
+
+def run_doctor(
+    specs_dir: Path | None = None,
+    version: str | None = None,
+    *,
+    runtime: str | None = None,
+    install_scope: str | None = None,
+    target_dir: str | Path | None = None,
+    cwd: Path | None = None,
+) -> DoctorReport:
     """Cross-runtime installation verification.
 
     Checks that the bundled specs content is correctly installed: references,
@@ -1002,6 +1214,8 @@ def run_doctor(specs_dir: Path | None = None, version: str | None = None) -> Doc
             "specs_dir is required. Pass the specs directory explicitly "
             "(e.g., from SPECS_DIR in gpd or via CLI argument)."
         )
+    if runtime is None and (install_scope is not None or target_dir is not None):
+        raise ValidationError("install_scope and target_dir require runtime to be set.")
     if version is None:
         import importlib.metadata
 
@@ -1068,40 +1282,41 @@ def run_doctor(specs_dir: Path | None = None, version: str | None = None) -> Doc
         # 5. Bundle registry and asset paths
         checks.append(_doctor_check_protocol_bundles(sd))
 
-        # 6. Python version
-        py_issues: list[str] = []
-        py_warnings: list[str] = []
-        if sys.version_info < (MIN_PYTHON_MAJOR, MIN_PYTHON_MINOR):
-            py_issues.append(
-                f"Python {sys.version_info.major}.{sys.version_info.minor} < {MIN_PYTHON_MAJOR}.{MIN_PYTHON_MINOR}"
-            )
-        elif sys.version_info < RECOMMENDED_PYTHON_VERSION:
-            py_warnings.append(f"Python >= {RECOMMENDED_PYTHON_VERSION[0]}.{RECOMMENDED_PYTHON_VERSION[1]} recommended")
-        checks.append(
-            HealthCheck(
-                status=CheckStatus.FAIL if py_issues else CheckStatus.WARN if py_warnings else CheckStatus.OK,
-                label="Python Version",
-                details={"version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"},
-                issues=py_issues,
-                warnings=py_warnings,
-            )
-        )
+        # 6. Python runtime + venv
+        checks.append(_doctor_check_python_runtime())
 
         # 7. Package importability
-        import_issues: list[str] = []
-        for module in ("gpd.core.utils", "gpd.core.config", "gpd.core.state", "gpd.core.conventions"):
-            try:
-                __import__(module)
-            except ImportError as e:
-                import_issues.append(f"Cannot import {module}: {e}")
-        checks.append(
-            HealthCheck(
-                status=CheckStatus.FAIL if import_issues else CheckStatus.OK,
-                label="Package Imports",
-                details={"modules_checked": 4},
-                issues=import_issues,
+        checks.append(_doctor_check_package_imports())
+
+        resolved_target_str: str | None = None
+        normalized_scope: str | None = None
+        normalized_runtime: str | None = None
+        if runtime is not None:
+            from gpd.adapters import get_adapter
+
+            normalized_runtime = _doctor_normalize_runtime(runtime)
+            normalized_scope_input = install_scope.lower() if isinstance(install_scope, str) else None
+            if normalized_scope_input not in {None, "local", "global"}:
+                raise ValidationError(
+                    f"Unsupported install_scope {install_scope!r}; expected 'local' or 'global'."
+                )
+
+            adapter = get_adapter(normalized_runtime)
+            workspace_root = cwd or Path.cwd()
+            normalized_scope = normalized_scope_input
+            resolved_target = (
+                Path(target_dir).expanduser().resolve(strict=False)
+                if target_dir is not None
+                else adapter.resolve_target_dir(normalized_scope == "global", workspace_root)
             )
-        )
+            if normalized_scope is None and target_dir is None:
+                normalized_scope = "local"
+            resolved_target_str = str(resolved_target)
+            checks.append(_doctor_check_runtime_launcher(normalized_runtime))
+            checks.append(_doctor_check_runtime_target(resolved_target))
+            checks.append(_doctor_check_bootstrap_network_access())
+            checks.append(_doctor_check_provider_auth(normalized_runtime, adapter.launch_command, resolved_target))
+            checks.append(_doctor_check_latex_toolchain())
 
         # Version (passed as parameter, no gpd import needed)
 
@@ -1115,6 +1330,10 @@ def run_doctor(specs_dir: Path | None = None, version: str | None = None) -> Doc
         return DoctorReport(
             overall=overall,
             version=version,
+            mode="runtime-readiness" if runtime is not None else "installation",
+            runtime=normalized_runtime,
+            install_scope=normalized_scope,
+            target=resolved_target_str,
             summary=HealthSummary(ok=ok_count, warn=warn_count, fail=fail_count, total=len(checks)),
             checks=checks,
         )

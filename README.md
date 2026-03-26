@@ -63,6 +63,40 @@ Secondary configuration path: use `settings` after startup when you want to tune
 
 Use the runtime-specific command syntax shown in [Supported Runtimes](#supported-runtimes), for example `/gpd:new-project --minimal`, `$gpd-resume-work`, or `/gpd:map-research`.
 
+<details>
+<summary><strong>Clean-machine readiness and first-run verification</strong></summary>
+
+**Hard blockers**
+
+- `node` / `npx` work in your normal system terminal
+- Python 3.11+ with the standard `venv` module is available in that same terminal
+- Your selected runtime is already installed and launchable there (`claude`, `gemini`, `codex`, or `opencode`)
+
+If any of those fail, fix them before troubleshooting GPD itself.
+
+**Advisories**
+
+- Choose `--local` or `--global` explicitly if you do not want the installer's default path selection
+- Use `settings` or `set-profile` after the first successful launch; they are not required for first-run readiness
+- LaTeX is optional unless you plan to use paper or manuscript workflows such as `write-paper`, `paper-build`, or `arxiv-submission`
+- Provider authentication is checked manually in the runtime itself; GPD will point this out, but it does not hard-block installation readiness on it
+- Use `--upgrade` only when you intentionally want the latest unreleased GitHub `main` snapshot
+
+**Quick verification path**
+
+1. Install with an explicit runtime when possible, for example `npx -y get-physics-done --codex --local`.
+2. From the same terminal, run `gpd doctor --runtime codex --local` and `gpd --help`.
+3. Launch your selected runtime and run its GPD help command (`/gpd:help`, `$gpd-help`, or `/gpd-help`).
+4. If those checks pass, continue with `new-project`, `new-project --minimal`, `resume-work`, or `map-research`.
+
+**Troubleshooting**
+
+- If `gpd doctor --runtime <runtime> --local|--global` fails, fix Python / `venv` / package-install problems first.
+- If the runtime launches but GPD commands are missing, rerun the installer with an explicit runtime and explicit scope from your normal system terminal.
+- If the runtime itself cannot launch or is not authenticated, fix the runtime/provider setup outside GPD before retrying the GPD install.
+
+</details>
+
 If you are starting from existing work, run `map-research` first to map the formalism, computations, conventions, validation status, and open questions before `new-project`.
 
 Typical new-project workflow:
