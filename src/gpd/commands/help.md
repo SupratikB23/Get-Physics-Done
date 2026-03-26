@@ -757,13 +757,14 @@ Primary guided setup for autonomy, unattended execution budgets, runtime permiss
 
 - Choose how often GPD should pause for you (`Balanced (Recommended)` is the best default for most unattended runs)
 - Review unattended execution budgets and other bounded continuation limits before leaving runs alone
+- Choose a model-cost posture: `Max quality`, `Balanced`, or `Budget-aware`
 - Sync runtime-owned permissions after autonomy changes when the active runtime supports it
 - If settings reports a relaunch is required, the new autonomy level is not unattended-ready yet
 - Toggle plan researcher, plan checker, and execution verifier agents
 - Configure inter-wave verification gates (`execution.review_cadence`: `dense`, `adaptive`, or `sparse`)
 - Toggle parallel execution of wave plans
-- Select model profile (deep-theory/numerical/exploratory/review/paper-writing)
-- Optionally pin concrete runtime model strings for `tier-1`, `tier-2`, and `tier-3`
+- Select model profile (deep-theory/numerical/exploratory/review/paper-writing); `review` with runtime defaults is the safest first choice
+- Optionally pin concrete runtime model strings for `tier-1`, `tier-2`, and `tier-3` if you want explicit control
 - Configure whether planning artifacts are committed (`planning.commit_docs`)
 - Configure git branching strategy (`git.branching_strategy`: `none`, `per-phase`, or `per-milestone`)
 - Updates `GPD/config.json`
@@ -771,7 +772,7 @@ Primary guided setup for autonomy, unattended execution budgets, runtime permiss
 Usage: `/gpd:settings`
 
 **`/gpd:set-profile <profile>`**
-Quick switch model profile for GPD agents. Use `/gpd:settings` to pin concrete runtime model IDs per tier.
+Quick switch model profile for GPD agents. Use `/gpd:settings` to pin concrete runtime model IDs per tier only if you need explicit control.
 
 - `deep-theory` — tier-1 (highest capability) for all reasoning-intensive agents (formal derivations, proofs)
 - `numerical` — tier-1 for planning/verification, tier-2 for execution (simulations, numerics)

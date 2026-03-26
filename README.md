@@ -61,7 +61,9 @@ Then choose the path that matches your starting point:
 
 Leave / return path: run `pause-work` inside the runtime before stepping away mid-phase, then use `resume-work` when you return inside the runtime. If you only need a local, read-only recovery snapshot from your normal system terminal, use `gpd resume`.
 
-Guided unattended configuration path: use `settings` after startup when you want to tune workflow toggles, tier models, research preferences, or autonomy. Start there if you are deciding how much unattended execution to allow.
+Guided unattended configuration path: use `settings` after startup when you want to tune workflow toggles, tier models, research preferences, or autonomy. Start there if you are deciding how much unattended execution to allow or what model-cost posture you want.
+
+For model choice, the safe default is `review` plus runtime defaults. Use `settings` to move toward `Max quality`, `Balanced`, or `Budget-aware` only if you want to trade off quality against cost or model access.
 
 For unattended execution, the recommended default is Balanced (`balanced`). Use `settings` inside the runtime to confirm or change autonomy, then run `gpd permissions status --runtime <runtime> --autonomy balanced` from your normal system terminal. If it reports drift, run `gpd permissions sync --runtime <runtime> --autonomy balanced`. If it reports `requires_relaunch`, exit and relaunch the runtime before treating unattended use as ready.
 
@@ -495,7 +497,13 @@ For full per-command detail and examples inside your runtime, run `/gpd:help --a
 
 ## Optional: Model Profiles And Tier Overrides
 
-GPD maps runtime-specific model names onto three capability tiers. Most users can leave this at the runtime default and only adjust it if they want to tune planning, execution, or verification behavior.
+GPD maps runtime-specific model names onto three capability tiers. Most users should leave runtime defaults alone and only adjust this if they want to tune planning, execution, or verification behavior.
+
+If you are choosing a posture for the first time:
+
+- `Max quality` means keep the highest-capability options available and pin explicit tiers only when you need consistency.
+- `Balanced` means keep the default profile and let the runtime use its own defaults unless you have a reason to override them.
+- `Budget-aware` means prefer lighter tiers and only pin explicit runtime models when you need to control cost or access.
 
 | Tier | Meaning |
 |------|---------|
