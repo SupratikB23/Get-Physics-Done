@@ -1051,9 +1051,17 @@ def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:
     session_platform = session.get("platform") if isinstance(session, dict) else None
     session_last_date = session.get("last_date") if isinstance(session, dict) else None
     session_stopped_at = session.get("stopped_at") if isinstance(session, dict) else None
+    recorded_session_resume_file = _normalize_runtime_resume_file(
+        cwd,
+        session.get("resume_file") if isinstance(session, dict) else None,
+    )
     session_resume_file = _normalize_runtime_resume_file(
         cwd,
         session.get("resume_file") if isinstance(session, dict) else None,
+        require_exists=True,
+    )
+    missing_session_resume_file = (
+        recorded_session_resume_file if recorded_session_resume_file and session_resume_file is None else None
     )
     current_execution_resume_file = _normalize_runtime_resume_file(
         cwd,
@@ -1121,6 +1129,8 @@ def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:
         "execution_paused_at": paused_at,
         "current_execution_resume_file": current_execution_resume_file,
         "session_resume_file": session_resume_file,
+        "recorded_session_resume_file": recorded_session_resume_file,
+        "missing_session_resume_file": missing_session_resume_file,
         "execution_resume_file": resume_file,
         "execution_resume_file_source": execution_resume_file_source,
         "current_hostname": current_hostname,
@@ -1671,6 +1681,21 @@ def init_resume(cwd: Path) -> dict:
             for candidate in segment_candidates
         ):
             segment_candidates.append(session_candidate)
+    missing_session_resume_file = execution_context.get("missing_session_resume_file")
+    if isinstance(missing_session_resume_file, str) and missing_session_resume_file:
+        missing_session_candidate = {
+            "source": "session_resume_file",
+            "status": "missing",
+            "resume_file": missing_session_resume_file,
+            "resumable": False,
+            "advisory": True,
+        }
+        if not any(
+            candidate.get("resume_file") == missing_session_candidate["resume_file"]
+            and candidate.get("source") == missing_session_candidate["source"]
+            for candidate in segment_candidates
+        ):
+            segment_candidates.append(missing_session_candidate)
     if interrupted_agent_id is not None:
         segment_candidates.append(
             {

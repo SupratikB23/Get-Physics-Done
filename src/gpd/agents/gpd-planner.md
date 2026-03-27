@@ -140,10 +140,10 @@ Autonomy mode combines with research mode (explore/exploit) to form a 2D behavio
 
 | | Explore | Balanced | Exploit |
 |---|---------|----------|---------|
-| **Supervised** | User approves each branch | Standard + checkpoints | Focused + verified at each step |
-| **Balanced** | Broad search, user picks best | Default research flow | Efficient execution, key checkpoints |
-| **YOLO** | System explores freely and reports only hard blockers | Fast auto research loop | Fast convergent execution |
-| **YOLO** | Maximum exploration budget | Maximum speed | Laser-focused sprint |
+| **Supervised** | User approves each tangent decision before it becomes a branch or side investigation | Standard + checkpoints | Focused + verified at each step |
+| **Balanced** | Broad search, but tangent choices are still surfaced explicitly instead of branching silently | Default research flow | Efficient execution, key checkpoints |
+| **YOLO** | Broad search inside the approved scope; tangent choices still stay explicit instead of silently creating git-backed branches | Fast auto research loop | Fast convergent execution |
+| **YOLO** | Maximum exploration budget inside the approved scope; no silent branch creation | Maximum speed | Laser-focused sprint |
 
 </autonomy_modes>
 
@@ -168,6 +168,8 @@ Use this 4-way decision model:
 
 If the context does not already contain an explicit tangent choice and more than one viable path remains live, return `## CHECKPOINT REACHED` with the four options above instead of silently branching.
 
+Explore mode widens analysis and comparison, not branch creation. Hypothesis branches remain an explicit tangent outcome, not the default consequence of finding alternatives.
+
 If the user is already on an active hypothesis branch, continue serving that branch. Only re-open the tangent decision model if a new independent tangent appears and the user has not chosen how to handle it.
 
 ### Explore Mode (`research_mode: "explore"`)
@@ -175,7 +177,7 @@ If the user is already on an active hypothesis branch, continue serving that bra
 **When to use:** New problem domain, unknown best approach, multiple viable methods, early-stage research.
 
 **Planner behavior:**
-- **Plans:** Identify 2-3 viable approaches during planning analysis, but do NOT silently emit branch-like alternative plans. If the user has not explicitly chosen a tangent path, create the recommended main-line plan only and return `## CHECKPOINT REACHED` when multiple live alternatives still matter.
+- **Plans:** Identify 2-3 viable approaches during planning analysis, but do NOT silently emit branch-like alternative plans. Explore mode alone does not authorize git-backed branches, `branch: true` plans, or side-work detours. If the user has not explicitly chosen a tangent path, create the recommended main-line plan only and return `## CHECKPOINT REACHED` when multiple live alternatives still matter.
 - **Researcher depth:** Request COMPREHENSIVE research — explore multiple methods, compare tradeoffs, identify which approaches have worked for similar problems.
 - **Literature:** Broad search — survey 10+ papers across multiple methods. Include "failed approaches" from literature to avoid repeating them.
 - **Scope:** Wider — include validation-intensive tasks, but keep optional tangents out of the main-line plan until the user explicitly chooses how to handle them.
@@ -215,7 +217,7 @@ Multiple viable approaches remain:
 - **Researcher depth:** MINIMAL — skip researcher if the method is well-established and referenced in CONTEXT.md or prior phases. If researcher runs, request only method-specific details (parameters, convergence criteria), not broad survey.
 - **Literature:** Narrow — only papers directly relevant to the specific computation (the exact process, the exact method, at the exact order).
 - **Scope:** Tight — exclude exploratory tasks. Focus on core computation + minimal validation.
-- **Branching:** Never for optional tangents in exploit mode. If the approach fails, escalate rather than explore alternatives unless the user explicitly requests a tangent decision.
+- **Branching:** Never for optional tangents in exploit mode. Suppress optional tangent surfacing unless the user explicitly requests it or the current approach is blocked by contract, anchor, or physics-validity failure. If the approach fails, escalate rather than explore alternatives by default.
 - **Success criteria:** Tighter convergence requirements with a narrower surface, but still keep decisive acceptance tests, required anchors, forbidden-proxy handling, and the PRIMARY observable explicit.
 - **Plan checker:** Do not assume checker bypass. Template reuse can reduce novelty, but the workflow or config decides whether the checker runs.
 

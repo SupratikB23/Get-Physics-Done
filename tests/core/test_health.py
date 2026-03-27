@@ -982,7 +982,17 @@ trigger:
         assert checks["Optional Workflow Add-ons"].status == CheckStatus.OK
         assert checks["Optional Workflow Add-ons"].details["ready"] == 1
         assert checks["Optional Workflow Add-ons"].details["missing"] == 0
+        assert checks["Optional Workflow Add-ons"].details["degraded"] == 0
         assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["summary"] == "ready"
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["status"] == "ready"
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["ready_workflows"] == [
+            "write-paper",
+            "peer-review",
+            "paper-build",
+            "arxiv-submission",
+        ]
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["degraded_workflows"] == []
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["blocked_workflows"] == []
         assert checks["Optional Workflow Add-ons"].warnings == []
 
     def test_runtime_mode_fails_when_runtime_launcher_is_missing(self, tmp_path: Path):
@@ -1092,12 +1102,26 @@ trigger:
         assert checks["Provider/Auth Guidance"].status == CheckStatus.OK
         assert checks["LaTeX Toolchain"].status == CheckStatus.WARN
         assert checks["Optional Workflow Add-ons"].status == CheckStatus.WARN
-        assert checks["Optional Workflow Add-ons"].details["missing"] == 1
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["status"] == "missing"
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["summary"] == "missing (requires LaTeX)"
+        assert checks["Optional Workflow Add-ons"].details["ready"] == 0
+        assert checks["Optional Workflow Add-ons"].details["degraded"] == 1
+        assert checks["Optional Workflow Add-ons"].details["missing"] == 0
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["status"] == "degraded"
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["usable"] is True
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["summary"] == (
+            "degraded (draft/review usable; build/submission require LaTeX)"
+        )
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["ready_workflows"] == []
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["degraded_workflows"] == [
+            "write-paper",
+            "peer-review",
+        ]
+        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["blocked_workflows"] == [
+            "paper-build",
+            "arxiv-submission",
+        ]
         assert checks["Optional Workflow Add-ons"].warnings == [
-            "Paper/manuscript workflows unavailable: install a LaTeX toolchain to enable "
-            "`write-paper`, `paper-build`, `peer-review`, and `arxiv-submission`."
+            "Paper/manuscript workflows are degraded without LaTeX: `write-paper` and `peer-review` remain usable, "
+            "but `paper-build` and `arxiv-submission` require a LaTeX toolchain."
         ]
         assert all(
             checks[label].status != CheckStatus.FAIL

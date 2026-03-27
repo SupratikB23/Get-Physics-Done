@@ -1198,12 +1198,19 @@ def _doctor_check_optional_workflow_addons(latex_check: HealthCheck) -> HealthCh
         if latex_available_detail is not None
         else latex_check.status == CheckStatus.OK
     )
-    paper_summary = "ready" if latex_available else "missing (requires LaTeX)"
+    ready_workflows = ["write-paper", "peer-review", "paper-build", "arxiv-submission"] if latex_available else []
+    degraded_workflows = ["write-paper", "peer-review"] if not latex_available else []
+    blocked_workflows = ["paper-build", "arxiv-submission"] if not latex_available else []
+    paper_summary = (
+        "ready"
+        if latex_available
+        else "degraded (draft/review usable; build/submission require LaTeX)"
+    )
     warnings = []
     if not latex_available:
         warnings.append(
-            "Paper/manuscript workflows unavailable: install a LaTeX toolchain to enable "
-            "`write-paper`, `paper-build`, `peer-review`, and `arxiv-submission`."
+            "Paper/manuscript workflows are degraded without LaTeX: `write-paper` and `peer-review` remain usable, "
+            "but `paper-build` and `arxiv-submission` require a LaTeX toolchain."
         )
 
     return HealthCheck(
@@ -1212,14 +1219,19 @@ def _doctor_check_optional_workflow_addons(latex_check: HealthCheck) -> HealthCh
         details={
             "total": 1,
             "ready": 1 if latex_available else 0,
-            "missing": 0 if latex_available else 1,
+            "degraded": 0 if latex_available else 1,
+            "missing": 0,
             "add_ons": [
                 {
                     "id": "paper-manuscript-workflows",
                     "label": "Paper/manuscript workflows",
-                    "status": "ready" if latex_available else "missing",
+                    "status": "ready" if latex_available else "degraded",
                     "ready": latex_available,
+                    "usable": True,
                     "depends_on": ["LaTeX Toolchain"],
+                    "ready_workflows": ready_workflows,
+                    "degraded_workflows": degraded_workflows,
+                    "blocked_workflows": blocked_workflows,
                     "summary": paper_summary,
                 }
             ],

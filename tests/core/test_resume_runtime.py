@@ -348,6 +348,43 @@ def test_init_resume_ignores_nonportable_current_execution_resume_file_and_uses_
     ]
 
 
+def test_init_resume_surfaces_missing_session_handoff_as_advisory_candidate(
+    tmp_path: Path, state_project_factory, monkeypatch
+) -> None:
+    cwd = state_project_factory(tmp_path)
+    _update_state_session(
+        cwd,
+        hostname="builder-01",
+        platform="Linux 6.1 x86_64",
+        resume_file="GPD/phases/03-analysis/alternate-resume.md",
+    )
+    missing_handoff = cwd / "GPD" / "phases" / "03-analysis" / "alternate-resume.md"
+    missing_handoff.unlink()
+    monkeypatch.setattr(
+        context_module,
+        "_current_machine_identity",
+        lambda: {"hostname": "builder-01", "platform": "Linux 6.1 x86_64"},
+    )
+
+    ctx = init_resume(tmp_path)
+
+    assert ctx["session_resume_file"] is None
+    assert ctx["recorded_session_resume_file"] == "GPD/phases/03-analysis/alternate-resume.md"
+    assert ctx["missing_session_resume_file"] == "GPD/phases/03-analysis/alternate-resume.md"
+    assert ctx["execution_resume_file_source"] is None
+    assert ctx["execution_resume_file"] is None
+    assert ctx["resume_mode"] is None
+    assert ctx["segment_candidates"] == [
+        {
+            "source": "session_resume_file",
+            "status": "missing",
+            "resume_file": "GPD/phases/03-analysis/alternate-resume.md",
+            "resumable": False,
+            "advisory": True,
+        }
+    ]
+
+
 def test_init_resume_treats_missing_live_resume_file_as_advisory_only(
     tmp_path: Path, state_project_factory, monkeypatch
 ) -> None:

@@ -570,19 +570,20 @@ class _GPDTyper(typer.Typer):
 
 app = _GPDTyper(
     name="gpd",
-    help="GPD — Get Physics Done: local install, validation, init, permissions, and diagnostics CLI",
+    help="GPD — Get Physics Done: local install, readiness, validation, permissions, observability, and diagnostics CLI",
     no_args_is_help=True,
     add_completion=True,
     epilog=(
         "Primary research workflow commands run inside an installed runtime surface, not the local `gpd` CLI.\n"
         "Use `gpd install <runtime>` to install GPD, then open that runtime and run its GPD help command there.\n\n"
-        "Use the local CLI for install, validation, context assembly, permissions readiness, optional sync, and diagnostics.\n"
+        "Use the local CLI for install, readiness checks, permissions, observability, validation, and diagnostics.\n"
         "Examples:\n"
-        "  gpd install <runtime>\n"
-        "  gpd resume\n"
-        "  gpd validate command-context new-project\n"
-        "  gpd init new-project\n"
-        "  gpd permissions status --runtime <runtime>"
+        "  gpd install <runtime> --local\n"
+        "  gpd doctor --runtime <runtime> --local\n"
+        "  gpd permissions status --runtime <runtime> --autonomy balanced\n"
+        "  gpd observe execution\n"
+        "  gpd resume --recent\n"
+        "  gpd validate command-context gpd:new-project"
     ),
 )
 
@@ -955,6 +956,15 @@ _RECENT_PROJECTS_INDEX_FILENAMES = (RECENT_PROJECTS_INDEX_FILENAME,)
 
 def _resume_status_message(payload: dict[str, object]) -> str:
     """Return a concise human summary of resume readiness for this workspace."""
+    segment_candidates = [
+        candidate for candidate in payload.get("segment_candidates", []) if isinstance(candidate, dict)
+    ]
+    if segment_candidates and all(
+        str(candidate.get("source") or "").strip() == "session_resume_file"
+        and str(candidate.get("status") or "").strip() == "missing"
+        for candidate in segment_candidates
+    ):
+        return "Session continuity metadata exists, but the recorded handoff file is missing."
     if not bool(payload.get("planning_exists")):
         return "No GPD planning directory is present in this workspace."
     if not any(bool(payload.get(key)) for key in ("state_exists", "roadmap_exists", "project_exists")):
@@ -1074,12 +1084,40 @@ def _resume_candidate_notes(
 
     if not notes:
         source = str(candidate.get("source") or "").strip()
+        status = str(candidate.get("status") or "").strip()
+        if source == "session_resume_file" and status == "missing":
+            return "Recorded in session continuity metadata, but the handoff file is missing from this workspace."
         if source == "session_resume_file":
             return "Recorded in session continuity metadata."
         if source == "interrupted_agent":
             return "Interrupted agent marker only; inspect agent output before continuing."
         return "No additional resume notes recorded."
     return "; ".join(notes[:5])
+
+
+def _recent_project_resume_file_state(project_root: object, resume_file: object) -> tuple[bool | None, str | None]:
+    """Return whether a recent-project handoff file is still usable."""
+    if not isinstance(project_root, str) or not project_root.strip():
+        return None, None
+    if not isinstance(resume_file, str) or not resume_file.strip():
+        return None, None
+
+    project_path = Path(project_root).expanduser()
+    if not project_path.exists() or not project_path.is_dir():
+        return None, None
+
+    resolved_project = project_path.resolve(strict=False)
+    candidate = Path(resume_file).expanduser()
+    resolved_target = candidate.resolve(strict=False) if candidate.is_absolute() else (project_path / candidate).resolve(strict=False)
+    try:
+        resolved_target.relative_to(resolved_project)
+    except ValueError:
+        return False, "resume file outside project root"
+    if not resolved_target.exists():
+        return False, "resume file missing"
+    if not resolved_target.is_file():
+        return False, "resume file is not a file"
+    return True, None
 
 
 def _recent_projects_data_root() -> Path:
@@ -1183,6 +1221,14 @@ def _normalize_recent_project_row(row: object) -> dict[str, object] | None:
     resume_file = _recent_project_text(normalized, "resume_file")
     if resume_file is not None:
         normalized["resume_file"] = resume_file
+    resume_file_available, resume_file_reason = _recent_project_resume_file_state(
+        normalized.get("project_root"),
+        normalized.get("resume_file"),
+    )
+    if resume_file_available is not None:
+        normalized["resume_file_available"] = resume_file_available
+    if resume_file_reason is not None:
+        normalized["resume_file_reason"] = resume_file_reason
 
     status = _recent_project_text(normalized, "status", "state")
     if not bool(normalized["available"]):
@@ -1197,7 +1243,13 @@ def _normalize_recent_project_row(row: object) -> dict[str, object] | None:
     resumable_value = normalized.get("resumable")
     if resumable_value is None:
         resumable_value = normalized.get("can_resume")
-    normalized["resumable"] = bool(resumable_value) and bool(normalized["available"])
+    if resumable_value is None:
+        resumable_value = bool(normalized.get("resume_file"))
+    normalized["resumable"] = (
+        bool(resumable_value)
+        and bool(normalized["available"])
+        and normalized.get("resume_file_available") is not False
+    )
 
     return normalized
 
@@ -1358,6 +1410,12 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
         blocked_reason = active_execution.get("blocked_reason")
         if isinstance(blocked_reason, str) and blocked_reason.strip():
             notices.append(f"Execution is blocked: {blocked_reason.strip()}")
+    missing_session_resume_file = payload.get("missing_session_resume_file")
+    if isinstance(missing_session_resume_file, str) and missing_session_resume_file.strip():
+        notices.append(
+            "Recorded session handoff is missing: "
+            f"{_format_display_path(missing_session_resume_file.strip())}."
+        )
 
     if notices:
         console.print()
@@ -5571,7 +5629,7 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                 soft_wrap=True,
             )
             console.print(
-                "4. Use [bold]gpd --help[/] for local install, validation, permissions, and diagnostics. "
+                "4. Use [bold]gpd --help[/] for local install, readiness, validation, permissions, observability, and diagnostics. "
                 f"Use [{_INSTALL_ACCENT_COLOR} bold]{help_command}[/] inside {display_name} for workflow help.",
                 soft_wrap=True,
             )
@@ -5581,7 +5639,7 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                 soft_wrap=True,
             )
             console.print(
-                "6. After startup, use the runtime `settings` command to choose your model-cost posture. "
+                "6. After startup, use the runtime `settings` command to review autonomy, workflow defaults, and model-cost posture. "
                 "The safest starting point is `review` plus runtime defaults.",
                 soft_wrap=True,
             )
@@ -5603,7 +5661,7 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                     soft_wrap=True,
                 )
             console.print(
-                "\nUse [bold]gpd --help[/] for local install, validation, permissions, and diagnostics.",
+                "\nUse [bold]gpd --help[/] for local install, readiness, validation, permissions, observability, and diagnostics.",
                 soft_wrap=True,
             )
             console.print(
@@ -5611,7 +5669,7 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                 soft_wrap=True,
             )
             console.print(
-                "After startup, use the runtime `settings` command to choose your model-cost posture. "
+                "After startup, use the runtime `settings` command to review autonomy, workflow defaults, and model-cost posture. "
                 "The safest starting point is `review` plus runtime defaults.",
                 soft_wrap=True,
             )

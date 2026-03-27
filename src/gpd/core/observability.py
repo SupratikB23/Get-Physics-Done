@@ -453,7 +453,7 @@ def _execution_visibility_classification(snapshot: CurrentExecutionState | None)
         _str_or_none(snapshot.waiting_reason),
     )
     segment_status = (snapshot.segment_status or "").strip().lower()
-    if any(bool(marker) for marker in waiting_markers) or segment_status in {"waiting_review", "awaiting_user"}:
+    if any(bool(marker) for marker in waiting_markers) or segment_status == "waiting_review":
         return "waiting"
 
     paused_states = {"paused", "awaiting_user", "ready_to_continue"}
@@ -626,6 +626,44 @@ def _clear_skeptical_review(current: dict[str, object]) -> None:
     current["skeptical_requestioning_summary"] = None
     current["weakest_unchecked_anchor"] = None
     current["disconfirming_observation"] = None
+
+
+def _clear_execution_hold_state(current: dict[str, object], *, clear_first_result_ready: bool = False) -> None:
+    """Clear transient waiting/review/blocked state from one execution snapshot."""
+
+    current["waiting_for_review"] = False
+    current["review_required"] = False
+    current["checkpoint_reason"] = None
+    current["waiting_reason"] = None
+    current["blocked_reason"] = None
+    current["first_result_gate_pending"] = False
+    current["pre_fanout_review_pending"] = False
+    current["pre_fanout_review_cleared"] = False
+    current["downstream_locked"] = False
+    if clear_first_result_ready:
+        current["first_result_ready"] = False
+    _clear_skeptical_review(current)
+
+
+def _reset_execution_segment_state(current: dict[str, object]) -> None:
+    """Reset one execution snapshot for the start of a fresh segment."""
+
+    _clear_execution_hold_state(current, clear_first_result_ready=True)
+    for key in (
+        "segment_id",
+        "segment_status",
+        "segment_reason",
+        "current_task",
+        "current_task_index",
+        "current_task_total",
+        "last_result_id",
+        "last_result_label",
+        "last_artifact_path",
+        "resume_file",
+        "segment_started_at",
+        "transition_id",
+    ):
+        current[key] = None
 
 
 def _refresh_checkpoint_reason(current: dict[str, object]) -> None:
@@ -845,6 +883,12 @@ def _updated_execution_state(
     current["plan"] = payload.plan or current.get("plan")
     current["updated_at"] = payload.timestamp
 
+    segment_action = payload.action if payload.name == "segment" else None
+    if segment_action == "start":
+        _reset_execution_segment_state(current)
+    elif segment_action in {"pause", "finish", "stop"}:
+        _clear_execution_hold_state(current)
+
     workflow = _str_or_none(execution.get("workflow"))
     if workflow:
         current["workflow"] = workflow
@@ -905,12 +949,13 @@ def _updated_execution_state(
         current["pre_fanout_review_cleared"] = False
 
     if payload.name == "segment" and payload.action == "start":
-        current.setdefault("segment_started_at", payload.timestamp)
-        current.setdefault("segment_status", "active")
+        current["segment_started_at"] = payload.timestamp
+        current["segment_status"] = "active"
     elif payload.name == "segment" and payload.action == "pause":
-        current["segment_status"] = current.get("segment_status") or "paused"
+        pause_status = (current.get("segment_status") or "").strip().lower()
+        current["segment_status"] = pause_status if pause_status in {"paused", "awaiting_user", "ready_to_continue"} else "paused"
     elif payload.name == "segment" and payload.action in {"finish", "stop"}:
-        current["segment_status"] = current.get("segment_status") or "completed"
+        current["segment_status"] = "completed"
 
     if payload.name == "gate" and payload.action == "enter":
         current["review_required"] = True
@@ -984,7 +1029,8 @@ def _updated_execution_state(
         if current.get("checkpoint_reason") == "first_result" or _bool_or_none(execution.get("load_bearing")):
             current["first_result_ready"] = True
 
-    _apply_automatic_execution_guards(current, payload, execution, cwd=cwd)
+    if payload.name != "segment" or payload.action not in {"pause", "finish", "stop"}:
+        _apply_automatic_execution_guards(current, payload, execution, cwd=cwd)
 
     _refresh_checkpoint_reason(current)
     if current.get("skeptical_requestioning_required") and not current.get("waiting_for_review"):
@@ -1007,6 +1053,14 @@ def _updated_execution_state(
         current["segment_status"] = "waiting_review"
     elif current.get("waiting_reason"):
         current["segment_status"] = current.get("segment_status") or "awaiting_user"
+
+    if payload.name == "segment" and payload.action == "start":
+        current["segment_status"] = "active"
+    elif payload.name == "segment" and payload.action == "pause":
+        pause_status = (current.get("segment_status") or "").strip().lower()
+        current["segment_status"] = pause_status if pause_status in {"paused", "awaiting_user", "ready_to_continue"} else "paused"
+    elif payload.name == "segment" and payload.action in {"finish", "stop"}:
+        current["segment_status"] = "completed"
 
     snapshot = CurrentExecutionState.model_validate(current)
     if _clear_execution_after_event(snapshot, payload, execution):

@@ -328,6 +328,19 @@ class TestResume:
         assert "gpd resume" in result.output
         assert "gpd init resume" in result.output
 
+    def test_resume_human_output_marks_missing_session_handoff_as_advisory(self, gpd_project: Path) -> None:
+        state_path = gpd_project / "GPD" / "state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["position"]["status"] = "Paused"
+        state["session"]["resume_file"] = "GPD/phases/01-test-phase/.continue-here.md"
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+
+        result = _invoke("resume")
+
+        assert "Recorded session handoff is missing:" in result.output
+        assert "missing" in result.output
+        assert "./GPD/phases/01-test-phase/.continue-here.md" in result.output
+
     def test_resume_recent_lists_recent_projects_in_recency_order(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -721,6 +734,31 @@ class TestInitIncludeParsing:
         assert payload["assessment"] == "waiting"
         assert payload["possibly_stalled"] is False
         assert payload["review_reason"] == "first-result review pending"
+
+    def test_observe_execution_treats_awaiting_user_as_paused_or_resumable(self, gpd_project: Path) -> None:
+        observability = gpd_project / "GPD" / "observability"
+        observability.mkdir(parents=True, exist_ok=True)
+        (observability / "current-execution.json").write_text(
+            json.dumps(
+                {
+                    "session_id": "sess-2",
+                    "phase": "04",
+                    "plan": "04",
+                    "segment_status": "awaiting_user",
+                    "resume_file": "GPD/phases/04-test-phase/.continue-here.md",
+                    "updated_at": "2000-01-01T00:00:00+00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = _invoke("--raw", "observe", "execution")
+        payload = json.loads(result.output)
+
+        assert payload["found"] is True
+        assert payload["status_classification"] == "paused-or-resumable"
+        assert payload["assessment"] == "paused or resumable"
+        assert payload["possibly_stalled"] is False
 
     def test_observe_execution_without_snapshot_reports_idle(self, gpd_project: Path) -> None:
         result = _invoke("--raw", "observe", "execution")

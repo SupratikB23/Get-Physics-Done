@@ -734,6 +734,201 @@ def test_execution_finish_clears_current_execution_snapshot(tmp_path: Path, monk
     assert get_current_execution(project) is None
 
 
+def test_new_segment_start_clears_stale_review_and_blocked_state(tmp_path: Path, monkeypatch) -> None:
+    project = _bootstrap_project(tmp_path)
+    monkeypatch.chdir(project)
+
+    from gpd.core.observability import ensure_session, get_current_execution, observe_event
+
+    session = ensure_session(project, source="cli", command="execute-phase")
+    assert session is not None
+
+    observe_event(
+        project,
+        category="execution",
+        name="gate",
+        action="enter",
+        status="ok",
+        command="execute-phase",
+        phase="04",
+        plan="02",
+        session_id=session.session_id,
+        data={
+            "execution": {
+                "segment_id": "seg-old",
+                "checkpoint_reason": "first_result",
+                "first_result_gate_pending": True,
+                "waiting_for_review": True,
+                "downstream_locked": True,
+                "resume_file": "GPD/phases/04-test/.continue-here.md",
+            }
+        },
+    )
+    observe_event(
+        project,
+        category="execution",
+        name="segment",
+        action="start",
+        status="active",
+        command="execute-phase",
+        phase="04",
+        plan="02",
+        session_id=session.session_id,
+        data={"execution": {"segment_id": "seg-new", "current_task": "Continue after gate"}},
+    )
+
+    snapshot = get_current_execution(project)
+    assert snapshot is not None
+    assert snapshot.segment_id == "seg-new"
+    assert snapshot.segment_status == "active"
+    assert snapshot.current_task == "Continue after gate"
+    assert snapshot.waiting_for_review is False
+    assert snapshot.review_required is False
+    assert snapshot.waiting_reason is None
+    assert snapshot.blocked_reason is None
+    assert snapshot.first_result_gate_pending is False
+    assert snapshot.pre_fanout_review_pending is False
+    assert snapshot.skeptical_requestioning_required is False
+    assert snapshot.downstream_locked is False
+    assert snapshot.resume_file is None
+    assert snapshot.segment_started_at is not None
+
+
+def test_segment_pause_forces_paused_status_and_keeps_resume_semantics(tmp_path: Path, monkeypatch) -> None:
+    project = _bootstrap_project(tmp_path)
+    monkeypatch.chdir(project)
+
+    from gpd.core.observability import ensure_session, get_current_execution, observe_event
+
+    session = ensure_session(project, source="cli", command="execute-phase")
+    assert session is not None
+
+    observe_event(
+        project,
+        category="execution",
+        name="gate",
+        action="enter",
+        status="ok",
+        command="execute-phase",
+        phase="05",
+        plan="01",
+        session_id=session.session_id,
+        data={
+            "execution": {
+                "segment_id": "seg-1",
+                "checkpoint_reason": "first_result",
+                "first_result_gate_pending": True,
+                "waiting_for_review": True,
+                "downstream_locked": True,
+            }
+        },
+    )
+    observe_event(
+        project,
+        category="execution",
+        name="segment",
+        action="pause",
+        status="ok",
+        command="execute-phase",
+        phase="05",
+        plan="01",
+        session_id=session.session_id,
+        data={"execution": {"segment_status": "awaiting_user", "resume_file": "GPD/phases/05-test/.continue-here.md"}},
+    )
+
+    snapshot = get_current_execution(project)
+    assert snapshot is not None
+    assert snapshot.segment_status == "awaiting_user"
+    assert snapshot.waiting_for_review is False
+    assert snapshot.review_required is False
+    assert snapshot.first_result_gate_pending is False
+    assert snapshot.downstream_locked is False
+    assert snapshot.resume_file == "GPD/phases/05-test/.continue-here.md"
+
+
+def test_segment_finish_clears_snapshot_even_after_blocked_state(tmp_path: Path, monkeypatch) -> None:
+    project = _bootstrap_project(tmp_path)
+    monkeypatch.chdir(project)
+
+    from gpd.core.observability import ensure_session, get_current_execution, observe_event
+
+    session = ensure_session(project, source="cli", command="execute-phase")
+    assert session is not None
+
+    observe_event(
+        project,
+        category="execution",
+        name="segment",
+        action="start",
+        status="active",
+        command="execute-phase",
+        phase="06",
+        plan="01",
+        session_id=session.session_id,
+        data={"execution": {"segment_id": "seg-blocked"}},
+    )
+    observe_event(
+        project,
+        category="execution",
+        name="gate",
+        action="enter",
+        status="ok",
+        command="execute-phase",
+        phase="06",
+        plan="01",
+        session_id=session.session_id,
+        data={"execution": {"blocked_reason": "manual stop required"}},
+    )
+
+    snapshot = get_current_execution(project)
+    assert snapshot is not None
+    assert snapshot.segment_status == "blocked"
+
+    observe_event(
+        project,
+        category="execution",
+        name="segment",
+        action="finish",
+        status="ok",
+        command="execute-phase",
+        phase="06",
+        plan="01",
+        session_id=session.session_id,
+        data={"execution": {"segment_status": "completed"}},
+    )
+
+    assert get_current_execution(project) is None
+
+
+def test_derive_execution_visibility_treats_awaiting_user_as_paused_or_resumable(tmp_path: Path, monkeypatch) -> None:
+    project = _bootstrap_project(tmp_path)
+    monkeypatch.chdir(project)
+
+    observability_dir = project / "GPD" / "observability"
+    observability_dir.mkdir(parents=True, exist_ok=True)
+    (observability_dir / "current-execution.json").write_text(
+        json.dumps(
+            {
+                "session_id": "sess-awaiting",
+                "phase": "03",
+                "plan": "01",
+                "segment_status": "awaiting_user",
+                "resume_file": "GPD/phases/03-test/.continue-here.md",
+                "updated_at": _iso_minutes_ago(45),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from gpd.core.observability import derive_execution_visibility
+
+    visibility = derive_execution_visibility(project)
+    assert visibility is not None
+    assert visibility.status_classification == "paused-or-resumable"
+    assert visibility.assessment == "paused-or-resumable"
+    assert visibility.possibly_stalled is False
+
+
 def test_foreign_session_cannot_clear_live_review_gate(tmp_path: Path, monkeypatch) -> None:
     project = _bootstrap_project(tmp_path)
     monkeypatch.chdir(project)

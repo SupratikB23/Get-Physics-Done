@@ -45,6 +45,10 @@ Parse current values (default to `true` / first option if not present):
 - `model-cost posture` is a qualitative guidance layer only; it maps onto the existing `model_profile` and `model_overrides` choices and does not add a new persisted config key.
 - `git.branching_strategy` -- branching approach (default: `"none"`)
 
+`research_mode` controls breadth vs focus only. It does **not** by itself authorize git-backed hypothesis branches, branch-like alternative plans, or side investigations; those still require an explicit tangent decision.
+
+`git.branching_strategy` is separate from tangent handling. It controls the normal git branch naming policy for approved phase/milestone work, not whether GPD may silently create hypothesis branches.
+
 `execution.review_cadence` is independent of `model_profile` and `research_mode`: it controls bounded review stop density, not agent tiering or verification rigor.
 
 Project conventions do **not** live in `GPD/config.json`. Do not invent or preserve a `physics` section here. Unit systems, metric signatures, Fourier conventions, and other notation choices belong in `GPD/CONVENTIONS.md` and `GPD/state.json` via `gpd convention set`.
@@ -85,10 +89,10 @@ ask_user([
     header: "Research Mode",
     multiSelect: false,
     options: [
-      { label: "Explore", description: "Broad literature search, multiple hypothesis branches, compare approaches" },
+      { label: "Explore", description: "Broad literature search, compare multiple viable approaches, and surface tangent decisions explicitly before any branch or side investigation." },
       { label: "Balanced (Recommended)", description: "Standard: plan one approach, execute, verify, iterate" },
-      { label: "Exploit", description: "Focused execution of known methodology. Minimal branching, fast convergence." },
-      { label: "Adaptive", description: "Start exploring, auto-switch to exploit once approach is validated" }
+      { label: "Exploit", description: "Focused execution of known methodology. Suppress optional tangents unless the user explicitly requests them or the current approach is blocked." },
+      { label: "Adaptive", description: "Start broad enough to compare viable approaches, keep tangents explicit, then narrow only after decisive evidence locks the method." }
     ]
   },
   {

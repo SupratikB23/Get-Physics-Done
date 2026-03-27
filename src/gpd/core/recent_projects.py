@@ -45,6 +45,8 @@ class RecentProjectEntry(BaseModel):
     last_seen_at: str | None = None
     stopped_at: str | None = None
     resume_file: str | None = None
+    resume_file_available: bool | None = None
+    resume_file_reason: str | None = None
     hostname: str | None = None
     platform: str | None = None
     resumable: bool = False
@@ -98,6 +100,33 @@ def _availability_for(project_root: str) -> tuple[bool, str | None]:
     return root.is_dir(), None if root.is_dir() else "project root is not a directory"
 
 
+def _resume_file_availability(project_root: str, resume_file: str | None) -> tuple[bool | None, str | None]:
+    if not isinstance(resume_file, str) or not resume_file.strip():
+        return None, None
+
+    root = Path(project_root).expanduser()
+    if not root.exists() or not root.is_dir():
+        return None, None
+
+    resolved_root = root.resolve(strict=False)
+    candidate = Path(resume_file).expanduser()
+    if candidate.is_absolute():
+        resolved_target = candidate.resolve(strict=False)
+    else:
+        resolved_target = (root / candidate).resolve(strict=False)
+
+    try:
+        resolved_target.relative_to(resolved_root)
+    except ValueError:
+        return False, "resume file outside project root"
+
+    if not resolved_target.exists():
+        return False, "resume file missing"
+    if not resolved_target.is_file():
+        return False, "resume file is not a file"
+    return True, None
+
+
 def _normalize_optional_text(value: object) -> str | None:
     if not isinstance(value, str):
         return None
@@ -109,11 +138,14 @@ def _normalize_optional_text(value: object) -> str | None:
 
 def _annotate_availability(entry: RecentProjectEntry) -> RecentProjectEntry:
     available, reason = _availability_for(entry.project_root)
+    resume_file_available, resume_file_reason = _resume_file_availability(entry.project_root, entry.resume_file)
     return entry.model_copy(
         update={
             "available": available,
             "availability_reason": reason,
-            "resumable": bool(entry.resume_file) and available,
+            "resume_file_available": resume_file_available,
+            "resume_file_reason": resume_file_reason,
+            "resumable": bool(entry.resume_file) and available and resume_file_available is not False,
         }
     )
 

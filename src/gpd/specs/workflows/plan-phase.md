@@ -33,10 +33,10 @@ Parse JSON for: `researcher_model`, `planner_model`, `checker_model`, `research_
 - `autonomy=supervised`: Present the written draft plans for user review before treating them as approved or moving on to execution. Do not weaken the contract gate just because the draft is human-reviewed.
 - `autonomy=balanced` (default): Write the plan and pause only if the plan-checker raises issues or the planning choices need user judgment.
 - `autonomy=yolo`: Write the plan and proceed without pausing.
-- `research_mode=explore`: Always run research step even if research exists. Expand wave count for thorough coverage.
+- `research_mode=explore`: Always run research step even if research exists. Expand research and comparison coverage, but do not auto-create git-backed branches or branch-like plans just because alternatives appear.
 - `research_mode=exploit`: Reuse existing research only when it already covers the exact method family, anchors, and decisive evidence path for this phase. Otherwise run targeted research. Suppress optional tangents unless the user explicitly asks for them.
 - `research_mode=adaptive`: Start broad until prior decisive evidence or an explicit approach lock justifies narrowing. Do not infer “safe to narrow” from phase number alone.
-- Tangent policy: when multiple viable approaches or optional side questions appear, do NOT silently branch or widen the plan. Surface the 4-way tangent decision model instead: (1) branch as an alternative hypothesis via `/gpd:tangent` or `/gpd:branch-hypothesis`, (2) run a bounded side investigation now via `/gpd:quick`, (3) capture and defer via `/gpd:add-todo`, or (4) stay on the main line and plan only the selected primary approach.
+- Tangent policy: when multiple viable approaches or optional side questions appear, do NOT silently branch or widen the plan. Surface the 4-way tangent decision model instead: (1) branch as an alternative hypothesis via `/gpd:tangent` or `/gpd:branch-hypothesis`, (2) run a bounded side investigation now via `/gpd:quick`, (3) capture and defer via `/gpd:add-todo`, or (4) stay on the main line and plan only the selected primary approach. `git.branching_strategy` does not override this rule.
 - All modes still require contract completeness, decisive outputs, required anchors, forbidden-proxy handling, and disconfirming paths before execution starts.
 
 **Set shell variables from init JSON:**
@@ -191,7 +191,9 @@ When planning reveals multiple viable approaches or optional side questions, tre
 
 **Workflow rule:** Do NOT silently create branch-like alternative plans, speculative side tasks, or comparison-only detours unless the user has already chosen one of the tangent paths above.
 
-**Exploit-mode rule:** If `research_mode=exploit`, suppress optional tangents entirely unless the user explicitly requests them or the current approach is blocked by contract, anchor, or physics-validity failure.
+Explore mode may surface this choice more often, but it still does not auto-approve a branch or side investigation.
+
+**Exploit-mode rule:** If `research_mode=exploit`, suppress optional tangents entirely unless the user explicitly requests them or the current approach is blocked by contract, anchor, or physics-validity failure. Do not volunteer `/gpd:branch-hypothesis` as the default response in exploit mode.
 
 ## 5. Handle Research
 
@@ -309,7 +311,7 @@ IMPORTANT: If CONTEXT.md exists below, it contains user decisions from /gpd:disc
 <physics_research_focus>
 
 **Research depth by mode:**
-- **explore:** COMPREHENSIVE — survey ALL viable methods, compare 3+ approaches, include failed approaches from literature, broad literature search (10+ papers), identify unexplored angles. Surface independent alternatives as tangent candidates; do NOT assume they all become branch-like plans.
+- **explore:** COMPREHENSIVE — survey ALL viable methods, compare 3+ approaches, include failed approaches from literature, broad literature search (10+ papers), identify unexplored angles. Surface independent alternatives as tangent candidates; do NOT assume they all become branch-like plans or git-backed hypothesis branches.
 - **balanced** (default): STANDARD — identify best approach, document known difficulties, targeted literature (5-7 key papers)
 - **exploit:** MINIMAL — method-specific details only (parameters, convergence criteria, implementation notes). Skip broad survey. Only papers directly relevant to the exact computation. Suppress optional side questions unless the user explicitly asks to explore them.
 - **adaptive:** Use explore-style until prior decisive evidence or an explicit approach lock shows the method family is stable. Then narrow to a balanced or exploit-style pass for the locked method, treating unresolved alternatives as tangent candidates instead of implicit branches.
@@ -317,7 +319,7 @@ IMPORTANT: If CONTEXT.md exists below, it contains user decisions from /gpd:disc
 **Tangent control while researching:**
 - If you find multiple viable approaches, present them as tangent candidates for the planner's 4-way decision model rather than assuming extra branches or side plans.
 - If a side question is optional rather than contract-critical, label it clearly as optional.
-- In exploit mode, mention optional tangents only when the user explicitly requested them or the main approach is blocked.
+- In exploit mode, mention optional tangents only when the user explicitly requested them or the main approach is blocked. Do not present branch creation as the default exploit-mode fallback.
 
 **Core research areas (all modes):**
 - **Mathematical framework:** Identify the governing equations, symmetry groups, relevant Hilbert spaces, or variational principles
@@ -571,7 +573,7 @@ IMPORTANT: If context exists below, it contains USER DECISIONS from /gpd:discuss
   3. `Capture and defer` -> route through `/gpd:add-todo`
   4. `Stay on the main line` -> plan only the selected primary approach
 - If no explicit tangent decision already exists in context and more than one viable path remains live, return `## CHECKPOINT REACHED` with the four options above instead of silently branching.
-- If `research_mode=exploit`, suppress optional tangents unless the user explicitly requested them or the current approach is blocked by physics, contract, or anchor failure.
+- If `research_mode=exploit`, suppress optional tangents unless the user explicitly requested them or the current approach is blocked by physics, contract, or anchor failure. Do not surface `/gpd:branch-hypothesis` as a default exploit-mode move.
 </planning_context>
 
 <physics_planning_requirements>

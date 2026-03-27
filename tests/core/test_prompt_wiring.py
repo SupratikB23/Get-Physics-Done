@@ -2254,6 +2254,7 @@ def test_help_surfaces_distinguish_runtime_slash_commands_from_local_cli_subcomm
         assert "slash-command" in content
         assert "local `gpd` CLI" in content
         assert "gpd --help" in content
+        assert "install/readiness/permissions/diagnostics surface directly" in content
         assert "gpd validate command-context gpd:<name>" in content
         assert "gpd observe execution" in content
 
@@ -2279,6 +2280,7 @@ def test_help_command_keeps_static_quick_start_while_workflow_owns_full_referenc
         "/gpd:map-research",
         "/gpd:resume-work",
         "gpd resume --recent",
+        "gpd observe execution",
         "/gpd:suggest-next",
         "/gpd:tangent",
         "/gpd:settings",
@@ -2314,6 +2316,27 @@ def test_help_and_execution_surfaces_wire_tangent_control_path() -> None:
     assert "{GPD_INSTALL_DIR}/workflows/quick.md" in tangent_workflow
     assert "{GPD_INSTALL_DIR}/workflows/add-todo.md" in tangent_workflow
     assert "{GPD_INSTALL_DIR}/workflows/branch-hypothesis.md" in tangent_workflow
+
+
+def test_planner_and_plan_phase_keep_no_silent_branching_and_exploit_tangent_suppression() -> None:
+    planner = (REPO_ROOT / "src/gpd/agents/gpd-planner.md").read_text(encoding="utf-8")
+    plan_phase = (WORKFLOWS_DIR / "plan-phase.md").read_text(encoding="utf-8")
+
+    for content in (planner, plan_phase):
+        assert "do NOT silently" in content
+        assert "/gpd:tangent" in content
+        assert "/gpd:branch-hypothesis" in content
+
+    assert "Explore mode widens analysis and comparison, not branch creation." in planner
+    assert "Explore mode alone does not authorize git-backed branches" in planner
+    assert (
+        "Suppress optional tangent surfacing unless the user explicitly requests it or the current approach is blocked"
+        in planner
+    )
+    assert "do not auto-create git-backed branches or branch-like plans" in plan_phase
+    assert "`git.branching_strategy` does not override this rule." in plan_phase
+    assert "suppress optional tangents entirely unless the user explicitly requests them" in plan_phase
+    assert "Do not volunteer `/gpd:branch-hypothesis` as the default response in exploit mode." in plan_phase
 
 
 def test_help_surfaces_describe_regression_check_as_metadata_scan_not_full_reverification() -> None:

@@ -115,11 +115,11 @@ def _assert_single_runtime_next_steps(
         rf"{re.escape(adapter.map_research_command)} for existing work, or "
         rf"{re.escape(resume_work_command)} to continue paused work\..*?"
         rf"Fast bootstrap: use {re.escape(adapter.new_project_command)} --minimal.*?"
-        rf"Use gpd --help for local install, validation, permissions, and diagnostics\..*?"
+        rf"Use gpd --help for local install, readiness, validation, permissions, observability, and diagnostics\..*?"
         rf"Use {re.escape(adapter.help_command)} inside {re.escape(descriptor.display_name)} for workflow help\..*?"
         rf"Verify or troubleshoot this machine with gpd doctor --runtime "
         rf"{re.escape(descriptor.runtime_name)} --{re.escape(doctor_scope)}\..*?"
-        rf"After startup, use the runtime `settings` command to choose your model-cost posture\. "
+        rf"After startup, use the runtime `settings` command to review autonomy, workflow defaults, and model-cost posture\. "
         rf"The safest starting point is `review` plus runtime defaults\..*?"
         rf"If you plan to use paper/manuscript workflows, rerun "
         rf"gpd doctor --runtime {re.escape(descriptor.runtime_name)} --{re.escape(doctor_scope)} "
@@ -357,7 +357,7 @@ def test_install_summary_surfaces_help_then_new_or_existing_entry_points(tmp_pat
     assert result.exit_code == 0
     _assert_single_runtime_next_steps(result.output)
     assert (
-        "After startup, use the runtime `settings` command to choose your model-cost posture. "
+        "After startup, use the runtime `settings` command to review autonomy, workflow defaults, and model-cost posture. "
         "The safest starting point is `review` plus runtime defaults."
     ) in result.output
     assert (
@@ -402,14 +402,14 @@ def test_install_summary_lists_runtime_specific_help_for_multi_runtime_install(t
         _assert_multi_runtime_next_step_line(result.output, descriptor)
     assert "1. From your system terminal" not in result.output
     assert (
-        "After startup, use the runtime `settings` command to choose your model-cost posture. "
+        "After startup, use the runtime `settings` command to review autonomy, workflow defaults, and model-cost posture. "
         "The safest starting point is `review` plus runtime defaults."
     ) in result.output
     assert (
         "For paper/manuscript workflows, rerun gpd doctor --runtime <runtime> --local|--global "
         "and check the `Optional Workflow Add-ons` and `LaTeX Toolchain` rows before publication work."
     ) in result.output
-    assert "Use gpd --help for local install, validation, permissions, and diagnostics." in result.output
+    assert "Use gpd --help for local install, readiness, validation, permissions, observability, and diagnostics." in result.output
     assert "Run gpd doctor --runtime <runtime> --local|--global for a focused readiness check." in result.output
 
 

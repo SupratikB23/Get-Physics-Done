@@ -633,19 +633,22 @@ def test_public_readme_quick_start_surfaces_step_one_entry_points() -> None:
     readme = (_repo_root() / "README.md").read_text(encoding="utf-8")
     quick_start = _markdown_section(readme, "## Quick Start")
 
-    assert "| New research project | `new-project` |" in quick_start
-    assert "| New research project, fast path | `new-project --minimal` |" in quick_start
-    assert "| Returning to an existing GPD project | `resume-work` |" in quick_start
-    assert "| Existing research folder or codebase | `map-research` |" in quick_start
+    assert "The table below uses the Claude Code / Gemini CLI form for in-runtime commands." in quick_start
+    assert "Codex and OpenCode use the equivalent prefixed forms" in quick_start
+    assert "`gpd ...` rows are local terminal commands." in quick_start
+    assert "| New research project | `/gpd:new-project` |" in quick_start
+    assert "| New research project, fast path | `/gpd:new-project --minimal` |" in quick_start
+    assert "| Returning to an existing GPD project | `/gpd:resume-work` |" in quick_start
+    assert "| Existing research folder or codebase | `/gpd:map-research` |" in quick_start
     assert "gpd resume --recent" in quick_start
-    assert "Guided unattended configuration path: use `settings` after startup" in quick_start
-    assert "use `tangent` when GPD surfaces an alternative path worth checking" in quick_start
+    assert "Guided unattended configuration path: use your runtime-specific `settings` command after startup" in quick_start
+    assert "use your runtime-specific `tangent` command when GPD surfaces an alternative path worth checking" in quick_start
     assert "`tangent` is the lightweight chooser for stay / quick / defer / branch" in quick_start
-    assert "`branch-hypothesis` only when you want the explicit git-backed alternative path" in quick_start
+    assert "the matching `branch-hypothesis` command only when you want the explicit git-backed alternative path" in quick_start
     assert "For model choice, the safe default is `review` plus runtime defaults." in quick_start
-    assert "Use `settings` to move toward `Max quality`, `Balanced`, or `Budget-aware` only if you want to trade off quality against cost or model access." in quick_start
+    assert "Use your runtime-specific `settings` command to move toward `Max quality`, `Balanced`, or `Budget-aware`" in quick_start
     assert "Use the exact runtime-specific command syntax below for your first command." in quick_start
-    assert "If you are starting from existing work, run `map-research` first" in quick_start
+    assert "If you are starting from existing work, run your runtime's `map-research` command first" in quick_start
     assert "/gpd:new-project --minimal" in quick_start
     assert "$gpd-resume-work" in quick_start
     assert "/gpd:map-research" in quick_start
@@ -656,7 +659,7 @@ def test_public_readme_quick_start_keeps_settings_guided_balanced_unattended_rea
     quick_start = _markdown_section(readme, "## Quick Start")
 
     assert "For unattended execution, the recommended default is Balanced (`balanced`)." in quick_start
-    assert "Use `settings` inside the runtime to confirm or change autonomy" in quick_start
+    assert "Use your runtime-specific `settings` command to confirm or change autonomy" in quick_start
     assert "gpd permissions status --runtime <runtime> --autonomy balanced" in quick_start
     assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in quick_start
     assert "Balanced (`balanced`) is the recommended unattended default." in quick_start
@@ -686,7 +689,7 @@ def test_public_readme_recovery_surfaces_keep_runtime_pause_and_resume_roles_dis
     readme = (_repo_root() / "README.md").read_text(encoding="utf-8")
     quick_start = _markdown_section(readme, "## Quick Start")
 
-    assert "| Returning to an existing GPD project | `resume-work` |" in quick_start
+    assert "| Returning to an existing GPD project | `/gpd:resume-work` |" in quick_start
     assert "| Returning to an existing GPD project | `pause-work` |" not in quick_start
     assert "use `gpd resume`" in quick_start
     assert "gpd resume --recent" in quick_start
@@ -711,6 +714,18 @@ def test_public_readme_and_help_surfaces_keep_tangent_discoverable() -> None:
     assert "Chooser for stay / quick / defer / branch" in help_workflow
 
 
+def test_public_readme_and_help_keep_tangent_vs_branch_taxonomy_explicit() -> None:
+    repo_root = _repo_root()
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    help_command = (repo_root / "src/gpd/commands/help.md").read_text(encoding="utf-8")
+    help_workflow = (repo_root / "src/gpd/specs/workflows/help.md").read_text(encoding="utf-8")
+
+    assert "Use the matching `branch-hypothesis` command only when you want the explicit git-backed alternative path" in readme
+    for content in (help_command, help_workflow):
+        assert "Keeps hypothesis branching as an explicit follow-on decision rather than the default for every tangent" in content
+        assert "Explicit git-backed alternative path" in content
+
+
 def test_public_help_surfaces_keep_settings_as_guided_post_startup_path() -> None:
     repo_root = _repo_root()
     help_command = (repo_root / "src/gpd/commands/help.md").read_text(encoding="utf-8")
@@ -721,6 +736,7 @@ def test_public_help_surfaces_keep_settings_as_guided_post_startup_path() -> Non
         assert "Balanced (Recommended)" in content
         assert "Choose a model-cost posture: `Max quality`, `Balanced`, or `Budget-aware`" in content
         assert "review` with runtime defaults is the safest first choice" in content
+        assert "gpd observe execution" in content
 
 
 def test_public_settings_workflow_keeps_balanced_recommendation_and_relaunch_guidance() -> None:
@@ -763,6 +779,17 @@ def test_public_readme_observability_surface_keeps_execution_guidance_in_command
     assert "| `gpd observe execution` | Show read-only live execution status for the current workspace, including progress / waiting state and conservative `possibly stalled` wording |" in readme
     assert "gpd observe execution" in readme
     assert "For read-only long-run visibility from your normal system terminal, use `gpd observe execution`." in readme
+
+
+def test_public_local_cli_help_and_install_summary_keep_readiness_diagnostics_emphasis() -> None:
+    cli = (_repo_root() / "src/gpd/cli.py").read_text(encoding="utf-8")
+
+    assert "local install, readiness, validation, permissions, observability, and diagnostics CLI" in cli
+    assert "Use the local CLI for install, readiness checks, permissions, observability, validation, and diagnostics." in cli
+    assert "gpd doctor --runtime <runtime> --local" in cli
+    assert "gpd observe execution" in cli
+    assert "gpd resume --recent" in cli
+    assert "review autonomy, workflow defaults, and model-cost posture" in cli
 
 
 def test_public_runtime_docs_explain_runtime_specific_command_syntax() -> None:

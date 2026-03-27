@@ -172,6 +172,9 @@ class TestRecentProjectsListing:
         store_root = tmp_path / "cache"
         project_root = tmp_path / "project"
         project_root.mkdir()
+        resume_file = project_root / "GPD" / "phases" / "03" / ".continue-here.md"
+        resume_file.parent.mkdir(parents=True, exist_ok=True)
+        resume_file.write_text("resume\n", encoding="utf-8")
 
         record_recent_project(
             project_root,
@@ -187,4 +190,29 @@ class TestRecentProjectsListing:
 
         assert len(rows) == 1
         assert rows[0].available is True
+        assert rows[0].resume_file_available is True
         assert rows[0].resumable is True
+
+    def test_list_keeps_missing_handoff_rows_but_marks_them_non_resumable(self, tmp_path: Path) -> None:
+        store_root = tmp_path / "cache"
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        record_recent_project(
+            project_root,
+            session_data={
+                "last_date": "2026-03-26T12:00:00+00:00",
+                "stopped_at": "Phase 3",
+                "resume_file": "GPD/phases/03/.continue-here.md",
+            },
+            store_root=store_root,
+        )
+
+        rows = list_recent_projects(store_root)
+
+        assert len(rows) == 1
+        assert rows[0].available is True
+        assert rows[0].resume_file == "GPD/phases/03/.continue-here.md"
+        assert rows[0].resume_file_available is False
+        assert rows[0].resume_file_reason == "resume file missing"
+        assert rows[0].resumable is False

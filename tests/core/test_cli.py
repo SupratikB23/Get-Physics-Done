@@ -140,15 +140,20 @@ def test_help_surfaces_local_setup_and_preflight_commands() -> None:
     assert "Remove GPD skills, agents, and hooks from runtime" in result.output
     assert "init" in result.output
     assert "validate" in result.output
+    assert "readiness" in result.output
+    assert "observability" in result.output
 
 
 def test_help_surfaces_permissions_readiness_commands() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "permissions" in result.output
-    assert "Runtime permission readiness and sync" in result.output
-    assert "permissions status --runtime <runtime>" in result.output
-    assert "gpd resume" in result.output
+    normalized_output = " ".join(result.output.split())
+    assert "permissions" in normalized_output
+    assert "Runtime permission readiness and sync" in normalized_output
+    assert "gpd doctor --runtime <runtime> --local" in normalized_output
+    assert "gpd permissions status --runtime <runtime> --autonomy balanced" in normalized_output
+    assert "gpd observe execution" in normalized_output
+    assert "gpd resume --recent" in normalized_output
 
 
 def test_observe_help_surfaces_read_only_execution_snapshot_command() -> None:
@@ -304,6 +309,44 @@ def test_resume_recent_human_output_surfaces_command_and_missing_projects(
     assert result.exit_code == 0
     assert "Recent Projects" in result.output
     assert "gpd --cwd" in result.output
+
+
+def test_resume_recent_raw_downgrades_missing_handoff_rows_to_non_resumable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    home = tmp_path / "home"
+    recent_index_dir = home / ".gpd" / "recent-projects"
+    recent_index_dir.mkdir(parents=True, exist_ok=True)
+
+    project_root = tmp_path / "projects" / "epsilon"
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    (recent_index_dir / "index.json").write_text(
+        json.dumps(
+            {
+                "projects": [
+                    {
+                        "project_root": str(project_root),
+                        "last_session_at": "2026-03-21T11:00:00+00:00",
+                        "stopped_at": "Phase 1",
+                        "resume_file": "GPD/phases/01/.continue-here.md",
+                        "resumable": True,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli_module.Path, "home", lambda: home)
+
+    result = runner.invoke(app, ["--raw", "resume", "--recent"])
+    parsed = json.loads(result.output)
+
+    assert parsed["count"] == 1
+    assert parsed["projects"][0]["project_root"] == str(project_root)
+    assert parsed["projects"][0]["resume_file_available"] is False
+    assert parsed["projects"][0]["resume_file_reason"] == "resume file missing"
+    assert parsed["projects"][0]["resumable"] is False
 
 
 def test_resume_plain_output_hints_recent_when_workspace_is_missing(tmp_path: Path, monkeypatch) -> None:

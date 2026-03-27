@@ -96,7 +96,7 @@ Display the reference content directly — no additions or modifications.
 This reference lists canonical in-runtime slash-command names in `/gpd:*` form.
 
 - Use these names inside the installed agent/runtime command surface.
-- The local `gpd` CLI may expose different `gpd ...` subcommands and grouping. Use `gpd --help` to inspect the executable CLI surface directly.
+- The local `gpd` CLI may expose different `gpd ...` subcommands and grouping. Use `gpd --help` to inspect the executable local install/readiness/permissions/diagnostics surface directly.
 - If you need to validate whether a slash-command can run in the current workspace, use `gpd validate command-context gpd:<name>`.
 - For a normal-terminal, read-only recovery snapshot without launching the runtime, use `gpd resume`.
 - For cross-project discovery from your normal terminal, use `gpd resume --recent` first, then open the selected project and run the per-project recovery surface there.
@@ -123,6 +123,7 @@ Choose the path that matches your starting point:
 2. `/gpd:resume-work` - Restore project context and continue from current state
 3. `/gpd:progress` - Secondary manual status check; use `--brief` when you only need a short snapshot
 4. `/gpd:suggest-next` - Fastest next-action hint without the full progress report
+5. `gpd observe execution` - Read-only long-run visibility from your normal terminal; use this for progress / waiting state and conservative `possibly stalled` wording
 
 Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has an explicit handoff to restore. Use `gpd resume` from your normal system terminal when you want a read-only local recovery summary for the current project. Use `gpd resume --recent` first if you need to find the right project before resuming it.
 

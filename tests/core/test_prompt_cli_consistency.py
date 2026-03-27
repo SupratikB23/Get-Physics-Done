@@ -167,6 +167,7 @@ def test_help_prompt_default_quick_start_stays_runtime_surface_focused() -> None
         "/gpd:map-research",
         "/gpd:resume-work",
         "gpd resume --recent",
+        "gpd observe execution",
         "/gpd:progress",
         "/gpd:suggest-next",
         "/gpd:tangent",
@@ -314,6 +315,23 @@ def test_help_prompts_surface_tangent_command_for_side_investigations() -> None:
     for content in (help_command, help_workflow):
         assert "/gpd:tangent" in content
         assert re.search(r"/gpd:tangent[^\n]*?(?:tangent|side investigation|alternative direction|parallel)", content, re.I)
+
+
+def test_settings_and_research_mode_docs_keep_tangent_branch_taxonomy_strict() -> None:
+    settings = (WORKFLOWS_DIR / "settings.md").read_text(encoding="utf-8")
+    research_modes = (
+        REPO_ROOT / "src/gpd/specs/references/research/research-modes.md"
+    ).read_text(encoding="utf-8")
+
+    assert "multiple hypothesis branches" not in settings
+    assert "Minimal branching, fast convergence." not in settings
+    assert "auto-switch to exploit once approach is validated" not in settings
+    assert "does **not** by itself authorize git-backed hypothesis branches" in settings
+    assert "surface tangent decisions explicitly" in settings
+    assert "Suppress optional tangents unless the user explicitly requests them" in settings
+    assert "do **not** silently create git-backed hypothesis branches" in research_modes
+    assert "only explicit tangent decisions become hypothesis branches or parallel plans" in research_modes
+    assert "Flag complementary approaches as tangent candidates for optional parallel investigation" in research_modes
 
 
 def test_regression_check_prompt_examples_include_optional_phase_before_quick_flag() -> None:
