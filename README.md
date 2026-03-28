@@ -68,6 +68,8 @@ For read-only long-run visibility from your normal system terminal, use `gpd obs
 
 For a read-only machine-local usage / cost summary from your normal system terminal, use `gpd cost`. It reports recorded local usage/cost telemetry only; it does not invent provider pricing, promise invoice-level accuracy, or enforce budgets by itself.
 
+Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, and `gpd presets list` from your normal system terminal when you want the broader local diagnostics, readiness, recovery, visibility, cost, and preset surface.
+
 For side investigations, use your runtime-specific `tangent` command when GPD surfaces an alternative path worth checking. `tangent` is the lightweight chooser for stay / quick / defer / branch. Use the matching `branch-hypothesis` command only when you want the explicit git-backed alternative path with isolated `GPD/` state.
 
 Guided unattended configuration path: use your runtime-specific `settings` command after startup when you want to tune workflow toggles, tier models, research preferences, or autonomy. Start there if you are deciding how much unattended execution to allow or what model-cost posture you want.

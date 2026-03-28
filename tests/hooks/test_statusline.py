@@ -82,6 +82,46 @@ def _todo_candidates(*paths: Path) -> list[TodoCandidate]:
     return [TodoCandidate(path) for path in paths]
 
 
+def _visibility_state(**overrides: object) -> SimpleNamespace:
+    """Build a minimal execution-visibility stand-in for statusline tests."""
+    current_execution = overrides.pop("current_execution", None)
+    payload: dict[str, object] = {
+        "workspace_root": "/tmp/project",
+        "has_live_execution": False,
+        "status_classification": "idle",
+        "assessment": "idle",
+        "possibly_stalled": False,
+        "stale_after_minutes": 30,
+        "last_updated_at": None,
+        "last_updated_age_label": None,
+        "last_updated_age_minutes": None,
+        "phase": None,
+        "plan": None,
+        "wave": None,
+        "segment_status": None,
+        "current_task": None,
+        "current_task_index": None,
+        "current_task_total": None,
+        "current_task_progress": None,
+        "segment_reason": None,
+        "checkpoint_reason": None,
+        "waiting_reason": None,
+        "blocked_reason": None,
+        "review_reason": None,
+        "last_result_label": None,
+        "last_artifact_path": None,
+        "resume_file": None,
+        "current_execution": current_execution,
+        "suggested_next_steps": [],
+    }
+    payload.update(overrides)
+    return SimpleNamespace(**payload)
+
+
+def _runtime_hints_payload(visibility: SimpleNamespace | None = None) -> dict[str, object]:
+    return {"execution": vars(visibility) if visibility is not None else None}
+
+
 def _mark_complete_install(config_dir: Path, *, runtime: str | None = None, install_scope: str = "local") -> None:
     config_dir.mkdir(parents=True, exist_ok=True)
     if runtime is not None:
@@ -252,6 +292,39 @@ class TestExecutionBadge:
     def test_resume_badge_surfaces_resume_state(self) -> None:
         badge = _execution_badge({"segment_status": "paused", "resume_file": "GPD/phases/02/.continue-here.md"})
         assert badge == "RESUME"
+
+    def test_visibility_paused_or_resumable_with_resume_file_uses_resume_badge(self) -> None:
+        badge = _execution_badge(
+            {"segment_status": "active"},
+            _visibility_state(
+                has_live_execution=True,
+                status_classification="paused-or-resumable",
+                assessment="paused-or-resumable",
+                current_execution={
+                    "segment_status": "paused",
+                    "resume_file": "GPD/phases/02/.continue-here.md",
+                },
+                resume_file="GPD/phases/02/.continue-here.md",
+            ),
+        )
+        assert badge == "RESUME"
+
+    def test_visibility_active_possibly_stalled_uses_stall_badge(self) -> None:
+        badge = _execution_badge(
+            {"segment_status": "active"},
+            _visibility_state(
+                has_live_execution=True,
+                status_classification="active",
+                assessment="possibly stalled",
+                possibly_stalled=True,
+                last_updated_age_label="45m ago",
+                current_execution={
+                    "segment_status": "active",
+                    "updated_at": "2026-03-10T00:45:00+00:00",
+                },
+            ),
+        )
+        assert "STALL?" in badge
 
     def test_review_badge_wins_over_resume_for_bounded_gate_state(self) -> None:
         badge = _execution_badge(
@@ -1055,6 +1128,7 @@ class TestMain:
         with (
             patch("sys.stdin", io.StringIO(json.dumps(input_data))),
             patch("sys.stdout", captured),
+            patch("gpd.hooks.statusline._read_runtime_hints", return_value=_runtime_hints_payload(_visibility_state())),
             patch("gpd.hooks.statusline._read_position", return_value=""),
             patch("gpd.hooks.statusline._read_current_task", return_value=""),
             patch("gpd.hooks.statusline._read_execution_state", return_value={}),
@@ -1175,15 +1249,24 @@ class TestMain:
         with (
             patch("sys.stdin", io.StringIO(json.dumps({"workspace": "/tmp/project"}))),
             patch("sys.stdout", captured),
+            patch(
+                "gpd.hooks.statusline._read_runtime_hints",
+                return_value=_runtime_hints_payload(
+                    _visibility_state(
+                        has_live_execution=True,
+                        status_classification="waiting",
+                        assessment="waiting",
+                        current_task="Live execution task",
+                        current_execution={
+                            "segment_status": "waiting_review",
+                            "current_task": "Live execution task",
+                        },
+                    )
+                ),
+            ),
             patch("gpd.hooks.statusline._read_position", return_value=""),
             patch("gpd.hooks.statusline._read_current_task", return_value="Todo task"),
-            patch(
-                "gpd.hooks.statusline._read_execution_state",
-                return_value={
-                    "segment_status": "waiting_review",
-                    "current_task": "Live execution task",
-                },
-            ),
+            patch("gpd.hooks.statusline._read_execution_state", return_value={}),
             patch("gpd.hooks.statusline._check_update", return_value=""),
         ):
             main()
@@ -1319,17 +1402,25 @@ class TestMain:
         with (
             patch("sys.stdin", io.StringIO(json.dumps({}))),
             patch("sys.stdout", captured),
+            patch(
+                "gpd.hooks.statusline._read_runtime_hints",
+                return_value=_runtime_hints_payload(
+                    _visibility_state(
+                        has_live_execution=True,
+                        status_classification="waiting",
+                        assessment="waiting",
+                        current_execution={
+                            "segment_status": "waiting_review",
+                            "first_result_gate_pending": True,
+                            "review_cadence": "adaptive",
+                            "last_result_label": "Benchmark reproduction",
+                        },
+                    )
+                ),
+            ),
             patch("gpd.hooks.statusline._read_position", return_value="P3/10"),
             patch("gpd.hooks.statusline._read_current_task", return_value="Routine task"),
-            patch(
-                "gpd.hooks.statusline._read_execution_state",
-                return_value={
-                    "segment_status": "waiting_review",
-                    "first_result_gate_pending": True,
-                    "review_cadence": "adaptive",
-                    "last_result_label": "Benchmark reproduction",
-                },
-            ),
+            patch("gpd.hooks.statusline._read_execution_state", return_value={}),
             patch("gpd.hooks.statusline._check_update", return_value=""),
         ):
             main()
@@ -1344,20 +1435,28 @@ class TestMain:
         with (
             patch("sys.stdin", io.StringIO(json.dumps({}))),
             patch("sys.stdout", captured),
+            patch(
+                "gpd.hooks.statusline._read_runtime_hints",
+                return_value=_runtime_hints_payload(
+                    _visibility_state(
+                        has_live_execution=True,
+                        status_classification="waiting",
+                        assessment="waiting",
+                        current_execution={
+                            "segment_status": "waiting_review",
+                            "waiting_for_review": True,
+                            "checkpoint_reason": "pre_fanout",
+                            "pre_fanout_review_pending": True,
+                            "skeptical_requestioning_required": True,
+                            "weakest_unchecked_anchor": "Direct observable benchmark",
+                            "last_result_label": "Proxy fit",
+                        },
+                    )
+                ),
+            ),
             patch("gpd.hooks.statusline._read_position", return_value="P4/10"),
             patch("gpd.hooks.statusline._read_current_task", return_value="Routine task"),
-            patch(
-                "gpd.hooks.statusline._read_execution_state",
-                return_value={
-                    "segment_status": "waiting_review",
-                    "waiting_for_review": True,
-                    "checkpoint_reason": "pre_fanout",
-                    "pre_fanout_review_pending": True,
-                    "skeptical_requestioning_required": True,
-                    "weakest_unchecked_anchor": "Direct observable benchmark",
-                    "last_result_label": "Proxy fit",
-                },
-            ),
+            patch("gpd.hooks.statusline._read_execution_state", return_value={}),
             patch("gpd.hooks.statusline._check_update", return_value=""),
         ):
             main()
@@ -1372,18 +1471,26 @@ class TestMain:
         with (
             patch("sys.stdin", io.StringIO(json.dumps({}))),
             patch("sys.stdout", captured),
+            patch(
+                "gpd.hooks.statusline._read_runtime_hints",
+                return_value=_runtime_hints_payload(
+                    _visibility_state(
+                        has_live_execution=True,
+                        status_classification="waiting",
+                        assessment="waiting",
+                        current_execution={
+                            "segment_status": "waiting_review",
+                            "waiting_for_review": True,
+                            "waiting_reason": "time_budget_exceeded",
+                            "segment_started_at": "2026-03-10T00:00:00+00:00",
+                            "updated_at": "2026-03-10T00:45:00+00:00",
+                        },
+                    )
+                ),
+            ),
             patch("gpd.hooks.statusline._read_position", return_value="P4/10"),
             patch("gpd.hooks.statusline._read_current_task", return_value="Routine task"),
-            patch(
-                "gpd.hooks.statusline._read_execution_state",
-                return_value={
-                    "segment_status": "waiting_review",
-                    "waiting_for_review": True,
-                    "waiting_reason": "time_budget_exceeded",
-                    "segment_started_at": "2026-03-10T00:00:00+00:00",
-                    "updated_at": "2026-03-10T00:45:00+00:00",
-                },
-            ),
+            patch("gpd.hooks.statusline._read_execution_state", return_value={}),
             patch("gpd.hooks.statusline._check_update", return_value=""),
         ):
             main()
@@ -1391,3 +1498,37 @@ class TestMain:
         output = captured.getvalue().lower()
         assert "stuck" not in output
         assert "wait" in output or "review" in output
+
+    def test_main_uses_visibility_stall_badge_without_raw_snapshot_heuristics(self) -> None:
+        captured = io.StringIO()
+        with (
+            patch("sys.stdin", io.StringIO(json.dumps({}))),
+            patch("sys.stdout", captured),
+            patch(
+                "gpd.hooks.statusline._read_runtime_hints",
+                return_value=_runtime_hints_payload(
+                    _visibility_state(
+                        has_live_execution=True,
+                        status_classification="active",
+                        assessment="possibly stalled",
+                        possibly_stalled=True,
+                        last_updated_age_label="45m ago",
+                        current_task="Benchmark reproduction",
+                        current_execution={
+                            "segment_status": "active",
+                            "current_task": "Benchmark reproduction",
+                            "updated_at": "2026-03-10T00:45:00+00:00",
+                        },
+                    )
+                ),
+            ),
+            patch("gpd.hooks.statusline._read_position", return_value=""),
+            patch("gpd.hooks.statusline._read_current_task", return_value="Todo task"),
+            patch("gpd.hooks.statusline._read_execution_state", return_value={}),
+            patch("gpd.hooks.statusline._check_update", return_value=""),
+        ):
+            main()
+
+        output = captured.getvalue()
+        assert "STALL?" in output
+        assert "Todo task" not in output

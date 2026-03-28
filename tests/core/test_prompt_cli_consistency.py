@@ -158,6 +158,7 @@ def test_help_prompt_default_quick_start_stays_runtime_surface_focused() -> None
         "**Existing work**",
         "**Returning work**",
         "**Tangents**",
+        "**Local CLI bridge**",
         "**Unattended / autonomy setup**",
     ):
         assert section in quick_start
@@ -167,8 +168,12 @@ def test_help_prompt_default_quick_start_stays_runtime_surface_focused() -> None
         "/gpd:map-research",
         "/gpd:resume-work",
         "gpd resume --recent",
+        "gpd --help",
+        "gpd permissions status --runtime <runtime> --autonomy balanced",
+        "gpd permissions sync --runtime <runtime> --autonomy balanced",
         "gpd observe execution",
         "gpd cost",
+        "gpd presets list",
         "/gpd:progress",
         "/gpd:suggest-next",
         "/gpd:tangent",
@@ -178,7 +183,6 @@ def test_help_prompt_default_quick_start_stays_runtime_surface_focused() -> None
         assert line in quick_start
     assert "**Core workflow:** new-project → discuss-phase → plan-phase → execute-phase → verify-work → repeat → complete-milestone" in quick_start
     assert "**Publication:** write-paper → peer-review → respond-to-referees → arxiv-submission" in quick_start
-    assert "gpd --help" not in quick_start
     assert "gpd init new-project" not in quick_start
 
 
@@ -201,6 +205,8 @@ def test_help_prompt_keeps_workflow_preset_readiness_on_local_cli_surface() -> N
             "Use `gpd --help` to inspect the executable local install/readiness/permissions/diagnostics surface directly."
             in content
         )
+        assert "gpd permissions status --runtime <runtime> --autonomy balanced" in content
+        assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in content
         assert "gpd doctor --runtime <runtime> --local|--global" in content
         assert "Workflow presets" in content
         assert "failed preset rows degrade that workflow rather than blocking the base install" in content

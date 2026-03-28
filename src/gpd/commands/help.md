@@ -68,6 +68,11 @@ Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has 
 1. `/gpd:tangent` — Choose stay / quick / defer / branch when a side investigation appears
 2. `/gpd:branch-hypothesis` — Explicit git-backed alternative path when that tangent needs isolated branch state
 
+**Local CLI bridge**
+1. `gpd --help` — inspect the local install/readiness/permissions/diagnostics surface directly
+2. `gpd permissions status --runtime <runtime> --autonomy balanced` / `gpd permissions sync --runtime <runtime> --autonomy balanced` — confirm and resync unattended readiness from your normal terminal
+3. `gpd resume --recent`, `gpd observe execution`, `gpd cost`, `gpd presets list` — read-only recovery, visibility, cost, and preset checks
+
 **Unattended / autonomy setup**
 1. `/gpd:settings` — Primary guided setup for autonomy, runtime permission sync, and unattended budgets (`Balanced` recommended)
 2. `/gpd:help --all` — Full command reference

@@ -12,6 +12,9 @@ from gpd.core.constants import ENV_GPD_DEBUG, ProjectLayout
 from gpd.core.observability import resolve_project_root
 from gpd.core.utils import atomic_write, file_lock
 
+_PAUSED_SEGMENT_STATES = {"paused", "awaiting_user", "ready_to_continue"}
+_COMPLETED_SEGMENT_STATES = {"completed", "complete", "done", "finished"}
+
 
 def _debug(msg: str) -> None:
     if os.environ.get(ENV_GPD_DEBUG):
@@ -276,6 +279,7 @@ def _execution_notification_message(cwd: str) -> tuple[str | None, str | None]:
 
     phase_plan = "-".join(part for part in (snapshot.phase, snapshot.plan) if part) or "current work"
     artifact = snapshot.last_result_label or snapshot.last_artifact_path or snapshot.current_task or "latest result"
+    segment_status = (snapshot.segment_status or "").strip().lower()
 
     if snapshot.blocked_reason:
         return (
@@ -310,11 +314,23 @@ def _execution_notification_message(cwd: str) -> tuple[str | None, str | None]:
             f"[GPD] Waiting in {phase_plan}: {snapshot.waiting_reason}\n",
             f"wait:{snapshot.transition_id or snapshot.segment_id or snapshot.waiting_reason}",
         )
-    if snapshot.segment_status in {"paused", "ready_to_continue"}:
-        resume_target = snapshot.resume_file or artifact
+    if segment_status in _COMPLETED_SEGMENT_STATES:
+        return None, None
+    if snapshot.resume_file:
+        resume_target = snapshot.resume_file
         return (
             f"[GPD] Resume ready for {phase_plan}: {resume_target}\n",
             f"resume:{snapshot.transition_id or snapshot.segment_id or resume_target}",
+        )
+    if segment_status in _PAUSED_SEGMENT_STATES:
+        if segment_status == "awaiting_user":
+            return (
+                f"[GPD] Waiting for user in {phase_plan}: {artifact}\n",
+                f"paused:{snapshot.transition_id or snapshot.segment_id or artifact}",
+            )
+        return (
+            f"[GPD] Paused in {phase_plan}: {artifact}\n",
+            f"paused:{snapshot.transition_id or snapshot.segment_id or artifact}",
         )
     return None, None
 

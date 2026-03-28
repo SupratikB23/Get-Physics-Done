@@ -345,6 +345,8 @@ Display:
 | Git Branching        | {none/per-phase/per-milestone} |
 | Runtime Permissions  | {aligned / changed / manual follow-up required} |
 
+Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, and `gpd presets list` from your normal terminal when you want the broader local diagnostics, readiness, recovery, visibility, cost, and preset surface.
+
 These settings apply to future /gpd:plan-phase and /gpd:execute-phase runs.
 
 Model-cost posture is qualitative guidance only. It maps onto the existing `model_profile` and `model_overrides` decisions, not a new persisted config key or pricing system.

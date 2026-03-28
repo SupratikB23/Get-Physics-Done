@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 
 import gpd.cli as cli_module
 import gpd.runtime_cli as runtime_cli
-from gpd.adapters import list_runtimes
+from gpd.adapters import get_adapter, list_runtimes
 from gpd.cli import app
 from gpd.core import cli_args as cli_args_module
 from gpd.core.costs import CostProjectSummary, CostSessionSummary, CostSummary
@@ -1173,6 +1173,53 @@ def test_doctor_rejects_target_dir_without_runtime(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "--runtime is required" in result.output
+
+
+def test_runtime_surface_helpers_track_the_active_runtime_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime_name = list_runtimes()[0]
+    prefix = get_adapter(runtime_name).command_prefix
+    workspace = Path("/tmp/runtime-surface")
+
+    monkeypatch.setattr(cli_module, "detect_runtime_for_gpd_use", lambda cwd=None: runtime_name)
+
+    assert cli_module._active_runtime_command_prefix(cwd=workspace) == prefix
+    assert cli_module._active_runtime_command_family(cwd=workspace) == f"{prefix}*"
+    assert cli_module._active_runtime_new_project_command(cwd=workspace) == f"{prefix}new-project"
+    assert cli_module._runtime_surface_dispatch_note(cwd=workspace) == (
+        f"This preflight validates the public `{prefix}*` runtime command surface from the command registry. "
+        "It does not guarantee a same-name local `gpd` subcommand exists."
+    )
+
+    validated_surface = cli_module._validated_runtime_surface(cwd=workspace)
+    assert validated_surface in {
+        "public_runtime_command_surface",
+        "public_runtime_slash_command",
+        "public_runtime_dollar_command",
+    }
+    if prefix.startswith("/"):
+        assert validated_surface == "public_runtime_slash_command"
+    elif prefix.startswith("$"):
+        assert validated_surface == "public_runtime_dollar_command"
+    else:
+        assert validated_surface == "public_runtime_command_surface"
+
+
+def test_runtime_surface_helpers_fall_back_when_runtime_resolution_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    workspace = Path("/tmp/runtime-surface-fallback")
+
+    def _raise_runtime_error(cwd=None) -> str:
+        raise RuntimeError("runtime resolution failed")
+
+    monkeypatch.setattr(cli_module, "detect_runtime_for_gpd_use", _raise_runtime_error)
+
+    assert cli_module._active_runtime_command_prefix(cwd=workspace) is None
+    assert cli_module._active_runtime_command_family(cwd=workspace) == "the active runtime command surface"
+    assert cli_module._active_runtime_new_project_command(cwd=workspace) == "the active runtime's `new-project` command"
+    assert cli_module._runtime_surface_dispatch_note(cwd=workspace) == (
+        "This preflight validates the active runtime command surface from the command registry. "
+        "It does not guarantee a same-name local `gpd` subcommand exists."
+    )
+    assert cli_module._validated_runtime_surface(cwd=workspace) == "public_runtime_command_surface"
 
 
 # ─── trace subcommands ──────────────────────────────────────────────────────

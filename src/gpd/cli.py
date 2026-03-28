@@ -6023,9 +6023,9 @@ def _target_dir_matches_global(runtime_name: str, target_dir: str, *, action: st
 
 def _workflow_preset_surface_note() -> str:
     """Return the shared preset-surface note derived from the preset registry."""
-    presets = list_workflow_presets()
-    preset_labels = ", ".join(preset.label for preset in presets)
-    return f"Use `gpd presets list` to inspect the workflow preset surface: {preset_labels}."
+    from gpd.core.runtime_hints import workflow_preset_surface_note
+
+    return workflow_preset_surface_note()
 
 
 def _print_workflow_preset_list() -> None:

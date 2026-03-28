@@ -599,12 +599,16 @@ def test_public_help_default_quick_start_keeps_runtime_surface_readiness_path() 
     assert "**Existing work**" in quick_start
     assert "**Returning work**" in quick_start
     assert "**Tangents**" in quick_start
+    assert "**Local CLI bridge**" in quick_start
     assert "**Unattended / autonomy setup**" in quick_start
     assert "/gpd:new-project" in quick_start
     assert "/gpd:new-project --minimal" in quick_start
     assert "/gpd:map-research" in quick_start
     assert "/gpd:resume-work" in quick_start
     assert "gpd resume --recent" in quick_start
+    assert "gpd --help" in quick_start
+    assert "gpd permissions status --runtime <runtime> --autonomy balanced" in quick_start
+    assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in quick_start
     assert "/gpd:progress" in quick_start
     assert "/gpd:suggest-next" in quick_start
     assert "gpd cost" in quick_start
@@ -642,6 +646,9 @@ def test_public_readme_quick_start_surfaces_step_one_entry_points() -> None:
     assert "| Returning to an existing GPD project | `/gpd:resume-work` |" in quick_start
     assert "| Existing research folder or codebase | `/gpd:map-research` |" in quick_start
     assert "gpd resume --recent" in quick_start
+    assert "gpd --help" in quick_start
+    assert "gpd permissions status --runtime <runtime> --autonomy balanced" in quick_start
+    assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in quick_start
     assert "Guided unattended configuration path: use your runtime-specific `settings` command after startup" in quick_start
     assert "use your runtime-specific `tangent` command when GPD surfaces an alternative path worth checking" in quick_start
     assert "`tangent` is the lightweight chooser for stay / quick / defer / branch" in quick_start
@@ -662,6 +669,7 @@ def test_public_readme_quick_start_keeps_settings_guided_balanced_unattended_rea
 
     assert "For unattended execution, the recommended default is Balanced (`balanced`)." in quick_start
     assert "Use your runtime-specific `settings` command to confirm or change autonomy" in quick_start
+    assert "Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, and `gpd presets list`" in quick_start
     assert "gpd permissions status --runtime <runtime> --autonomy balanced" in quick_start
     assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in quick_start
     assert "Balanced (`balanced`) is the recommended unattended default." in quick_start
@@ -753,6 +761,9 @@ def test_public_help_surfaces_keep_settings_as_guided_post_startup_path() -> Non
         assert "3. `/gpd:settings` - Primary guided unattended/autonomy setup after project creation" in content
         assert "Paper/manuscript workflows" in content
         assert "gpd presets list" in content
+        assert "gpd --help" in content
+        assert "gpd permissions status --runtime <runtime> --autonomy balanced" in content
+        assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in content
         assert "failed preset rows degrade that workflow rather than blocking the base install" in content
         assert "gpd observe execution" in content
         assert "The bootstrap installer owns Node.js / Python / `venv` prerequisites." in content
@@ -769,6 +780,7 @@ def test_public_settings_workflow_keeps_balanced_recommendation_and_relaunch_gui
     assert 'gpd --raw permissions sync --autonomy "$SELECTED_AUTONOMY"' in settings_workflow
     assert "If `requires_relaunch` is `true`, surface `next_step` verbatim" in settings_workflow
     assert "Runtime permissions sync attempted after autonomy is written, with relaunch guidance surfaced when required" in settings_workflow
+    assert "Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, and `gpd presets list`" in settings_workflow
     assert "What model-cost posture should GPD optimize for?" in settings_workflow
     assert "Use runtime defaults" in settings_workflow
 
@@ -891,6 +903,8 @@ def test_help_reference_surfaces_clarify_runtime_slash_commands_vs_local_cli() -
         "slash-command",
         "local `gpd` CLI",
         "gpd --help",
+        "gpd permissions status --runtime <runtime> --autonomy balanced",
+        "gpd permissions sync --runtime <runtime> --autonomy balanced",
         "gpd validate command-context gpd:<name>",
     )
 

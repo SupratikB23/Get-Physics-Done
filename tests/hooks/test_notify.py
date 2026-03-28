@@ -1158,6 +1158,29 @@ def test_emit_execution_notification_dedupes_repeated_resume_state(tmp_path: Pat
     assert output.count("Resume ready for 04-02") == 1
 
 
+def test_emit_execution_notification_for_paused_state_without_resume_file_is_conservative(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_current_execution(
+        workspace,
+        {
+            "phase": "04",
+            "plan": "03",
+            "segment_id": "seg-3",
+            "segment_status": "paused",
+            "last_result_label": "Recent artifact",
+        },
+    )
+
+    stderr = io.StringIO()
+    with patch("sys.stderr", stderr):
+        _emit_execution_notification(str(workspace))
+
+    output = stderr.getvalue()
+    assert "Paused in 04-03" in output
+    assert "Resume ready" not in output
+
+
 def test_emit_execution_notification_dedupes_concurrent_resume_state(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

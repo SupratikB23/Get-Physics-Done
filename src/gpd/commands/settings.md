@@ -22,7 +22,7 @@ Routes to the settings workflow which handles:
 - Interactive prompt covering autonomy mode, unattended budgets, research profile, model-cost posture, runtime-specific tier models, review cadence, and workflow/git toggles
 - Runtime permission sync status plus relaunch-readiness guidance for unattended use
 - Config merging and writing
-- Confirmation display with quick command references
+- Confirmation display with a compact local CLI bridge and quick command references
   </objective>
 
 <execution_context>

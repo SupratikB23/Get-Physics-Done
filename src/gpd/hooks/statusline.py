@@ -70,6 +70,33 @@ def _first_value(value: object, *keys: str) -> object | None:
     return None
 
 
+def _object_value(value: object, key: str) -> object | None:
+    """Return *key* from either a mapping or an attribute-bearing object."""
+    if isinstance(value, dict) and key in value:
+        return value.get(key)
+    if hasattr(value, key):
+        return getattr(value, key)
+    return None
+
+
+def _object_string(value: object, key: str) -> str:
+    """Return a non-empty string field from either a mapping or an object."""
+    candidate = _object_value(value, key)
+    return candidate if isinstance(candidate, str) and candidate else ""
+
+
+def _compact_age_label(value: object) -> str:
+    """Return a short age label like ``45m`` from a human label like ``45m ago``."""
+    if not isinstance(value, str):
+        return ""
+    label = value.strip()
+    if not label:
+        return ""
+    if label.endswith(" ago"):
+        return label[:-4]
+    return label
+
+
 def _normalize_workspace_text(value: str | None) -> str:
     if not value:
         return str(Path.cwd().resolve(strict=False))
@@ -329,6 +356,19 @@ def _read_execution_state(workspace_dir: str | None = None) -> dict[str, object]
     return snapshot.model_dump(mode="json") if snapshot is not None else {}
 
 
+def _read_runtime_hints(workspace_dir: str | None = None) -> dict[str, object]:
+    """Return the shallow runtime hint payload for the workspace."""
+    from gpd.core.runtime_hints import build_runtime_hint_payload
+
+    payload = build_runtime_hint_payload(
+        Path(workspace_dir) if workspace_dir else None,
+        include_recovery=False,
+        include_cost=False,
+        include_workflow_presets=False,
+    )
+    return payload.model_dump(mode="json")
+
+
 def _execution_reason_label(reason: str | None, *, default: str) -> str:
     text = (reason or "").strip().lower()
     if not text:
@@ -361,27 +401,19 @@ def _elapsed_segment_label(started_at: object, updated_at: object) -> str:
     return f"{elapsed_seconds // 3600}h"
 
 
-def _execution_badge(snapshot: dict[str, object]) -> str:
-    """Return a compact badge describing live execution state."""
-    if not snapshot:
-        return ""
-
+def _execution_review_badge(snapshot: dict[str, object]) -> str:
+    """Return a compact review/wait badge from a raw execution snapshot."""
     checkpoint_reason = _first_string(snapshot, "checkpoint_reason")
     waiting_reason = _first_string(snapshot, "waiting_reason")
-    blocked_reason = _first_string(snapshot, "blocked_reason")
     segment_status = _first_string(snapshot, "segment_status").lower()
-    skeptical_review = bool(snapshot.get("skeptical_requestioning_required"))
-    pre_fanout_review = bool(snapshot.get("pre_fanout_review_pending"))
 
-    if blocked_reason:
-        badge = "BLOCKED"
-    elif skeptical_review:
-        badge = "REVIEW:skeptical"
-    elif bool(snapshot.get("first_result_gate_pending")):
-        badge = "REVIEW:first-result"
-    elif pre_fanout_review:
-        badge = "REVIEW:pre-fanout"
-    elif bool(snapshot.get("waiting_for_review")):
+    if bool(snapshot.get("skeptical_requestioning_required")):
+        return "REVIEW:skeptical"
+    if bool(snapshot.get("first_result_gate_pending")):
+        return "REVIEW:first-result"
+    if bool(snapshot.get("pre_fanout_review_pending")):
+        return "REVIEW:pre-fanout"
+    if bool(snapshot.get("waiting_for_review")):
         label = "checkpoint"
         if checkpoint_reason == "first_result":
             label = "first-result"
@@ -391,18 +423,64 @@ def _execution_badge(snapshot: dict[str, object]) -> str:
             label = "pre-fanout"
         elif checkpoint_reason:
             label = checkpoint_reason.replace("_", "-")
-        badge = f"REVIEW:{label}"
-    elif waiting_reason:
-        badge = f"WAIT:{_execution_reason_label(waiting_reason, default='hold')}"
-    elif segment_status in {"paused", "ready_to_continue"}:
-        badge = "RESUME" if _first_string(snapshot, "resume_file") else "PAUSED"
-    elif segment_status:
-        badge = "EXEC" if segment_status == "active" else segment_status.upper().replace("_", "-")
-    else:
+        return f"REVIEW:{label}"
+    if waiting_reason:
+        return f"WAIT:{_execution_reason_label(waiting_reason, default='hold')}"
+    if segment_status in {"paused", "ready_to_continue"}:
+        return "RESUME" if _first_string(snapshot, "resume_file") else "PAUSED"
+    if segment_status:
+        return "EXEC" if segment_status == "active" else segment_status.upper().replace("_", "-")
+    return ""
+
+
+def _execution_badge(snapshot: dict[str, object], visibility: object | None = None) -> str:
+    """Return a compact badge describing live execution state."""
+    if not snapshot and visibility is None:
         return ""
 
+    current_snapshot = snapshot
+    classification = ""
+    possibly_stalled = False
+    if visibility is not None:
+        current_execution = _object_value(visibility, "current_execution")
+        if isinstance(current_execution, dict):
+            current_snapshot = current_execution
+        classification = _object_string(visibility, "status_classification")
+        possibly_stalled = bool(_object_value(visibility, "possibly_stalled"))
+        if not classification and isinstance(current_snapshot, dict):
+            classification = _first_string(current_snapshot, "segment_status").lower()
+    else:
+        classification = _first_string(snapshot, "segment_status").lower()
+
+    blocked_reason = _first_string(current_snapshot, "blocked_reason")
+    if visibility is not None and not classification:
+        return ""
+
+    if visibility is not None:
+        if classification == "blocked" or blocked_reason:
+            badge = "BLOCKED"
+        elif classification == "waiting":
+            badge = _execution_review_badge(current_snapshot)
+        elif classification == "paused-or-resumable":
+            badge = "RESUME" if _first_string(current_snapshot, "resume_file") else "PAUSED"
+        elif classification == "active":
+            badge = "STALL?" if possibly_stalled else "EXEC"
+        elif classification == "idle":
+            return ""
+        else:
+            badge = _execution_review_badge(current_snapshot)
+    else:
+        badge = _execution_review_badge(current_snapshot)
+        if not badge:
+            return ""
+        if blocked_reason:
+            badge = "BLOCKED"
+
     cadence = _first_string(snapshot, "review_cadence")
-    elapsed = _elapsed_segment_label(snapshot.get("segment_started_at"), snapshot.get("updated_at"))
+    if badge == "STALL?" and visibility is not None:
+        elapsed = _compact_age_label(_object_string(visibility, "last_updated_age_label"))
+    else:
+        elapsed = _elapsed_segment_label(snapshot.get("segment_started_at"), snapshot.get("updated_at"))
     parts = [badge]
     if cadence:
         parts.append(cadence)
@@ -540,12 +618,14 @@ def main() -> None:
         session_value = data.get("session_id")
         session_id = session_value if isinstance(session_value, str) else ""
         remaining = _read_context_remaining(data, hook_payload)
-        execution = _read_execution_state(workspace_root)
+        runtime_hints = _read_runtime_hints(workspace_root)
+        visibility = _mapping(runtime_hints.get("execution"))
+        execution = _mapping(visibility.get("current_execution")) or _read_execution_state(workspace_root)
 
         ctx = _context_bar(remaining) if isinstance(remaining, (int, float)) and math.isfinite(remaining) else ""
         position = _read_position(workspace_root)
-        execution_badge = _execution_badge(execution)
-        execution_task = _first_string(execution, "current_task")
+        execution_badge = _execution_badge(execution, visibility or None)
+        execution_task = _object_string(visibility, "current_task") or _first_string(execution, "current_task")
         task = execution_task or _read_current_task(session_id, workspace_root)
         if execution_task:
             task = execution_task

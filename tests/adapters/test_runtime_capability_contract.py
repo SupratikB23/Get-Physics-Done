@@ -92,6 +92,69 @@ def test_merged_hook_payload_policy_is_exact_ordered_union_of_runtime_contracts(
         assert getattr(merged_policy, field_name) == expected
 
 
+def test_runtime_capability_matrix_locks_hook_surfacing_surfaces() -> None:
+    descriptors = iter_runtime_descriptors()
+    capabilities_by_runtime = {
+        descriptor.runtime_name: descriptor.capabilities for descriptor in descriptors
+    }
+
+    explicit_statusline = {
+        runtime_name
+        for runtime_name, capabilities in capabilities_by_runtime.items()
+        if capabilities.statusline_surface == "explicit"
+    }
+    explicit_notify = {
+        runtime_name
+        for runtime_name, capabilities in capabilities_by_runtime.items()
+        if capabilities.notify_surface == "explicit"
+    }
+
+    assert explicit_statusline == {"claude-code", "gemini"}
+    assert explicit_notify == {"codex"}
+
+    for runtime_name, capabilities in capabilities_by_runtime.items():
+        if runtime_name in explicit_statusline:
+            assert capabilities.statusline_config_surface == "settings.json:statusLine"
+            assert capabilities.supports_context_meter is True
+        else:
+            assert capabilities.statusline_surface == "none"
+            assert capabilities.statusline_config_surface == "none"
+            assert capabilities.supports_context_meter is False
+
+        if runtime_name in explicit_notify:
+            assert capabilities.notify_config_surface == "config.toml:notify"
+        else:
+            assert capabilities.notify_surface == "none"
+            assert capabilities.notify_config_surface == "none"
+
+
+def test_runtime_capability_matrix_locks_telemetry_source_and_completeness() -> None:
+    descriptors = iter_runtime_descriptors()
+    capabilities_by_runtime = {
+        descriptor.runtime_name: descriptor.capabilities for descriptor in descriptors
+    }
+
+    best_effort_telemetry = {
+        runtime_name
+        for runtime_name, capabilities in capabilities_by_runtime.items()
+        if capabilities.telemetry_completeness == "best-effort"
+    }
+
+    assert best_effort_telemetry == {"codex"}
+
+    for runtime_name, capabilities in capabilities_by_runtime.items():
+        if runtime_name == "codex":
+            assert capabilities.telemetry_source == "notify-hook"
+            assert capabilities.telemetry_completeness == "best-effort"
+            assert capabilities.supports_usage_tokens is True
+            assert capabilities.supports_cost_usd is True
+        else:
+            assert capabilities.telemetry_source == "none"
+            assert capabilities.telemetry_completeness == "none"
+            assert capabilities.supports_usage_tokens is False
+            assert capabilities.supports_cost_usd is False
+
+
 @pytest.mark.parametrize(
     "runtime_name",
     [descriptor.runtime_name for descriptor in iter_runtime_descriptors()],

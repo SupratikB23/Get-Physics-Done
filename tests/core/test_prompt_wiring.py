@@ -2248,6 +2248,10 @@ def test_settings_workflow_surfaces_qualitative_model_cost_onboarding_and_runtim
     assert "Use runtime defaults" in settings_workflow
     assert "configure explicit tier-1, tier-2, tier-3 model strings" in settings_command
     assert "Configure explicit tier models" in settings_workflow
+    assert "Local CLI bridge" in settings_workflow
+    assert "gpd --help" in settings_workflow
+    assert "gpd permissions status --runtime <runtime> --autonomy balanced" in settings_workflow
+    assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in settings_workflow
 
 
 def test_help_surfaces_distinguish_runtime_slash_commands_from_local_cli_subcommands() -> None:
@@ -2260,6 +2264,8 @@ def test_help_surfaces_distinguish_runtime_slash_commands_from_local_cli_subcomm
         assert "slash-command" in content
         assert "local `gpd` CLI" in content
         assert "gpd --help" in content
+        assert "gpd permissions status --runtime <runtime> --autonomy balanced" in content
+        assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in content
         assert "install/readiness/permissions/diagnostics surface directly" in content
         assert "gpd validate command-context gpd:<name>" in content
         assert "gpd observe execution" in content
@@ -2286,6 +2292,9 @@ def test_help_command_keeps_static_quick_start_while_workflow_owns_full_referenc
         "/gpd:map-research",
         "/gpd:resume-work",
         "gpd resume --recent",
+        "gpd --help",
+        "gpd permissions status --runtime <runtime> --autonomy balanced",
+        "gpd permissions sync --runtime <runtime> --autonomy balanced",
         "gpd observe execution",
         "/gpd:suggest-next",
         "/gpd:tangent",
