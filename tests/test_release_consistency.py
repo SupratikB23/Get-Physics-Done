@@ -671,9 +671,10 @@ def test_public_readme_quick_start_keeps_settings_guided_balanced_unattended_rea
     assert "For unattended execution, the recommended default is Balanced (`balanced`)." in quick_start
     assert "Use your runtime-specific `settings` command to confirm or change autonomy" in quick_start
     assert "Use `gpd doctor` for the selected install target and runtime-local readiness signals; use `gpd permissions ...` for runtime-owned approval/alignment only." in quick_start
-    assert "Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, and `gpd presets list`" in quick_start
+    assert "Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, `gpd presets list`, and `gpd integrations status wolfram`" in quick_start
     assert "gpd permissions status --runtime <runtime> --autonomy balanced" in quick_start
     assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in quick_start
+    assert "Use `gpd integrations enable wolfram` / `gpd integrations disable wolfram` to manage the shared optional Wolfram MCP config" in quick_start
     assert "Balanced (`balanced`) is the recommended unattended default." in quick_start
     assert (
         "Use `gpd permissions status --runtime <runtime> --autonomy balanced` to check runtime-owned permission alignment for unattended use; "
@@ -698,6 +699,8 @@ def test_public_readme_and_bootstrap_surface_optional_workflow_add_on_guidance()
     assert "Missing preset tooling degrades that preset; it does not block the base GPD install." in readme
     assert "check runtime-local paper-toolchain readiness before relying on `write-paper`, `paper-build`, `peer-review`, or `arxiv-submission`" in readme
     assert "`write-paper` remains usable when readiness is degraded, but `paper-build` defines the manuscript build contract" in readme
+    assert "gpd integrations status wolfram" in readme
+    assert "local Mathematica install is separate from the shared optional Wolfram integration config" in readme
     assert "gpd validate plan-preflight <PLAN.md>" in readme
     assert "Workflow presets: if you plan paper/manuscript workflows, rerun " in installer
     assert "Use `gpd doctor` for install/readiness checks and `gpd permissions status` for runtime-owned permission alignment." in installer
@@ -738,10 +741,15 @@ def test_public_paper_toolchain_capability_model_stays_consistent_across_surface
     assert installer_readiness_snippet in installer
     assert readme_preset_snippet in readme
     assert readme_preset_degrade_snippet in readme
+    assert "gpd integrations status wolfram" in readme
+    assert "gpd integrations enable wolfram" in readme
+    assert "Local Mathematica installs are separate from the shared optional Wolfram integration config." in help_command
+    assert "Local Mathematica installs are separate from the shared optional Wolfram integration config." in help_workflow
     for content in (help_command, help_workflow):
         assert help_preset_snippet in content
         assert help_preset_degrade_snippet in content
         assert "gpd doctor --runtime <runtime> --local|--global" in content
+        assert "gpd integrations status wolfram" in content
     assert "Workflow presets: if you plan paper/manuscript workflows, rerun " in installer
     assert "check whether `Workflow Presets` is `ready` or `degraded`." in installer
     assert "Without LaTeX, the paper/manuscript and full research presets remain usable for `write-paper` and `peer-review`" in installer
@@ -762,6 +770,7 @@ def test_public_readme_keeps_bootstrap_prerequisites_and_runtime_doctor_scopes_d
     assert "Workflow presets are workflow-specific extra capabilities that sit on top of the base install." in quick_start
     assert "inspect it with `gpd presets list`, preview it with `gpd presets show <preset>`, and use `gpd presets apply <preset> --dry-run`" in quick_start
     assert "There is no separate persisted preset block" in quick_start
+    assert "gpd integrations status wolfram" in quick_start
     assert "If `gpd doctor --runtime <runtime> --local|--global` only warns about `Workflow Presets` or `LaTeX Toolchain`, the base install can still be fine;" in quick_start
 
 
@@ -844,7 +853,8 @@ def test_public_settings_workflow_keeps_balanced_recommendation_and_relaunch_gui
     assert "This sync only updates runtime-owned permission settings; it does not validate install health or workflow/tool readiness." in settings_workflow
     assert "Preset application must be explicit and previewable." in settings_workflow
     assert "Present the resolved bundle first, let the user preview it, then ask for an explicit apply/adjust choice." in settings_workflow
-    assert "Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, and `gpd presets list`" in settings_workflow
+    assert "Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, `gpd presets list`, and `gpd integrations status wolfram`" in settings_workflow
+    assert "For Wolfram capability, use `gpd integrations status wolfram` to inspect the shared optional integration config; that is separate from a local Mathematica install and does not mean a plan is ready to run." in settings_workflow
     assert "What model-cost posture should GPD optimize for?" in settings_workflow
     assert "Use runtime defaults" in settings_workflow
 

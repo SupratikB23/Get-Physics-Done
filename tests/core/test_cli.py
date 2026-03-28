@@ -166,6 +166,14 @@ def test_help_surfaces_workflow_presets_surface() -> None:
     assert "application" in normalized_output
 
 
+def test_help_surfaces_integrations_surface() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    normalized_output = " ".join(result.output.split())
+    assert "integrations" in normalized_output
+    assert "Optional shared capability integrations" in normalized_output
+
+
 def test_workflow_presets_help_surfaces_apply_command() -> None:
     result = runner.invoke(app, ["presets", "apply", "--help"])
     assert result.exit_code == 0
@@ -180,6 +188,44 @@ def test_workflow_presets_surface_lists_catalog() -> None:
     assert "Workflow Presets" in result.output
     assert "core-research" in result.output
     assert "Core research" in result.output
+
+
+def test_integrations_status_reports_config_only_and_plan_readiness(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["--cwd", str(tmp_path), "--raw", "integrations", "status", "wolfram"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["integration"] == "wolfram"
+    assert payload["configured"] is False
+    assert payload["enabled"] is False
+    assert payload["state"] == "disabled"
+    assert payload["scope"] == "config-only"
+    assert payload["plan_readiness_command"] == "gpd validate plan-preflight <PLAN.md>"
+    assert "plan-preflight" in payload["next_step"]
+    assert "Mathematica" in payload["local_mathematica_note"]
+
+
+def test_integrations_enable_and_disable_wolfram_persist_project_local_config(tmp_path: Path) -> None:
+    enable_result = runner.invoke(app, ["--cwd", str(tmp_path), "--raw", "integrations", "enable", "wolfram"])
+    assert enable_result.exit_code == 0
+    enable_payload = json.loads(enable_result.output)
+    assert enable_payload["enabled"] is True
+    assert enable_payload["scope"] == "config-only"
+
+    config_path = tmp_path / "GPD" / "integrations.json"
+    assert config_path.exists()
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    assert saved["wolfram"]["enabled"] is True
+
+    disable_result = runner.invoke(app, ["--cwd", str(tmp_path), "--raw", "integrations", "disable", "wolfram"])
+    assert disable_result.exit_code == 0
+    disable_payload = json.loads(disable_result.output)
+    assert disable_payload["enabled"] is False
+
+    status_result = runner.invoke(app, ["--cwd", str(tmp_path), "--raw", "integrations", "status", "wolfram"])
+    assert status_result.exit_code == 0
+    status_payload = json.loads(status_result.output)
+    assert status_payload["enabled"] is False
+    assert status_payload["state"] == "disabled"
 
 
 def test_workflow_preset_show_raw_outputs_central_contract() -> None:

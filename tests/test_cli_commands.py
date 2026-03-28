@@ -3173,6 +3173,17 @@ class TestReviewValidationCommands:
         assert payload["requirements"][0]["blocking"] is False
         assert "license state are not proven" in payload["warnings"][0]
 
+    @pytest.mark.parametrize(
+        ("command_args"),
+        [
+            ("integrations", "status", "wolfram"),
+            ("integrations", "enable", "wolfram"),
+            ("integrations", "disable", "wolfram"),
+        ],
+    )
+    def test_integrations_surface_smoke(self, command_args: tuple[str, ...]) -> None:
+        _invoke(*command_args)
+
     def test_validate_summary_contract_command_rejects_unknown_contract_ids(self, gpd_project: Path) -> None:
         phase_dir = gpd_project / "GPD" / "phases" / "01-benchmark"
         phase_dir.mkdir(parents=True, exist_ok=True)

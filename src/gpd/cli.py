@@ -592,6 +592,7 @@ app = _GPDTyper(
         "  gpd cost\n"
         "  gpd resume --recent\n"
         "  gpd presets list\n"
+        "  gpd integrations status wolfram\n"
         "  gpd validate command-context gpd:new-project"
     ),
 )
@@ -3177,6 +3178,170 @@ def calculation_complete(
 
 config_app = typer.Typer(help="GPD configuration")
 app.add_typer(config_app, name="config")
+
+
+_INTEGRATIONS_CONFIG_FILENAME = "integrations.json"
+_WOLFRAM_INTEGRATION_NAME = "wolfram"
+_WOLFRAM_INTEGRATION_DEFAULTS = {
+    "enabled": False,
+    "endpoint": "https://services.wolfram.com/api/mcp",
+    "api_key_env": "GPD_WOLFRAM_MCP_API_KEY",
+    "legacy_api_key_env": "WOLFRAM_MCP_SERVICE_API_KEY",
+}
+
+
+def _integrations_config_path(cwd: Path) -> Path:
+    """Return the per-project shared-integration config path."""
+    from gpd.core.constants import ProjectLayout
+
+    return ProjectLayout(cwd).gpd / _INTEGRATIONS_CONFIG_FILENAME
+
+
+def _load_integrations_payload(cwd: Path) -> dict[str, object]:
+    """Load the integrations config payload, or an empty object when missing."""
+    config_path = _integrations_config_path(cwd)
+    try:
+        raw_text = config_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    except OSError as exc:
+        _error(f"Cannot read integrations config: {exc}")
+
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        _error(f"Malformed integrations config: {exc}. Fix or delete {config_path.name}")
+    if not isinstance(payload, dict):
+        _error("integrations config must be a JSON object")
+    return payload
+
+
+def _normalize_wolfram_integration_record(raw: object | None) -> dict[str, object]:
+    """Normalize the Wolfram integration config into the canonical shape."""
+    record = dict(_WOLFRAM_INTEGRATION_DEFAULTS)
+    if raw is None:
+        return record
+    if not isinstance(raw, dict):
+        _error("integrations.wolfram must be a JSON object")
+
+    enabled = raw.get("enabled", record["enabled"])
+    if not isinstance(enabled, bool):
+        _error("integrations.wolfram.enabled must be a boolean")
+    record["enabled"] = enabled
+
+    for field in ("endpoint", "api_key_env", "legacy_api_key_env"):
+        value = raw.get(field, record[field])
+        if not isinstance(value, str):
+            _error(f"integrations.wolfram.{field} must be a non-empty string")
+        cleaned = value.strip()
+        if not cleaned:
+            _error(f"integrations.wolfram.{field} must be a non-empty string")
+        record[field] = cleaned
+
+    return record
+
+
+def _update_wolfram_integration_state(cwd: Path, *, enabled: bool) -> dict[str, object]:
+    """Persist the Wolfram integration state in the project-local config file."""
+    from gpd.core.utils import atomic_write, file_lock
+
+    config_path = _integrations_config_path(cwd)
+    with file_lock(config_path):
+        payload = _load_integrations_payload(cwd)
+        current_raw = payload.get(_WOLFRAM_INTEGRATION_NAME)
+        current = _normalize_wolfram_integration_record(current_raw)
+        updated = dict(current)
+        updated["enabled"] = enabled
+        payload[_WOLFRAM_INTEGRATION_NAME] = updated
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(config_path, json.dumps(payload, indent=2) + "\n")
+
+    return {
+        "integration": _WOLFRAM_INTEGRATION_NAME,
+        "config_path": str(config_path),
+        "enabled": enabled,
+        "endpoint": updated["endpoint"],
+        "api_key_env": updated["api_key_env"],
+        "legacy_api_key_env": updated["legacy_api_key_env"],
+        "scope": "config-only",
+        "plan_readiness_command": "gpd validate plan-preflight <PLAN.md>",
+    }
+
+
+def _wolfram_integration_status_payload(cwd: Path) -> dict[str, object]:
+    """Return the config-level status payload for the Wolfram integration."""
+    config_path = _integrations_config_path(cwd)
+    payload = _load_integrations_payload(cwd)
+    configured = _WOLFRAM_INTEGRATION_NAME in payload
+    record = _normalize_wolfram_integration_record(payload.get(_WOLFRAM_INTEGRATION_NAME))
+
+    next_step = (
+        "Use `gpd validate plan-preflight <PLAN.md>` to check whether a specific plan can run. "
+        "This status is config-only and does not inspect local Mathematica availability."
+    )
+    if not record["enabled"]:
+        next_step = (
+            "Run `gpd integrations enable wolfram` to turn on the shared Wolfram integration config, "
+            "then use `gpd validate plan-preflight <PLAN.md>` for plan readiness."
+        )
+
+    return {
+        "integration": _WOLFRAM_INTEGRATION_NAME,
+        "configured": configured,
+        "enabled": record["enabled"],
+        "state": "enabled" if record["enabled"] else "disabled",
+        "config_path": str(config_path),
+        "scope": "config-only",
+        "endpoint": record["endpoint"],
+        "api_key_env": record["api_key_env"],
+        "legacy_api_key_env": record["legacy_api_key_env"],
+        "plan_readiness_command": "gpd validate plan-preflight <PLAN.md>",
+        "next_step": next_step,
+        "local_mathematica_note": (
+            "Local Mathematica / Wolfram Language installs are separate from this shared optional integration."
+        ),
+    }
+
+
+integrations_app = typer.Typer(help="Optional shared capability integrations")
+app.add_typer(integrations_app, name="integrations")
+
+
+def _resolve_wolfram_integration_name(integration: str) -> str:
+    """Resolve and validate the supported shared integration name."""
+    normalized = integration.strip().lower()
+    if normalized != _WOLFRAM_INTEGRATION_NAME:
+        _error(
+            f"Unknown integration {integration!r}. Supported: {_WOLFRAM_INTEGRATION_NAME}"
+        )
+    return normalized
+
+
+@integrations_app.command("status")
+def integrations_status(
+    integration: str = typer.Argument(..., help="Integration name (currently only wolfram)"),
+) -> None:
+    """Show the config-level status of a shared optional integration."""
+    _resolve_wolfram_integration_name(integration)
+    _output(_wolfram_integration_status_payload(_get_cwd()))
+
+
+@integrations_app.command("enable")
+def integrations_enable(
+    integration: str = typer.Argument(..., help="Integration name (currently only wolfram)"),
+) -> None:
+    """Enable the shared optional integration by updating project-local config."""
+    _resolve_wolfram_integration_name(integration)
+    _output(_update_wolfram_integration_state(_get_cwd(), enabled=True))
+
+
+@integrations_app.command("disable")
+def integrations_disable(
+    integration: str = typer.Argument(..., help="Integration name (currently only wolfram)"),
+) -> None:
+    """Disable the shared optional integration by updating project-local config."""
+    _resolve_wolfram_integration_name(integration)
+    _output(_update_wolfram_integration_state(_get_cwd(), enabled=False))
 
 
 class _PermissionsResolutionError(RuntimeError):

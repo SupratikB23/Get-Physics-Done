@@ -275,6 +275,8 @@ To be established during initial phases.
 
 [Extracted from input, or "To be determined"]
 
+If the project may rely on Wolfram capability, distinguish a local Mathematica / Wolfram Language install from the shared optional Wolfram integration config. The shared path is enabled with `gpd integrations enable wolfram`, but it is still separate from `gpd validate plan-preflight <PLAN.md>` and from local install checks.
+
 ## Requirements
 
 ### Validated

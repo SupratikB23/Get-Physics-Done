@@ -62,6 +62,7 @@ Publication workflow:
   /gpd:peer-review         — Run manuscript peer review inside the current project
   /gpd:arxiv-submission    — Package only after review passes and the paper-build contract succeeds
   gpd doctor --runtime <runtime> --local|--global — Check runtime-local paper-toolchain readiness for the paper/manuscript workflow preset; inspect it with `gpd presets list`, preview it with `gpd presets show <preset>`, and apply it from your normal terminal with `gpd presets apply <preset>` or through your runtime-specific settings command; failed preset rows degrade `write-paper`, but `paper-build` remains the build contract and `arxiv-submission` requires the built manuscript
+  gpd integrations status wolfram — Inspect the shared optional Wolfram integration config only; this does not prove local Mathematica availability or plan readiness
 ```
 
 **Referee report exists:**
@@ -145,6 +146,13 @@ Choose the path that matches your starting point:
 3. `gpd presets list` - Inspect the local preset catalog; presets resolve to the existing config keys and are not stored as a separate preset block
 4. `gpd presets show <preset>` - Preview one preset's bundle before applying it
 5. `gpd presets apply <preset> [--dry-run]` - Apply or preview one preset from your normal terminal without inventing a separate preset schema
+
+**Wolfram integration**
+1. `gpd integrations status wolfram` - Inspect the shared optional Wolfram integration config only; this does not prove local Mathematica availability or plan readiness
+2. `gpd integrations enable wolfram` - Enable the shared optional Wolfram integration config
+3. `gpd integrations disable wolfram` - Disable the shared optional Wolfram integration config
+
+Local Mathematica installs are separate from the shared optional Wolfram integration config.
 
 Workflow preset tooling is layered on top of the base install; it does not change runtime permission alignment.
 

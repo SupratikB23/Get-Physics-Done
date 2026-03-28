@@ -71,7 +71,7 @@ Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has 
 **Local CLI bridge**
 1. `gpd --help` — inspect the local install/readiness/permissions/diagnostics surface directly
 2. `gpd permissions status --runtime <runtime> --autonomy balanced` / `gpd permissions sync --runtime <runtime> --autonomy balanced` — confirm and resync unattended readiness from your normal terminal
-3. `gpd resume --recent`, `gpd observe execution`, `gpd cost`, `gpd presets list`, `gpd presets show <preset>`, `gpd presets apply <preset> --dry-run` — local recovery, visibility, cost, and preset preview/apply checks
+3. `gpd resume --recent`, `gpd observe execution`, `gpd cost`, `gpd presets list`, `gpd presets show <preset>`, `gpd presets apply <preset> --dry-run`, `gpd integrations status wolfram`, `gpd integrations enable wolfram`, `gpd integrations disable wolfram` — local recovery, visibility, cost, preset preview/apply, and shared Wolfram integration config checks
 
 `gpd doctor` checks the selected install target and runtime-local readiness signals; `gpd permissions ...` checks runtime-owned approval/alignment only.
 
@@ -87,6 +87,8 @@ Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has 
 5. `gpd presets apply <preset> [--dry-run]` — Apply or preview one preset from your normal terminal without inventing a separate preset schema
 
 Workflow preset tooling is layered on top of the base install; it does not change runtime permission alignment.
+
+Wolfram capability is separate from a local Mathematica install. Use `gpd integrations status wolfram` for the shared optional remote MCP config, and use `gpd validate plan-preflight <PLAN.md>` to check whether a specific plan is runnable.
 
 **Core workflow:** new-project → discuss-phase → plan-phase → execute-phase → verify-work → repeat → complete-milestone
 **Publication:** write-paper → peer-review → respond-to-referees → arxiv-submission
@@ -132,6 +134,13 @@ Choose the path that matches your starting point:
 3. `gpd presets list` - Inspect the local preset catalog; presets resolve to the existing config keys and are not stored as a separate preset block
 4. `gpd presets show <preset>` - Preview one preset's bundle before applying it
 5. `gpd presets apply <preset> [--dry-run]` - Apply or preview one preset from your normal terminal without inventing a separate preset schema
+
+**Wolfram integration**
+1. `gpd integrations status wolfram` - Inspect the shared optional Wolfram integration config only; this does not prove local Mathematica availability or plan readiness
+2. `gpd integrations enable wolfram` - Enable the shared optional Wolfram integration config
+3. `gpd integrations disable wolfram` - Disable the shared optional Wolfram integration config
+
+Local Mathematica installs are separate from the shared optional Wolfram integration config.
 
 **Existing work**
 1. `/gpd:map-research` - Map an existing folder or project first
