@@ -47,6 +47,7 @@ from gpd.core.errors import GPDError, ValidationError
 from gpd.core.frontmatter import FrontmatterParseError, extract_frontmatter, validate_frontmatter
 from gpd.core.observability import gpd_span
 from gpd.core.workflow_presets import resolve_workflow_preset_readiness
+from gpd.hooks.install_metadata import InstallTargetAssessment, assess_install_target
 from gpd.core.state import (
     peek_state_json,
     save_state_json,
@@ -1105,7 +1106,21 @@ def _doctor_check_runtime_launcher(runtime: str) -> HealthCheck:
     )
 
 
-def _doctor_check_runtime_target(target_dir: Path) -> HealthCheck:
+def _doctor_runtime_install_issue(assessment: InstallTargetAssessment, runtime: str | None) -> str | None:
+    """Return a user-facing issue for a non-ready install assessment."""
+    if assessment.state == "owned_incomplete":
+        missing = ", ".join(f"`{item}`" for item in assessment.missing_install_artifacts) or "required install artifacts"
+        return f"{assessment.config_dir} has an incomplete GPD install; missing artifacts: {missing}."
+    if assessment.state == "foreign_runtime":
+        owner = f"`{assessment.manifest_runtime}`" if assessment.manifest_runtime else "another runtime"
+        runtime_label = f"`{runtime}`" if runtime else "the selected runtime"
+        return f"{assessment.config_dir} belongs to {owner}, not {runtime_label}."
+    if assessment.state == "untrusted_manifest":
+        return f"{assessment.config_dir} has an untrusted GPD manifest and cannot be treated as a ready install target."
+    return None
+
+
+def _doctor_check_runtime_target(target_dir: Path, *, runtime: str | None = None) -> HealthCheck:
     """Verify the selected install target can be created or written."""
     resolved = target_dir.expanduser().resolve(strict=False)
     details: dict[str, object] = {
@@ -1130,6 +1145,21 @@ def _doctor_check_runtime_target(target_dir: Path) -> HealthCheck:
         issues.append(f"{probe_dir} is not writable")
     elif not resolved.exists():
         warnings.append(f"{resolved} does not exist yet; GPD will create it during install.")
+
+    assessment = assess_install_target(resolved, expected_runtime=runtime)
+    details.update(
+        {
+            "install_state": assessment.state,
+            "manifest_state": assessment.manifest_state,
+            "manifest_runtime": assessment.manifest_runtime,
+            "has_managed_markers": assessment.has_managed_markers,
+            "missing_install_artifacts": list(assessment.missing_install_artifacts),
+        }
+    )
+
+    install_issue = _doctor_runtime_install_issue(assessment, runtime)
+    if install_issue is not None:
+        issues.append(install_issue)
 
     return HealthCheck(
         status=CheckStatus.FAIL if issues else CheckStatus.OK,
@@ -1385,7 +1415,7 @@ def run_doctor(
             resolved_target = runtime_context.target
             resolved_target_str = str(resolved_target)
             checks.append(_doctor_check_runtime_launcher(normalized_runtime))
-            checks.append(_doctor_check_runtime_target(resolved_target))
+            checks.append(_doctor_check_runtime_target(resolved_target, runtime=normalized_runtime))
             checks.append(_doctor_check_bootstrap_network_access())
             checks.append(
                 _doctor_check_provider_auth(

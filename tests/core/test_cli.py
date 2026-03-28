@@ -603,6 +603,134 @@ def test_runtime_permissions_sync_payload_surfaces_launch_wrapper_scope() -> Non
     assert payload["current_session_verified"] is False
 
 
+def _write_install_manifest(config_dir: Path, *, runtime: str, install_scope: str = "local", raw: str | None = None) -> None:
+    config_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = config_dir / "gpd-file-manifest.json"
+    if raw is not None:
+        manifest_path.write_text(raw, encoding="utf-8")
+        return
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "runtime": runtime,
+                "install_scope": install_scope,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+class _PermissionsTargetAdapter:
+    def __init__(
+        self,
+        *,
+        local_target: Path,
+        global_target: Path,
+        missing_install_artifacts: tuple[str, ...] = (),
+    ) -> None:
+        self.runtime_name = "codex"
+        self.display_name = "Codex"
+        self._local_target = local_target
+        self._global_target = global_target
+        self._missing_install_artifacts = missing_install_artifacts
+
+    def resolve_target_dir(self, is_global: bool, cwd: Path) -> Path:
+        return self._global_target if is_global else self._local_target
+
+    def validate_target_runtime(self, target_dir: Path, *, action: str) -> None:
+        return None
+
+    def missing_install_artifacts(self, target_dir: Path) -> tuple[str, ...]:
+        if target_dir == self._local_target:
+            return self._missing_install_artifacts
+        return ()
+
+    def runtime_permissions_status(self, target_dir: Path, *, autonomy: str) -> dict[str, object]:
+        return {
+            "runtime": self.runtime_name,
+            "desired_mode": autonomy,
+            "configured_mode": "default",
+            "config_aligned": True,
+            "requires_relaunch": False,
+            "managed_by_gpd": False,
+            "message": "configured",
+        }
+
+    def sync_runtime_permissions(self, target_dir: Path, *, autonomy: str) -> dict[str, object]:
+        return self.runtime_permissions_status(target_dir, autonomy=autonomy)
+
+
+def test_permissions_status_reports_incomplete_owned_install_instead_of_generic_missing(
+    tmp_path: Path,
+) -> None:
+    local_target = tmp_path / ".codex"
+    global_target = tmp_path / ".codex-global"
+    _write_install_manifest(local_target, runtime="codex")
+    global_target.mkdir(parents=True, exist_ok=True)
+    adapter = _PermissionsTargetAdapter(
+        local_target=local_target,
+        global_target=global_target,
+        missing_install_artifacts=("agents/gpd-help/SKILL.md",),
+    )
+
+    with (
+        patch("gpd.cli._resolve_permissions_runtime_name", return_value="codex"),
+        patch("gpd.cli._resolve_permissions_autonomy", return_value="balanced"),
+        patch("gpd.hooks.runtime_detect.detect_runtime_install_target", return_value=None),
+        patch("gpd.hooks.runtime_detect.detect_install_scope", return_value=None),
+        patch("gpd.adapters.get_adapter", return_value=adapter),
+    ):
+        result = runner.invoke(app, ["--raw", "permissions", "status", "--runtime", "codex", "--autonomy", "balanced"])
+
+    assert result.exit_code == 1
+    parsed = json.loads(result.output)
+    assert "incomplete GPD install" in parsed["error"]
+    assert "Missing artifacts:" in parsed["error"]
+    assert "No GPD install found" not in parsed["error"]
+
+
+def test_permissions_status_reports_foreign_install_explicitly(tmp_path: Path) -> None:
+    target = tmp_path / ".codex"
+    _write_install_manifest(target, runtime="claude-code")
+    adapter = _PermissionsTargetAdapter(local_target=target, global_target=target)
+
+    with (
+        patch("gpd.cli._resolve_permissions_runtime_name", return_value="codex"),
+        patch("gpd.cli._resolve_permissions_autonomy", return_value="balanced"),
+        patch("gpd.adapters.get_adapter", return_value=adapter),
+    ):
+        result = runner.invoke(
+            app,
+            ["--raw", "permissions", "status", "--runtime", "codex", "--target-dir", str(target), "--autonomy", "balanced"],
+        )
+
+    assert result.exit_code == 1
+    parsed = json.loads(result.output)
+    assert "belongs to runtime 'claude-code'" in parsed["error"]
+    assert "No GPD install found" not in parsed["error"]
+
+
+def test_permissions_sync_reports_untrusted_manifest_explicitly(tmp_path: Path) -> None:
+    target = tmp_path / ".codex"
+    _write_install_manifest(target, runtime="codex", raw="{")
+    adapter = _PermissionsTargetAdapter(local_target=target, global_target=target)
+
+    with (
+        patch("gpd.cli._resolve_permissions_runtime_name", return_value="codex"),
+        patch("gpd.cli._resolve_permissions_autonomy", return_value="balanced"),
+        patch("gpd.adapters.get_adapter", return_value=adapter),
+    ):
+        result = runner.invoke(
+            app,
+            ["--raw", "permissions", "sync", "--runtime", "codex", "--target-dir", str(target), "--autonomy", "balanced"],
+        )
+
+    assert result.exit_code == 1
+    parsed = json.loads(result.output)
+    assert "manifest state is 'corrupt'" in parsed["error"]
+    assert "No GPD install found" not in parsed["error"]
+
+
 def test_init_help_surfaces_local_onboarding_entrypoints() -> None:
     result = runner.invoke(app, ["init", "--help"])
     assert result.exit_code == 0

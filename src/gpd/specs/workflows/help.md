@@ -120,6 +120,7 @@ This reference lists canonical in-runtime slash-command names in `/gpd:*` form.
 - Use these names inside the installed agent/runtime command surface.
 - The bootstrap installer owns Node.js / Python / `venv` prerequisites. The local `gpd` CLI may expose different `gpd ...` subcommands and grouping. Use `gpd --help` to inspect the executable local install/readiness/permissions/diagnostics surface directly.
 - Use `gpd permissions status --runtime <runtime> --autonomy balanced` and `gpd permissions sync --runtime <runtime> --autonomy balanced` to confirm and resync unattended readiness from your normal terminal.
+- `gpd doctor` checks the selected install target and runtime-local readiness signals; `gpd permissions ...` checks runtime-owned approval/alignment only.
 - If you need to validate whether a slash-command can run in the current workspace, use `gpd validate command-context gpd:<name>`.
 - For a normal-terminal, read-only recovery snapshot without launching the runtime, use `gpd resume`.
 - For a normal-terminal, read-only machine-local usage / cost summary, use `gpd cost`.
@@ -143,6 +144,8 @@ Choose the path that matches your starting point:
 3. `gpd presets list` - Inspect the local preset catalog; presets resolve to the existing config keys and are not stored as a separate preset block
 4. `gpd presets show <preset>` - Preview one preset's bundle before applying it
 5. `gpd presets apply <preset> [--dry-run]` - Apply or preview one preset from your normal terminal without inventing a separate preset schema
+
+Workflow preset tooling is layered on top of the base install; it does not change runtime permission alignment.
 
 **Existing work**
 1. `/gpd:map-research` - Map an existing folder or project first

@@ -208,6 +208,7 @@ def test_help_prompt_keeps_workflow_preset_readiness_on_local_cli_surface() -> N
             "Use `gpd --help` to inspect the executable local install/readiness/permissions/diagnostics surface directly."
             in content
         )
+        assert "`gpd doctor` checks the selected install target and runtime-local readiness signals; `gpd permissions ...` checks runtime-owned approval/alignment only." in content
         assert "gpd permissions status --runtime <runtime> --autonomy balanced" in content
         assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in content
         assert "gpd doctor --runtime <runtime> --local|--global" in content
@@ -216,6 +217,7 @@ def test_help_prompt_keeps_workflow_preset_readiness_on_local_cli_surface() -> N
         assert "gpd presets apply <preset>" in content
         assert "not stored as a separate preset block" in content
         assert "failed preset rows degrade that workflow rather than blocking the base install" in content
+        assert "Workflow preset tooling is layered on top of the base install; it does not change runtime permission alignment." in content
 
 
 def test_suggest_next_prompt_uses_real_cli_subcommand() -> None:

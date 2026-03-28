@@ -576,6 +576,34 @@ class TestRuntimePermissions:
         assert "gpd_runtime_permissions" not in manifest
         assert result["sync_applied"] is True
 
+    def test_malformed_settings_json_fails_closed_for_status_and_sync(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        adapter.install(gpd_root, target)
+
+        settings_path = target / "settings.json"
+        settings_path.write_text('{"permissions": [\n', encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        status = adapter.runtime_permissions_status(target, autonomy="yolo")
+        result = adapter.sync_runtime_permissions(target, autonomy="yolo")
+
+        assert status["config_valid"] is False
+        assert status["configured_mode"] == "malformed"
+        assert status["config_aligned"] is False
+        assert "malformed" in str(status["message"]).lower()
+        assert result["config_valid"] is False
+        assert result["changed"] is False
+        assert result["sync_applied"] is False
+        assert result["requires_relaunch"] is False
+        assert "malformed" in str(result["warning"]).lower()
+        assert settings_path.read_text(encoding="utf-8") == before
+
 
 class TestUninstall:
     """Test uninstall cleans up GPD artifacts."""

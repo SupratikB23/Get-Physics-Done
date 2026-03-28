@@ -35,6 +35,19 @@ logger = logging.getLogger(__name__)
 _SHELL_FENCE_LANGUAGES = frozenset({"bash", "sh", "shell", "zsh"})
 _INLINE_GPD_COMMAND_RE = re.compile(r"`(?P<command>gpd(?=\s)[^`]*?)`")
 
+
+def _read_claude_settings_state(settings_path: Path) -> tuple[dict[str, object] | None, str | None]:
+    """Return parsed Claude settings and a malformed marker when parsing fails."""
+    if not settings_path.exists():
+        return None, None
+    try:
+        parsed = parse_jsonc(settings_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, "malformed"
+    if not isinstance(parsed, dict):
+        return None, "malformed"
+    return parsed, None
+
 _TOOL_NAME_MAP: dict[str, str] = {
     "file_read": "Read",
     "file_write": "Write",
@@ -209,7 +222,9 @@ class ClaudeCodeAdapter(RuntimeAdapter):
     def runtime_permissions_status(self, target_dir: Path, *, autonomy: str) -> dict[str, object]:
         """Report whether Claude Code is configured for GPD autonomy alignment."""
         settings_path = target_dir / "settings.json"
-        settings = read_settings(settings_path)
+        settings, settings_parse_error = _read_claude_settings_state(settings_path)
+        config_valid = settings_parse_error is None
+        settings = settings or {}
         permissions = settings.get("permissions")
         permissions_dict = permissions if isinstance(permissions, dict) else {}
         default_mode = permissions_dict.get("defaultMode") if isinstance(permissions_dict.get("defaultMode"), str) else None
@@ -217,11 +232,13 @@ class ClaudeCodeAdapter(RuntimeAdapter):
         desired_mode = "yolo" if autonomy == "yolo" else "default"
         managed_state = self._runtime_permissions_manifest_state(target_dir) or {}
         managed_by_gpd = managed_state.get("mode") == "yolo"
-        config_aligned = default_mode == "bypassPermissions" if desired_mode == "yolo" else not managed_by_gpd
+        config_aligned = False if not config_valid else default_mode == "bypassPermissions" if desired_mode == "yolo" else not managed_by_gpd
         requires_relaunch = desired_mode == "yolo" and config_aligned
         next_step: str | None = None
         message = "Claude Code is using its normal permission mode."
-        if desired_mode == "yolo":
+        if not config_valid:
+            message = "Claude Code settings.json is malformed; GPD will not treat it as a defaulted permission state."
+        elif desired_mode == "yolo":
             if bypass_disabled:
                 config_aligned = False
                 requires_relaunch = False
@@ -242,11 +259,13 @@ class ClaudeCodeAdapter(RuntimeAdapter):
         return {
             "runtime": self.runtime_name,
             "desired_mode": desired_mode,
-            "configured_mode": default_mode or "default",
+            "configured_mode": "malformed" if not config_valid else default_mode or "default",
             "config_aligned": config_aligned,
             "requires_relaunch": requires_relaunch,
             "managed_by_gpd": managed_by_gpd,
             "settings_path": str(settings_path),
+            "config_valid": config_valid,
+            "config_parse_error": settings_parse_error,
             "message": message,
             "next_step": next_step,
         }
@@ -254,7 +273,17 @@ class ClaudeCodeAdapter(RuntimeAdapter):
     def sync_runtime_permissions(self, target_dir: Path, *, autonomy: str) -> dict[str, object]:
         """Align Claude Code defaultMode with GPD autonomy."""
         settings_path = target_dir / "settings.json"
-        settings = read_settings(settings_path)
+        settings, settings_parse_error = _read_claude_settings_state(settings_path)
+        if settings_parse_error is not None:
+            status = self.runtime_permissions_status(target_dir, autonomy=autonomy)
+            return {
+                **status,
+                "changed": False,
+                "sync_applied": False,
+                "requires_relaunch": False,
+                "warning": "Claude Code settings.json is malformed; GPD will not overwrite it.",
+            }
+        settings = settings or {}
         permissions = settings.get("permissions")
         permissions_dict = dict(permissions) if isinstance(permissions, dict) else {}
         settings_had_permissions = isinstance(permissions, dict)

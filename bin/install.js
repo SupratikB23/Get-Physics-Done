@@ -1000,6 +1000,7 @@ function runInstallReadinessPreflight(managedPython, runtimes, scope, targetDir 
   success(`Runtime launcher/target preflight passed for ${formatRuntimeList(runtimes)}.`);
   const doctorHints = runtimes.map((runtime) => `\`${runtimeDoctorHint(runtime, scope, targetDir)}\``).join(", ");
   log(`For the full runtime-target doctor report after install, use ${doctorHints}.`);
+  log("Use `gpd doctor` for install/readiness checks and `gpd permissions status` for runtime-owned permission alignment.");
   log(
     "Workflow presets: if you plan paper/manuscript workflows, rerun "
     + `${doctorHints} after install and check whether \`Workflow Presets\` is \`ready\` or \`degraded\`. `
@@ -1022,7 +1023,7 @@ function printUnattendedConfigurationReminder(runtimes, targetDir = null) {
       + "to review autonomy, workflow defaults, and model-cost posture."
     );
     log("The safest model starting point is `review` plus runtime defaults.");
-    log(`Check unattended readiness with \`${runtimePermissionsHint("status", runtime, "balanced", targetDir)}\`.`);
+    log(`Check runtime permission alignment with \`${runtimePermissionsHint("status", runtime, "balanced", targetDir)}\`.`);
     log(`If it reports drift, run \`${runtimePermissionsHint("sync", runtime, "balanced", targetDir)}\`.`);
     warn("If `requires_relaunch` is true, the runtime is not ready for unattended use until you exit and relaunch it.");
   } else {
@@ -1034,8 +1035,8 @@ function printUnattendedConfigurationReminder(runtimes, targetDir = null) {
         + `\`${runtimePermissionsHint("status", runtime)}\`.`
       );
     }
-    log("If permissions drift is reported, rerun the matching `gpd permissions sync --runtime <runtime> --autonomy balanced` command.");
-    warn("If any runtime reports `requires_relaunch`, treat it as not ready for unattended use until that runtime is relaunched.");
+    log("If runtime permission drift is reported, rerun the matching `gpd permissions sync --runtime <runtime> --autonomy balanced` command.");
+    warn("If any runtime reports `requires_relaunch`, treat its runtime permissions as not ready for unattended use until that runtime is relaunched.");
   }
   console.log("");
 }

@@ -334,6 +334,7 @@ Interpret the sync payload:
 - If `requires_relaunch` is `true`, surface `next_step` verbatim so the user knows whether the runtime must be restarted or relaunched through a generated wrapper command.
 - If `requires_relaunch` is `true`, explicitly state that the newly selected autonomy level is not unattended-ready yet.
 - If runtime detection or install resolution fails, explain that `GPD/config.json` was still updated but the runtime itself was not synchronized yet.
+- This sync only updates runtime-owned permission settings; it does not validate install health or workflow/tool readiness.
 </step>
 
 <step name="confirm">
@@ -371,6 +372,7 @@ Runtime sync:
 - {permissions_sync.message}
 - {permissions_sync.next_step if present}
 - If relaunch is still required, say clearly that unattended use is not ready yet under the newly selected autonomy setting.
+- `gpd permissions ...` in this workflow only handles runtime-owned permission alignment, not install validation.
 
 Project conventions still live in `GPD/CONVENTIONS.md` and `GPD/state.json` (`convention_lock`), not in `GPD/config.json`.
 

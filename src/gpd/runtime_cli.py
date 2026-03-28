@@ -19,16 +19,14 @@ from pathlib import Path
 
 from gpd.adapters import get_adapter
 from gpd.adapters.install_utils import (
-    AGENTS_DIR_NAME,
-    COMMANDS_DIR_NAME,
-    FLAT_COMMANDS_DIR_NAME,
-    GPD_INSTALL_DIR_NAME,
-    HOOKS_DIR_NAME,
     build_runtime_install_repair_command,
 )
 from gpd.core.cli_args import resolve_root_global_cli_cwd_from_argv as _resolve_cli_cwd_from_argv
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_REEXEC
-from gpd.hooks.install_metadata import load_install_manifest_runtime_status
+from gpd.hooks.install_metadata import (
+    config_dir_has_managed_install_markers,
+    load_install_manifest_runtime_status,
+)
 from gpd.hooks.runtime_detect import normalize_runtime_name
 
 
@@ -116,25 +114,12 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str) -> bo
             return False
         return True
 
-    has_install_markers = _has_managed_install_markers(candidate)
+    has_install_markers = config_dir_has_managed_install_markers(candidate)
     if not has_install_markers:
         return False
     if _paths_equal(candidate, canonical_global_dir):
         return False
     return True
-
-
-def _has_managed_install_markers(config_dir: Path) -> bool:
-    """Return whether *config_dir* already looks like a managed install surface."""
-    return any(
-        (
-            (config_dir / GPD_INSTALL_DIR_NAME).is_dir(),
-            (config_dir / COMMANDS_DIR_NAME / "gpd").is_dir(),
-            (config_dir / FLAT_COMMANDS_DIR_NAME).is_dir(),
-            (config_dir / AGENTS_DIR_NAME).is_dir(),
-            (config_dir / HOOKS_DIR_NAME).is_dir(),
-        )
-    )
 
 
 def _resolve_local_config_dir(raw_value: str, *, runtime: str, cli_cwd: Path) -> Path:
@@ -431,7 +416,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest_install_scope = manifest_payload.get("install_scope") if manifest_status == "ok" else None
     if not isinstance(manifest_install_scope, str):
         manifest_install_scope = None
-    if manifest_status == "missing" and _has_managed_install_markers(config_dir):
+    if manifest_status == "missing" and config_dir_has_managed_install_markers(config_dir):
         sys.stderr.write(
             _missing_manifest_error_message(
                 runtime=runtime,

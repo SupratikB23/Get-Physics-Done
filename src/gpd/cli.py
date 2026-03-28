@@ -3226,6 +3226,42 @@ def _resolve_permissions_autonomy(autonomy: str | None, *, strict: bool = True) 
     return normalized
 
 
+def _permissions_install_target_assessment(runtime_name: str, target_dir: Path):
+    """Return the shared install-state assessment for a permissions target."""
+    from gpd.hooks.install_metadata import assess_install_target
+
+    return assess_install_target(target_dir, expected_runtime=runtime_name)
+
+
+def _permissions_install_target_error_message(
+    runtime_name: str,
+    assessment,
+    *,
+    action: str,
+) -> str:
+    """Return a user-facing error message for a non-complete permissions target."""
+    target = _format_display_path(assessment.config_dir)
+    if assessment.state == "owned_incomplete":
+        missing = ", ".join(f"`{relpath}`" for relpath in assessment.missing_install_artifacts)
+        missing_message = f" Missing artifacts: {missing}." if missing else ""
+        return (
+            f"Found an incomplete GPD install for runtime {runtime_name!r} at {target}.{missing_message} "
+            f"Repair the install before you {action}."
+        )
+    if assessment.state == "foreign_runtime":
+        other_runtime = assessment.manifest_runtime or "unknown"
+        return (
+            f"Found a GPD install at {target}, but its manifest belongs to runtime {other_runtime!r}, "
+            f"not {runtime_name!r}."
+        )
+    if assessment.state == "untrusted_manifest":
+        return (
+            f"Found a managed GPD surface at {target}, but its manifest state is {assessment.manifest_state!r}. "
+            "Repair or reinstall it before using permissions."
+        )
+    return f"No GPD install found for runtime {runtime_name!r}. Run `gpd install {runtime_name}` first."
+
+
 def _resolve_permissions_target_dir(
     runtime_name: str,
     *,
@@ -3238,38 +3274,66 @@ def _resolve_permissions_target_dir(
     from gpd.hooks.runtime_detect import detect_install_scope, detect_runtime_install_target
 
     adapter = get_adapter(runtime_name)
+    assessment = None
     if target_dir:
         resolved = _resolve_cli_target_dir(target_dir)
         try:
             adapter.validate_target_runtime(resolved, action=action)
         except RuntimeError as exc:
             _error(str(exc))
+        assessment = _permissions_install_target_assessment(runtime_name, resolved)
     else:
         install_target = detect_runtime_install_target(runtime_name, cwd=_get_cwd())
         if install_target is not None:
             resolved = install_target.config_dir
+            assessment = _permissions_install_target_assessment(runtime_name, resolved)
         else:
             install_scope = detect_install_scope(runtime_name, cwd=_get_cwd())
             if install_scope == "global":
                 resolved = adapter.resolve_target_dir(True, _get_cwd())
+                assessment = _permissions_install_target_assessment(runtime_name, resolved)
             elif install_scope == "local":
                 resolved = adapter.resolve_target_dir(False, _get_cwd())
+                assessment = _permissions_install_target_assessment(runtime_name, resolved)
             else:
                 local_target = adapter.resolve_target_dir(False, _get_cwd())
                 global_target = adapter.resolve_target_dir(True, _get_cwd())
-                if adapter.has_complete_install(local_target):
-                    resolved = local_target
-                elif adapter.has_complete_install(global_target):
-                    resolved = global_target
+                local_assessment = _permissions_install_target_assessment(runtime_name, local_target)
+                global_assessment = _permissions_install_target_assessment(runtime_name, global_target)
+                candidate_assessments = (local_assessment, global_assessment)
+                complete_assessment = next(
+                    (candidate for candidate in candidate_assessments if candidate.state == "owned_complete"),
+                    None,
+                )
+                if complete_assessment is not None:
+                    resolved = complete_assessment.config_dir
+                    assessment = complete_assessment
                 else:
-                    _raise_permissions_resolution_error(
-                        f"No GPD install found for runtime {runtime_name!r}. Run `gpd install {runtime_name}` first.",
-                        strict=strict,
+                    informative_assessment = next(
+                        (
+                            candidate
+                            for candidate in candidate_assessments
+                            if candidate.state not in {"absent", "clean"}
+                        ),
+                        None,
                     )
+                    if informative_assessment is None:
+                        _raise_permissions_resolution_error(
+                            f"No GPD install found for runtime {runtime_name!r}. Run `gpd install {runtime_name}` first.",
+                            strict=strict,
+                        )
+                    resolved = informative_assessment.config_dir
+                    assessment = informative_assessment
 
-    if not adapter.has_complete_install(resolved):
+    if assessment is None:
+        assessment = _permissions_install_target_assessment(runtime_name, resolved)
+
+    if assessment.state in {"absent", "clean"} and adapter.has_complete_install(resolved):
+        return resolved
+
+    if assessment.state != "owned_complete":
         _raise_permissions_resolution_error(
-            f"No complete GPD install found at {_format_display_path(resolved)}.",
+            _permissions_install_target_error_message(runtime_name, assessment, action=action),
             strict=strict,
         )
     return resolved

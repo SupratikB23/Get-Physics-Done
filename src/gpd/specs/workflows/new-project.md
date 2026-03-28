@@ -1213,6 +1213,7 @@ Interpret the sync payload before continuing:
 - If `message` is present, summarize it in plain language.
 - If `requires_relaunch` is `true`, show `next_step` verbatim before moving on so the user knows whether the runtime must be restarted or relaunched through a generated command or wrapper.
 - If sync fails because no runtime install could be resolved, explain that the project config was still created successfully and the user can run `gpd permissions sync --runtime <name>` later.
+- This sync only updates runtime-owned permission settings; it does not create or validate the base install or workflow-tool readiness.
 
 **Commit config.json:**
 

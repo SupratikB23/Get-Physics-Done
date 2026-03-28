@@ -38,6 +38,7 @@ from gpd.core.health import (
     run_doctor,
     run_health,
 )
+from gpd.hooks.install_metadata import InstallTargetAssessment
 from gpd.core.state import default_state_dict, generate_state_markdown, save_state_json
 from gpd.core.storage_paths import ProjectStorageLayout
 
@@ -720,6 +721,68 @@ class TestRunDoctor:
 
         return specs
 
+    def _run_runtime_doctor(
+        self,
+        tmp_path: Path,
+        *,
+        assessment: InstallTargetAssessment,
+        target_dir: Path | None = None,
+    ) -> tuple[HealthReport, dict[str, HealthCheck]]:
+        specs_dir = self._make_specs_dir(tmp_path)
+        selected_target = target_dir or (tmp_path / ".codex")
+        if not selected_target.exists():
+            selected_target.mkdir(parents=True, exist_ok=True)
+
+        with (
+            patch("gpd.core.health._doctor_active_virtualenv", return_value=True),
+            patch("gpd.core.health.shutil.which", return_value="/usr/bin/codex"),
+            patch("gpd.core.health.os.access", return_value=True),
+            patch(
+                "gpd.core.health._doctor_check_bootstrap_network_access",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_provider_auth",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Provider/Auth Guidance"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_latex_toolchain",
+                return_value=HealthCheck(status=CheckStatus.OK, label="LaTeX Toolchain"),
+            ),
+            patch("gpd.core.health.assess_install_target", return_value=assessment),
+        ):
+            report = run_doctor(
+                specs_dir=specs_dir,
+                version="0.1.0",
+                runtime=_PRIMARY_RUNTIME,
+                install_scope="local",
+                target_dir=selected_target,
+                cwd=tmp_path,
+            )
+
+        checks = {check.label: check for check in report.checks}
+        return report, checks
+
+    def _assessment(
+        self,
+        *,
+        state: str,
+        target_dir: Path,
+        manifest_state: str = "ok",
+        manifest_runtime: str | None = None,
+        has_managed_markers: bool = True,
+        missing_install_artifacts: tuple[str, ...] = (),
+    ) -> InstallTargetAssessment:
+        return InstallTargetAssessment(
+            config_dir=target_dir.resolve(strict=False),
+            expected_runtime=_PRIMARY_RUNTIME,
+            state=state,
+            manifest_state=manifest_state,
+            manifest_runtime=manifest_runtime,
+            has_managed_markers=has_managed_markers,
+            missing_install_artifacts=missing_install_artifacts,
+        )
+
     def test_reports_specs_structure(self, tmp_path: Path):
         report = run_doctor(specs_dir=self._make_specs_dir(tmp_path), version="0.1.0")
         checks = {check.label: check for check in report.checks}
@@ -1120,6 +1183,17 @@ trigger:
                     warnings=["latex not installed"],
                 ),
             ),
+            patch(
+                "gpd.core.health.assess_install_target",
+                return_value=InstallTargetAssessment(
+                    config_dir=Path("/tmp/.codex"),
+                    expected_runtime="codex",
+                    state="clean",
+                    manifest_state="missing",
+                    manifest_runtime=None,
+                    has_managed_markers=False,
+                ),
+            ),
         ):
             report = run_doctor(specs_dir=specs_dir, version="0.1.0", runtime="codex", install_scope="global")
 
@@ -1398,6 +1472,70 @@ trigger:
         assert report.overall == CheckStatus.FAIL
         assert checks["Runtime Config Target"].status == CheckStatus.FAIL
         assert any("not writable" in issue for issue in checks["Runtime Config Target"].issues)
+
+    def test_runtime_readiness_marks_clean_target_ready(self, tmp_path: Path) -> None:
+        target_dir = tmp_path / ".codex"
+        assessment = self._assessment(
+            state="clean",
+            target_dir=target_dir,
+            manifest_state="missing",
+            manifest_runtime=None,
+            has_managed_markers=False,
+        )
+
+        _report, checks = self._run_runtime_doctor(tmp_path, assessment=assessment, target_dir=target_dir)
+
+        assert checks["Runtime Config Target"].status == CheckStatus.OK
+        assert checks["Runtime Config Target"].details["install_state"] == "clean"
+        assert checks["Runtime Config Target"].issues == []
+        assert checks["Runtime Config Target"].warnings == []
+
+    def test_runtime_readiness_fails_when_target_has_owned_incomplete_install(self, tmp_path: Path) -> None:
+        target_dir = tmp_path / ".codex"
+        assessment = self._assessment(
+            state="owned_incomplete",
+            target_dir=target_dir,
+            missing_install_artifacts=("agents/gpd-help/SKILL.md", "config.toml"),
+        )
+
+        report, checks = self._run_runtime_doctor(tmp_path, assessment=assessment, target_dir=target_dir)
+
+        assert report.overall == CheckStatus.FAIL
+        assert checks["Runtime Config Target"].status == CheckStatus.FAIL
+        assert checks["Runtime Config Target"].details["install_state"] == "owned_incomplete"
+        assert any("incomplete GPD install" in issue for issue in checks["Runtime Config Target"].issues)
+        assert any("missing artifacts" in issue for issue in checks["Runtime Config Target"].issues)
+
+    def test_runtime_readiness_fails_when_target_belongs_to_foreign_runtime(self, tmp_path: Path) -> None:
+        target_dir = tmp_path / ".codex"
+        assessment = self._assessment(
+            state="foreign_runtime",
+            target_dir=target_dir,
+            manifest_runtime="claude-code",
+        )
+
+        report, checks = self._run_runtime_doctor(tmp_path, assessment=assessment, target_dir=target_dir)
+
+        assert report.overall == CheckStatus.FAIL
+        assert checks["Runtime Config Target"].status == CheckStatus.FAIL
+        assert checks["Runtime Config Target"].details["install_state"] == "foreign_runtime"
+        assert any("belongs to" in issue for issue in checks["Runtime Config Target"].issues)
+
+    def test_runtime_readiness_fails_on_untrusted_manifest(self, tmp_path: Path) -> None:
+        target_dir = tmp_path / ".codex"
+        assessment = self._assessment(
+            state="untrusted_manifest",
+            target_dir=target_dir,
+            manifest_state="corrupt",
+            manifest_runtime=None,
+        )
+
+        report, checks = self._run_runtime_doctor(tmp_path, assessment=assessment, target_dir=target_dir)
+
+        assert report.overall == CheckStatus.FAIL
+        assert checks["Runtime Config Target"].status == CheckStatus.FAIL
+        assert checks["Runtime Config Target"].details["install_state"] == "untrusted_manifest"
+        assert any("untrusted GPD manifest" in issue for issue in checks["Runtime Config Target"].issues)
 
 
 def _bootstrap_health_project(tmp_path: Path) -> Path:

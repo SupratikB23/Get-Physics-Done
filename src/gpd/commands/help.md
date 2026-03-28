@@ -73,6 +73,8 @@ Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has 
 2. `gpd permissions status --runtime <runtime> --autonomy balanced` / `gpd permissions sync --runtime <runtime> --autonomy balanced` — confirm and resync unattended readiness from your normal terminal
 3. `gpd resume --recent`, `gpd observe execution`, `gpd cost`, `gpd presets list`, `gpd presets show <preset>`, `gpd presets apply <preset> --dry-run` — local recovery, visibility, cost, and preset preview/apply checks
 
+`gpd doctor` checks the selected install target and runtime-local readiness signals; `gpd permissions ...` checks runtime-owned approval/alignment only.
+
 **Unattended / autonomy setup**
 1. `/gpd:settings` — Primary guided setup for autonomy, runtime permission sync, and unattended budgets (`Balanced` recommended)
 2. `/gpd:help --all` — Full command reference
@@ -83,6 +85,8 @@ Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has 
 3. `gpd presets list` — Inspect the local preset catalog; presets resolve to the existing config keys and are not stored as a separate preset block
 4. `gpd presets show <preset>` — Preview one preset's bundle before applying it
 5. `gpd presets apply <preset> [--dry-run]` — Apply or preview one preset from your normal terminal without inventing a separate preset schema
+
+Workflow preset tooling is layered on top of the base install; it does not change runtime permission alignment.
 
 **Core workflow:** new-project → discuss-phase → plan-phase → execute-phase → verify-work → repeat → complete-milestone
 **Publication:** write-paper → peer-review → respond-to-referees → arxiv-submission
@@ -110,6 +114,7 @@ This reference lists canonical in-runtime slash-command names in `/gpd:*` form.
 - For a normal-terminal, read-only recovery snapshot without launching the runtime, use `gpd resume`.
 - For cross-project discovery from your normal terminal, use `gpd resume --recent` first, then open the selected project and run the per-project recovery surface there.
 - For a normal-terminal, read-only machine-local usage / cost summary, use `gpd cost`.
+- `gpd doctor` checks the selected install target and runtime-local readiness signals; `gpd permissions ...` checks runtime-owned approval/alignment only.
 
 ## Quick Start
 

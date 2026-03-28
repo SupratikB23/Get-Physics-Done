@@ -671,6 +671,8 @@ def test_settings_and_new_project_surface_runtime_permission_sync_for_yolo() -> 
     assert 'gpd --raw permissions sync --autonomy "$SELECTED_AUTONOMY"' in settings
     assert "sync the active runtime to its most autonomous permission mode when supported" in new_project
     assert "syncs the runtime to its most autonomous permission mode when supported" in settings
+    assert "This sync only updates runtime-owned permission settings; it does not create or validate the base install or workflow-tool readiness." in new_project
+    assert "This sync only updates runtime-owned permission settings; it does not validate install health or workflow/tool readiness." in settings
     assert "| Runtime Permissions  | {aligned / changed / manual follow-up required} |" in settings
     assert "If `requires_relaunch` is `true`, show `next_step` verbatim" in new_project
 
@@ -2258,6 +2260,7 @@ def test_settings_workflow_surfaces_qualitative_model_cost_onboarding_and_runtim
     assert "gpd --help" in settings_workflow
     assert "gpd permissions status --runtime <runtime> --autonomy balanced" in settings_workflow
     assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in settings_workflow
+    assert "This sync only updates runtime-owned permission settings; it does not validate install health or workflow/tool readiness." in settings_workflow
     assert "gpd presets show <preset>" in settings_workflow
     assert "gpd presets apply <preset> --dry-run" in settings_workflow
 
@@ -2275,6 +2278,7 @@ def test_help_surfaces_distinguish_runtime_slash_commands_from_local_cli_subcomm
         assert "gpd permissions status --runtime <runtime> --autonomy balanced" in content
         assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in content
         assert "install/readiness/permissions/diagnostics surface directly" in content
+        assert "`gpd doctor` checks the selected install target and runtime-local readiness signals; `gpd permissions ...` checks runtime-owned approval/alignment only." in content
         assert "gpd validate command-context gpd:<name>" in content
         assert "gpd observe execution" in content
 

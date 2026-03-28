@@ -477,6 +477,20 @@ def _write_opencode_config(config_dir: Path, config: dict[str, object]) -> None:
     (config_dir / "opencode.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
 
+def _read_opencode_config_state(config_dir: Path) -> tuple[dict[str, object] | None, str | None]:
+    """Return parsed OpenCode config and a malformed marker when parsing fails."""
+    config_path = config_dir / "opencode.json"
+    if not config_path.exists():
+        return None, None
+    try:
+        parsed = parse_jsonc(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, ValueError):
+        return None, "malformed"
+    if not isinstance(parsed, dict):
+        return None, "malformed"
+    return parsed, None
+
+
 def _clone_json_value(value: object) -> object:
     """Deep-copy JSON-compatible values."""
     return json.loads(json.dumps(value))
@@ -1054,16 +1068,21 @@ class OpenCodeAdapter(RuntimeAdapter):
     def runtime_permissions_status(self, target_dir: Path, *, autonomy: str) -> dict[str, object]:
         """Report whether OpenCode permissions are aligned with GPD autonomy."""
         config_path = target_dir / "opencode.json"
-        config = _read_opencode_config(target_dir)
+        config, config_parse_error = _read_opencode_config_state(target_dir)
+        config_valid = config_parse_error is None
+        config = config or {}
         permission_value = config.get("permission")
         desired_mode = "yolo" if autonomy == "yolo" else "default"
         managed_state = self._runtime_permissions_manifest_state(target_dir) or {}
         managed_by_gpd = managed_state.get("mode") == "yolo"
-        configured_mode = "yolo" if _opencode_permission_is_yolo(permission_value) else "default"
+        configured_mode = "malformed" if not config_valid else "yolo" if _opencode_permission_is_yolo(permission_value) else "default"
         requires_relaunch = False
         next_step: str | None = None
 
-        if desired_mode == "yolo":
+        if not config_valid:
+            config_aligned = False
+            message = "OpenCode opencode.json is malformed; GPD will not treat it as a defaulted permission state."
+        elif desired_mode == "yolo":
             config_aligned = configured_mode == "yolo"
             requires_relaunch = config_aligned
             message = (
@@ -1095,13 +1114,25 @@ class OpenCodeAdapter(RuntimeAdapter):
             "requires_relaunch": requires_relaunch,
             "managed_by_gpd": managed_by_gpd,
             "settings_path": str(config_path),
+            "config_valid": config_valid,
+            "config_parse_error": config_parse_error,
             "message": message,
             "next_step": next_step,
         }
 
     def sync_runtime_permissions(self, target_dir: Path, *, autonomy: str) -> dict[str, object]:
         """Align OpenCode permissions with the requested autonomy mode."""
-        config = _read_opencode_config(target_dir)
+        config, config_parse_error = _read_opencode_config_state(target_dir)
+        if config_parse_error is not None:
+            status = self.runtime_permissions_status(target_dir, autonomy=autonomy)
+            return {
+                **status,
+                "changed": False,
+                "sync_applied": False,
+                "requires_relaunch": False,
+                "warning": "OpenCode opencode.json is malformed; GPD will not overwrite it.",
+            }
+        config = config or {}
         changed = False
 
         if autonomy == "yolo":

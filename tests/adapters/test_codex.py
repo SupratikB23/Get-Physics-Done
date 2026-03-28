@@ -618,7 +618,36 @@ class TestRuntimePermissions:
         assert "GPD runtime approval policy" not in content
         assert "GPD runtime sandbox mode" not in content
         assert "gpd_runtime_permissions" not in manifest
-        assert result["sync_applied"] is True
+
+    def test_malformed_config_toml_fails_closed_for_status_and_sync(
+        self,
+        adapter: CodexAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".codex"
+        target.mkdir()
+        skills = tmp_path / "skills"
+        skills.mkdir()
+        adapter.install(gpd_root, target, skills_dir=skills)
+
+        config_path = target / "config.toml"
+        config_path.write_text('approval_policy = [\n', encoding="utf-8")
+        before = config_path.read_text(encoding="utf-8")
+
+        status = adapter.runtime_permissions_status(target, autonomy="yolo")
+        result = adapter.sync_runtime_permissions(target, autonomy="yolo")
+
+        assert status["config_valid"] is False
+        assert status["configured_mode"] == "malformed"
+        assert status["config_aligned"] is False
+        assert "malformed" in str(status["message"]).lower()
+        assert result["config_valid"] is False
+        assert result["changed"] is False
+        assert result["sync_applied"] is False
+        assert result["requires_relaunch"] is False
+        assert "malformed" in str(result["warning"]).lower()
+        assert config_path.read_text(encoding="utf-8") == before
 
     def test_reinstall_rewrites_stale_managed_notify_interpreter(
         self,

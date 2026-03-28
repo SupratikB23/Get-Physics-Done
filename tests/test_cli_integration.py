@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -109,6 +110,18 @@ def _install_runtime(
     gpd_root = Path(__file__).resolve().parents[1] / "src" / "gpd"
     adapter.install(gpd_root, install_target, is_global=is_global, explicit_target=explicit_target)
     return adapter, install_target
+
+
+def _break_install_completeness(target: Path, adapter) -> None:
+    """Remove one required artifact so the install remains owned but incomplete."""
+    missing_relpath = adapter.install_completeness_relpaths()[0]
+    missing_path = target / missing_relpath
+    if missing_path.is_dir():
+        shutil.rmtree(missing_path)
+    elif missing_path.exists():
+        missing_path.unlink()
+    else:
+        raise AssertionError(f"Expected install artifact {missing_relpath!r} to exist under {target}")
 
 
 def _set_runtime_config_override(monkeypatch: pytest.MonkeyPatch, descriptor, target: Path) -> None:
@@ -1098,10 +1111,24 @@ class TestConfigCommands:
         status_result = _invoke("--raw", "permissions", "status", "--runtime", _ENV_OVERRIDE_DESCRIPTOR.runtime_name)
         parsed_status = json.loads(status_result.output)
         expected_status = adapter.runtime_permissions_status(target, autonomy="yolo")
+        doctor_result = _invoke(
+            "--raw",
+            "doctor",
+            "--runtime",
+            _ENV_OVERRIDE_DESCRIPTOR.runtime_name,
+            "--target-dir",
+            str(target),
+        )
+        parsed_doctor = json.loads(doctor_result.output)
+        runtime_target_check = next(
+            check for check in parsed_doctor["checks"] if check["label"] == "Runtime Config Target"
+        )
 
         assert parsed_status["runtime"] == _ENV_OVERRIDE_DESCRIPTOR.runtime_name
         assert parsed_status["target"] == str(target)
         assert parsed_status["settings_path"] == expected_status["settings_path"]
+        assert parsed_doctor["target"] == str(target)
+        assert runtime_target_check["details"]["target"] == str(target)
 
         sync_result = _invoke("--raw", "permissions", "sync", "--runtime", _ENV_OVERRIDE_DESCRIPTOR.runtime_name, "--autonomy", "yolo")
         parsed_sync = json.loads(sync_result.output)
@@ -1111,6 +1138,51 @@ class TestConfigCommands:
         assert parsed_sync["target"] == str(target)
         assert parsed_sync["sync_applied"] is True
         assert synced_status["config_aligned"] is True
+
+    def test_permissions_status_distinguishes_absent_install_from_owned_incomplete_install(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        fake_home = gpd_project / "_fake_home_permissions_resolution"
+        fake_home.mkdir()
+
+        with patch("pathlib.Path.home", return_value=fake_home):
+            absent_result = _invoke(
+                "--raw",
+                "permissions",
+                "status",
+                "--runtime",
+                _ENV_OVERRIDE_DESCRIPTOR.runtime_name,
+                "--autonomy",
+                "balanced",
+                expect_ok=False,
+            )
+            absent_payload = json.loads(absent_result.output)
+            assert absent_result.exit_code == 1
+            assert absent_payload["error"] == (
+                f"No GPD install found for runtime '{_ENV_OVERRIDE_DESCRIPTOR.runtime_name}'. "
+                f"Run `gpd install {_ENV_OVERRIDE_DESCRIPTOR.runtime_name}` first."
+            )
+
+            adapter, target = _install_runtime(gpd_project, _ENV_OVERRIDE_DESCRIPTOR)
+            _break_install_completeness(target, adapter)
+
+            incomplete_result = _invoke(
+                "--raw",
+                "permissions",
+                "status",
+                "--runtime",
+                _ENV_OVERRIDE_DESCRIPTOR.runtime_name,
+                "--autonomy",
+                "balanced",
+                expect_ok=False,
+            )
+            incomplete_payload = json.loads(incomplete_result.output)
+
+        assert incomplete_result.exit_code == 1
+        assert incomplete_payload["error"] != absent_payload["error"]
+        assert "No GPD install found" not in incomplete_payload["error"]
+        assert "incomplete" in incomplete_payload["error"].lower() or "repair" in incomplete_payload["error"].lower()
 
     def test_permissions_status_uses_public_adapter_target_validation_contract(
         self,

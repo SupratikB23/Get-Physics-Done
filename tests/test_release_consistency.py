@@ -669,12 +669,13 @@ def test_public_readme_quick_start_keeps_settings_guided_balanced_unattended_rea
 
     assert "For unattended execution, the recommended default is Balanced (`balanced`)." in quick_start
     assert "Use your runtime-specific `settings` command to confirm or change autonomy" in quick_start
+    assert "Use `gpd doctor` for the selected install target and runtime-local readiness signals; use `gpd permissions ...` for runtime-owned approval/alignment only." in quick_start
     assert "Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, and `gpd presets list`" in quick_start
     assert "gpd permissions status --runtime <runtime> --autonomy balanced" in quick_start
     assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in quick_start
     assert "Balanced (`balanced`) is the recommended unattended default." in quick_start
     assert (
-        "Use `gpd permissions status --runtime <runtime> --autonomy balanced` to confirm unattended readiness; "
+        "Use `gpd permissions status --runtime <runtime> --autonomy balanced` to check runtime-owned permission alignment for unattended use; "
         "if it reports `requires_relaunch`, the runtime is not ready yet"
     ) in quick_start
     assert (
@@ -688,12 +689,14 @@ def test_public_readme_and_bootstrap_surface_optional_workflow_add_on_guidance()
     installer = (repo_root / "bin/install.js").read_text(encoding="utf-8")
 
     assert "Workflow presets are actionable bundles over the existing config keys." in readme
+    assert "Use `gpd doctor` for the selected install target and runtime-local readiness signals; use `gpd permissions ...` for runtime-owned approval/alignment only." in readme
     assert "The first supported workflow preset is paper/manuscript workflows" in readme
     assert "preview one bundle before choosing it" in readme
     assert "gpd presets apply <preset> --dry-run" in readme
     assert "check runtime-local LaTeX preset readiness on this machine" in readme
     assert "Missing preset tooling degrades that preset; it does not block the base GPD install." in readme
     assert "Workflow presets: if you plan paper/manuscript workflows, rerun " in installer
+    assert "Use `gpd doctor` for install/readiness checks and `gpd permissions status` for runtime-owned permission alignment." in installer
     assert "check whether `Workflow Presets` is `ready` or `degraded`." in installer
     assert "Without LaTeX, the paper/manuscript and full research presets remain usable for `write-paper` and `peer-review`" in installer
     assert "`paper-build` and `arxiv-submission` require the `LaTeX Toolchain`." in installer
@@ -707,6 +710,7 @@ def test_public_readme_keeps_bootstrap_prerequisites_and_runtime_doctor_scopes_d
     assert "**Bootstrap hard blockers**" in quick_start
     assert "These are bootstrap prerequisites for `npx -y get-physics-done`, not a claim that every local `gpd ...` command rechecks them." in quick_start
     assert "Here, `gpd doctor --runtime ...` is a runtime-readiness check for the selected runtime target." in quick_start
+    assert "Use `gpd doctor` for the selected install target and runtime-local readiness signals; use `gpd permissions ...` for runtime-owned approval/alignment only." in quick_start
     assert "If the bootstrap installer fails before `gpd doctor --runtime <runtime> --local|--global` can run, fix Node / Python / `venv` bootstrap prerequisites first." in quick_start
     assert "If `gpd doctor --runtime <runtime> --local|--global` fails, fix the selected runtime's launcher / target / runtime-readiness issue first." in quick_start
     assert "Workflow presets are workflow-specific extra capabilities that sit on top of the base install." in quick_start
@@ -787,6 +791,7 @@ def test_public_settings_workflow_keeps_balanced_recommendation_and_relaunch_gui
     assert 'gpd --raw permissions sync --autonomy "$SELECTED_AUTONOMY"' in settings_workflow
     assert "If `requires_relaunch` is `true`, surface `next_step` verbatim" in settings_workflow
     assert "Runtime permissions sync attempted after autonomy is written, with relaunch guidance surfaced when required" in settings_workflow
+    assert "This sync only updates runtime-owned permission settings; it does not validate install health or workflow/tool readiness." in settings_workflow
     assert "Preset application must be explicit and previewable." in settings_workflow
     assert "Present the resolved bundle first, let the user preview it, then ask for an explicit apply/adjust choice." in settings_workflow
     assert "Local CLI bridge: use `gpd --help`, `gpd permissions status --runtime <runtime> --autonomy balanced`, `gpd permissions sync --runtime <runtime> --autonomy balanced`, `gpd resume --recent`, `gpd observe execution`, `gpd cost`, and `gpd presets list`" in settings_workflow

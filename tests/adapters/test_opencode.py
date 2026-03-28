@@ -595,6 +595,34 @@ class TestRuntimePermissions:
         assert "gpd_runtime_permissions" not in manifest
         assert result["sync_applied"] is True
 
+    def test_malformed_opencode_json_fails_closed_for_status_and_sync(
+        self,
+        adapter: OpenCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".opencode"
+        target.mkdir()
+        adapter.install(gpd_root, target)
+
+        config_path = target / "opencode.json"
+        config_path.write_text('{"permission": [\n', encoding="utf-8")
+        before = config_path.read_text(encoding="utf-8")
+
+        status = adapter.runtime_permissions_status(target, autonomy="yolo")
+        result = adapter.sync_runtime_permissions(target, autonomy="yolo")
+
+        assert status["config_valid"] is False
+        assert status["configured_mode"] == "malformed"
+        assert status["config_aligned"] is False
+        assert "malformed" in str(status["message"]).lower()
+        assert result["config_valid"] is False
+        assert result["changed"] is False
+        assert result["sync_applied"] is False
+        assert result["requires_relaunch"] is False
+        assert "malformed" in str(result["warning"]).lower()
+        assert config_path.read_text(encoding="utf-8") == before
+
 
 class TestUninstall:
     def test_uninstall_removes_only_exact_managed_permission_keys(

@@ -89,6 +89,21 @@ _MANIFEST_CODEX_GENERATED_SKILL_DIRS_KEY = "codex_generated_skill_dirs"
 _CODEX_DEFAULT_SANDBOX_MODE = "workspace-write"
 _CODEX_YOLO_APPROVAL_POLICY = "never"
 _CODEX_YOLO_SANDBOX_MODE = "danger-full-access"
+
+
+def _read_codex_runtime_config(config_path: Path) -> tuple[dict[str, object] | None, str | None]:
+    """Return the parsed Codex config and a malformed marker when parsing fails."""
+    if not config_path.exists():
+        return None, None
+    try:
+        parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None, "malformed"
+    if not isinstance(parsed, dict):
+        return None, "malformed"
+    return parsed, None
+
+
 _TOOL_REFERENCE_MAP = reference_translation_map(
     _TOOL_NAME_MAP,
     alias_map=_TOOL_ALIAS_MAP,
@@ -749,20 +764,24 @@ class CodexAdapter(RuntimeAdapter):
         """Report whether Codex approvals/sandbox are aligned with GPD autonomy."""
         config_path = target_dir / "config.toml"
         approval_policy: str | None = None
-        sandbox_mode: str = _CODEX_DEFAULT_SANDBOX_MODE
+        sandbox_mode: str | None = _CODEX_DEFAULT_SANDBOX_MODE
         root_managed = False
+        config_valid = True
+        config_parse_error: str | None = None
         if config_path.exists():
             content = config_path.read_text(encoding="utf-8")
-            try:
-                parsed = tomllib.loads(content)
-            except tomllib.TOMLDecodeError:
-                parsed = {}
-            approval_value = parsed.get("approval_policy")
-            sandbox_value = parsed.get("sandbox_mode")
-            if isinstance(approval_value, str):
-                approval_policy = approval_value
-            if isinstance(sandbox_value, str):
-                sandbox_mode = sandbox_value
+            parsed, config_parse_error = _read_codex_runtime_config(config_path)
+            if parsed is not None:
+                approval_value = parsed.get("approval_policy")
+                sandbox_value = parsed.get("sandbox_mode")
+                if isinstance(approval_value, str):
+                    approval_policy = approval_value
+                if isinstance(sandbox_value, str):
+                    sandbox_mode = sandbox_value
+            else:
+                config_valid = False
+                approval_policy = None
+                sandbox_mode = None
             root_managed = _root_assignment_has_gpd_marker(
                 content,
                 _GPD_APPROVAL_POLICY_COMMENT,
@@ -782,7 +801,10 @@ class CodexAdapter(RuntimeAdapter):
         requires_relaunch = False
 
         next_step: str | None = None
-        if desired_mode == "yolo":
+        if not config_valid:
+            config_aligned = False
+            message = "Codex config.toml is malformed; GPD will not treat it as a defaulted permission state."
+        elif desired_mode == "yolo":
             root_aligned = (
                 approval_policy == _CODEX_YOLO_APPROVAL_POLICY
                 and sandbox_mode == _CODEX_YOLO_SANDBOX_MODE
@@ -829,8 +851,8 @@ class CodexAdapter(RuntimeAdapter):
 
         configured_mode = (
             "yolo"
-            if approval_policy == _CODEX_YOLO_APPROVAL_POLICY and sandbox_mode == _CODEX_YOLO_SANDBOX_MODE
-            else f"{approval_policy or 'unset'}/{sandbox_mode}"
+            if config_valid and approval_policy == _CODEX_YOLO_APPROVAL_POLICY and sandbox_mode == _CODEX_YOLO_SANDBOX_MODE
+            else "malformed" if not config_valid else f"{approval_policy or 'unset'}/{sandbox_mode or 'unset'}"
         )
         return {
             "runtime": self.runtime_name,
@@ -840,10 +862,12 @@ class CodexAdapter(RuntimeAdapter):
             "requires_relaunch": requires_relaunch,
             "managed_by_gpd": managed_by_gpd,
             "settings_path": str(config_path),
-            "approval_policy": approval_policy or "unset",
+            "approval_policy": approval_policy,
             "sandbox_mode": sandbox_mode,
             "agent_role_approval_policy": role_approval_policy or "unset",
             "agent_role_sandbox_mode": role_sandbox_mode or "mixed",
+            "config_valid": config_valid,
+            "config_parse_error": config_parse_error,
             "message": message,
             "next_step": next_step,
         }
@@ -852,6 +876,16 @@ class CodexAdapter(RuntimeAdapter):
         """Align Codex approvals/sandbox settings with the requested autonomy."""
         config_path = target_dir / "config.toml"
         toml_content = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+        _, parse_error = _read_codex_runtime_config(config_path)
+        if parse_error is not None:
+            status = self.runtime_permissions_status(target_dir, autonomy=autonomy)
+            return {
+                **status,
+                "changed": False,
+                "sync_applied": False,
+                "requires_relaunch": False,
+                "warning": "Codex config.toml is malformed; GPD will not overwrite it.",
+            }
         changed = False
         if autonomy == "yolo":
             updated = toml_content
