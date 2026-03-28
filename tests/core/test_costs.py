@@ -289,6 +289,36 @@ def test_build_cost_summary_marks_mixed_measured_and_estimated_usd_as_advisory(
     assert any("mixes measured runtime telemetry with pricing-snapshot estimates" in item for item in summary.guidance)
 
 
+def test_build_cost_summary_marks_cost_only_records_as_token_incomplete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = tmp_path / "data"
+    project = _bootstrap_project(tmp_path)
+    monkeypatch.setattr(costs, "get_current_session_id", lambda _root: "sess-cost-only")
+    timestamps = iter(
+        [
+            "2026-03-27T14:00:00+00:00",
+            "2026-03-27T14:01:00+00:00",
+        ]
+    )
+    monkeypatch.setattr(costs, "_now_iso", lambda: next(timestamps))
+
+    record_usage_from_runtime_payload(
+        _payload(cost_usd=0.25),
+        runtime="codex",
+        cwd=project,
+        data_root=data_root,
+    )
+
+    summary = build_cost_summary(project, data_root=data_root, last_sessions=5)
+
+    assert summary.project.usage_status == "unavailable"
+    assert summary.project.cost_status == "measured"
+    assert summary.project.interpretation == "USD measured; token counts unavailable"
+    assert summary.current_session is not None
+    assert summary.current_session.interpretation == "USD measured; token counts unavailable"
+
+
 def test_build_cost_summary_surfaces_active_runtime_capabilities_in_guidance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

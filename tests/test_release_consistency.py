@@ -684,6 +684,7 @@ def test_public_readme_quick_start_surfaces_step_one_entry_points() -> None:
     assert "the matching `branch-hypothesis` command only when you want the explicit git-backed alternative path" in quick_start
     assert "For model choice, the safe default is `review` plus runtime defaults." in quick_start
     assert "Use your runtime-specific `settings` command to move toward `Max quality`, `Balanced`, or `Budget-aware`" in quick_start
+    assert "After runs, use `gpd cost` to inspect recorded local usage/cost and the current profile tier mix" in quick_start
     assert "Use the exact runtime-specific command syntax below for your first command." in quick_start
     assert "If you are starting from existing work, run your runtime's `map-research` command first" in quick_start
     assert "gpd cost" in quick_start
@@ -899,6 +900,7 @@ def test_public_settings_workflow_keeps_balanced_recommendation_and_relaunch_gui
     _assert_wolfram_plan_boundary(settings_workflow)
     assert "What model-cost posture should GPD optimize for?" in settings_workflow
     assert "Use runtime defaults" in settings_workflow
+    assert "Use `gpd cost` after runs to inspect recorded local usage / cost and the current profile tier mix" in settings_workflow
 
 
 def test_public_bootstrap_help_examples_cover_install_and_readiness_handoff() -> None:
@@ -928,13 +930,14 @@ def test_public_readme_observability_surface_keeps_execution_guidance_in_command
         "| `gpd observe execution` | Show read-only live execution status for the current workspace, including progress / waiting state, "
         "conservative `possibly stalled` wording, and the next read-only checks to run |"
     ) in readme
-    assert "| `gpd cost` | Show the read-only machine-local usage / cost summary from recorded local telemetry; advisory only, not live budget enforcement or provider billing truth |" in readme
+    assert "| `gpd cost` | Show the read-only machine-local usage / cost summary from recorded local telemetry; advisory only, not live budget enforcement or provider billing truth. If telemetry or the tier mix is missing, the summary stays partial or estimated rather than exact |" in readme
     assert "gpd observe execution" in readme
     assert "For read-only long-run visibility from your normal system terminal, use `gpd observe execution`." in readme
     assert "Start with `gpd observe show --last 20` when you need the recent event trail" in readme
     assert "route it through the runtime `tangent` command first" in readme
     assert "gpd cost" in readme
     assert "For a read-only machine-local usage / cost summary from your normal system terminal, use `gpd cost`." in readme
+    assert "shows the current profile tier mix for this workspace" in readme
 
 
 def test_public_local_cli_help_and_install_summary_keep_readiness_diagnostics_emphasis() -> None:

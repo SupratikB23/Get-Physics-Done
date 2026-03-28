@@ -61,7 +61,7 @@ Choose the path that matches your starting point:
 4. `/gpd:progress` — Secondary status check; use `--brief` when you only need a short snapshot
 5. `/gpd:suggest-next` — Fastest post-resume next command
 6. `gpd observe execution` — Read-only long-run visibility from your normal terminal; shows progress / waiting state, may say `possibly stalled`, and points you to the next read-only checks
-7. `gpd cost` — Read-only machine-local usage / cost summary from recorded local telemetry; advisory only, not live budget enforcement or provider billing truth
+7. `gpd cost` — Read-only machine-local usage / cost summary from recorded local telemetry plus the current profile tier mix; advisory only, not live budget enforcement or provider billing truth. If telemetry or the tier mix is missing, the summary stays partial or estimated rather than exact
 
 Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has an explicit handoff to restore. If you need to find the workspace first, use `gpd resume --recent`, then continue inside that workspace with `/gpd:resume-work`. For a current-workspace read-only recovery snapshot, use `gpd resume` from your normal terminal.
 
@@ -79,8 +79,10 @@ If `gpd observe execution` surfaces an alternative-path follow-up, route it thro
 `gpd doctor` checks the selected install target and runtime-local readiness signals. `gpd validate unattended-readiness ...` returns the unattended or overnight verdict: `ready`, `relaunch-required`, `not-ready`, or `unresolved`. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. `gpd permissions ...` checks runtime-owned approval/alignment only, and `gpd validate plan-preflight <PLAN.md>` remains plan readiness.
 
 **Unattended / autonomy setup**
-1. `/gpd:settings` — Primary guided setup for autonomy, runtime permission sync, and unattended budgets (`Balanced` recommended)
+1. `/gpd:settings` — Primary guided setup for autonomy, runtime permission sync, qualitative posture choice, optional tier overrides, and unattended budgets (`Balanced` recommended)
 2. `/gpd:help --all` — Full command reference
+
+Recommended unattended default: Balanced autonomy (`balanced`). Safest model starting point: `review` plus runtime defaults. Use posture first (`Max quality`, `Balanced`, `Budget-aware`), then pin runtime tier models only if you actually need explicit control. After runs, use `gpd cost` to inspect recorded local usage / cost and the current profile tier mix instead of treating posture labels as billing truth.
 
 **Workflow presets**
 1. `Paper/manuscript workflows` — First supported workflow preset for `write-paper`, `paper-build`, `peer-review`, and `arxiv-submission`; inspect it with `gpd presets list`, preview it with `gpd presets show <preset>`, and apply it from your normal terminal with `gpd presets apply <preset>` or through your runtime-specific `settings` command
@@ -157,7 +159,7 @@ Local Mathematica installs are separate from the shared optional Wolfram integra
 4. `/gpd:progress` - Secondary manual status check; use `--brief` when you only need a short snapshot
 5. `/gpd:suggest-next` - Fastest post-resume next command
 6. `gpd observe execution` - Read-only long-run visibility from your normal terminal; use this for progress / waiting state, conservative `possibly stalled` wording, and the next read-only checks
-7. `gpd cost` - Read-only machine-local usage / cost summary from recorded local telemetry; advisory only, not live budget enforcement or provider billing truth
+7. `gpd cost` - Read-only machine-local usage / cost summary from recorded local telemetry plus the current profile tier mix; advisory only, not live budget enforcement or provider billing truth. If telemetry or the tier mix is missing, the summary stays partial or estimated rather than exact
 
 Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has an explicit handoff to restore. Use `gpd resume` from your normal system terminal when you want a current-workspace read-only recovery snapshot. Use `gpd resume --recent` first if you need to find the workspace before resuming it, then continue inside that workspace with `/gpd:resume-work`.
 
@@ -826,14 +828,15 @@ Primary guided setup for autonomy, unattended execution budgets, runtime permiss
 
 - Choose how often GPD should pause for you (`Balanced (Recommended)` is the best default for most unattended runs)
 - Review unattended execution budgets and other bounded continuation limits before leaving runs alone
-- Choose a model-cost posture: `Max quality`, `Balanced`, or `Budget-aware`
+- Start with a qualitative model-cost posture: `Max quality`, `Balanced`, or `Budget-aware`
 - Sync runtime-owned permissions after autonomy changes when the active runtime supports it
 - If settings reports a relaunch is required, the new autonomy level is not unattended-ready yet
 - Toggle plan researcher, plan checker, and execution verifier agents
 - Configure inter-wave verification gates (`execution.review_cadence`: `dense`, `adaptive`, or `sparse`)
 - Toggle parallel execution of wave plans
 - Select model profile (deep-theory/numerical/exploratory/review/paper-writing); `review` with runtime defaults is the safest first choice
-- Optionally pin concrete runtime model strings for `tier-1`, `tier-2`, and `tier-3` if you want explicit control
+- Let that posture drive whether you keep runtime defaults or pin concrete runtime model strings for `tier-1`, `tier-2`, and `tier-3`
+- Use `gpd cost` after runs to inspect recorded local usage / cost and the current profile tier mix instead of guessing from prompt-only posture labels
 - Configure whether planning artifacts are committed (`planning.commit_docs`)
 - Configure git branching strategy (`git.branching_strategy`: `none`, `per-phase`, or `per-milestone`)
 - Updates `GPD/config.json`

@@ -2073,6 +2073,7 @@ def test_execution_observability_and_resume_surfaces_stay_conservative_about_sta
     ) in help_command
     assert "gpd cost" in help_command
     assert "Read-only machine-local usage / cost summary from recorded local telemetry" in help_command
+    assert "summary stays partial or estimated rather than exact" in help_command
     assert "gpd observe execution" in help_workflow
     assert (
         "Read-only live status from your normal terminal; use this for progress / waiting state, then follow its suggested "
@@ -2080,12 +2081,15 @@ def test_execution_observability_and_resume_surfaces_stay_conservative_about_sta
     ) in help_workflow
     assert "gpd cost" in help_workflow
     assert "Read-only machine-local usage / cost summary from recorded local telemetry" in help_workflow
+    assert "summary stays partial or estimated rather than exact" in help_workflow
     assert "For read-only long-run visibility from your normal system terminal, use `gpd observe execution`." in readme
     assert "conservatively say `possibly stalled` instead of relying on runtime hotkeys" in readme
     assert "Start with `gpd observe show --last 20` when you need the recent event trail" in readme
     assert "route it through the runtime `tangent` command first" in readme
     assert "For a read-only machine-local usage / cost summary from your normal system terminal, use `gpd cost`." in readme
-    assert "it does not invent provider pricing, promise invoice-level accuracy, or enforce budgets by itself" in readme
+    assert "shows the current profile tier mix for this workspace" in readme
+    assert "does not invent provider pricing, promise invoice-level accuracy, or enforce budgets by itself" in readme
+    assert "If the telemetry or tier mix is missing, the summary remains partial or estimated rather than exact." in readme
     assert "gpd resume --recent" in help_command
     assert "gpd resume --recent" in help_workflow
     assert "gpd resume --recent" in readme
@@ -2309,6 +2313,7 @@ def test_settings_workflow_surfaces_qualitative_model_cost_onboarding_and_runtim
     assert "tier-1" in settings_workflow
     assert "tier-2" in settings_workflow
     assert "tier-3" in settings_workflow
+    assert "Use `gpd cost` after runs to inspect recorded local usage / cost and the current profile tier mix" in settings_workflow
     assert "dollar" not in settings_workflow.lower()
 
     assert "Tier models for the active runtime" in settings_command

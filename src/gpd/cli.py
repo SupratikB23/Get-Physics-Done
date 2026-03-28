@@ -2628,6 +2628,21 @@ def _format_cost_money(value: float | None) -> str:
     return f"${value:,.4f}"
 
 
+def _format_profile_tier_mix(value: object) -> str:
+    if not isinstance(value, dict):
+        return "unknown"
+    parts: list[str] = []
+    for tier in ("tier-1", "tier-2", "tier-3"):
+        count = value.get(tier)
+        if isinstance(count, int) and count > 0:
+            parts.append(f"{tier}={count}")
+    return ", ".join(parts) if parts else "unknown"
+
+
+def _profile_tier_mix_interpretation() -> str:
+    return "Advisory only; counts profile-to-tier assignments, not measured runtime model usage or spend."
+
+
 def _format_runtime_capability_value(summary: object, *keys: str) -> str:
     capabilities = getattr(summary, "active_runtime_capabilities", {}) or {}
     if not isinstance(capabilities, dict):
@@ -2649,6 +2664,7 @@ def _render_cost_rollup(label: str, rollup: object, *, project_root: str | None 
         summary.add_row("Session", session_id)
     summary.add_row("Usage status", str(getattr(rollup, "usage_status", "unavailable")))
     summary.add_row("Cost status", str(getattr(rollup, "cost_status", "unavailable")))
+    summary.add_row("Interpretation", str(getattr(rollup, "interpretation", "unknown")))
     summary.add_row("Records", str(int(getattr(rollup, "record_count", 0) or 0)))
     summary.add_row("Input tokens", _format_cost_tokens(int(getattr(rollup, "input_tokens", 0) or 0)))
     summary.add_row("Output tokens", _format_cost_tokens(int(getattr(rollup, "output_tokens", 0) or 0)))
@@ -2666,7 +2682,6 @@ def _render_cost_rollup(label: str, rollup: object, *, project_root: str | None 
     summary.add_row("Models", models)
     console.print(f"[bold]{label}[/]")
     console.print(summary)
-
 
 def _render_cost_summary(summary: object, *, last_sessions: int) -> None:
     console.print("[bold]Cost Summary[/]")
@@ -2691,6 +2706,8 @@ def _render_cost_summary(summary: object, *, last_sessions: int) -> None:
     model_table.add_row("Telemetry support", telemetry_label)
     model_table.add_row("Model profile", str(getattr(summary, "model_profile", None) or "unknown"))
     model_table.add_row("Runtime model selection", str(getattr(summary, "runtime_model_selection", None) or "unknown"))
+    profile_tier_mix = _format_profile_tier_mix(getattr(summary, "profile_tier_mix", None))
+    model_table.add_row("Profile tier mix", profile_tier_mix)
     model_table.add_row("Current session", str(getattr(summary, "current_session_id", None) or "none"))
     pricing_snapshot_configured = bool(getattr(summary, "pricing_snapshot_configured", False))
     snapshot_state = "configured" if pricing_snapshot_configured else "not configured"
@@ -2702,6 +2719,8 @@ def _render_cost_summary(summary: object, *, last_sessions: int) -> None:
     model_table.add_row("Pricing snapshot", snapshot_state)
     console.print("[bold]Current posture[/]")
     console.print(model_table)
+    if profile_tier_mix != "unknown":
+        console.print(f"[dim]{_profile_tier_mix_interpretation()}[/]")
     console.print()
 
     project_rollup = summary.project
@@ -2726,6 +2745,7 @@ def _render_cost_summary(summary: object, *, last_sessions: int) -> None:
         table.add_column("Project")
         table.add_column("Usage")
         table.add_column("Cost")
+        table.add_column("Interpretation")
         table.add_column("Total Tokens")
         table.add_column("USD")
         table.add_column("Last Recorded")
@@ -2735,6 +2755,7 @@ def _render_cost_summary(summary: object, *, last_sessions: int) -> None:
                 _format_display_path(str(getattr(row, "project_root", "") or "")) if getattr(row, "project_root", None) else "—",
                 str(getattr(row, "usage_status", "unavailable")),
                 str(getattr(row, "cost_status", "unavailable")),
+                str(getattr(row, "interpretation", "unknown")),
                 _format_cost_tokens(int(getattr(row, "total_tokens", 0) or 0)),
                 _format_cost_money(getattr(row, "cost_usd", None)),
                 str(getattr(row, "last_recorded_at", None) or "—"),
@@ -2758,7 +2779,9 @@ def cost(
 
     summary = build_cost_summary(_get_cwd(), last_sessions=last_sessions)
     if _raw:
-        _output(summary)
+        payload = summary.model_dump(mode="json")
+        payload["profile_tier_mix_interpretation"] = _profile_tier_mix_interpretation()
+        _output(payload)
         return
     _render_cost_summary(summary, last_sessions=max(last_sessions, 0))
 

@@ -358,6 +358,7 @@ def _sample_cost_summary(workspace: Path) -> CostSummary:
         record_count=2,
         usage_status="measured",
         cost_status="unavailable",
+        interpretation="tokens measured; USD unavailable",
         input_tokens=1200,
         output_tokens=300,
         total_tokens=1500,
@@ -372,6 +373,7 @@ def _sample_cost_summary(workspace: Path) -> CostSummary:
         record_count=1,
         usage_status="measured",
         cost_status="unavailable",
+        interpretation="tokens measured; USD unavailable",
         input_tokens=800,
         output_tokens=200,
         total_tokens=1000,
@@ -392,6 +394,7 @@ def _sample_cost_summary(workspace: Path) -> CostSummary:
         },
         model_profile="review",
         runtime_model_selection="runtime defaults",
+        profile_tier_mix={"tier-1": 12, "tier-2": 10, "tier-3": 1},
         current_session_id="session-123",
         project=project,
         current_session=current_session,
@@ -428,14 +431,16 @@ def test_cost_raw_outputs_summary_payload(tmp_path: Path) -> None:
     assert payload["active_runtime_capabilities"]["telemetry_source"] == "notify-hook"
     assert payload["model_profile"] == "review"
     assert payload["runtime_model_selection"] == "runtime defaults"
+    assert payload["profile_tier_mix"] == {"tier-1": 12, "tier-2": 10, "tier-3": 1}
+    assert payload["profile_tier_mix_interpretation"].startswith("Advisory only; counts profile-to-tier assignments")
     assert payload["project"]["usage_status"] == "measured"
     assert payload["project"]["cost_status"] == "unavailable"
+    assert payload["project"]["interpretation"] == "tokens measured; USD unavailable"
     assert payload["project"]["total_tokens"] == 1500
     assert payload["project"]["cost_usd"] is None
     assert payload["recent_sessions"][0]["session_id"] == "session-123"
     assert payload["recent_sessions"][0]["total_tokens"] == 1000
     assert any("no pricing snapshot is configured" in item for item in payload["guidance"])
-
 
 def test_cost_human_output_stays_read_only_and_advisory(tmp_path: Path) -> None:
     summary = _sample_cost_summary(tmp_path)
@@ -450,10 +455,15 @@ def test_cost_human_output_stays_read_only_and_advisory(tmp_path: Path) -> None:
     assert "Current posture" in result.output
     assert "Telemetry support" in result.output
     assert "best-effort via notify-hook" in result.output
+    assert "Profile tier mix" in result.output
+    assert "tier-1=12, tier-2=10, tier-3=1" in result.output
+    assert "Advisory only; counts profile-to-tier assignments" in result.output
     assert "Pricing snapshot" in result.output
     assert "not configured" in result.output
     assert "Current project" in result.output
     assert "Recent sessions" in result.output
+    assert "Interpretation" in result.output
+    assert "tokens measured; USD unavailable" in result.output
     assert "Measured tokens are available, but no pricing snapshot is configured" in result.output
     assert "Current model posture: profile `review` with codex runtime defaults." in result.output
 

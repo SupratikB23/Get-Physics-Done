@@ -140,6 +140,23 @@ def _workflow_next_actions(details: dict[str, object], *, base_ready: bool, late
     return actions
 
 
+def _cost_next_actions(cost_summary: object) -> list[str]:
+    actions: list[str] = []
+    project_rollup = getattr(cost_summary, "project", None)
+    if int(getattr(project_rollup, "record_count", 0) or 0) > 0:
+        actions.append(
+            "Run `gpd cost` to inspect recorded machine-local usage / cost and the current profile tier mix for this workspace."
+        )
+        return actions
+
+    capabilities = getattr(cost_summary, "active_runtime_capabilities", {}) or {}
+    if isinstance(capabilities, dict) and capabilities.get("telemetry_completeness") == "best-effort":
+        actions.append(
+            "After a run, use `gpd cost` to inspect recorded machine-local usage / cost and the current profile tier mix for this workspace."
+        )
+    return actions
+
+
 def build_runtime_hint_payload(
     cwd: Path | None = None,
     *,
@@ -222,6 +239,7 @@ def build_runtime_hint_payload(
     if include_recovery:
         next_action_parts.extend(_recovery_next_actions(recovery, current_project))
     if cost_summary is not None:
+        next_action_parts.extend(_cost_next_actions(cost_summary))
         next_action_parts.extend(cost_summary.guidance or [])
     if include_workflow_presets:
         next_action_parts.extend(_workflow_next_actions(workflow_presets, base_ready=base_ready, latex_capability=normalized_latex_capability))

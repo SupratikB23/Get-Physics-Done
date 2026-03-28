@@ -511,7 +511,10 @@ def test_help_prompt_keeps_cost_surface_on_local_cli_not_runtime_slash_command()
         assert "/gpd:cost" not in content
         assert "machine-local usage / cost summary" in content
         assert "recorded local telemetry" in content
+        assert "current profile tier mix" in content
+        assert content.count("current profile tier mix") >= 2
         assert "not live budget enforcement or provider billing truth" in content
+        assert "summary stays partial or estimated rather than exact" in content
 
 
 def test_help_prompt_session_management_keeps_pause_before_leave_and_resume_on_return() -> None:

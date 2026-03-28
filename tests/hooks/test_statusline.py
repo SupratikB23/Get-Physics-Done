@@ -118,8 +118,15 @@ def _visibility_state(**overrides: object) -> SimpleNamespace:
     return SimpleNamespace(**payload)
 
 
-def _runtime_hints_payload(visibility: SimpleNamespace | None = None) -> dict[str, object]:
-    return {"execution": vars(visibility) if visibility is not None else None}
+def _runtime_hints_payload(
+    visibility: SimpleNamespace | None = None,
+    *,
+    cost: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "execution": vars(visibility) if visibility is not None else None,
+        "cost": cost or {},
+    }
 
 
 def _mark_complete_install(config_dir: Path, *, runtime: str | None = None, install_scope: str = "local") -> None:

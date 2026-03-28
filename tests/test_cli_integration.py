@@ -1771,10 +1771,11 @@ def test_cost_human_output_without_usage_ledger_stays_read_only_and_advisory(
     assert "Read-only machine-local usage/cost summary." in normalized_output
     assert "GPD reports measured telemetry when available" in normalized_output
     assert "clearly labels estimates or unavailable values." in normalized_output
+    assert "Profile tier mix" in result.output
+    assert "Advisory only; counts profile-to-tier assignments" in result.output
     assert "No measured usage telemetry is recorded for this workspace yet." in result.output
     assert not ledger_path.exists()
     assert config_path.read_text(encoding="utf-8") == config_before
-
 
 def test_cost_raw_keeps_tokens_measured_but_usd_unavailable_without_pricing_snapshot(
     gpd_project: Path,
@@ -1811,11 +1812,15 @@ def test_cost_raw_keeps_tokens_measured_but_usd_unavailable_without_pricing_snap
     assert payload["project"]["record_count"] == 1
     assert payload["project"]["usage_status"] == "measured"
     assert payload["project"]["cost_status"] == "unavailable"
+    assert payload["project"]["interpretation"] == "tokens measured; USD unavailable"
     assert payload["project"]["total_tokens"] == 1500
     assert payload["project"]["cost_usd"] is None
+    assert payload["profile_tier_mix"] == {"tier-1": 12, "tier-2": 10, "tier-3": 1}
+    assert payload["profile_tier_mix_interpretation"].startswith("Advisory only; counts profile-to-tier assignments")
     assert payload["recent_sessions"][0]["session_id"] == "session-1"
     assert payload["recent_sessions"][0]["usage_status"] == "measured"
     assert payload["recent_sessions"][0]["cost_status"] == "unavailable"
+    assert payload["recent_sessions"][0]["interpretation"] == "tokens measured; USD unavailable"
     assert payload["recent_sessions"][0]["cost_usd"] is None
     assert any("no pricing snapshot is configured" in item for item in payload["guidance"])
     assert ledger_path.read_text(encoding="utf-8") == ledger_before

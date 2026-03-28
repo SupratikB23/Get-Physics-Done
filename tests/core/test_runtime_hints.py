@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from gpd.core.costs import UsageRecord, usage_ledger_path
 from gpd.core.recent_projects import record_recent_project
@@ -144,6 +145,8 @@ def test_build_runtime_hint_payload_merges_source_sections_and_actions(tmp_path:
     assert payload.cost["workspace_root"] == project.resolve(strict=False).as_posix()
     assert payload.cost["project"]["record_count"] == 1
     assert payload.cost["project"]["usage_status"] == "measured"
+    assert payload.cost["project"]["interpretation"] == "tokens measured; USD unavailable"
+    assert payload.cost["profile_tier_mix"] == {"tier-1": 12, "tier-2": 10, "tier-3": 1}
     assert any("pricing snapshot" in item for item in payload.cost["guidance"])
 
     assert payload.workflow_presets["ready"] == 5
@@ -153,6 +156,10 @@ def test_build_runtime_hint_payload_merges_source_sections_and_actions(tmp_path:
     assert payload.workflow_presets["latex_capability"]["arxiv_submission_ready"] is True
 
     assert "Run `gpd resume` to inspect the current recovery snapshot for this project." in payload.next_actions
+    assert (
+        "Run `gpd cost` to inspect recorded machine-local usage / cost and the current profile tier mix for this workspace."
+        in payload.next_actions
+    )
     assert any("pricing snapshot" in action for action in payload.next_actions)
     assert any("latexmk" in action for action in payload.next_actions)
     assert any("kpsewhich" in action for action in payload.next_actions)
@@ -213,6 +220,85 @@ def test_build_runtime_hint_payload_handles_absent_execution_snapshot(tmp_path: 
     assert payload.workflow_presets["blocked"] == 5
     assert any("resume --recent" in action for action in payload.next_actions)
     assert any("base runtime-readiness" in action for action in payload.next_actions)
+
+
+def test_build_runtime_hint_payload_keeps_cost_guidance_visible_when_best_effort_telemetry_is_active(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _bootstrap_project(tmp_path)
+
+    fake_summary = SimpleNamespace(
+        current_session_id="sess-cost",
+        active_runtime="codex",
+        model_profile="review",
+        runtime_model_selection="runtime defaults",
+        profile_tier_mix={},
+        workspace_root=project.resolve(strict=False).as_posix(),
+        project=SimpleNamespace(record_count=0, cost_status="unavailable"),
+        current_session=None,
+        recent_sessions=[],
+        pricing_snapshot_configured=False,
+        pricing_snapshot_source=None,
+        pricing_snapshot_as_of=None,
+        active_runtime_capabilities={
+            "permissions_surface": "config-file",
+            "statusline_surface": "none",
+            "notify_surface": "explicit",
+            "telemetry_source": "notify-hook",
+            "telemetry_completeness": "best-effort",
+        },
+        guidance=[
+            "codex only exposes best-effort usage telemetry through notify-hook, so missing turns remain unavailable instead of being guessed."
+        ],
+    )
+    monkeypatch.setattr("gpd.core.runtime_hints.build_cost_summary", lambda *args, **kwargs: fake_summary)
+
+    payload = build_runtime_hint_payload(project, include_recovery=False, include_workflow_presets=False)
+
+    assert "advisory" not in payload.cost
+    assert (
+        "After a run, use `gpd cost` to inspect recorded machine-local usage / cost and the current profile tier mix for this workspace."
+        in payload.next_actions
+    )
+    assert fake_summary.guidance[0] in payload.next_actions
+
+
+def test_build_runtime_hint_payload_skips_cost_nudge_when_runtime_exposes_no_telemetry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _bootstrap_project(tmp_path)
+
+    fake_summary = SimpleNamespace(
+        current_session_id="sess-cost",
+        active_runtime="codex",
+        model_profile="review",
+        runtime_model_selection="runtime defaults",
+        profile_tier_mix={},
+        workspace_root=project.resolve(strict=False).as_posix(),
+        project=SimpleNamespace(record_count=0, cost_status="unavailable"),
+        current_session=None,
+        recent_sessions=[],
+        pricing_snapshot_configured=False,
+        pricing_snapshot_source=None,
+        pricing_snapshot_as_of=None,
+        active_runtime_capabilities={
+            "permissions_surface": "config-file",
+            "statusline_surface": "none",
+            "notify_surface": "explicit",
+            "telemetry_source": "none",
+            "telemetry_completeness": "none",
+        },
+        guidance=[
+            "codex does not currently expose a GPD-managed usage telemetry collection path, so `gpd cost` may remain empty even when work runs."
+        ],
+    )
+    monkeypatch.setattr("gpd.core.runtime_hints.build_cost_summary", lambda *args, **kwargs: fake_summary)
+
+    payload = build_runtime_hint_payload(project, include_recovery=False, include_workflow_presets=False)
+
+    assert "advisory" not in payload.cost
+    assert not any(action.startswith("Run `gpd cost`") or action.startswith("After a run, use `gpd cost`") for action in payload.next_actions)
+    assert fake_summary.guidance[0] in payload.next_actions
 
 
 def test_build_runtime_hint_payload_surfaces_tangent_follow_up_from_execution_visibility(tmp_path: Path) -> None:

@@ -96,6 +96,12 @@ If `model_overrides.<runtime>` already exists, surface the current `tier-1` / `t
 > **Platform note:** If `ask_user` is not available, present these options in plain text and wait for the user's freeform response.
 
 Treat this as the primary guided unattended-use flow: explain that autonomy, unattended budgets, runtime permission sync, and conservative preset bundles all live here, and that `Balanced` is the recommended default for most users.
+Teach one coherent posture-to-inspection loop:
+
+- choose a qualitative posture first (`Max Quality`, `Balanced`, `Budget-aware`)
+- use that posture to decide whether to keep runtime defaults or pin explicit tier model strings
+- use `gpd cost` after runs to inspect recorded local usage / cost and the current profile tier mix
+- do not present posture labels or `gpd cost` as provider billing truth or spend enforcement
 
 If the user asks for a preset, map it onto the existing knobs above. Present the resolved bundle first, let the user preview it, then ask for an explicit apply/adjust choice. Do not add a new persisted config section or install step.
 Use `gpd presets list` for the catalog, `gpd presets show <preset>` to preview one bundle, and `gpd presets apply <preset> --dry-run` when the user wants the local preview/apply path from a normal terminal. Use `gpd validate unattended-readiness --runtime <runtime> --autonomy <mode>` for the unattended or overnight verdict, `gpd doctor` for install and runtime-local readiness, and `gpd validate plan-preflight <PLAN.md>` for plan readiness. Add `--live-executable-probes` to `gpd doctor` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`, but that stays separate from the shared Wolfram integration config. For Wolfram capability, use `gpd integrations status wolfram` to inspect the shared optional integration config; that is separate from a local Mathematica install and does not mean a plan is ready to run.
@@ -364,7 +370,9 @@ Local CLI bridge: use `gpd --help`, `gpd validate unattended-readiness --runtime
 
 These settings apply to future /gpd:plan-phase and /gpd:execute-phase runs.
 
-Model-cost posture is qualitative guidance only. It maps onto the existing `model_profile` and `model_overrides` decisions, not a new persisted config key or pricing system.
+Model-cost posture is qualitative guidance only. It maps onto the existing `model_profile` and `model_overrides` decisions, not a new persisted config key, pricing system, or billing promise.
+
+Use `gpd cost` after runs to inspect recorded local usage / cost and the current profile tier mix for this workspace; it remains advisory only.
 
 Concrete tier model strings are passed through to the active runtime unchanged, so they should always use that runtime's native model syntax.
 

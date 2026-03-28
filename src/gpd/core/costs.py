@@ -43,8 +43,6 @@ __all__ = [
 
 _RECENT_SESSION_DEFAULT = 5
 _DEDUP_WINDOW_SECONDS = 10.0
-
-
 class UsageRecord(BaseModel):
     """One machine-local usage/cost ledger entry."""
 
@@ -107,6 +105,7 @@ class CostRollup(BaseModel):
     record_count: int = 0
     usage_status: str = "unavailable"
     cost_status: str = "unavailable"
+    interpretation: str = "no records yet"
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
@@ -141,6 +140,7 @@ class CostSummary(BaseModel):
     active_runtime_capabilities: dict[str, str] = Field(default_factory=dict)
     model_profile: str | None = None
     runtime_model_selection: str | None = None
+    profile_tier_mix: dict[str, int] = Field(default_factory=dict)
     current_session_id: str | None = None
     project: CostProjectSummary
     current_session: CostSessionSummary | None = None
@@ -224,6 +224,25 @@ def _runtime_capability_payload(runtime: str | None) -> dict[str, str]:
         "telemetry_completeness": capability.telemetry_completeness,
     }
 
+
+def _profile_tier_mix(profile: str | None) -> dict[str, int]:
+    normalized_profile = _normalize_optional_text(profile)
+    if normalized_profile is None:
+        return {}
+    try:
+        from gpd.core.config import MODEL_PROFILES
+    except Exception:
+        return {}
+
+    counts = {"tier-1": 0, "tier-2": 0, "tier-3": 0}
+    for tier_map in MODEL_PROFILES.values():
+        tier = tier_map.get(normalized_profile)
+        if tier is None:
+            continue
+        key = getattr(tier, "value", str(tier))
+        if key in counts:
+            counts[key] += 1
+    return {key: value for key, value in counts.items() if value > 0}
 
 def _usage_container(payload: dict[str, object], usage_keys: tuple[str, ...]) -> dict[str, object]:
     for key in usage_keys:
@@ -591,10 +610,24 @@ def _rollup(records: list[UsageRecord]) -> CostRollup:
         cost_status = "unavailable"
         cost_total = None
 
+    interpretation = "usage unavailable"
+    if cost_status == "measured":
+        interpretation = "USD measured"
+    elif cost_status == "estimated":
+        interpretation = "USD estimated from pricing snapshot"
+    elif cost_status == "mixed":
+        interpretation = "USD mixes measured and estimated values"
+
+    if usage_status == "measured" and cost_status == "unavailable":
+        interpretation = "tokens measured; USD unavailable"
+    elif usage_status != "measured" and cost_status in {"measured", "estimated", "mixed"}:
+        interpretation = f"{interpretation}; token counts unavailable"
+
     return CostRollup(
         record_count=len(records),
         usage_status=usage_status,
         cost_status=cost_status,
+        interpretation=interpretation,
         input_tokens=sum(record.input_tokens or 0 for record in records),
         output_tokens=sum(record.output_tokens or 0 for record in records),
         total_tokens=sum(record.total_tokens or 0 for record in records),
@@ -628,7 +661,12 @@ def _session_rows(records: list[UsageRecord], *, last: int) -> list[CostSessionS
     return rows[:last] if last > 0 else rows
 
 
-def build_cost_summary(cwd: Path | None = None, *, data_root: Path | None = None, last_sessions: int = _RECENT_SESSION_DEFAULT) -> CostSummary:
+def build_cost_summary(
+    cwd: Path | None = None,
+    *,
+    data_root: Path | None = None,
+    last_sessions: int = _RECENT_SESSION_DEFAULT,
+) -> CostSummary:
     """Build a read-only usage/cost summary for the current workspace and recent sessions."""
     resolved_workspace = resolve_project_root(cwd) if cwd is not None else None
     if resolved_workspace is None:
@@ -644,12 +682,14 @@ def build_cost_summary(cwd: Path | None = None, *, data_root: Path | None = None
     active_runtime_capabilities: dict[str, str] = {}
     model_profile: str | None = None
     runtime_model_selection: str | None = None
+    profile_tier_mix: dict[str, int] = {}
     try:
         from gpd.core.config import load_config
         from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, detect_runtime_for_gpd_use
 
         config = load_config(resolved_workspace)
         model_profile = getattr(config.model_profile, "value", None) or str(config.model_profile)
+        profile_tier_mix = _profile_tier_mix(model_profile)
         detected_runtime = detect_runtime_for_gpd_use(cwd=resolved_workspace)
         if detected_runtime != RUNTIME_UNKNOWN:
             active_runtime = detected_runtime
@@ -704,6 +744,7 @@ def build_cost_summary(cwd: Path | None = None, *, data_root: Path | None = None
         active_runtime_capabilities=active_runtime_capabilities,
         model_profile=model_profile,
         runtime_model_selection=runtime_model_selection,
+        profile_tier_mix=profile_tier_mix,
         current_session_id=current_session_id,
         project=CostProjectSummary(project_root=resolved_workspace.as_posix(), **project_rollup.model_dump()),
         current_session=(

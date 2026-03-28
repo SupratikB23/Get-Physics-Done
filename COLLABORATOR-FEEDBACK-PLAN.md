@@ -496,6 +496,63 @@ If we continue, the next highest-value step is cost transparency and budget-orie
 
 That step should answer one user question directly: “If I leave this running, how expensive is the chosen setup likely to be?”
 
+### Step 10 Completed: Cost Transparency And Budget-Oriented Onboarding
+
+Status: completed on March 28, 2026.
+
+What shipped:
+
+- `gpd cost` now surfaces clearer read-only interpretation for project/session/recent-session summaries instead of leaving users to infer what measured vs estimated vs unavailable means.
+- `gpd cost` now also surfaces the current profile tier mix for the workspace and explicitly labels that mix as advisory profile-to-tier mapping rather than measured runtime model usage or spend.
+- Shared runtime hints now add the same local follow-up nudge when relevant:
+  - inspect recorded machine-local usage / cost
+  - inspect the current profile tier mix
+- README/help/settings now teach one consistent posture-to-inspection loop:
+  - choose a qualitative posture first
+  - keep runtime defaults unless there is a concrete reason to pin explicit tier models
+  - use `gpd cost` after runs to inspect local usage/cost and tier mix rather than guessing from posture labels
+- The step stayed intentionally narrow:
+  - no `--budget-usd`
+  - no persisted USD thresholds
+  - no config-schema expansion
+  - no statusline cost/budget badge
+  - no fake precision or invoice-level billing claims
+- Added explicit regression coverage for the cost-only record case where USD is present but token counts are unavailable.
+
+Verification:
+
+- Focused Step 10 suites passed:
+  - `uv run pytest -q tests/core/test_cli.py tests/test_cli_integration.py tests/core/test_runtime_hints.py tests/core/test_prompt_wiring.py tests/core/test_prompt_cli_consistency.py tests/test_release_consistency.py tests/hooks/test_statusline.py tests/core/test_config.py tests/core/test_costs.py tests/core/test_settings_contract_wiring.py`
+  - `uv run ruff check README.md src/gpd/cli.py src/gpd/core/costs.py src/gpd/core/runtime_hints.py src/gpd/hooks/statusline.py src/gpd/commands/help.md src/gpd/specs/workflows/help.md src/gpd/specs/workflows/settings.md tests/core/test_cli.py tests/test_cli_integration.py tests/core/test_runtime_hints.py tests/core/test_prompt_wiring.py tests/core/test_prompt_cli_consistency.py tests/test_release_consistency.py tests/hooks/test_statusline.py tests/core/test_config.py tests/core/test_costs.py tests/core/test_settings_contract_wiring.py`
+- Result:
+  - `573 passed`
+  - `ruff clean`
+
+Execution/review wave feedback:
+
+- Six review lanes covered the final Step 10 slice.
+- Four lanes reported no findings on the narrowed scope.
+- Two lanes surfaced small but real drift during execution review:
+  - stale public wording still talked about nonexistent “budget comparisons”
+  - two secondary help surfaces still described `gpd cost` as telemetry-only instead of telemetry plus profile tier mix
+- Both findings were fixed before the final verification pass.
+
+Remaining friction after Step 10:
+
+- `gpd cost` is still a read-only local telemetry/pricing-snapshot interpretation surface, not live provider billing truth or spend enforcement.
+- `profile tier mix` remains a profile-derived heuristic, not measured runtime model selection.
+- There is still no recent-session picker or single top-level state-aware “what should I do next?” surface across startup/help/runtime hints.
+
+### Next Step After Step 10
+
+If we continue, the next highest-value step is a single state-aware orientation surface:
+
+- recent-session discovery with a clearer best-next-target story
+- one top-level “what should I run next here?” answer across install/help/runtime hints
+- better handoff between current-workspace recovery, recent-project discovery, and in-runtime continuation
+
+That step should answer one user question directly: “I’m back in front of GPD now; what is the next safe command to run from here?”
+
 ## Feedback Map
 
 | Transcript theme | Current repo state | What should happen |
