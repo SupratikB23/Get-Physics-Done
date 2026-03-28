@@ -23,8 +23,8 @@ Current preset catalog:
 - `core-research` — recommended balanced default for most projects
 - `theory` — derivation-heavy workflow with `model_profile=deep-theory`
 - `numerics` — computation-heavy workflow with `model_profile=numerical`
-- `publication-manuscript` — paper-writing workflow with `model_profile=paper-writing`; build/submission depend on LaTeX readiness
-- `full-research` — core research defaults with publication readiness tracked alongside them
+- `publication-manuscript` — paper-writing workflow with `model_profile=paper-writing`; `paper-build` is the manuscript build contract and LaTeX readiness only affects local smoke checks
+- `full-research` — core research defaults with publication readiness tracked alongside them; `paper-build` still defines the manuscript build contract
 
 Preset application must be explicit and previewable. Show the resolved knobs first, then ask whether to apply the bundle or return to the detailed questions. Do not create or persist a separate preset block.
 </preset_guidance>

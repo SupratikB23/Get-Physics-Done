@@ -60,7 +60,7 @@ Routes to the write-paper workflow which handles all logic including:
 3. Scope establishment, artifact cataloging, and outline creation
 4. Figure generation before section drafting
 5. Wave-parallelized section drafting (Wave 1: Results+Methods, Wave 2: Introduction, Wave 3: Discussion, Wave 4: Conclusions, Wave 5: Abstract, Wave 6: Appendices)
-6. LaTeX compilation checks after each wave (if pdflatex available; cross-platform detection including Windows MiKTeX/TeX Live)
+6. Optional local compilation smoke checks after each wave when a compiler is available; `gpd paper-build` remains the canonical manuscript scaffold contract
 7. Consistency check, notation audit, and RESULT PENDING placeholder resolution
 8. Bibliography verification via gpd-bibliographer
 9. Pre-submission staged peer review via specialist panel plus final gpd-referee adjudication
@@ -102,13 +102,13 @@ When the workflow asks for constrained artifacts such as `${PAPER_DIR}/PAPER-CON
 
 The workflow handles all logic including:
 
-1. **Init** — Load project context via `gpd init phase-op`, check pdflatex availability (cross-platform, including Windows MiKTeX/TeX Live), verify conventions
+1. **Init** — Load project context via `gpd init phase-op`, check optional local compiler availability for smoke tests (cross-platform, including Windows MiKTeX/TeX Live), verify conventions
 2. **Load research digest** — Check for RESEARCH-DIGEST.md from milestone completion; map digest sections to paper structure; fall back to raw phase data if no digest found. Supports `--from-phases` flag to select specific phases.
 3. **Establish scope** — Target journal, paper type, key result (ONE sentence), audience, available artifacts
 4. **Catalog artifacts** — Gather derivations, numerical results, figures, literature, verification results from phases
 5. **Paper-readiness audit** — 5 checks (SUMMARY completeness, convention consistency, numerical stability, figure readiness, citation readiness) with gate decision (0 critical gaps to proceed, or user approval)
 6. **Create outline** — Detailed per-section outline (purpose, key content, equations, figures, citations, dependencies) adapted to journal format. Present for approval.
-7. **Generate files** — Create `${PAPER_DIR}/PAPER-CONFIG.json` using `@{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md`, then materialize the canonical manuscript scaffold with `gpd paper-build` (emits `${PAPER_DIR}/main.tex`, bibliography artifacts, and `${PAPER_DIR}/ARTIFACT-MANIFEST.json`)
+7. **Generate files** — Create `${PAPER_DIR}/PAPER-CONFIG.json` using `@{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md`, then materialize the canonical manuscript scaffold with `gpd paper-build` (emits `${PAPER_DIR}/main.tex`, bibliography artifacts, and `${PAPER_DIR}/ARTIFACT-MANIFEST.json`; local compiler runs are smoke checks only)
 8. **Generate figures** — Generate matplotlib scripts from phase data, execute to `${PAPER_DIR}/figures/`, update FIGURE_TRACKER.md
 9. **Draft sections** — Wave-parallelized spawning of gpd-paper-writer agents:
    - Wave 1: Results + Methods (no dependency)
@@ -117,7 +117,7 @@ The workflow handles all logic including:
    - Wave 4: Conclusions
    - Wave 5: Abstract (write LAST)
    - Wave 6: Appendices
-   - LaTeX compilation check after each wave (if pdflatex available; Windows users: install MiKTeX or TeX Live)
+   - Optional local compilation smoke check after each wave when a compiler is available; Windows users can install MiKTeX or TeX Live for that local verification path
    - Per-wave checkpointing: skip waves whose .tex outputs already exist
 10. **Consistency check** — Notation audit, cross-reference audit, placeholder resolution (RESULT PENDING markers), physics consistency, narrative flow
 11. **Notation audit** — Cross-reference all symbols against NOTATION_GLOSSARY.md (if exists)

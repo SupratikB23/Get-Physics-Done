@@ -81,7 +81,7 @@ Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has 
 
 **Workflow presets**
 1. `Paper/manuscript workflows` — First supported workflow preset for `write-paper`, `paper-build`, `peer-review`, and `arxiv-submission`; inspect it with `gpd presets list`, preview it with `gpd presets show <preset>`, and apply it from your normal terminal with `gpd presets apply <preset>` or through your runtime-specific `settings` command
-2. `gpd doctor --runtime <runtime> --local|--global` — Check runtime-local LaTeX preset readiness from your normal terminal before using that preset; failed preset rows degrade that workflow rather than blocking the base install
+2. `gpd doctor --runtime <runtime> --local|--global` — Check runtime-local paper-toolchain readiness from your normal terminal before using that preset; failed preset rows degrade `write-paper`, but `paper-build` remains the build contract and `arxiv-submission` requires the built manuscript
 3. `gpd presets list` — Inspect the local preset catalog; presets resolve to the existing config keys and are not stored as a separate preset block
 4. `gpd presets show <preset>` — Preview one preset's bundle before applying it
 5. `gpd presets apply <preset> [--dry-run]` — Apply or preview one preset from your normal terminal without inventing a separate preset schema
@@ -127,7 +127,7 @@ Choose the path that matches your starting point:
 
 **Workflow presets**
 1. `Paper/manuscript workflows` - First supported workflow preset for `write-paper`, `paper-build`, `peer-review`, and `arxiv-submission`; inspect it with `gpd presets list`, preview it with `gpd presets show <preset>`, and apply it from your normal terminal with `gpd presets apply <preset>` or through your runtime-specific `settings` command
-2. `gpd doctor --runtime <runtime> --local|--global` - Check runtime-local LaTeX preset readiness from your normal terminal before using that preset; failed preset rows degrade that workflow rather than blocking the base install
+2. `gpd doctor --runtime <runtime> --local|--global` - Check runtime-local paper-toolchain readiness from your normal terminal before using that preset; failed preset rows degrade `write-paper`, but `paper-build` remains the build contract and `arxiv-submission` requires the built manuscript
 3. `gpd presets list` - Inspect the local preset catalog; presets resolve to the existing config keys and are not stored as a separate preset block
 4. `gpd presets show <preset>` - Preview one preset's bundle before applying it
 5. `gpd presets apply <preset> [--dry-run]` - Apply or preview one preset from your normal terminal without inventing a separate preset schema
@@ -603,7 +603,7 @@ Structure and write a physics paper from research results.
 - Loads research digest from milestone completion (if available)
 - Runs paper-readiness audit (conventions, verification, figures, citations)
 - Spawns gpd-paper-writer agents for each section (Results first, Abstract last)
-- Generates LaTeX with proper equations, figures, and citations
+- Drafts the manuscript and uses `gpd paper-build` for the canonical scaffold/build contract
 - Spawns gpd-bibliographer to verify all references
 - Runs the staged peer-review panel with gpd-referee as final adjudicator
 - Supports revision mode for referee responses (bounded 3-iteration loop)
@@ -640,7 +640,8 @@ Usage: `/gpd:respond-to-referees`
 **`/gpd:arxiv-submission`**
 Prepare a completed paper for arXiv submission with validation and packaging.
 
-- LaTeX validation and compilation check
+- Requires a successful `gpd paper-build` before packaging
+- Optional local compiler smoke check if available
 - Bibliography flattening (inline .bbl or resolve .bib)
 - Figure format and resolution checking
 - `\input` resolution into single .tex file (optional)

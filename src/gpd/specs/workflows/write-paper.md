@@ -115,7 +115,7 @@ fi
 If the loop found an existing `main.tex`, the workflow is resuming or revising that manuscript directory. Strict review for that resume path uses `${PAPER_DIR}/ARTIFACT-MANIFEST.json`, `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json`, and `${PAPER_DIR}/reproducibility-manifest.json` from the same directory.
 If no existing manuscript was found, `PAPER_DIR` defaults to `paper` and the workflow bootstraps a fresh scaffold there.
 
-**Check pdflatex availability (cross-platform):**
+**Check optional local LaTeX compiler availability for smoke tests (cross-platform):**
 
 ```bash
 # Check standard PATH first, then platform-specific locations
@@ -145,16 +145,16 @@ fi
 If `PDFLATEX_AVAILABLE` is false, display a warning:
 
 ```
-⚠ pdflatex not found. LaTeX compilation checks will be skipped.
+⚠ pdflatex not found. Local compilation smoke checks will be skipped.
   The paper .tex files will still be generated correctly.
 
-  To enable compilation checks, install a LaTeX distribution:
+  To enable local smoke checks, install a LaTeX distribution:
     - Windows:     MiKTeX (https://miktex.org/download) or TeX Live
     - macOS:       brew install --cask mactex
     - Linux:       sudo apt install texlive-latex-base  (Debian/Ubuntu)
 ```
 
-The workflow continues without compilation checks — .tex file generation does not require pdflatex.
+The workflow continues without local compilation smoke checks — .tex file generation does not require pdflatex, and `gpd paper-build` remains the canonical manuscript scaffold contract.
 
 **Convention verification** — papers must use consistent conventions throughout:
 
@@ -526,7 +526,7 @@ mkdir -p "${PAPER_DIR}"
 gpd paper-build "${PAPER_DIR}/PAPER-CONFIG.json" --output-dir "${PAPER_DIR}"
 ```
 
-This emits `${PAPER_DIR}/main.tex`, writes the artifact manifest, and keeps the manuscript scaffold aligned with the tested `gpd.mcp.paper` package. If no JSON spec exists yet, create `${PAPER_DIR}/PAPER-CONFIG.json` first using `{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md` as the schema source of truth, and then run `gpd paper-build` before proceeding. The compilation checks in `draft_sections` require `main.tex` to exist.
+This emits `${PAPER_DIR}/main.tex`, writes the artifact manifest, and keeps the manuscript scaffold aligned with the tested `gpd.mcp.paper` package. `gpd paper-build` defines the build truth for the manuscript; local compiler runs are only smoke checks. If no JSON spec exists yet, create `${PAPER_DIR}/PAPER-CONFIG.json` first using `{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md` as the schema source of truth, and then run `gpd paper-build` before proceeding. The compilation checks in `draft_sections` require `main.tex` to exist.
 
 When authoring `${PAPER_DIR}/PAPER-CONFIG.json`:
 
@@ -588,9 +588,9 @@ Spawn gpd-paper-writer agents for section drafting.
 5. **Wave 5:** Abstract -- distill everything into 150-300 words (write LAST)
 6. **Wave 6:** Appendices -- technical details moved from main text
 
-**LaTeX compilation check after each wave (if pdflatex available):**
+**Optional local compilation smoke check after each wave (if a compiler is available):**
 
-Skip this check if `PDFLATEX_AVAILABLE` is false (set in init step).
+Skip this check if `PDFLATEX_AVAILABLE` is false (set in init step). `gpd paper-build` remains the source of build truth either way.
 
 After each drafting wave completes, verify the document compiles:
 
@@ -1041,7 +1041,7 @@ Options:
 <success_criteria>
 
 - [ ] Project context loaded via init (commit_docs, state_exists)
-- [ ] pdflatex availability checked (compilation tests skipped if unavailable)
+- [ ] Local compilation smoke check run when available (skipped otherwise)
 - [ ] Research digest checked and loaded (if available from milestone completion)
 - [ ] Paper scope established (journal, type, key result, audience)
 - [ ] Research artifacts cataloged and mapped to sections
@@ -1058,7 +1058,7 @@ Options:
 - [ ] Internal consistency verified (notation, cross-references, conventions)
 - [ ] Notation audit includes NOTATION_GLOSSARY.md cross-reference (if glossary exists)
 - [ ] Narrative arc flows from motivation through result to significance
-- [ ] Paper directory created with buildable LaTeX (if pdflatex available)
+- [ ] Paper directory created with buildable LaTeX scaffold via `gpd paper-build`
 - [ ] Abstract accurately reflects paper content
 - [ ] Word/page count within journal limits
 </success_criteria>

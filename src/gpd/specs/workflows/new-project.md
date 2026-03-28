@@ -1030,7 +1030,7 @@ Use ask_user:
   - "Core research (Recommended)" — balanced planning/execution/verification default using the base runtime-readiness contract only
   - "Theory" — derivation-heavy workflow with `model_profile=deep-theory` and denser review cadence
   - "Numerics" — computation-heavy workflow with `model_profile=numerical` and the base runtime-readiness contract only
-  - "Publication / manuscript" — paper-writing workflow with `model_profile=paper-writing`; `paper-build` and `arxiv-submission` depend on LaTeX readiness later
+  - "Publication / manuscript" — paper-writing workflow with `model_profile=paper-writing`; `paper-build` is the manuscript build contract and `arxiv-submission` depends on that built output later
   - "Full research" — core research defaults plus publication readiness tracking for projects expected to end in a paper
   - "Customize settings" — choose `autonomy`, `research_mode`, `parallelization`, `planning.commit_docs`, `execution.review_cadence`, workflow agents, and `model_profile` individually
 
