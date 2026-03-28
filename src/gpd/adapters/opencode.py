@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 
 from gpd.adapters.base import RuntimeAdapter
@@ -130,6 +131,37 @@ def convert_tool_name(tool_name: str) -> str:
     """
     mapped = translate_for_runtime(tool_name, _TOOL_NAME_MAP)
     return mapped if mapped is not None else tool_name
+
+
+def _project_managed_mcp_servers(env: Mapping[str, str] | None = None) -> dict[str, dict[str, object]]:
+    """Project shared optional integrations into OpenCode's neutral MCP shape."""
+    from gpd.mcp.managed_integrations import list_managed_integrations
+
+    managed_servers: dict[str, dict[str, object]] = {}
+    for integration in list_managed_integrations().values():
+        if not integration.is_configured(env):
+            continue
+
+        entry: dict[str, object] = {
+            "command": integration.bridge_command,
+            "args": [],
+        }
+        endpoint = integration.resolved_endpoint(env)
+        if endpoint and endpoint != integration.default_endpoint:
+            entry["env"] = {integration.endpoint_env_var: endpoint}
+
+        managed_servers[integration.managed_server_key] = entry
+
+    return managed_servers
+
+
+def _managed_mcp_server_keys() -> frozenset[str]:
+    """Return GPD-managed OpenCode MCP server keys, including optional integrations."""
+    from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
+    from gpd.mcp.managed_integrations import list_managed_integrations
+
+    managed_keys = {integration.managed_server_key for integration in list_managed_integrations().values()}
+    return frozenset({*GPD_MCP_SERVER_KEYS, *managed_keys})
 
 
 # ---------------------------------------------------------------------------
@@ -802,9 +834,7 @@ def uninstall_opencode(target_dir: Path, *, config_dir: Path) -> dict[str, int]:
         except (json.JSONDecodeError, OSError):
             oc_mcp = None
         if isinstance(oc_mcp, dict) and isinstance(oc_mcp.get("mcp"), dict):
-            from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
-
-            gpd_keys = [k for k in oc_mcp["mcp"] if k in GPD_MCP_SERVER_KEYS]
+            gpd_keys = [k for k in oc_mcp["mcp"] if k in _managed_mcp_server_keys()]
             for k in gpd_keys:
                 del oc_mcp["mcp"][k]
             if gpd_keys:
@@ -1054,6 +1084,9 @@ class OpenCodeAdapter(RuntimeAdapter):
         from gpd.mcp.builtin_servers import build_mcp_servers_dict
 
         mcp_servers = build_mcp_servers_dict(python_path=hook_python_interpreter())
+        managed_mcp_servers = _project_managed_mcp_servers()
+        if managed_mcp_servers:
+            mcp_servers.update(managed_mcp_servers)
         mcp_count = 0
         if mcp_servers:
             mcp_count = _write_mcp_servers_opencode(target_dir, mcp_servers)

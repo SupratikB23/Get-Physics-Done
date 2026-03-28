@@ -575,6 +575,80 @@ class TestInstall:
         assert server["trust"] is True
         assert settings["mcpServers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
 
+    def test_install_projects_managed_wolfram_mcp_without_secrets(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_API_KEY", "super-secret-token")
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_ENDPOINT", "https://example.invalid/api/mcp")
+
+        result = adapter.install(gpd_root, target)
+        adapter.finalize_install(result)
+
+        settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
+        wolfram = settings["mcpServers"]["gpd-wolfram"]
+        assert wolfram["command"] == "gpd-mcp-wolfram"
+        assert wolfram["args"] == []
+        assert wolfram["env"] == {"GPD_WOLFRAM_MCP_ENDPOINT": "https://example.invalid/api/mcp"}
+        assert wolfram["trust"] is True
+        assert "super-secret-token" not in json.dumps(wolfram)
+        assert "GPD_WOLFRAM_MCP_API_KEY" not in json.dumps(wolfram)
+
+    def test_install_preserves_existing_managed_wolfram_overrides(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_API_KEY", "super-secret-token")
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_ENDPOINT", "https://example.invalid/api/mcp")
+        (target / "settings.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "gpd-wolfram": {
+                            "command": "legacy-wolfram-bridge",
+                            "args": ["--legacy"],
+                            "env": {
+                                "GPD_WOLFRAM_MCP_ENDPOINT": "https://custom.invalid/api/mcp",
+                                "EXTRA_FLAG": "1",
+                            },
+                            "cwd": "/tmp/custom-wolfram",
+                            "timeout": 15000,
+                            "trust": False,
+                        },
+                        "custom-server": {"command": "node", "args": ["custom.js"]},
+                    }
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = adapter.install(gpd_root, target)
+        adapter.finalize_install(result)
+
+        settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
+        wolfram = settings["mcpServers"]["gpd-wolfram"]
+        assert wolfram["command"] == "gpd-mcp-wolfram"
+        assert wolfram["args"] == []
+        assert wolfram["env"]["GPD_WOLFRAM_MCP_ENDPOINT"] == "https://custom.invalid/api/mcp"
+        assert wolfram["env"]["EXTRA_FLAG"] == "1"
+        assert wolfram["cwd"] == "/tmp/custom-wolfram"
+        assert wolfram["timeout"] == 15000
+        assert wolfram["trust"] is False
+        assert "super-secret-token" not in json.dumps(wolfram)
+        assert settings["mcpServers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
+
     def test_install_adds_policy_path_shell_sentinel_and_policy_file(
         self,
         adapter: GeminiAdapter,
@@ -999,6 +1073,11 @@ class TestUninstall:
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
         settings["mcpServers"]["custom-server"] = {"command": "node", "args": ["custom.js"]}
+        settings["mcpServers"]["gpd-wolfram"] = {
+            "command": "gpd-mcp-wolfram",
+            "args": [],
+            "env": {"GPD_WOLFRAM_MCP_ENDPOINT": "https://example.invalid/api/mcp"},
+        }
         (target / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
 
         adapter.uninstall(target)
