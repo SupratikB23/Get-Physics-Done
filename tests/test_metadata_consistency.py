@@ -163,11 +163,17 @@ def test_pattern_domain_counts_match_source_of_truth() -> None:
 
 
 def test_mcp_server_count_matches_public_entrypoints() -> None:
+    from gpd.mcp.managed_integrations import WOLFRAM_BRIDGE_COMMAND
+
     repo_root = _repo_root()
     mcp_server_count = len([p for p in (repo_root / "src" / "gpd" / "mcp" / "servers").glob("*.py") if p.name != "__init__.py"])
-    mcp_script_count = sum(1 for line in _project_script_lines(repo_root) if line.startswith('"gpd-mcp-'))
+    builtin_mcp_script_count = sum(
+        1
+        for name in _project_script_targets(repo_root)
+        if name.startswith("gpd-mcp-") and name != WOLFRAM_BRIDGE_COMMAND
+    )
     assert mcp_server_count == 7
-    assert mcp_server_count == mcp_script_count
+    assert mcp_server_count == builtin_mcp_script_count
 
 
 def test_managed_mcp_server_keys_match_public_descriptors_and_infra_inventory() -> None:

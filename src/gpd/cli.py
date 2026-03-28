@@ -2600,8 +2600,8 @@ def _render_cost_summary(summary: object, *, last_sessions: int) -> None:
     console.print(model_table)
     console.print()
 
-    project_rollup = getattr(summary, "project")
-    _render_cost_rollup("Current project", project_rollup, project_root=getattr(project_rollup, "project_root", None))
+    project_rollup = summary.project
+    _render_cost_rollup("Current project", project_rollup, project_root=project_rollup.project_root)
     console.print()
 
     current_session = getattr(summary, "current_session", None)

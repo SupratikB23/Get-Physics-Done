@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import shutil
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError as PydanticValidationError
-from pydantic import field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from pydantic import ValidationError as PydanticValidationError
 
 from gpd.mcp.managed_integrations import (
     WOLFRAM_MANAGED_INTEGRATION,
@@ -64,7 +64,7 @@ class PlanToolRequirement(BaseModel):
         return clean or None
 
     @model_validator(mode="after")
-    def _validate_tool_specific_fields(self) -> "PlanToolRequirement":
+    def _validate_tool_specific_fields(self) -> PlanToolRequirement:
         if not self.id:
             self.id = self.tool
         if not self.purpose:

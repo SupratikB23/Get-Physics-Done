@@ -167,17 +167,67 @@ Remaining friction after Step 3:
 - The shared capability surface exists, but there is still no optional shared integration layer that can satisfy `tool_requirements.tool=wolfram` via a managed remote MCP provider.
 - The current tool catalog is intentionally narrow; richer provider resolution and additional canonical tools remain future work.
 
+### Step 4 Completed: Shared Optional Wolfram Integration Across Runtimes
+
+Status: completed on March 27, 2026.
+
+What shipped:
+
+- GPD now exposes one shared optional `wolfram` integration surface instead of a runtime-specific feature branch.
+- The managed integration layer is intentionally separate from builtin MCP servers:
+  - logical integration id: `wolfram`
+  - projected managed server key: `gpd-wolfram`
+  - local bridge command: `gpd-mcp-wolfram`
+- A new local stdio bridge fronts Wolfram's official remote MCP endpoint while keeping the runtime-facing shape uniform.
+- Runtime adapters now project the same shared managed descriptor into their own native configuration formats across:
+  - Codex
+  - Claude Code
+  - Gemini CLI
+  - OpenCode
+- A shared CLI surface now manages the feature without making it runtime-specific:
+  - `gpd integrations status`
+  - `gpd integrations enable wolfram`
+  - `gpd integrations disable wolfram`
+- Plan preflight can now satisfy `tool_requirements.tool=wolfram` through either:
+  - local `wolframscript`
+  - the managed shared integration with the expected local API-key environment variable present
+- Secrets stay out of project state and managed manifests; the integration remains env-first and config-only.
+- Docs/help/readme now describe the feature as optional Wolfram capability, not as equivalent to a local Mathematica install.
+
+Verification:
+
+- Focused Step 4 suites passed:
+  - `uv run pytest -q tests/core/test_integrations.py tests/core/test_tool_preflight.py tests/core/test_cli.py tests/test_cli_commands.py tests/test_release_consistency.py tests/test_metadata_consistency.py tests/test_runtime_abstraction_boundaries.py tests/core/test_prompt_cli_consistency.py`
+  - `uv run pytest -q tests/adapters/test_codex.py tests/adapters/test_claude_code.py tests/adapters/test_gemini.py tests/adapters/test_opencode.py tests/adapters/test_adapter_regressions.py`
+  - `uv run pytest -q tests/mcp/test_wolfram_bridge.py`
+  - `uv run ruff check src/gpd/adapters/claude_code.py src/gpd/adapters/codex.py src/gpd/adapters/gemini.py src/gpd/adapters/opencode.py src/gpd/cli.py src/gpd/core/tool_preflight.py src/gpd/mcp/integrations/__init__.py src/gpd/mcp/integrations/wolfram_bridge.py src/gpd/mcp/managed_integrations.py tests/adapters/test_adapter_regressions.py tests/adapters/test_claude_code.py tests/adapters/test_codex.py tests/adapters/test_gemini.py tests/adapters/test_opencode.py tests/core/test_cli.py tests/core/test_integrations.py tests/core/test_prompt_cli_consistency.py tests/core/test_tool_preflight.py tests/mcp/test_wolfram_bridge.py tests/test_cli_commands.py tests/test_metadata_consistency.py tests/test_release_consistency.py tests/test_runtime_abstraction_boundaries.py pyproject.toml`
+- Result:
+  - `410 passed`
+  - `272 passed`
+  - `8 passed`
+  - `ruff clean`
+
+Remaining friction after Step 4:
+
+- Readiness is still mostly static/config-based; we still do not prove that the current live terminal session can execute harmless commands successfully.
+- `gpd doctor` still does not run opt-in executable probes like `gpd --help`, `pdflatex --version`, or `wolframscript -version`.
+- Managed Wolfram integration proves configuration shape plus env presence, not remote authentication success or Wolfram-side session health.
+- The integration surface is intentionally narrow; richer shared managed integrations should wait for real demand.
+
 ### Next Step
 
-Step 4 should add a shared optional Wolfram integration layer that can satisfy the existing runtime-agnostic `tool_requirements` surface across all supported runtimes.
+Step 5 should add live, harmless executable probes so machine readiness and runtime readiness stop being purely static/config-level judgments.
 
 That step should:
 
-- keep the user-facing feature shared instead of Codex-only or runtime-specific
-- map the logical `wolfram` capability to each runtime adapter's native integration/config format
-- preserve the same plan/preflight semantics regardless of runtime
-- keep secrets in runtime config or environment variables, never in project state
-- avoid pretending that remote Wolfram capability is the same thing as a local Mathematica install
+- preserve the current runtime-agnostic user-facing surfaces instead of creating per-runtime probe commands
+- add an explicit opt-in probe mode to `gpd doctor` and related readiness summaries
+- distinguish static config/readiness evidence from current-session probe evidence
+- cover the exact high-signal commands users care about:
+  - `gpd --help`
+  - `pdflatex --version`
+  - `wolframscript -version` when local Wolfram is expected
+- avoid treating failed or unavailable probes as proof that optional capabilities are impossible; the result should explain what was and was not tested
 
 ## Feedback Map
 
