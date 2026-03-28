@@ -124,7 +124,7 @@ def test_build_runtime_hint_payload_merges_source_sections_and_actions(tmp_path:
     )
 
     dumped = payload.model_dump()
-    assert set(dumped) == {"source_meta", "execution", "recovery", "cost", "workflow_presets", "next_actions"}
+    assert set(dumped) == {"source_meta", "execution", "recovery", "orientation", "cost", "workflow_presets", "next_actions"}
     assert payload.source_meta["project_root"] == project.resolve(strict=False).as_posix()
     assert payload.source_meta["current_session_id"] == session_id
     assert payload.source_meta["base_ready"] is True
@@ -141,6 +141,11 @@ def test_build_runtime_hint_payload_merges_source_sections_and_actions(tmp_path:
     assert payload.recovery["recent_projects_count"] == 1
     assert payload.recovery["current_project"]["resumable"] is True
     assert payload.recovery["current_project"]["resume_file_available"] is True
+    assert payload.orientation["mode"] == "current-workspace"
+    assert payload.orientation["primary_command"] == "gpd resume"
+    assert "resumable recovery snapshot" in str(payload.orientation["primary_reason"])
+    assert "resume-work" in str(payload.orientation["continue_command"])
+    assert "suggest-next" in str(payload.orientation["fast_next_command"])
 
     assert payload.cost["workspace_root"] == project.resolve(strict=False).as_posix()
     assert payload.cost["project"]["record_count"] == 1
@@ -155,7 +160,7 @@ def test_build_runtime_hint_payload_merges_source_sections_and_actions(tmp_path:
     assert payload.workflow_presets["latex_capability"]["paper_build_ready"] is True
     assert payload.workflow_presets["latex_capability"]["arxiv_submission_ready"] is True
 
-    assert "Run `gpd resume` to inspect the current recovery snapshot for this project." in payload.next_actions
+    assert any(action.startswith("Run `gpd resume`") for action in payload.next_actions)
     assert (
         "Run `gpd cost` to inspect recorded machine-local usage / cost and the current profile tier mix for this workspace."
         in payload.next_actions
@@ -164,6 +169,8 @@ def test_build_runtime_hint_payload_merges_source_sections_and_actions(tmp_path:
     assert any("latexmk" in action for action in payload.next_actions)
     assert any("kpsewhich" in action for action in payload.next_actions)
     assert any("Workflow presets ready" in action for action in payload.next_actions)
+    assert any("continues paused work inside this workspace" in action for action in payload.next_actions)
+    assert any("fastest post-resume command" in action for action in payload.next_actions)
     assert len(payload.next_actions) == len(set(payload.next_actions))
 
 
@@ -216,6 +223,8 @@ def test_build_runtime_hint_payload_handles_absent_execution_snapshot(tmp_path: 
     assert payload.execution["status_classification"] == "idle"
     assert payload.recovery["recent_projects_count"] == 1
     assert payload.recovery["current_project"] is None
+    assert payload.orientation["mode"] == "recent-projects"
+    assert payload.orientation["primary_command"] == "gpd resume --recent"
     assert payload.cost["workspace_root"] == project.resolve(strict=False).as_posix()
     assert payload.workflow_presets["blocked"] == 5
     assert any("resume --recent" in action for action in payload.next_actions)
@@ -326,3 +335,73 @@ def test_build_runtime_hint_payload_surfaces_tangent_follow_up_from_execution_vi
     assert payload.execution["tangent_decision"] == "branch_later"
     assert payload.execution["tangent_decision_label"] == "branch later"
     assert any("runtime `tangent` command" in action for action in payload.next_actions)
+
+
+def test_build_runtime_hint_payload_rediscovery_branch_handles_non_resumable_current_project(
+    tmp_path: Path,
+) -> None:
+    current_project = _bootstrap_project(tmp_path)
+    data_root = tmp_path / "data"
+    missing_handoff = current_project / "GPD" / "phases" / "04" / ".continue-here.md"
+    missing_handoff.parent.mkdir(parents=True, exist_ok=True)
+
+    record_recent_project(
+        current_project,
+        session_data={
+            "last_date": "2026-03-27T12:05:00+00:00",
+            "stopped_at": "Phase 04",
+            "resume_file": "GPD/phases/04/.continue-here.md",
+        },
+        store_root=data_root,
+    )
+
+    payload = build_runtime_hint_payload(
+        current_project,
+        data_root=data_root,
+        base_ready=True,
+        latex_capability=_latex_capability(),
+    )
+
+    assert missing_handoff.exists() is False
+    assert payload.recovery["current_project"] is not None
+    assert payload.recovery["current_project"]["resume_file"] == "GPD/phases/04/.continue-here.md"
+    assert payload.recovery["current_project"]["resumable"] is False
+    assert payload.recovery["current_project"]["resume_file_reason"] == "resume file missing"
+    assert payload.orientation["mode"] == "recent-projects"
+    assert payload.orientation["primary_command"] == "gpd resume --recent"
+    assert any("resume --recent" in action for action in payload.next_actions)
+    assert any("After selecting a workspace" in action for action in payload.next_actions)
+
+
+def test_build_runtime_hint_payload_formats_generic_runtime_follow_up_when_runtime_detection_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _bootstrap_project(tmp_path)
+    data_root = tmp_path / "data"
+    resume_file = project / "GPD" / "phases" / "02" / ".continue-here.md"
+    resume_file.parent.mkdir(parents=True, exist_ok=True)
+    resume_file.write_text("resume\n", encoding="utf-8")
+
+    record_recent_project(
+        project,
+        session_data={
+            "last_date": "2026-03-27T12:05:00+00:00",
+            "stopped_at": "Phase 02",
+            "resume_file": "GPD/phases/02/.continue-here.md",
+        },
+        store_root=data_root,
+    )
+    monkeypatch.setattr("gpd.core.runtime_hints._runtime_command", lambda *args, **kwargs: None)
+
+    payload = build_runtime_hint_payload(
+        project,
+        data_root=data_root,
+        base_ready=True,
+        latex_capability=_latex_capability(),
+    )
+
+    assert payload.orientation["continue_command"] == "runtime `resume-work`"
+    assert payload.orientation["fast_next_command"] == "runtime `suggest-next`"
+    assert "runtime `resume-work` continues paused work inside this workspace." in payload.next_actions
+    assert "runtime `suggest-next` is the fastest post-resume command when you only need the next action." in payload.next_actions
+    assert not any("`runtime `resume-work``" in action for action in payload.next_actions)

@@ -56,14 +56,14 @@ Choose the path that matches your starting point:
 
 **Returning work**
 1. `gpd resume` — Current-workspace read-only recovery snapshot from your normal terminal
-2. `gpd resume --recent` — Find the workspace when you need to reopen it
-3. `/gpd:resume-work` — Continue in-runtime from the current project state
+2. `gpd resume --recent` — Find the workspace first when you need to reopen a different one
+3. `/gpd:resume-work` — Continue in-runtime from the selected project state
 4. `/gpd:progress` — Secondary status check; use `--brief` when you only need a short snapshot
 5. `/gpd:suggest-next` — Fastest post-resume next command
 6. `gpd observe execution` — Read-only long-run visibility from your normal terminal; shows progress / waiting state, may say `possibly stalled`, and points you to the next read-only checks
 7. `gpd cost` — Read-only machine-local usage / cost summary from recorded local telemetry plus the current profile tier mix; advisory only, not live budget enforcement or provider billing truth. If telemetry or the tier mix is missing, the summary stays partial or estimated rather than exact
 
-Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has an explicit handoff to restore. If you need to find the workspace first, use `gpd resume --recent`, then continue inside that workspace with `/gpd:resume-work`. For a current-workspace read-only recovery snapshot, use `gpd resume` from your normal terminal.
+Recovery ladder: use `gpd resume` for the current-workspace read-only recovery snapshot. If that is the wrong workspace, use `gpd resume --recent` to find the workspace first, then continue inside that workspace with `/gpd:resume-work`. After resuming, `/gpd:suggest-next` is the fastest next command. Before stepping away mid-phase, run `/gpd:pause-work` so that ladder has an explicit handoff to restore.
 
 **Tangents**
 1. `/gpd:tangent` — Choose stay / quick / defer / branch when a side investigation appears
@@ -122,6 +122,7 @@ This reference lists canonical in-runtime slash-command names in `/gpd:*` form.
 - If a plan declares specialized `tool_requirements`, use `gpd validate plan-preflight <PLAN.md>` from your normal terminal before execution.
 - For a normal-terminal, current-workspace read-only recovery snapshot without launching the runtime, use `gpd resume`.
 - For cross-project discovery from your normal terminal, use `gpd resume --recent` first, then open the selected project and continue there with the runtime `resume-work` command.
+- After resuming inside the runtime, use `/gpd:suggest-next` when you only need the next recommended command.
 - For a normal-terminal, read-only machine-local usage / cost summary, use `gpd cost`.
 - `gpd doctor` checks the selected install target and runtime-local readiness signals. `gpd validate unattended-readiness ...` returns `ready`, `relaunch-required`, `not-ready`, or `unresolved`. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. `gpd permissions ...` checks runtime-owned approval/alignment only.
 
@@ -154,14 +155,14 @@ Local Mathematica installs are separate from the shared optional Wolfram integra
 
 **Returning work**
 1. `gpd resume` - Current-workspace read-only recovery snapshot from your normal terminal
-2. `gpd resume --recent` - Find the workspace when you need to reopen it
-3. `/gpd:resume-work` - Continue in-runtime from current state
+2. `gpd resume --recent` - Find the workspace first when you need to reopen a different one
+3. `/gpd:resume-work` - Continue in-runtime from the selected project state
 4. `/gpd:progress` - Secondary manual status check; use `--brief` when you only need a short snapshot
 5. `/gpd:suggest-next` - Fastest post-resume next command
 6. `gpd observe execution` - Read-only long-run visibility from your normal terminal; use this for progress / waiting state, conservative `possibly stalled` wording, and the next read-only checks
 7. `gpd cost` - Read-only machine-local usage / cost summary from recorded local telemetry plus the current profile tier mix; advisory only, not live budget enforcement or provider billing truth. If telemetry or the tier mix is missing, the summary stays partial or estimated rather than exact
 
-Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has an explicit handoff to restore. Use `gpd resume` from your normal system terminal when you want a current-workspace read-only recovery snapshot. Use `gpd resume --recent` first if you need to find the workspace before resuming it, then continue inside that workspace with `/gpd:resume-work`.
+Recovery ladder: use `gpd resume` for the current-workspace read-only recovery snapshot. If that is the wrong workspace, use `gpd resume --recent` to find the workspace first, then continue inside that workspace with `/gpd:resume-work`. After resuming, `/gpd:suggest-next` is the fastest next command. Before stepping away mid-phase, run `/gpd:pause-work` so that ladder has an explicit handoff to restore.
 
 **Tangents**
 1. `/gpd:tangent` - Chooser for stay / quick / defer / branch when a side investigation appears
@@ -450,6 +451,7 @@ Resume research from previous session with full context restoration.
 - Best first command when returning to paused or interrupted work
 - This is the in-runtime continue path for the selected project; for a current-workspace read-only recovery snapshot, use `gpd resume`
 - If you need to find the workspace first, use `gpd resume --recent`, then continue inside that workspace with `/gpd:resume-work`
+- After resuming, `/gpd:suggest-next` is the fastest next command when you only need the next action
 
 Usage: `/gpd:resume-work`
 
@@ -1036,9 +1038,11 @@ Example config:
 ```
 /gpd:pause-work        # Before leaving mid-phase, capture a handoff
 /clear
-/gpd:resume-work       # Continue the last handoff
-/gpd:progress --brief  # Short orientation snapshot if needed
+gpd resume             # Current-workspace read-only recovery snapshot
+gpd resume --recent    # Find the workspace first if this is the wrong one
+/gpd:resume-work       # Continue the selected handoff
 /gpd:suggest-next      # Fastest post-resume next command
+/gpd:progress --brief  # Short orientation snapshot if you need more context
 ```
 
 **Normal terminal, read-only recovery snapshot:**

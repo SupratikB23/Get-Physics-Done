@@ -553,6 +553,69 @@ If we continue, the next highest-value step is a single state-aware orientation 
 
 That step should answer one user question directly: “I’m back in front of GPD now; what is the next safe command to run from here?”
 
+### Step 11 Completed: State-Aware Recovery And Orientation Surface
+
+Status: completed on March 28, 2026.
+
+What shipped:
+
+- `gpd resume --recent` now gives a clearer continuation path instead of acting like a bare project picker:
+  - each recent project is rendered as a numbered recovery block instead of a fragile wide table
+  - resumability notes are surfaced directly
+  - a `Next here` block now tells the user to inspect the selected workspace, continue there with runtime `resume-work`, and use runtime `suggest-next` for the fastest next action
+- Shared runtime hints now carry an additive `orientation` block:
+  - `mode`
+  - `primary_command`
+  - `primary_reason`
+  - runtime/local follow-up commands for continue and fastest-next
+- The recovery-orientation story is now intentionally the same across README, public help, workflow help, and install summary:
+  - `gpd resume` for the current-workspace read-only snapshot
+  - `gpd resume --recent` when the workspace must be rediscovered
+  - runtime `resume-work` to continue inside that workspace
+  - runtime `suggest-next` as the fastest post-resume next command
+- The step stayed narrow:
+  - no new command
+  - no new backend or persistence layer
+  - no attempt to auto-pick the “best” repo
+  - no runtime-specific user-facing feature branch
+
+Verification:
+
+- Focused Step 11 suites passed:
+  - `uv run pytest -q tests/core/test_runtime_hints.py tests/core/test_cli.py tests/test_cli_integration.py tests/core/test_cli_install.py tests/core/test_prompt_cli_consistency.py tests/core/test_prompt_wiring.py tests/test_release_consistency.py tests/test_bootstrap_installer.py -k "not test_bootstrap_fails_closed_when_probes_mark_all_public_sources_unavailable"`
+  - `uv run pytest -q tests/test_bootstrap_installer.py::test_bootstrap_fails_closed_when_probes_mark_all_public_sources_unavailable`
+  - `uv run ruff check README.md src/gpd/core/runtime_hints.py src/gpd/cli.py src/gpd/commands/help.md src/gpd/specs/workflows/help.md tests/core/test_runtime_hints.py tests/core/test_cli.py tests/core/test_cli_install.py tests/core/test_prompt_cli_consistency.py tests/core/test_prompt_wiring.py tests/test_cli_integration.py tests/test_bootstrap_installer.py tests/test_release_consistency.py`
+- Result:
+  - `517 passed, 1 deselected`
+  - isolated bootstrap probe fallback test also passed
+  - `ruff clean`
+
+Execution/review wave feedback:
+
+- Six review lanes agreed the step stayed directionally narrow and improved the recovery ladder materially.
+- Three useful issues surfaced during the review wave and were fixed before final verification:
+  - recent-project output was too wide and collapsed in captured output, so the picker was rewritten as numbered blocks
+  - runtime-hint fallback formatting produced malformed nested backticks when no runtime could be resolved
+  - cross-project recovery follow-up was over-specific about using the current workspace runtime command, so rediscovery follow-up now stays generic
+- Remaining review feedback was mostly about future tightening, not blockers:
+  - some recovery wording is still duplicated across surfaces
+  - the new `orientation` payload is additive, but downstream consumers still need to choose whether to actively surface it
+
+Remaining friction after Step 11:
+
+- The product now has one clearer recovery model, but still not one singular top-level orientation command.
+- `gpd resume --recent` is still a manual chooser, not an automatic best-target recommender.
+- Runtime hints now expose orientation data, but hook/statusline consumers still mostly treat runtime hints as execution-only.
+- A large combined bootstrap-installer run still hits one order-dependent probe test, even though that same test passed in isolation during Step 11 verification.
+
+### Next Step After Step 11
+
+If we continue, the next highest-value step is to promote the new orientation model into one more obvious user-visible entry point:
+
+- consume the `orientation` payload in one startup-facing surface instead of leaving it passive
+- simplify installer/startup copy further so the recovery ladder is shorter and less prose-heavy
+- decide whether recent-project rediscovery should remain manual or gain a light “best target” recommendation without adding a new backend
+
 ## Feedback Map
 
 | Transcript theme | Current repo state | What should happen |

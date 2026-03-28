@@ -892,7 +892,10 @@ def test_resume_recent_human_output_surfaces_command_and_missing_projects(
 
     assert result.exit_code == 0
     assert "Recent Projects" in result.output
+    assert "Next here" in result.output
     assert "gpd --cwd" in result.output
+    assert "ready to reopen" in result.output
+    assert "project root missing" in result.output or "project unavailable on this machine" in result.output
 
 
 def test_resume_recent_raw_downgrades_missing_handoff_rows_to_non_resumable(

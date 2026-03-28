@@ -41,6 +41,7 @@ _RUNTIME_HELP_COMMANDS = {name: adapter.help_command for name, adapter in _RUNTI
 _RUNTIME_NEW_PROJECT_COMMANDS = {name: adapter.new_project_command for name, adapter in _RUNTIME_ADAPTERS.items()}
 _RUNTIME_MAP_RESEARCH_COMMANDS = {name: adapter.map_research_command for name, adapter in _RUNTIME_ADAPTERS.items()}
 _RUNTIME_RESUME_WORK_COMMANDS = {name: adapter.format_command("resume-work") for name, adapter in _RUNTIME_ADAPTERS.items()}
+_RUNTIME_SUGGEST_NEXT_COMMANDS = {name: adapter.format_command("suggest-next") for name, adapter in _RUNTIME_ADAPTERS.items()}
 _CODEX_RUNTIME_NAME = next(descriptor.runtime_name for descriptor in _RUNTIME_DESCRIPTORS if "skills/" in descriptor.manifest_file_prefixes)
 _CLAUDE_RUNTIME_NAME = next(descriptor.runtime_name for descriptor in _RUNTIME_DESCRIPTORS if descriptor.launch_command == "claude")
 _OPENCODE_RUNTIME_NAME = next(descriptor.runtime_name for descriptor in _RUNTIME_DESCRIPTORS if descriptor.launch_command == "opencode")
@@ -59,8 +60,9 @@ def _assert_single_runtime_next_steps(output: str, runtime: str) -> None:
         rf"Run {re.escape(_RUNTIME_HELP_COMMANDS[runtime])} for the command list\..*?"
         rf"Start with {re.escape(_RUNTIME_NEW_PROJECT_COMMANDS[runtime])} for a new project or "
         rf"{re.escape(_RUNTIME_MAP_RESEARCH_COMMANDS[runtime])} for existing work, or "
-        rf"{re.escape(_RUNTIME_RESUME_WORK_COMMANDS[runtime])} to continue paused work\. "
-        rf"If you need to find a different workspace first, use gpd resume --recent from your system terminal\..*?"
+        rf"{re.escape(_RUNTIME_RESUME_WORK_COMMANDS[runtime])} to continue paused work(?:, and .*?suggest-next.*?)?\. "
+        rf"If you need to find a different workspace first, use gpd resume --recent from your system terminal, "
+        rf"then continue there with the runtime resume command\..*?"
         rf"Fast bootstrap: use {re.escape(_RUNTIME_NEW_PROJECT_COMMANDS[runtime])} --minimal.*?"
         rf"Use gpd --help for local install, readiness, validation, permissions, observability, and diagnostics\..*?"
         rf"Use {re.escape(_RUNTIME_HELP_COMMANDS[runtime])} inside {re.escape(_RUNTIME_DISPLAY_NAMES[runtime])} for workflow help\..*?"
@@ -134,6 +136,7 @@ HELP_COMMANDS = {_RUNTIME_HELP_COMMANDS!r}
 NEW_PROJECT_COMMANDS = {_RUNTIME_NEW_PROJECT_COMMANDS!r}
 MAP_RESEARCH_COMMANDS = {_RUNTIME_MAP_RESEARCH_COMMANDS!r}
 RESUME_WORK_COMMANDS = {_RUNTIME_RESUME_WORK_COMMANDS!r}
+SUGGEST_NEXT_COMMANDS = {_RUNTIME_SUGGEST_NEXT_COMMANDS!r}
 ALL_RUNTIMES = {_RUNTIME_NAMES!r}
 
 
@@ -426,8 +429,8 @@ if args[:3] == ["-m", "gpd.cli", "install"]:
             "3. Start with "
             f"{{NEW_PROJECT_COMMANDS[runtime]}} for a new project or "
             f"{{MAP_RESEARCH_COMMANDS[runtime]}} for existing work, or "
-            f"{{RESUME_WORK_COMMANDS[runtime]}} to continue paused work. "
-            "If you need to find a different workspace first, use gpd resume --recent from your system terminal."
+            f"{{RESUME_WORK_COMMANDS[runtime]}} to continue paused work, and {{SUGGEST_NEXT_COMMANDS[runtime]}} for the fastest post-resume next action. "
+            "If you need to find a different workspace first, use gpd resume --recent from your system terminal, then continue there with the runtime resume command."
         )
         print("")
         print(
@@ -460,7 +463,7 @@ if args[:3] == ["-m", "gpd.cli", "install"]:
                 f"{{NEW_PROJECT_COMMANDS[runtime]}} or {{MAP_RESEARCH_COMMANDS[runtime]}}. "
                 f"Quick bootstrap: {{NEW_PROJECT_COMMANDS[runtime]}} --minimal"
             )
-        print("If you need to find a different workspace first, use gpd resume --recent from your system terminal.")
+        print("If you need to find a different workspace first, use gpd resume --recent from your system terminal, then continue inside that workspace with the runtime `resume-work` command.")
         print("Use gpd --help for local install, readiness, validation, permissions, observability, and diagnostics.")
         print("Run gpd doctor --runtime <runtime> --local|--global for a focused readiness check.")
         print(

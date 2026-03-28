@@ -1031,6 +1031,20 @@ def _resume_recent_hint(payload: dict[str, object]) -> str | None:
     return "If this is the wrong workspace, run `gpd resume --recent` to search other recent projects on this machine."
 
 
+def _resume_runtime_commands(*, cwd: Path | None = None) -> tuple[str | None, str | None]:
+    """Return runtime-specific resume/suggest commands when they can be resolved."""
+    try:
+        from gpd.adapters import get_adapter
+
+        runtime_name = detect_runtime_for_gpd_use(cwd=cwd or _get_cwd())
+        adapter = get_adapter(runtime_name)
+        resume_work_command = str(adapter.format_command("resume-work")).strip()
+        suggest_next_command = str(adapter.format_command("suggest-next")).strip()
+        return resume_work_command or None, suggest_next_command or None
+    except Exception:
+        return None, None
+
+
 def _resume_mode_label(value: object) -> str:
     """Format a resume mode for human-facing CLI output."""
     if not isinstance(value, str) or not value.strip():
@@ -1371,10 +1385,31 @@ def _resume_recent_project_command(row: dict[str, object]) -> str:
     return f"gpd --cwd {shlex.quote(str(project_path))} resume"
 
 
+def _resume_recent_project_notes(row: dict[str, object]) -> str:
+    """Return a concise availability/resumability note for one recent project row."""
+    if not bool(row.get("available")):
+        reason = row.get("availability_reason")
+        if isinstance(reason, str) and reason.strip():
+            return reason.strip()
+        return "project unavailable on this machine"
+    if bool(row.get("resumable")):
+        return "ready to reopen"
+    reason = row.get("resume_file_reason")
+    if isinstance(reason, str) and reason.strip():
+        return reason.strip()
+    return "inspect local recovery state"
+
+
 def _render_recent_resume_summary(rows: list[dict[str, object]]) -> None:
     """Render the recent-project picker for cross-project recovery."""
+    runtime_resume_command, runtime_suggest_next_command = _resume_runtime_commands()
+
     console.print("[bold]Recent Projects[/]")
-    console.print("[dim]Machine-local recovery index. Select a project and then run the exact command shown in the table.[/]")
+    console.print("[dim]Machine-local recovery index. Select a project, inspect it with the command shown in the table, then continue inside that workspace with the runtime `resume-work` command.[/]")
+    if isinstance(runtime_resume_command, str) and runtime_resume_command.strip():
+        console.print(f"[dim]In the selected workspace, continue with `{runtime_resume_command}`.[/]")
+    if isinstance(runtime_suggest_next_command, str) and runtime_suggest_next_command.strip():
+        console.print(f"[dim]After resuming, `{runtime_suggest_next_command}` is the fastest next runtime action.[/]")
     console.print()
 
     if not rows:
@@ -1382,25 +1417,28 @@ def _render_recent_resume_summary(rows: list[dict[str, object]]) -> None:
         console.print("[dim]Run `gpd resume` inside a project first, or wait for session continuity to be recorded.[/]")
         return
 
-    table = Table(show_header=True, header_style=f"bold {_INSTALL_ACCENT_COLOR}")
-    table.add_column("#", justify="right", no_wrap=True)
-    table.add_column("Workspace")
-    table.add_column("Last session")
-    table.add_column("Stopped at")
-    table.add_column("Resumable")
-    table.add_column("Status")
-    table.add_column("Command")
     for idx, row in enumerate(rows, start=1):
-        table.add_row(
-            str(idx),
-            str(row.get("workspace") or _format_display_path(str(row.get("project_root") or "")) or "unknown"),
-            str(row.get("last_session_at") or row.get("last_seen_at") or row.get("last_event_at") or "—"),
-            str(row.get("stopped_at") or "—"),
-            "yes" if bool(row.get("resumable")) else "no",
-            str(row.get("status") or "unknown"),
-            _resume_recent_project_command(row),
+        console.print(
+            f"[bold]{idx}.[/] "
+            f"{str(row.get('workspace') or _format_display_path(str(row.get('project_root') or '')) or 'unknown')}"
         )
-    console.print(table)
+        console.print(f"   Last session: {str(row.get('last_session_at') or row.get('last_seen_at') or row.get('last_event_at') or '—')}")
+        console.print(f"   Stopped at: {str(row.get('stopped_at') or '—')}")
+        console.print(f"   Resumable: {'yes' if bool(row.get('resumable')) else 'no'}")
+        console.print(f"   Notes: {_resume_recent_project_notes(row)}")
+        console.print(f"   Inspect: {_resume_recent_project_command(row)}")
+        console.print()
+    console.print()
+    console.print("[bold]Next here[/]")
+    console.print("- Run the exact `gpd --cwd ... resume` command from the table to inspect the selected workspace.")
+    if isinstance(runtime_resume_command, str) and runtime_resume_command.strip():
+        console.print(f"- In that workspace, `{runtime_resume_command}` continues paused work inside the runtime.")
+    else:
+        console.print("- In that workspace, runtime `resume-work` continues paused work inside the runtime.")
+    if isinstance(runtime_suggest_next_command, str) and runtime_suggest_next_command.strip():
+        console.print(f"- Once resumed, `{runtime_suggest_next_command}` is the fastest next runtime action.")
+    else:
+        console.print("- Once resumed, runtime `suggest-next` is the fastest next runtime action.")
 
 
 def _render_resume_summary(payload: dict[str, object]) -> None:
@@ -1501,15 +1539,7 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
     if hint is not None:
         console.print(f"- {hint}")
 
-    try:
-        from gpd.adapters import get_adapter
-
-        runtime_name = detect_runtime_for_gpd_use(cwd=_get_cwd())
-        runtime_resume_command = get_adapter(runtime_name).format_command("resume-work")
-        runtime_suggest_next_command = get_adapter(runtime_name).format_command("suggest-next")
-    except Exception:
-        runtime_resume_command = None
-        runtime_suggest_next_command = None
+    runtime_resume_command, runtime_suggest_next_command = _resume_runtime_commands()
 
     if isinstance(runtime_resume_command, str) and runtime_resume_command.strip():
         console.print(f"- `{runtime_resume_command}` continues paused work inside the active runtime.")
@@ -6409,6 +6439,7 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                 map_research_command,
             ) = next_step_entries[0]
             resume_work_command = _get_adapter_or_error(single_runtime_name, action="install summary").format_command("resume-work")
+            suggest_next_command = _get_adapter_or_error(single_runtime_name, action="install summary").format_command("suggest-next")
             target_value = single_result.get("target")
             doctor_scope = (
                 "global"
@@ -6430,8 +6461,10 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                 "or "
                 f"[{_INSTALL_ACCENT_COLOR} bold]{map_research_command}[/] for existing work, "
                 "or "
-                f"[{_INSTALL_ACCENT_COLOR} bold]{resume_work_command}[/] to continue paused work. "
-                "If you need to find a different workspace first, use [bold]gpd resume --recent[/] from your system terminal.",
+                f"[{_INSTALL_ACCENT_COLOR} bold]{resume_work_command}[/] to continue paused work, "
+                "and "
+                f"[{_INSTALL_ACCENT_COLOR} bold]{suggest_next_command}[/] for the fastest post-resume next action. "
+                "If you need to find a different workspace first, use [bold]gpd resume --recent[/] from your system terminal, then continue there with the runtime resume command.",
                 soft_wrap=True,
             )
             console.print()
@@ -6475,7 +6508,7 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                     soft_wrap=True,
                 )
             console.print(
-                "If you need to find a different workspace first, use [bold]gpd resume --recent[/] from your system terminal.",
+                "If you need to find a different workspace first, use [bold]gpd resume --recent[/] from your system terminal, then continue inside that workspace with the runtime `resume-work` command.",
                 soft_wrap=True,
             )
             console.print(

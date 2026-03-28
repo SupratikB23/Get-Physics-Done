@@ -152,7 +152,9 @@ def _assert_single_runtime_next_steps(
         rf"Start with {re.escape(adapter.new_project_command)} for a new project or "
         rf"{re.escape(adapter.map_research_command)} for existing work, or "
         rf"{re.escape(resume_work_command)} to continue paused work(?:, and "
-        rf"{re.escape(adapter.format_command('suggest-next'))} to choose the next runtime action)?\..*?"
+        rf"{re.escape(adapter.format_command('suggest-next'))} for the fastest post-resume next action)?\..*?"
+        rf"If you need to find a different workspace first, use gpd resume --recent from your system terminal, "
+        rf"then continue there with the runtime resume command\..*?"
         rf"Fast bootstrap: use {re.escape(adapter.new_project_command)} --minimal.*?"
         rf"Use gpd --help for local install, readiness, validation, permissions, observability, and diagnostics\..*?"
         rf"Use {re.escape(adapter.help_command)} inside {re.escape(descriptor.display_name)} for workflow help\..*?"
@@ -397,7 +399,7 @@ def test_install_summary_surfaces_help_then_new_or_existing_entry_points(tmp_pat
     assert result.exit_code == 0
     _assert_single_runtime_next_steps(result.output)
     assert (
-        "If you need to find a different workspace first, use gpd resume --recent from your system terminal."
+        "If you need to find a different workspace first, use gpd resume --recent from your system terminal, then continue there with the runtime resume command."
     ) in result.output
     assert (
         "After startup, use the runtime `settings` command to review autonomy, workflow defaults, and model-cost posture. "
@@ -446,7 +448,7 @@ def test_install_summary_lists_runtime_specific_help_for_multi_runtime_install(t
         _assert_multi_runtime_next_step_line(result.output, descriptor)
     assert "1. From your system terminal" not in result.output
     assert (
-        "If you need to find a different workspace first, use gpd resume --recent from your system terminal."
+        "If you need to find a different workspace first, use gpd resume --recent from your system terminal, then continue inside that workspace with the runtime `resume-work` command."
     ) in result.output
     assert (
         "After startup, use the runtime `settings` command to review autonomy, workflow defaults, and model-cost posture. "

@@ -2119,9 +2119,11 @@ def test_pause_resume_and_help_wiring_keep_runtime_handoff_and_local_snapshot_bo
     assert "/gpd:resume-work" in help_workflow
     assert "- For a normal-terminal, current-workspace read-only recovery snapshot without launching the runtime, use `gpd resume`." in help_workflow
     assert (
-        "Use `gpd resume --recent` first if you need to find the workspace before resuming it, "
+        "Recovery ladder: use `gpd resume` for the current-workspace read-only recovery snapshot. "
+        "If that is the wrong workspace, use `gpd resume --recent` to find the workspace first, "
         "then continue inside that workspace with `/gpd:resume-work`."
     ) in help_workflow
+    assert "After resuming, `/gpd:suggest-next` is the fastest next command." in help_workflow
     assert "gpd observe execution" in help_workflow
     assert "suggested read-only checks rather than runtime hotkeys" in help_workflow
 

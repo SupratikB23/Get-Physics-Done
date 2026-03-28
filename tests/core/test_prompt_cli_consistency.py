@@ -207,6 +207,9 @@ def test_help_prompt_default_quick_start_stays_runtime_surface_focused() -> None
         "/gpd:help --all",
     ):
         assert line in quick_start
+    assert "Recovery ladder: use `gpd resume`" in quick_start
+    assert "After resuming, `/gpd:suggest-next` is the fastest next command." in quick_start
+    assert "Continue in-runtime from the selected project state" in quick_start
     assert "**Core workflow:** new-project → discuss-phase → plan-phase → execute-phase → verify-work → repeat → complete-milestone" in quick_start
     assert "**Publication:** write-paper → peer-review → respond-to-referees → arxiv-submission" in quick_start
     assert "gpd init new-project" not in quick_start

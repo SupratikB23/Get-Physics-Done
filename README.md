@@ -59,11 +59,11 @@ The table below uses the Claude Code / Gemini CLI form for in-runtime commands. 
 | New research project | `/gpd:new-project` | Start a fresh GPD research workflow with the full onboarding path. |
 | New research project, fast path | `/gpd:new-project --minimal` | Skip deep questioning and the literature-survey setup when you already know the scope and want the fastest project bootstrap. |
 | Current-workspace recovery snapshot | `gpd resume` | Read-only local recovery summary for the current workspace from your normal system terminal. |
-| Find a workspace to reopen | `gpd resume --recent` | Discover recent projects from your normal system terminal, then reopen the chosen workspace. |
-| Continue in an existing GPD project | `/gpd:resume-work` | Use the runtime `resume-work` command to continue from the current project state. |
+| Find a workspace to reopen | `gpd resume --recent` | Discover recent projects from your normal system terminal, then inspect the chosen workspace and continue there with the runtime `resume-work` command. |
+| Continue in an existing GPD project | `/gpd:resume-work` | Use the runtime `resume-work` command to continue from the selected project state. |
 | Existing research folder or codebase | `/gpd:map-research` | Map existing work before planning. |
 
-Leave / return path: run your runtime-specific `pause-work` command before stepping away mid-phase, then use the runtime `resume-work` command when you return inside that runtime. If you only need a current-workspace, read-only recovery snapshot from your normal system terminal, use `gpd resume`. If you need to find the workspace first, use `gpd resume --recent`, then continue inside that workspace with the runtime `resume-work` command. After resuming, the runtime `suggest-next` command is the fastest post-resume command.
+Recovery ladder: use `gpd resume` for the current-workspace, read-only recovery snapshot from your normal system terminal. If that is the wrong workspace, use `gpd resume --recent` to find the workspace first, then continue inside that workspace with the runtime `resume-work` command. After resuming, the runtime `suggest-next` command is the fastest post-resume next command. Before stepping away mid-phase, run your runtime-specific `pause-work` command so that ladder has an explicit handoff to restore.
 
 For read-only long-run visibility from your normal system terminal, use `gpd observe execution`. It is the passive status surface for progress and waiting state; if it cannot prove the run is healthy, it will conservatively say `possibly stalled` instead of relying on runtime hotkeys. Start with `gpd observe show --last 20` when you need the recent event trail, then inspect `gpd resume` if the run is waiting, paused, blocked, or flagged `possibly stalled`. If the same execution surface shows an alternative-path follow-up or `branch later` recommendation, route it through the runtime `tangent` command first and use `branch-hypothesis` only after that explicit choice.
 
@@ -301,7 +301,7 @@ These commands run inside your installed AI runtime after GPD has been installed
 | `new-project --minimal` | Fast path: initialize a new project from a compact description with lighter upfront setup |
 | `gpd resume` | Current-workspace read-only recovery snapshot from your normal system terminal |
 | `gpd resume --recent` | Find the workspace you need to reopen |
-| `resume-work` | Continue the previous session from the current project state |
+| `resume-work` | Continue the previous session from the selected project state |
 | `pause-work` | Capture a handoff before stepping away mid-phase so `resume-work` can continue cleanly |
 | `plan-phase N` | Plan phase `N` with task breakdown and checkpoints |
 | `execute-phase N` | Execute all tasks in phase `N` |
@@ -320,7 +320,7 @@ Typical research loop: `/gpd:new-project -> /gpd:discuss-phase 1 -> /gpd:plan-ph
 
 Typical publication loop: `/gpd:write-paper -> /gpd:peer-review -> /gpd:respond-to-referees -> /gpd:arxiv-submission`
 
-Leave / return path: `/gpd:pause-work` before leaving mid-phase, `/gpd:resume-work` when you return in-runtime, `/gpd:suggest-next` when you want the fastest post-resume command, and `gpd resume` from your normal system terminal for a current-workspace read-only recovery snapshot. Use `gpd resume --recent` first if you need to find the workspace before resuming it, then continue with the runtime `resume-work` command.
+Leave / return path: `/gpd:pause-work` before leaving mid-phase, `/gpd:resume-work` when you return in-runtime, `/gpd:suggest-next` when you want the fastest post-resume command, and `gpd resume` from your normal system terminal for a current-workspace read-only recovery snapshot. Use `gpd resume --recent` first if you need to find the workspace before resuming it, then continue inside that workspace with the runtime `resume-work` command.
 
 ### Command Context
 

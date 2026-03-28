@@ -691,6 +691,9 @@ def test_public_readme_quick_start_surfaces_step_one_entry_points() -> None:
     assert "/gpd:new-project --minimal" in quick_start
     assert "$gpd-resume-work" in quick_start
     assert "/gpd:map-research" in quick_start
+    assert "Recovery ladder: use `gpd resume`" in quick_start
+    assert "After resuming, the runtime `suggest-next` command is the fastest post-resume next command." in quick_start
+    assert "| Continue in an existing GPD project | `/gpd:resume-work` | Use the runtime `resume-work` command to continue from the selected project state. |" in quick_start
 
 
 def test_public_readme_quick_start_keeps_settings_guided_balanced_unattended_readiness_path() -> None:
