@@ -214,7 +214,7 @@ Remaining friction after Step 4:
 - Managed Wolfram integration proves configuration shape plus env presence, not remote authentication success or Wolfram-side session health.
 - The integration surface is intentionally narrow; richer shared managed integrations should wait for real demand.
 
-### Next Step
+### Next Step After Step 5
 
 ### Step 5 Completed: Opt-In Live Executable Probes In Doctor
 
@@ -265,6 +265,66 @@ If we continue beyond the collaborator-permissions/toolchain slice, the next hig
 - optional live probe evidence when requested
 
 That step should answer one user question directly: “Can I leave this runtime alone overnight, and if not, exactly what do I need to fix first?”
+
+### Step 6 Completed: Explicit Unattended-Readiness Verdict
+
+Status: completed on March 28, 2026.
+
+What shipped:
+
+- GPD now exposes one explicit shared verdict surface:
+  - `gpd validate unattended-readiness --runtime <runtime> [--autonomy <mode>]`
+- The new command stays runtime-agnostic at the product surface and is composed centrally in the CLI rather than delegated to adapter-specific feature branches.
+- The command now combines:
+  - `gpd doctor` for install/readiness blockers and advisories on the selected target
+  - `gpd permissions status` for runtime-owned approval alignment and relaunch requirements
+- The result preserves the existing permission-readiness taxonomy instead of inventing a parallel one:
+  - `ready`
+  - `relaunch-required`
+  - `not-ready`
+  - `unresolved`
+- The payload now makes the composition explicit with:
+  - per-check results for `permissions` and `doctor`
+  - `blocking_conditions`
+  - `warnings`
+  - `next_step`
+  - `status_scope`
+  - `current_session_verified`
+- When permissions are aligned but doctor still finds blockers, the command now points the user at the exact `gpd doctor --runtime ...` command needed to inspect the blocking machine-local issue.
+- Public help, workflow docs, install messaging, and the README now consistently teach:
+  - `gpd doctor` is install/runtime-local readiness
+  - `gpd validate unattended-readiness ...` is the unattended or overnight verdict
+  - `gpd permissions ...` is runtime-owned approval/alignment only
+  - `gpd validate plan-preflight <PLAN.md>` remains the plan gate
+- The CLI command table now correctly shows that `--runtime` is required for `gpd validate unattended-readiness`.
+
+Verification:
+
+- Focused Step 6 suites passed:
+  - `uv run pytest -q tests/core/test_cli.py tests/test_cli_commands.py tests/core/test_prompt_cli_consistency.py tests/test_release_consistency.py`
+  - `uv run pytest -q tests/test_cli_integration.py -k "unattended_readiness or permissions_sync_then_unattended_readiness"`
+  - `uv run ruff check README.md src/gpd/cli.py src/gpd/commands/help.md src/gpd/specs/workflows/help.md src/gpd/specs/workflows/settings.md tests/core/test_cli.py tests/core/test_prompt_cli_consistency.py tests/test_cli_commands.py tests/test_cli_integration.py tests/test_release_consistency.py`
+- Result:
+  - `375 passed`
+  - `1 passed, 99 deselected`
+  - `ruff clean`
+
+Remaining friction after Step 6:
+
+- The unattended verdict is still bounded by the underlying evidence sources; it does not prove that a currently running runtime session has already accepted the new permission state.
+- `gpd doctor` remains intentionally machine-local; it still does not replace plan-specific preflight or remote-provider health checks.
+- Shared Wolfram integration remains config/env oriented rather than a proof of remote authentication or license/session success.
+- The result can intentionally report `readiness="ready"` while `passed=false` if permissions are aligned but doctor still finds blocking machine-local issues; that boundary is correct, but users may still need a little time to internalize it.
+
+### Next Step
+
+If we continue beyond the collaborator-permissions/toolchain slice, the next highest-value step is a single state-aware startup/recovery surface that composes:
+
+- recent-session discovery
+- `resume-work` discoverability
+- install/help/runtime-hint guidance about what to do next in the current workspace
+
+That step should answer one user question directly: “I’m back after a restart or interruption; what is the next safe command to run here?”
 
 ## Feedback Map
 

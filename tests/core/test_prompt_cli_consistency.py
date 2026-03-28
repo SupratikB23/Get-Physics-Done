@@ -27,6 +27,30 @@ NON_CANONICAL_GPD_COMMAND_RE = re.compile(r"(?<![A-Za-z0-9_./}])(?:\$gpd-[A-Za-z
 RAW_AFTER_SUBCOMMAND_RE = re.compile(r"\bgpd\s+(?!--raw\b)[^`\n]*\s+--raw\b")
 SUMMARY_EXTRACT_FIELDS_RE = re.compile(r"\bgpd\s+summary-extract\b[^\n`]*\s--fields\b")
 DOCTOR_RUNTIME_SCOPE_RE = re.compile(r"gpd doctor --runtime <runtime> --local\|--global")
+UNATTENDED_READINESS_SURFACE = "gpd validate unattended-readiness"
+PERMISSIONS_SYNC_SURFACE = "gpd permissions sync --runtime <runtime> --autonomy balanced"
+PLAN_PREFLIGHT_SURFACE = "gpd validate plan-preflight <PLAN.md>"
+WOLFRAM_STATUS_SURFACE = "gpd integrations status wolfram"
+
+
+def _assert_unattended_readiness_boundary(content: str) -> None:
+    assert UNATTENDED_READINESS_SURFACE in content
+    assert PERMISSIONS_SYNC_SURFACE in content
+    assert "gpd doctor" in content
+    assert (
+        "runtime-owned approval/alignment only" in content
+        or "runtime-owned permission alignment" in content
+    )
+
+
+def _assert_wolfram_plan_boundary(content: str) -> None:
+    assert WOLFRAM_STATUS_SURFACE in content
+    assert PLAN_PREFLIGHT_SURFACE in content
+    assert (
+        "does not prove local Mathematica availability or plan readiness" in content
+        or "does not mean a plan is ready to run" in content
+        or "plan gate" in content
+    )
 
 
 def _extract_between(content: str, start_marker: str, end_marker: str) -> str:
@@ -170,8 +194,8 @@ def test_help_prompt_default_quick_start_stays_runtime_surface_focused() -> None
         "/gpd:resume-work",
         "gpd resume --recent",
         "gpd --help",
-        "gpd permissions status --runtime <runtime> --autonomy balanced",
-        "gpd permissions sync --runtime <runtime> --autonomy balanced",
+        UNATTENDED_READINESS_SURFACE,
+        PERMISSIONS_SYNC_SURFACE,
         "gpd observe execution",
         "gpd cost",
         "gpd presets list",
@@ -205,30 +229,21 @@ def test_help_prompt_keeps_workflow_preset_readiness_on_local_cli_surface() -> N
     assert "gpd presets apply <preset>" in quick_start
     assert "runtime-local paper-toolchain readiness" in quick_start
     for content in (help_command, help_workflow):
-        assert (
-            "Use `gpd --help` to inspect the executable local install/readiness/permissions/diagnostics surface directly."
-            in content
-        )
-        assert (
-            "`gpd doctor` checks the selected install target and runtime-local readiness signals. "
-            "Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. "
-            "`gpd permissions ...` checks runtime-owned approval/alignment only."
-        ) in content
-        assert "--live-executable-probes" in content
-        assert "gpd permissions status --runtime <runtime> --autonomy balanced" in content
-        assert "gpd permissions sync --runtime <runtime> --autonomy balanced" in content
+        assert "Use `gpd --help` to inspect the executable local install/readiness/permissions/diagnostics surface directly." in content
+        _assert_unattended_readiness_boundary(content)
+        assert "executable probes" in content
+        assert "pdflatex" in content
+        assert "wolframscript" in content
         assert DOCTOR_RUNTIME_SCOPE_RE.search(content) is not None
-        assert "gpd validate plan-preflight <PLAN.md>" in content
+        _assert_wolfram_plan_boundary(content)
         assert "Workflow presets" in content
         assert "gpd presets show <preset>" in content
         assert "gpd presets apply <preset>" in content
         assert "not stored as a separate preset block" in content
-        assert (
-            "Check runtime-local paper-toolchain readiness from your normal terminal before using that preset. "
-            "Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. "
-            "Failed preset rows degrade `write-paper`, but `paper-build` remains the build contract and "
-            "`arxiv-submission` requires the built manuscript"
-        ) in content
+        assert "Check runtime-local paper-toolchain readiness from your normal terminal before using that preset" in content
+        assert "Failed preset rows degrade `write-paper`" in content
+        assert "`paper-build` remains the build contract" in content
+        assert "`arxiv-submission` requires the built manuscript" in content
         assert "Workflow preset tooling is layered on top of the base install; it does not change runtime permission alignment." in content
 
 
@@ -250,8 +265,8 @@ def test_prompt_docs_keep_wolfram_as_shared_capability_not_runtime_config_surfac
             assert token not in content
 
     for content in (help_command, help_workflow):
-        assert "gpd validate plan-preflight <PLAN.md>" in content
-        assert "gpd integrations status wolfram" in content
+        _assert_unattended_readiness_boundary(content)
+        _assert_wolfram_plan_boundary(content)
         assert "gpd integrations enable wolfram" in content
         assert "gpd integrations disable wolfram" in content
 
@@ -473,17 +488,15 @@ def test_help_prompt_surfaces_workflow_presets_on_the_local_cli_surface() -> Non
         assert "**Workflow presets**" in content
         assert "Paper/manuscript workflows" in content
         assert DOCTOR_RUNTIME_SCOPE_RE.search(content) is not None
-        assert "--live-executable-probes" in content
+        assert "executable probes" in content
         assert "gpd presets list" in content
         assert "gpd presets show <preset>" in content
         assert "gpd presets apply <preset>" in content
         assert "not stored as a separate preset block" in content
-        assert (
-            "Check runtime-local paper-toolchain readiness from your normal terminal before using that preset. "
-            "Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. "
-            "Failed preset rows degrade `write-paper`, but `paper-build` remains the build contract and "
-            "`arxiv-submission` requires the built manuscript"
-        ) in content
+        assert "Check runtime-local paper-toolchain readiness from your normal terminal before using that preset" in content
+        assert "Failed preset rows degrade `write-paper`" in content
+        assert "`paper-build` remains the build contract" in content
+        assert "`arxiv-submission` requires the built manuscript" in content
         assert "/gpd:settings" in content
         assert "/gpd:set-profile" in content
 

@@ -828,6 +828,14 @@ function runtimePermissionsHint(action, runtime, autonomy = "balanced", targetDi
   return formatShellCommand(parts);
 }
 
+function runtimeUnattendedReadinessHint(runtime, autonomy = "balanced", targetDir = null) {
+  const parts = ["gpd", "validate", "unattended-readiness", "--runtime", runtime, "--autonomy", autonomy];
+  if (targetDir) {
+    parts.push("--target-dir", targetDir);
+  }
+  return formatShellCommand(parts);
+}
+
 function buildRuntimeDoctorArgs(runtime, scope, targetDir = null) {
   const args = ["-m", "gpd.cli", "--raw", "doctor", "--runtime", runtime, `--${scope}`];
   if (targetDir) {
@@ -1000,7 +1008,7 @@ function runInstallReadinessPreflight(managedPython, runtimes, scope, targetDir 
   success(`Runtime launcher/target preflight passed for ${formatRuntimeList(runtimes)}.`);
   const doctorHints = runtimes.map((runtime) => `\`${runtimeDoctorHint(runtime, scope, targetDir)}\``).join(", ");
   log(`For the full runtime-target doctor report after install, use ${doctorHints}.`);
-  log("Use `gpd doctor` for install/readiness checks and `gpd permissions status` for runtime-owned permission alignment.");
+  log("Use `gpd doctor` for install and runtime-local readiness, `gpd validate unattended-readiness` for the unattended or overnight verdict, and `gpd permissions ...` for runtime-owned permission alignment and sync.");
   log(
     "Workflow presets: if you plan paper/manuscript workflows, rerun "
     + `${doctorHints} after install and check whether \`Workflow Presets\` is \`ready\` or \`degraded\`. `
@@ -1023,20 +1031,20 @@ function printUnattendedConfigurationReminder(runtimes, targetDir = null) {
       + "to review autonomy, workflow defaults, and model-cost posture."
     );
     log("The safest model starting point is `review` plus runtime defaults.");
-    log(`Check runtime permission alignment with \`${runtimePermissionsHint("status", runtime, "balanced", targetDir)}\`.`);
-    log(`If it reports drift, run \`${runtimePermissionsHint("sync", runtime, "balanced", targetDir)}\`.`);
-    warn("If `requires_relaunch` is true, the runtime is not ready for unattended use until you exit and relaunch it.");
+    log(`Check the unattended or overnight verdict with \`${runtimeUnattendedReadinessHint(runtime, "balanced", targetDir)}\`.`);
+    log(`If it reports \`not-ready\`, run \`${runtimePermissionsHint("sync", runtime, "balanced", targetDir)}\`.`);
+    warn("If it reports `relaunch-required`, the runtime is not ready for unattended use until you exit and relaunch it.");
   } else {
     log("Inside each runtime, use `settings` to review autonomy, workflow defaults, and model-cost posture.");
     log("The safest model starting point is `review` plus runtime defaults.");
     for (const runtime of runtimes) {
       log(
         `${runtimeDisplayName(runtime)}: \`${runtimeSurfaceCommand(runtime, "settings")}\`, then `
-        + `\`${runtimePermissionsHint("status", runtime)}\`.`
+        + `\`${runtimeUnattendedReadinessHint(runtime)}\`.`
       );
     }
-    log("If runtime permission drift is reported, rerun the matching `gpd permissions sync --runtime <runtime> --autonomy balanced` command.");
-    warn("If any runtime reports `requires_relaunch`, treat its runtime permissions as not ready for unattended use until that runtime is relaunched.");
+    log("If any runtime reports `not-ready`, rerun the matching `gpd permissions sync --runtime <runtime> --autonomy balanced` command.");
+    warn("If any runtime reports `relaunch-required`, treat its unattended readiness as not ready until that runtime is relaunched.");
   }
   console.log("");
 }
@@ -1144,9 +1152,9 @@ function printHelp() {
     + "and check whether `Workflow Presets` is `ready` or `degraded`. Without LaTeX, the paper/manuscript and full research presets remain usable for `write-paper` and `peer-review`, "
     + "but `paper-build` and `arxiv-submission` require the `LaTeX Toolchain`."
   );
-  console.log(" Then run `gpd permissions status --runtime <runtime> --autonomy balanced`.");
-  console.log(" If it reports drift, run `gpd permissions sync --runtime <runtime> --autonomy balanced`.");
-  console.log(" If it reports `requires_relaunch`, exit and relaunch the runtime before unattended use.");
+  console.log(" Then run `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced`.");
+  console.log(" If it reports `not-ready`, run `gpd permissions sync --runtime <runtime> --autonomy balanced`.");
+  console.log(" If it reports `relaunch-required`, exit and relaunch the runtime before unattended use.");
   console.log("");
 }
 

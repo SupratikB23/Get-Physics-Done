@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -21,8 +22,7 @@ from typer.testing import CliRunner
 from gpd.adapters import get_adapter
 from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.cli import app
-from gpd.core.constants import AGENT_ID_FILENAME
-from gpd.core.constants import ENV_DATA_DIR
+from gpd.core.constants import AGENT_ID_FILENAME, ENV_DATA_DIR
 from gpd.core.costs import UsageRecord, usage_ledger_path
 from gpd.core.state import default_state_dict, generate_state_markdown
 from tests.runtime_install_helpers import seed_complete_runtime_install
@@ -96,6 +96,7 @@ def _reset_runtime_env(monkeypatch: pytest.MonkeyPatch) -> None:
         if key.startswith(_RUNTIME_ENV_PREFIXES) or key in _RUNTIME_ENV_VARS_TO_CLEAR:
             monkeypatch.delenv(key, raising=False)
 
+
 def _install_runtime(
     project_root: Path,
     descriptor,
@@ -146,6 +147,21 @@ def _target_file_snapshot(target: Path) -> dict[str, bytes]:
 def _activate_runtime(monkeypatch: pytest.MonkeyPatch, descriptor, value: str = "active") -> None:
     assert descriptor.activation_env_vars
     monkeypatch.setenv(descriptor.activation_env_vars[0], value)
+
+
+def _expose_runtime_launcher(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, descriptor) -> Path:
+    """Place a stub runtime launcher on PATH so doctor can validate the runtime surface."""
+    launch_argv = shlex.split(descriptor.launch_command)
+    launch_executable = launch_argv[0] if launch_argv else descriptor.launch_command.strip()
+    assert launch_executable
+    bin_dir = tmp_path / "runtime-bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    launcher_path = bin_dir / launch_executable
+    launcher_path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    launcher_path.chmod(0o755)
+    current_path = os.environ.get("PATH", "")
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{current_path}" if current_path else str(bin_dir))
+    return launcher_path
 
 
 # ---------------------------------------------------------------------------
@@ -1075,6 +1091,55 @@ class TestConfigCommands:
         assert parsed["runtime"] == _ENV_OVERRIDE_DESCRIPTOR.runtime_name
         assert parsed["sync_applied"] is True
         assert status["config_aligned"] is True
+
+    def test_permissions_sync_then_unattended_readiness_surfaces_composed_relaunch_required_verdict(
+        self,
+        gpd_project: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        _install_runtime(gpd_project, _ENV_OVERRIDE_DESCRIPTOR)
+        _expose_runtime_launcher(monkeypatch, tmp_path, _ENV_OVERRIDE_DESCRIPTOR)
+
+        sync_result = _invoke(
+            "--raw",
+            "permissions",
+            "sync",
+            "--runtime",
+            _ENV_OVERRIDE_DESCRIPTOR.runtime_name,
+            "--autonomy",
+            "yolo",
+        )
+        sync_payload = json.loads(sync_result.output)
+
+        status_result = _invoke(
+            "--raw",
+            "validate",
+            "unattended-readiness",
+            "--runtime",
+            _ENV_OVERRIDE_DESCRIPTOR.runtime_name,
+            "--autonomy",
+            "yolo",
+            expect_ok=False,
+        )
+        status_payload = json.loads(status_result.output)
+
+        assert sync_payload["runtime"] == _ENV_OVERRIDE_DESCRIPTOR.runtime_name
+        assert sync_payload["sync_applied"] is True
+        assert status_result.exit_code == 1
+        assert status_payload["runtime"] == _ENV_OVERRIDE_DESCRIPTOR.runtime_name
+        assert status_payload["readiness"] == "relaunch-required"
+        assert status_payload["ready"] is False
+        assert status_payload["passed"] is False
+        assert status_payload["checks"][0]["name"] == "permissions"
+        assert status_payload["checks"][0]["passed"] is False
+        assert status_payload["checks"][1]["name"] == "doctor"
+        assert status_payload["checks"][1]["passed"] is True
+        assert status_payload["readiness_message"] == (
+            "Runtime permissions are aligned, but the runtime must be relaunched before unattended use."
+        )
+        next_step = str(status_payload["next_step"]).lower()
+        assert "restart" in next_step or "relaunch" in next_step
 
     def test_permissions_sync_accepts_display_name_runtime(self, gpd_project: Path) -> None:
         adapter, target = _install_runtime(gpd_project, _ENV_OVERRIDE_DESCRIPTOR)

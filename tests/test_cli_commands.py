@@ -911,6 +911,21 @@ class TestUtilityCommands:
 
 
 class TestReviewValidationCommands:
+    def test_validate_unattended_readiness_surface_smoke(self) -> None:
+        validate_help = runner.invoke(app, ["validate", "--help"], catch_exceptions=False)
+
+        assert validate_help.exit_code == 0, validate_help.output
+        assert "unattended-readiness" in validate_help.output
+
+        result = runner.invoke(
+            app,
+            ["validate", "unattended-readiness", "--help"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "unattended" in result.output.lower()
+
     def test_review_contract_uses_typed_registry_surface(self) -> None:
         result = runner.invoke(
             app,

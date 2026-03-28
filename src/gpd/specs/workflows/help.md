@@ -120,8 +120,8 @@ This reference lists canonical in-runtime slash-command names in `/gpd:*` form.
 
 - Use these names inside the installed agent/runtime command surface.
 - The bootstrap installer owns Node.js / Python / `venv` prerequisites. The local `gpd` CLI may expose different `gpd ...` subcommands and grouping. Use `gpd --help` to inspect the executable local install/readiness/permissions/diagnostics surface directly.
-- Use `gpd permissions status --runtime <runtime> --autonomy balanced` and `gpd permissions sync --runtime <runtime> --autonomy balanced` to confirm and resync unattended readiness from your normal terminal.
-- `gpd doctor` checks the selected install target and runtime-local readiness signals. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. `gpd permissions ...` checks runtime-owned approval/alignment only.
+- Use `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced` for the unattended or overnight verdict, and `gpd permissions sync --runtime <runtime> --autonomy balanced` when runtime-owned permissions need realignment.
+- `gpd doctor` checks the selected install target and runtime-local readiness signals. `gpd validate unattended-readiness ...` returns `ready`, `relaunch-required`, `not-ready`, or `unresolved`. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. `gpd permissions ...` checks runtime-owned approval/alignment only.
 - If you need to validate whether a slash-command can run in the current workspace, use `gpd validate command-context gpd:<name>`.
 - If a plan declares specialized `tool_requirements`, use `gpd validate plan-preflight <PLAN.md>` from your normal terminal before execution.
 - For a normal-terminal, read-only recovery snapshot without launching the runtime, use `gpd resume`.

@@ -268,6 +268,38 @@ class CommandContextPreflightResult:
     dispatch_note: str = ""
 
 
+@dataclasses.dataclass(frozen=True)
+class UnattendedReadinessCheck:
+    """One composed check contributing to unattended-readiness."""
+
+    name: str
+    passed: bool
+    blocking: bool
+    detail: str
+
+
+@dataclasses.dataclass(frozen=True)
+class UnattendedReadinessResult:
+    """Summary of whether one runtime surface is ready for unattended use."""
+
+    runtime: str
+    autonomy: str
+    install_scope: str
+    target: str | None
+    readiness: str
+    ready: bool
+    passed: bool
+    readiness_message: str
+    live_executable_probes: bool
+    checks: list[UnattendedReadinessCheck]
+    blocking_conditions: list[str]
+    warnings: list[str]
+    next_step: str = ""
+    status_scope: str = "unknown"
+    current_session_verified: bool = False
+    validated_surface: str = "public_runtime_command_surface"
+
+
 def _format_runtime_list(runtime_names: list[str]) -> str:
     """Render runtime identifiers as human-friendly names."""
     display_names = [
@@ -5245,6 +5277,37 @@ def validate_command_context(
         raise typer.Exit(code=1)
 
 
+@validate_app.command("unattended-readiness")
+def validate_unattended_readiness_cmd(
+    runtime: str = typer.Option(..., "--runtime", help=_runtime_override_help()),
+    autonomy: str | None = typer.Option(None, "--autonomy", help="Autonomy to compare against"),
+    global_install: bool = typer.Option(False, "--global", help="Check the runtime's global install target"),
+    local_install: bool = typer.Option(False, "--local", help="Check the runtime's local install target (default)"),
+    target_dir: str | None = typer.Option(
+        None,
+        "--target-dir",
+        help="Override the runtime config directory to inspect",
+    ),
+    live_executable_probes: bool = typer.Option(
+        False,
+        "--live-executable-probes",
+        help="Run cheap local executable probes such as `pdflatex --version` or `wolframscript -version`",
+    ),
+) -> None:
+    """Check whether one runtime surface is ready for unattended use."""
+    result = _build_unattended_readiness(
+        runtime=runtime,
+        autonomy=autonomy,
+        global_install=global_install,
+        local_install=local_install,
+        target_dir=target_dir,
+        live_executable_probes=live_executable_probes,
+    )
+    _output(result)
+    if not result.passed:
+        raise typer.Exit(code=1)
+
+
 @validate_app.command("review-contract")
 def validate_review_contract(
     command_name: str = typer.Argument(..., help="Command registry key or gpd:name"),
@@ -6470,6 +6533,128 @@ def _runtime_doctor_hint(runtime_name: str, *, install_scope: str, target_dir: P
     if target_dir is not None:
         parts.extend(["--target-dir", str(target_dir)])
     return " ".join(shlex.quote(part) for part in parts)
+
+
+def _build_unattended_readiness(
+    *,
+    runtime: str,
+    autonomy: str | None,
+    global_install: bool,
+    local_install: bool,
+    target_dir: str | None,
+    live_executable_probes: bool,
+) -> UnattendedReadinessResult:
+    """Compose doctor and permissions status into one unattended-readiness verdict."""
+    from gpd.core.health import run_doctor
+    from gpd.specs import SPECS_DIR
+
+    if global_install and local_install:
+        _error("Cannot specify both --global and --local")
+
+    normalized_runtime = _normalize_runtime_selection([runtime], action="validate unattended-readiness")[0]
+    resolved_target = _resolve_cli_target_dir(target_dir) if target_dir is not None else None
+    install_scope = (
+        "global"
+        if global_install
+        else "local"
+        if local_install
+        else "global"
+        if target_dir and _target_dir_matches_global(normalized_runtime, target_dir, action="validate unattended-readiness")
+        else "local"
+    )
+
+    if resolved_target is not None:
+        permissions_target = str(resolved_target)
+    else:
+        adapter = _get_adapter_or_error(normalized_runtime, action="validate unattended-readiness")
+        permissions_target = str(adapter.resolve_target_dir(install_scope == "global", _get_cwd()))
+
+    doctor_report = run_doctor(
+        specs_dir=SPECS_DIR,
+        runtime=normalized_runtime,
+        install_scope=install_scope,
+        target_dir=resolved_target,
+        cwd=_get_cwd(),
+        live_executable_probes=live_executable_probes,
+    )
+    permissions_payload = _permissions_status_payload(
+        runtime=normalized_runtime,
+        autonomy=autonomy,
+        target_dir=permissions_target,
+    )
+
+    blocker_messages = _doctor_blocker_messages(doctor_report)
+    advisory_messages = _doctor_advisory_messages(doctor_report)
+    readiness = str(permissions_payload.get("readiness") or "unresolved")
+    permissions_ready = bool(permissions_payload.get("ready", False))
+    readiness_message = str(
+        permissions_payload.get("readiness_message") or "Runtime permissions are not ready for unattended use."
+    )
+
+    doctor_detail = "Runtime readiness checks passed."
+    if blocker_messages:
+        doctor_detail = "; ".join(blocker_messages[:3])
+    elif advisory_messages:
+        doctor_detail = f"Runtime readiness checks passed with {len(advisory_messages)} advisory(s)."
+
+    checks = [
+        UnattendedReadinessCheck(
+            name="permissions",
+            passed=permissions_ready,
+            blocking=not permissions_ready,
+            detail=readiness_message,
+        ),
+        UnattendedReadinessCheck(
+            name="doctor",
+            passed=not blocker_messages,
+            blocking=bool(blocker_messages),
+            detail=doctor_detail,
+        ),
+    ]
+
+    blocking_conditions: list[str] = []
+    if not permissions_ready and readiness_message not in blocking_conditions:
+        blocking_conditions.append(readiness_message)
+    for message in blocker_messages:
+        if message not in blocking_conditions:
+            blocking_conditions.append(message)
+
+    warnings: list[str] = []
+    for message in advisory_messages:
+        if message not in warnings:
+            warnings.append(message)
+
+    next_step = str(permissions_payload.get("next_step") or "").strip()
+    if not next_step and blocker_messages:
+        next_step = (
+            f"Run `{_runtime_doctor_hint(normalized_runtime, install_scope=install_scope, target_dir=resolved_target)}` "
+            "to inspect and clear the blocking runtime-readiness issues."
+        )
+
+    target = permissions_payload.get("target")
+    if not isinstance(target, str) or not target.strip():
+        target = str(resolved_target) if resolved_target is not None else getattr(doctor_report, "target", None)
+
+    resolved_autonomy = permissions_payload.get("autonomy")
+    autonomy_value = str(resolved_autonomy) if isinstance(resolved_autonomy, str) and resolved_autonomy else (autonomy or "")
+    passed = permissions_ready and not blocker_messages
+    return UnattendedReadinessResult(
+        runtime=normalized_runtime,
+        autonomy=autonomy_value,
+        install_scope=install_scope,
+        target=target,
+        readiness=readiness,
+        ready=permissions_ready,
+        passed=passed,
+        readiness_message=readiness_message,
+        live_executable_probes=live_executable_probes,
+        checks=checks,
+        blocking_conditions=blocking_conditions,
+        warnings=warnings,
+        next_step=next_step,
+        status_scope=str(permissions_payload.get("status_scope") or "unknown"),
+        current_session_verified=bool(permissions_payload.get("current_session_verified", False)),
+    )
 
 
 def _run_install_readiness_preflight(

@@ -70,10 +70,10 @@ Before stepping away mid-phase, run `/gpd:pause-work` so `/gpd:resume-work` has 
 
 **Local CLI bridge**
 1. `gpd --help` — inspect the local install/readiness/permissions/diagnostics surface directly
-2. `gpd permissions status --runtime <runtime> --autonomy balanced` / `gpd permissions sync --runtime <runtime> --autonomy balanced` — confirm and resync unattended readiness from your normal terminal
+2. `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced` / `gpd permissions sync --runtime <runtime> --autonomy balanced` — check the unattended or overnight verdict from your normal terminal and resync runtime-owned permissions when needed
 3. `gpd resume --recent`, `gpd observe execution`, `gpd cost`, `gpd presets list`, `gpd presets show <preset>`, `gpd presets apply <preset> --dry-run`, `gpd integrations status wolfram`, `gpd integrations enable wolfram`, `gpd integrations disable wolfram` — local recovery, visibility, cost, preset preview/apply, and shared Wolfram integration config checks
 
-`gpd doctor` checks the selected install target and runtime-local readiness signals. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. `gpd permissions ...` checks runtime-owned approval/alignment only.
+`gpd doctor` checks the selected install target and runtime-local readiness signals. `gpd validate unattended-readiness ...` returns the unattended or overnight verdict: `ready`, `relaunch-required`, `not-ready`, or `unresolved`. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. `gpd permissions ...` checks runtime-owned approval/alignment only, and `gpd validate plan-preflight <PLAN.md>` remains plan readiness.
 
 **Unattended / autonomy setup**
 1. `/gpd:settings` — Primary guided setup for autonomy, runtime permission sync, and unattended budgets (`Balanced` recommended)
@@ -113,11 +113,12 @@ This reference lists canonical in-runtime slash-command names in `/gpd:*` form.
 - Use these names inside the installed agent/runtime command surface.
 - The bootstrap installer owns Node.js / Python / `venv` prerequisites. The local `gpd` CLI may expose different `gpd ...` subcommands and grouping. Use `gpd --help` to inspect the executable local install/readiness/permissions/diagnostics surface directly.
 - If you need to validate whether a slash-command can run in the current workspace, use `gpd validate command-context gpd:<name>`.
+- Use `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced` for the unattended or overnight verdict, and `gpd permissions sync --runtime <runtime> --autonomy balanced` when runtime-owned permissions need realignment.
 - If a plan declares specialized `tool_requirements`, use `gpd validate plan-preflight <PLAN.md>` from your normal terminal before execution.
 - For a normal-terminal, read-only recovery snapshot without launching the runtime, use `gpd resume`.
 - For cross-project discovery from your normal terminal, use `gpd resume --recent` first, then open the selected project and run the per-project recovery surface there.
 - For a normal-terminal, read-only machine-local usage / cost summary, use `gpd cost`.
-- `gpd doctor` checks the selected install target and runtime-local readiness signals. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. `gpd permissions ...` checks runtime-owned approval/alignment only.
+- `gpd doctor` checks the selected install target and runtime-local readiness signals. `gpd validate unattended-readiness ...` returns `ready`, `relaunch-required`, `not-ready`, or `unresolved`. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. `gpd permissions ...` checks runtime-owned approval/alignment only.
 
 ## Quick Start
 
