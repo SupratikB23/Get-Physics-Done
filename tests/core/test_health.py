@@ -20,6 +20,7 @@ from gpd.core.health import (
     HealthCheck,
     HealthReport,
     HealthSummary,
+    _doctor_check_latex_toolchain,
     check_checkpoint_tags,
     check_compaction_needed,
     check_config,
@@ -114,6 +115,92 @@ class TestCheckEnvironment:
         assert result.label == "Environment"
         assert result.status == CheckStatus.OK
         assert "python_version" in result.details
+
+
+class TestDoctorCheckLatexToolchain:
+    def test_full_toolchain_reports_ok(self, monkeypatch):
+        monkeypatch.setattr(
+            "gpd.mcp.paper.compiler.detect_latex_toolchain",
+            lambda: SimpleNamespace(
+                available=True,
+                compiler_path="/usr/bin/pdflatex",
+                distribution="TeX Live",
+                message="pdflatex found (TeX Live): /usr/bin/pdflatex",
+            ),
+        )
+        monkeypatch.setattr(
+            "gpd.core.health.shutil.which",
+            lambda binary: {
+                "latexmk": "/usr/bin/latexmk",
+                "bibtex": "/usr/bin/bibtex",
+                "kpsewhich": "/usr/bin/kpsewhich",
+            }.get(binary),
+        )
+
+        result = _doctor_check_latex_toolchain()
+
+        assert result.status == CheckStatus.OK
+        assert result.details["available"] is True
+        assert result.details["compiler_available"] is True
+        assert result.details["latexmk_available"] is True
+        assert result.details["bibtex_available"] is True
+        assert result.details["kpsewhich_available"] is True
+        assert result.details["paper_build_ready"] is True
+        assert result.details["arxiv_submission_ready"] is True
+        assert result.details["missing_components"] == []
+        assert result.warnings == []
+
+    def test_partial_toolchain_reports_warn(self, monkeypatch):
+        monkeypatch.setattr(
+            "gpd.mcp.paper.compiler.detect_latex_toolchain",
+            lambda: SimpleNamespace(
+                available=True,
+                compiler_path="/usr/bin/pdflatex",
+                distribution="TeX Live",
+                message="pdflatex found (TeX Live): /usr/bin/pdflatex",
+            ),
+        )
+        monkeypatch.setattr(
+            "gpd.core.health.shutil.which",
+            lambda binary: {
+                "bibtex": "/usr/bin/bibtex",
+            }.get(binary),
+        )
+
+        result = _doctor_check_latex_toolchain()
+
+        assert result.status == CheckStatus.WARN
+        assert result.details["available"] is False
+        assert result.details["compiler_available"] is True
+        assert result.details["latexmk_available"] is False
+        assert result.details["bibtex_available"] is True
+        assert result.details["kpsewhich_available"] is False
+        assert result.details["paper_build_ready"] is True
+        assert result.details["arxiv_submission_ready"] is False
+        assert result.details["missing_components"] == ["latexmk", "kpsewhich"]
+        assert any("partial" in warning for warning in result.warnings)
+
+    def test_missing_compiler_reports_warn(self, monkeypatch):
+        monkeypatch.setattr(
+            "gpd.mcp.paper.compiler.detect_latex_toolchain",
+            lambda: SimpleNamespace(
+                available=False,
+                compiler_path=None,
+                distribution=None,
+                message="No LaTeX compiler found.\nInstall a LaTeX distribution.",
+            ),
+        )
+        monkeypatch.setattr("gpd.core.health.shutil.which", lambda *_args: None)
+
+        result = _doctor_check_latex_toolchain()
+
+        assert result.status == CheckStatus.WARN
+        assert result.details["available"] is False
+        assert result.details["compiler_available"] is False
+        assert result.details["paper_build_ready"] is False
+        assert result.details["arxiv_submission_ready"] is False
+        assert result.details["missing_components"] == ["pdflatex"]
+        assert result.warnings == ["No LaTeX compiler found.\nInstall a LaTeX distribution."]
 
 
 class TestCheckProjectStructure:
@@ -1213,7 +1300,7 @@ trigger:
         )
         assert publication["status"] == "degraded"
         assert publication["usable"] is True
-        assert publication["summary"] == "degraded without LaTeX: draft/review remain usable, but build/submission stay blocked"
+        assert publication["summary"] == "degraded without a LaTeX compiler: draft/review remain usable, but build/submission stay blocked"
         assert publication["depends_on"] == ["LaTeX Toolchain"]
         assert publication["degraded_workflows"] == [
             "write-paper",
@@ -1224,8 +1311,8 @@ trigger:
             "arxiv-submission",
         ]
         assert checks["Workflow Presets"].warnings == [
-            "Publication / manuscript and full research presets are degraded without LaTeX: "
-            "`write-paper` and `peer-review` remain usable, but `paper-build` and `arxiv-submission` require a LaTeX toolchain."
+            "Publication / manuscript and full research presets are degraded without a paper-build-ready LaTeX toolchain: "
+            "`write-paper` and `peer-review` remain usable, but `paper-build` and `arxiv-submission` need compiler and bibliography support."
         ]
         assert all(
             checks[label].status != CheckStatus.FAIL
@@ -1244,6 +1331,7 @@ trigger:
         with (
             patch("gpd.core.health._doctor_active_virtualenv", return_value=True),
             patch("gpd.core.health.shutil.which", return_value="/usr/bin/runtime"),
+            patch("gpd.core.health.os.access", return_value=True),
             patch(
                 "gpd.core.health._doctor_check_bootstrap_network_access",
                 return_value=HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
@@ -1305,6 +1393,7 @@ trigger:
         with (
             patch("gpd.core.health._doctor_active_virtualenv", return_value=True),
             patch("gpd.core.health.shutil.which", return_value="/usr/bin/runtime"),
+            patch("gpd.core.health.os.access", return_value=True),
             patch(
                 "gpd.core.health._doctor_check_bootstrap_network_access",
                 return_value=HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
@@ -1341,6 +1430,7 @@ trigger:
         with (
             patch("gpd.core.health._doctor_active_virtualenv", return_value=True),
             patch("gpd.core.health.shutil.which", return_value="/usr/bin/runtime"),
+            patch("gpd.core.health.os.access", return_value=True),
             patch(
                 "gpd.core.health._doctor_check_bootstrap_network_access",
                 return_value=HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
@@ -1420,6 +1510,70 @@ trigger:
         )
         assert publication["label"] == "Publication / manuscript"
         assert publication["status"] == "degraded"
+
+    def test_runtime_readiness_keeps_publication_presets_ready_when_build_support_is_present_but_latexmk_is_missing(
+        self, tmp_path: Path
+    ):
+        specs_dir = self._make_specs_dir(tmp_path)
+
+        with (
+            patch("gpd.core.health._doctor_active_virtualenv", return_value=True),
+            patch("gpd.core.health.shutil.which", return_value="/usr/bin/runtime"),
+            patch("gpd.core.health.os.access", return_value=True),
+            patch(
+                "gpd.core.health._doctor_check_bootstrap_network_access",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Bootstrap Network Access"),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_provider_auth",
+                return_value=HealthCheck(status=CheckStatus.OK, label="Provider/Auth Guidance"),
+            ),
+            patch(
+                "gpd.core.health.assess_install_target",
+                return_value=InstallTargetAssessment(
+                    config_dir=(tmp_path / ".codex").resolve(strict=False),
+                    expected_runtime="codex",
+                    state="clean",
+                    manifest_state="missing",
+                    manifest_runtime=None,
+                    has_managed_markers=False,
+                ),
+            ),
+            patch(
+                "gpd.core.health._doctor_check_latex_toolchain",
+                return_value=HealthCheck(
+                    status=CheckStatus.WARN,
+                    label="LaTeX Toolchain",
+                    details={
+                        "available": False,
+                        "compiler_available": True,
+                        "compiler_path": "/usr/bin/pdflatex",
+                        "distribution": "TeX Live",
+                        "latexmk_available": False,
+                        "bibtex_available": True,
+                        "kpsewhich_available": True,
+                        "paper_build_ready": True,
+                        "arxiv_submission_ready": True,
+                        "missing_components": ["latexmk"],
+                    },
+                    warnings=["latexmk missing"],
+                ),
+            ),
+        ):
+            report = run_doctor(specs_dir=specs_dir, version="0.1.0", runtime="codex", install_scope="global")
+
+        checks = {check.label: check for check in report.checks}
+        publication = next(
+            preset for preset in checks["Workflow Presets"].details["presets"] if preset["id"] == "publication-manuscript"
+        )
+
+        assert checks["LaTeX Toolchain"].status == CheckStatus.WARN
+        assert checks["Workflow Presets"].status == CheckStatus.OK
+        assert checks["Workflow Presets"].details["degraded"] == 0
+        assert publication["status"] == "ready"
+        assert publication["summary"] == "ready"
+        assert publication["blocked_workflows"] == []
+        assert publication["degraded_workflows"] == []
 
     def test_runtime_readiness_fails_when_launcher_missing(self, tmp_path: Path, monkeypatch):
         specs_dir = self._make_specs_dir(tmp_path)

@@ -1206,47 +1206,106 @@ def _doctor_check_provider_auth(runtime: str, launch_command: str, target_dir: P
 
 
 def _doctor_check_latex_toolchain() -> HealthCheck:
-    """Report LaTeX compiler availability as an advisory capability check."""
+    """Report LaTeX toolchain availability as an advisory capability check."""
     try:
         from gpd.mcp.paper.compiler import detect_latex_toolchain
     except Exception as exc:  # pragma: no cover - import failure is environment specific
         return HealthCheck(
             status=CheckStatus.WARN,
             label="LaTeX Toolchain",
-            details={"available": False},
+            details={
+                "available": False,
+                "compiler_available": False,
+                "compiler_path": None,
+                "distribution": None,
+                "latexmk_available": None,
+                "bibtex_available": None,
+                "kpsewhich_available": None,
+                "paper_build_ready": False,
+                "arxiv_submission_ready": False,
+                "missing_components": [],
+            },
             warnings=[f"Could not load LaTeX detection helpers: {exc}"],
         )
 
     latex_status = detect_latex_toolchain()
+    compiler_available = bool(latex_status.available)
+    latexmk_available = shutil.which("latexmk") is not None
+    bibtex_available = shutil.which("bibtex") is not None
+    kpsewhich_available = shutil.which("kpsewhich") is not None
+    paper_build_ready = compiler_available and bibtex_available
+    arxiv_submission_ready = paper_build_ready and kpsewhich_available
+    full_toolchain_available = compiler_available and latexmk_available and bibtex_available and kpsewhich_available
+    missing_components: list[str] = []
+    if not compiler_available:
+        missing_components.append("pdflatex")
+    if compiler_available and not latexmk_available:
+        missing_components.append("latexmk")
+    if compiler_available and not bibtex_available:
+        missing_components.append("bibtex")
+    if compiler_available and not kpsewhich_available:
+        missing_components.append("kpsewhich")
+
+    warnings: list[str] = []
+    if not compiler_available:
+        warnings.append(latex_status.message or "No LaTeX compiler found.")
+    elif missing_components:
+        missing_text = ", ".join(f"`{component}`" for component in missing_components)
+        warnings.append(
+            "LaTeX compiler found, but the toolchain is partial: "
+            f"missing {missing_text}. Generic doctor only reports `OK` when the full toolchain is present."
+        )
+
     return HealthCheck(
-        status=CheckStatus.OK if latex_status.available else CheckStatus.WARN,
+        status=CheckStatus.OK if full_toolchain_available else CheckStatus.WARN,
         label="LaTeX Toolchain",
         details={
-            "available": latex_status.available,
+            "available": full_toolchain_available,
+            "compiler_available": compiler_available,
             "compiler_path": latex_status.compiler_path,
             "distribution": latex_status.distribution,
+            "latexmk_available": latexmk_available,
+            "bibtex_available": bibtex_available,
+            "kpsewhich_available": kpsewhich_available,
+            "paper_build_ready": paper_build_ready,
+            "arxiv_submission_ready": arxiv_submission_ready,
+            "missing_components": missing_components,
         },
-        warnings=[] if latex_status.available else [latex_status.message],
+        warnings=warnings,
     )
 
 
 def _doctor_check_workflow_presets(*, latex_check: HealthCheck, base_ready: bool) -> HealthCheck:
     """Report readiness for workflow presets backed by known checks."""
-    latex_available_detail = latex_check.details.get("available")
-    latex_available = (
-        bool(latex_available_detail)
-        if latex_available_detail is not None
-        else latex_check.status == CheckStatus.OK
+    latex_capability = dict(latex_check.details)
+    if "compiler_available" not in latex_capability:
+        legacy_available = latex_capability.get("paper_build_ready")
+        if legacy_available is None:
+            legacy_available = latex_capability.get("available")
+        if legacy_available is None:
+            legacy_available = latex_check.status == CheckStatus.OK
+        legacy_available_bool = bool(legacy_available)
+        latex_capability.setdefault("available", legacy_available_bool)
+        latex_capability.setdefault("compiler_available", legacy_available_bool)
+        latex_capability.setdefault("bibtex_available", legacy_available_bool)
+        latex_capability.setdefault("paper_build_ready", legacy_available_bool)
+        latex_capability.setdefault("arxiv_submission_ready", legacy_available_bool)
+        latex_capability.setdefault("latexmk_available", None)
+        latex_capability.setdefault("kpsewhich_available", None)
+        latex_capability.setdefault("warnings", list(latex_check.warnings))
+
+    latex_available = bool(
+        latex_capability.get("paper_build_ready", latex_capability.get("available", latex_check.status == CheckStatus.OK))
     )
 
-    details = resolve_workflow_preset_readiness(base_ready=base_ready, latex_available=latex_available)
+    details = resolve_workflow_preset_readiness(base_ready=base_ready, latex_capability=latex_capability)
     warnings: list[str] = []
     if not base_ready:
         warnings.append("Workflow preset readiness is blocked until the base runtime-readiness failures are fixed.")
     elif not latex_available:
         warnings.append(
-            "Publication / manuscript and full research presets are degraded without LaTeX: "
-            "`write-paper` and `peer-review` remain usable, but `paper-build` and `arxiv-submission` require a LaTeX toolchain."
+            "Publication / manuscript and full research presets are degraded without a paper-build-ready LaTeX toolchain: "
+            "`write-paper` and `peer-review` remain usable, but `paper-build` and `arxiv-submission` need compiler and bibliography support."
         )
 
     status = CheckStatus.OK if details["degraded"] == 0 and details["blocked"] == 0 else CheckStatus.WARN
