@@ -182,7 +182,7 @@ def test_help_prompt_default_quick_start_stays_runtime_surface_focused() -> None
     assert "gpd init new-project" not in quick_start
 
 
-def test_help_prompt_keeps_optional_add_on_readiness_on_local_cli_surface() -> None:
+def test_help_prompt_keeps_workflow_preset_readiness_on_local_cli_surface() -> None:
     help_command = (COMMANDS_DIR / "help.md").read_text(encoding="utf-8")
     help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8")
     quick_start = _extract_between(
@@ -191,17 +191,19 @@ def test_help_prompt_keeps_optional_add_on_readiness_on_local_cli_surface() -> N
         "## Step 3: Full Command Reference (--all)",
     )
 
-    assert "**Optional workflow add-ons**" in quick_start
+    assert "**Workflow presets**" in quick_start
+    assert "Paper/manuscript workflows" in quick_start
     assert "gpd doctor --runtime <runtime> --local|--global" in quick_start
-    assert "LaTeX add-on readiness from your normal terminal before using that add-on" in quick_start
+    assert "gpd presets list" in quick_start
+    assert "runtime-local LaTeX preset readiness" in quick_start
     for content in (help_command, help_workflow):
         assert (
             "Use `gpd --help` to inspect the executable local install/readiness/permissions/diagnostics surface directly."
             in content
         )
         assert "gpd doctor --runtime <runtime> --local|--global" in content
-        assert "LaTeX add-on readiness" in content
-        assert "from your normal terminal before using that add-on" in content
+        assert "Workflow presets" in content
+        assert "failed preset rows degrade that workflow rather than blocking the base install" in content
 
 
 def test_suggest_next_prompt_uses_real_cli_subcommand() -> None:
@@ -396,6 +398,20 @@ def test_help_prompt_workflow_modes_match_current_settings_vocabulary() -> None:
         assert "git.branching_strategy" in content
         assert "gpd observe execution" in content
         assert "gpd cost" in content
+
+
+def test_help_prompt_surfaces_workflow_presets_on_the_local_cli_surface() -> None:
+    help_command = (COMMANDS_DIR / "help.md").read_text(encoding="utf-8")
+    help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8")
+
+    for content in (help_command, help_workflow):
+        assert "**Workflow presets**" in content
+        assert "Paper/manuscript workflows" in content
+        assert "gpd doctor --runtime <runtime> --local|--global" in content
+        assert "gpd presets list" in content
+        assert "failed preset rows degrade that workflow rather than blocking the base install" in content
+        assert "/gpd:settings" in content
+        assert "/gpd:set-profile" in content
 
 
 def test_help_prompt_keeps_cost_surface_on_local_cli_not_runtime_slash_command() -> None:

@@ -1018,10 +1018,12 @@ CHECKPOINT
 
 Run this step after scope approval and before the first project-artifact commit whenever `GPD/config.json` does not exist yet.
 
+Treat the recommended setup as a conservative preset bundle over the existing config knobs, not a new persisted preset block. The workflow should only write `autonomy`, `research_mode`, `parallelization`, `planning.commit_docs`, `execution.review_cadence`, `model_profile`, and the workflow toggles that already exist.
+
 Use ask_user:
 
 - header: "Workflow Setup"
-- question: "How would you like to write `GPD/config.json`? Recommended defaults set `autonomy=balanced`, `research_mode=balanced`, `parallelization=true`, `planning.commit_docs=true`, `execution.review_cadence=adaptive`, `model_profile=review`, and enable `workflow.research`, `workflow.plan_checker`, and `workflow.verifier`. After writing config, also sync runtime permissions so yolo behaves correctly in the active runtime."
+- question: "How would you like to write `GPD/config.json`? Recommended defaults are a conservative preset bundle over the existing settings: `autonomy=balanced`, `research_mode=balanced`, `parallelization=true`, `planning.commit_docs=true`, `execution.review_cadence=adaptive`, `model_profile=review`, and enable `workflow.research`, `workflow.plan_checker`, and `workflow.verifier`. After writing config, also sync runtime permissions so yolo behaves correctly in the active runtime."
 - options:
   - "Use recommended defaults (Recommended)" — write those exact values now. Saves 3-5 minutes.
   - "Customize settings" — choose `autonomy`, `research_mode`, `parallelization`, `planning.commit_docs`, `execution.review_cadence`, workflow agents, and `model_profile` individually

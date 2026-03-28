@@ -61,7 +61,7 @@ Phase {N} complete:
 Publication workflow:
   /gpd:peer-review         — Run manuscript peer review inside the current project
   /gpd:arxiv-submission    — Package only after review passes
-  gpd doctor --runtime <runtime> --local|--global — Check runtime-local LaTeX add-on readiness for the paper/manuscript optional workflow add-on; failed add-on rows degrade that workflow rather than blocking the base install
+  gpd doctor --runtime <runtime> --local|--global — Check runtime-local LaTeX preset readiness for the paper/manuscript workflow preset; failed preset rows degrade that workflow rather than blocking the base install
 ```
 
 **Referee report exists:**
@@ -136,9 +136,10 @@ Choose the path that matches your starting point:
 1. `/gpd:tangent` - Chooser for stay / quick / defer / branch when a side investigation appears
 2. `/gpd:branch-hypothesis` - Explicit git-backed alternative path with isolated `GPD/` state when the tangent needs to diverge cleanly
 
-**Optional workflow add-ons**
-1. `Paper/manuscript workflows` - First supported optional workflow add-on for `write-paper`, `paper-build`, `peer-review`, and `arxiv-submission`
-2. `gpd doctor --runtime <runtime> --local|--global` - Check runtime-local LaTeX add-on readiness from your normal terminal before using that add-on; failed add-on rows degrade that workflow rather than blocking the base install
+**Workflow presets**
+1. `Paper/manuscript workflows` - First supported workflow preset for `write-paper`, `paper-build`, `peer-review`, and `arxiv-submission`
+2. `gpd doctor --runtime <runtime> --local|--global` - Check runtime-local LaTeX preset readiness from your normal terminal before using that preset; failed preset rows degrade that workflow rather than blocking the base install
+3. `gpd presets list` - Read-only local preset catalog showing the current preset names and their recommended config bundles
 
 **Existing work**
 1. `/gpd:map-research` - Map an existing folder or project first

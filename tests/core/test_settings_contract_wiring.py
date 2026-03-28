@@ -57,3 +57,16 @@ def test_settings_model_cost_onboarding_stays_qualitative_and_runtime_default_fi
     assert "configure explicit tier-1, tier-2, tier-3 model strings" in settings_command
     assert "Configure explicit tier models" in settings_workflow
     assert "dollar" not in settings_workflow.lower()
+
+
+def test_settings_workflow_preset_contract_keeps_runtime_default_tier_model_path_explicit() -> None:
+    settings_workflow = (WORKFLOWS_DIR / "settings.md").read_text(encoding="utf-8")
+
+    assert "How should GPD handle concrete tier models for the active runtime?" in settings_workflow
+    assert "Leave current setting unchanged" in settings_workflow
+    assert "Use runtime defaults" in settings_workflow
+    assert "Configure explicit tier models" in settings_workflow
+    assert "Ask for the exact model string the active runtime accepts rather than normalizing it inside GPD." in settings_workflow
+    assert "Preserve any provider prefixes, slash-delimited ids, brackets, or alias syntax the active runtime already uses." in settings_workflow
+    assert 'Treat blank / `runtime default` / `none` as "no override for this tier"' in settings_workflow
+    assert "Prefer leaving overrides unset unless the user explicitly asks to pin concrete model ids." in settings_workflow

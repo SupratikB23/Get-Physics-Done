@@ -67,7 +67,8 @@ def _assert_single_runtime_next_steps(output: str, runtime: str) -> None:
         rf"After startup, use the runtime `settings` command to review autonomy, workflow defaults, and model-cost posture\. "
         rf"The safest starting point is `review` plus runtime defaults\..*?"
         rf"If you plan to use paper/manuscript workflows, rerun gpd doctor --runtime {re.escape(runtime)} --(?:local|global) "
-        rf"and check the `Optional Workflow Add-ons` and `LaTeX Toolchain` rows before publication work\.",
+        rf"and check the `Workflow Presets` and `LaTeX Toolchain` rows before publication work\..*?"
+        rf"Use `gpd presets list` to inspect the workflow preset surface:",
         re.S,
     )
     assert pattern.search(output), output
@@ -443,7 +444,11 @@ if args[:3] == ["-m", "gpd.cli", "install"]:
         print(
             "7. If you plan to use paper/manuscript workflows, rerun "
             f"gpd doctor --runtime {{runtime}} --{{scope}} "
-            "and check the `Optional Workflow Add-ons` and `LaTeX Toolchain` rows before publication work."
+            "and check the `Workflow Presets` and `LaTeX Toolchain` rows before publication work."
+        )
+        print(
+            "8. Use `gpd presets list` to inspect the workflow preset surface: "
+            "Core research, Theory, Numerics, Publication / manuscript, Full research."
         )
     else:
         for runtime in runtimes:
@@ -461,7 +466,11 @@ if args[:3] == ["-m", "gpd.cli", "install"]:
         )
         print(
             "For paper/manuscript workflows, rerun gpd doctor --runtime <runtime> --local|--global "
-            "and check the `Optional Workflow Add-ons` and `LaTeX Toolchain` rows before publication work."
+            "and check the `Workflow Presets` and `LaTeX Toolchain` rows before publication work."
+        )
+        print(
+            "Use `gpd presets list` to inspect the workflow preset surface: "
+            "Core research, Theory, Numerics, Publication / manuscript, Full research."
         )
     record()
     raise SystemExit(0)
@@ -602,10 +611,10 @@ def test_bootstrap_uses_managed_virtualenv_and_skips_host_pip(tmp_path: Path) ->
     assert "GPD does not verify provider credentials automatically" in result.stdout
     assert f"`gpd doctor --runtime {_CODEX_RUNTIME_NAME} --local`" in result.stdout
     assert (
-        "Optional workflow add-ons: if you plan paper/manuscript workflows, rerun "
+        "Workflow presets: if you plan paper/manuscript workflows, rerun "
         f"`gpd doctor --runtime {_CODEX_RUNTIME_NAME} --local` after install and check whether "
-        "`Optional Workflow Add-ons` is `ready` or `degraded`. Without LaTeX, `write-paper` and "
-        "`peer-review` remain usable, but `paper-build` and `arxiv-submission` require the `LaTeX Toolchain`."
+        "`Workflow Presets` is `ready` or `degraded`. Without LaTeX, the paper/manuscript and full research presets remain usable for "
+        "`write-paper` and `peer-review`, but `paper-build` and `arxiv-submission` require the `LaTeX Toolchain`."
     ) in result.stdout
     assert "Install Summary" in result.stdout
     _assert_single_runtime_next_steps(result.stdout, _CODEX_RUNTIME_NAME)
@@ -1182,10 +1191,10 @@ def test_bootstrap_supports_all_runtime_install_in_one_pass(tmp_path: Path) -> N
     assert "Install Summary" in result.stdout
     assert "Next steps" in result.stdout
     assert (
-        "Optional workflow add-ons: if you plan paper/manuscript workflows, rerun "
+        "Workflow presets: if you plan paper/manuscript workflows, rerun "
         + ", ".join(f"`gpd doctor --runtime {runtime} --global`" for runtime in _RUNTIME_NAMES)
-        + " after install and check whether `Optional Workflow Add-ons` is `ready` or `degraded`. "
-        + "Without LaTeX, `write-paper` and `peer-review` remain usable, but `paper-build` and "
+        + " after install and check whether `Workflow Presets` is `ready` or `degraded`. "
+        + "Without LaTeX, the paper/manuscript and full research presets remain usable for `write-paper` and `peer-review`, but `paper-build` and "
         + "`arxiv-submission` require the `LaTeX Toolchain`."
     ) in result.stdout
     for runtime in _RUNTIME_NAMES:

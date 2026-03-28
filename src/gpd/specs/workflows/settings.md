@@ -2,6 +2,29 @@
 Interactive configuration of autonomy, unattended execution budgets, GPD workflow agents (research, plan_checker, verifier), research profile selection, qualitative model-cost posture, runtime-specific tier model overrides, `execution.review_cadence`, git branching, and runtime-permission sync guidance. `/gpd:settings` is the primary guided entrypoint for unattended-use setup. Recommend `Balanced` unless the user explicitly wants tighter supervision or YOLO-style speed. Updates `GPD/config.json` with user preferences including model profile, optional `model_overrides`, workflow toggles, execution cadence, and branching strategy.
 </purpose>
 
+<preset_guidance>
+Workflow presets are convenience bundles over existing config keys only. Do not create, persist, or infer a separate `preset` block in `GPD/config.json`.
+
+When a preset is selected, resolve it into the current knobs:
+
+- `autonomy`
+- `research_mode`
+- `execution.review_cadence`
+- `parallelization`
+- `planning.commit_docs`
+- `workflow.research`
+- `workflow.plan_checker`
+- `workflow.verifier`
+- `model_profile`
+- runtime-specific `model_overrides`
+
+Conservative starter bundles:
+
+- `Recommended defaults`: `autonomy=balanced`, `research_mode=balanced`, `execution.review_cadence=adaptive`, `parallelization=true`, `planning.commit_docs=true`, all workflow agents on, `model_profile=review`, and no pinned model overrides.
+- `Review-heavy`: `autonomy=supervised`, `research_mode=balanced`, `execution.review_cadence=dense`, `parallelization=false`, `planning.commit_docs=true`, all workflow agents on, `model_profile=review`, and no pinned model overrides.
+- `Budget-aware`: `autonomy=balanced`, `research_mode=balanced` or `exploit` when the scope is already narrow, `execution.review_cadence=adaptive`, `parallelization=true`, `planning.commit_docs=true`, all workflow agents on, `model_profile=review`, and no pinned model overrides.
+</preset_guidance>
+
 <required_reading>
 Read all files referenced by the invoking prompt's execution_context before starting.
 </required_reading>
@@ -68,7 +91,9 @@ If `model_overrides.<runtime>` already exists, surface the current `tier-1` / `t
 
 > **Platform note:** If `ask_user` is not available, present these options in plain text and wait for the user's freeform response.
 
-Treat this as the primary guided unattended-use flow: explain that autonomy, unattended budgets, and runtime permission sync all live here, and that `Balanced` is the recommended default for most users.
+Treat this as the primary guided unattended-use flow: explain that autonomy, unattended budgets, runtime permission sync, and conservative preset bundles all live here, and that `Balanced` is the recommended default for most users.
+
+If the user asks for a preset, map it onto the existing knobs above. Present it as a starting bundle only; do not add a new persisted config section or install step.
 
 Use ask_user with current values pre-selected:
 

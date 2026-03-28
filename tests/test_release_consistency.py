@@ -679,14 +679,13 @@ def test_public_readme_and_bootstrap_surface_optional_workflow_add_on_guidance()
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
     installer = (repo_root / "bin/install.js").read_text(encoding="utf-8")
 
-    assert "Optional workflow add-ons let you keep the base install narrow" in readme
-    assert "Optional workflow add-ons are workflow-specific extra capabilities." in readme
-    assert "The first supported add-on is paper/manuscript workflows;" in readme
-    assert "check runtime-local LaTeX add-on readiness before relying on `write-paper`, `paper-build`, `peer-review`, or `arxiv-submission`" in readme
-    assert "Missing add-on tooling degrades those optional workflows; it does not block the base GPD install." in readme
-    assert "Optional workflow add-ons: if you plan paper/manuscript workflows, rerun " in installer
-    assert "check whether `Optional Workflow Add-ons` is `ready` or `degraded`." in installer
-    assert "Without LaTeX, `write-paper` and `peer-review` remain usable" in installer
+    assert "Workflow presets let you keep the base install narrow" in readme
+    assert "The first supported workflow preset is paper/manuscript workflows" in readme
+    assert "check runtime-local LaTeX preset readiness on this machine" in readme
+    assert "Missing preset tooling degrades that preset; it does not block the base GPD install." in readme
+    assert "Workflow presets: if you plan paper/manuscript workflows, rerun " in installer
+    assert "check whether `Workflow Presets` is `ready` or `degraded`." in installer
+    assert "Without LaTeX, the paper/manuscript and full research presets remain usable for `write-paper` and `peer-review`" in installer
     assert "`paper-build` and `arxiv-submission` require the `LaTeX Toolchain`." in installer
 
 
@@ -700,7 +699,8 @@ def test_public_readme_keeps_bootstrap_prerequisites_and_runtime_doctor_scopes_d
     assert "Here, `gpd doctor --runtime ...` is a runtime-readiness check for the selected runtime target." in quick_start
     assert "If the bootstrap installer fails before `gpd doctor --runtime <runtime> --local|--global` can run, fix Node / Python / `venv` bootstrap prerequisites first." in quick_start
     assert "If `gpd doctor --runtime <runtime> --local|--global` fails, fix the selected runtime's launcher / target / runtime-readiness issue first." in quick_start
-    assert "If `gpd doctor --runtime <runtime> --local|--global` only warns about `Optional Workflow Add-ons` or `LaTeX Toolchain`, the base install can still be fine;" in quick_start
+    assert "Workflow presets are workflow-specific extra capabilities that sit on top of the base install." in quick_start
+    assert "If `gpd doctor --runtime <runtime> --local|--global` only warns about `Workflow Presets` or `LaTeX Toolchain`, the base install can still be fine;" in quick_start
 
 
 def test_public_readme_recovery_surfaces_keep_runtime_pause_and_resume_roles_distinct() -> None:
@@ -751,12 +751,11 @@ def test_public_help_surfaces_keep_settings_as_guided_post_startup_path() -> Non
 
     for content in (help_command, help_workflow):
         assert "3. `/gpd:settings` - Primary guided unattended/autonomy setup after project creation" in content
-        assert "Balanced (Recommended)" in content
-        assert "Choose a model-cost posture: `Max quality`, `Balanced`, or `Budget-aware`" in content
-        assert "review` with runtime defaults is the safest first choice" in content
+        assert "Paper/manuscript workflows" in content
+        assert "gpd presets list" in content
+        assert "failed preset rows degrade that workflow rather than blocking the base install" in content
         assert "gpd observe execution" in content
         assert "The bootstrap installer owns Node.js / Python / `venv` prerequisites." in content
-        assert "Check runtime-local LaTeX add-on readiness from your normal terminal before using that add-on; failed add-on rows degrade that workflow rather than blocking the base install" in content
 
 
 def test_public_settings_workflow_keeps_balanced_recommendation_and_relaunch_guidance() -> None:

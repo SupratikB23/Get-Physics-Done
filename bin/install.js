@@ -1001,9 +1001,9 @@ function runInstallReadinessPreflight(managedPython, runtimes, scope, targetDir 
   const doctorHints = runtimes.map((runtime) => `\`${runtimeDoctorHint(runtime, scope, targetDir)}\``).join(", ");
   log(`For the full runtime-target doctor report after install, use ${doctorHints}.`);
   log(
-    "Optional workflow add-ons: if you plan paper/manuscript workflows, rerun "
-    + `${doctorHints} after install and check whether \`Optional Workflow Add-ons\` is \`ready\` or \`degraded\`. `
-    + "Without LaTeX, `write-paper` and `peer-review` remain usable, but `paper-build` and "
+    "Workflow presets: if you plan paper/manuscript workflows, rerun "
+    + `${doctorHints} after install and check whether \`Workflow Presets\` is \`ready\` or \`degraded\`. `
+    + "Without LaTeX, the paper/manuscript and full research presets remain usable for `write-paper` and `peer-review`, but `paper-build` and "
     + "`arxiv-submission` require the `LaTeX Toolchain`."
   );
   console.log("");
@@ -1139,8 +1139,8 @@ function printHelp() {
   console.log(" Use the runtime-specific `settings` command after startup to review autonomy, workflow defaults, and model-cost posture.");
   console.log(" Recommended unattended default: Balanced autonomy (`balanced`). The safest model starting point is `review` plus runtime defaults.");
   console.log(
-    " Optional workflow add-ons: if you plan paper/manuscript workflows, rerun `gpd doctor --runtime <runtime> --local|--global` "
-    + "and check whether `Optional Workflow Add-ons` is `ready` or `degraded`. Without LaTeX, `write-paper` and `peer-review` remain usable, "
+    " Workflow presets: if you plan paper/manuscript workflows, rerun `gpd doctor --runtime <runtime> --local|--global` "
+    + "and check whether `Workflow Presets` is `ready` or `degraded`. Without LaTeX, the paper/manuscript and full research presets remain usable for `write-paper` and `peer-review`, "
     + "but `paper-build` and `arxiv-submission` require the `LaTeX Toolchain`."
   );
   console.log(" Then run `gpd permissions status --runtime <runtime> --autonomy balanced`.");

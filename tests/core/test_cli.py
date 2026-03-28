@@ -157,6 +157,33 @@ def test_help_surfaces_permissions_readiness_commands() -> None:
     assert "gpd resume --recent" in normalized_output
 
 
+def test_help_surfaces_workflow_presets_surface() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    normalized_output = " ".join(result.output.split())
+    assert "presets" in normalized_output
+    assert "Read-only workflow presets for local CLI guidance" in normalized_output
+
+
+def test_workflow_presets_surface_is_read_only() -> None:
+    result = runner.invoke(app, ["presets", "list"])
+    assert result.exit_code == 0
+    assert "Workflow Presets" in result.output
+    assert "core-research" in result.output
+    assert "Core research" in result.output
+
+
+def test_workflow_preset_show_raw_outputs_central_contract() -> None:
+    result = runner.invoke(app, ["--raw", "presets", "show", "core-research"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["id"] == "core-research"
+    assert payload["label"] == "Core research"
+    assert payload["required_checks"] == []
+    assert payload["recommended_config"]["model_profile"] == "review"
+    assert payload["summary"] == "Balanced default workflow for planning, execution, and verification."
+
+
 def _sample_cost_summary(workspace: Path) -> CostSummary:
     workspace_text = str(workspace)
     project = CostProjectSummary(

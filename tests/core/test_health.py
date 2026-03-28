@@ -958,7 +958,7 @@ trigger:
         assert "Bootstrap Network Access" not in labels
         assert "Provider/Auth Guidance" not in labels
         assert "LaTeX Toolchain" not in labels
-        assert "Optional Workflow Add-ons" not in labels
+        assert "Workflow Presets" not in labels
 
     def test_runtime_mode_records_virtualenv_state_without_blocking(self, tmp_path: Path):
         target_dir = tmp_path / ".codex"
@@ -999,21 +999,26 @@ trigger:
         assert not checks["Python Runtime"].issues
         assert checks["Runtime Launcher"].status == CheckStatus.OK
         assert checks["Runtime Config Target"].status == CheckStatus.OK
-        assert checks["Optional Workflow Add-ons"].status == CheckStatus.OK
-        assert checks["Optional Workflow Add-ons"].details["ready"] == 1
-        assert checks["Optional Workflow Add-ons"].details["missing"] == 0
-        assert checks["Optional Workflow Add-ons"].details["degraded"] == 0
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["summary"] == "ready"
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["status"] == "ready"
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["ready_workflows"] == [
+        assert checks["Workflow Presets"].status == CheckStatus.OK
+        assert checks["Workflow Presets"].details["ready"] == 5
+        assert checks["Workflow Presets"].details["degraded"] == 0
+        publication = next(
+            preset
+            for preset in checks["Workflow Presets"].details["presets"]
+            if preset["id"] == "publication-manuscript"
+        )
+        assert publication["summary"] == "ready"
+        assert publication["status"] == "ready"
+        assert publication["depends_on"] == ["LaTeX Toolchain"]
+        assert publication["ready_workflows"] == [
             "write-paper",
             "peer-review",
             "paper-build",
             "arxiv-submission",
         ]
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["degraded_workflows"] == []
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["blocked_workflows"] == []
-        assert checks["Optional Workflow Add-ons"].warnings == []
+        assert publication["degraded_workflows"] == []
+        assert publication["blocked_workflows"] == []
+        assert checks["Workflow Presets"].warnings == []
 
     def test_runtime_mode_fails_when_runtime_launcher_is_missing(self, tmp_path: Path):
         specs_dir = self._make_specs_dir(tmp_path)
@@ -1036,9 +1041,12 @@ trigger:
         ):
             report = run_doctor(specs_dir=specs_dir, version="0.1.0", runtime=_PRIMARY_RUNTIME, install_scope="global")
 
+        checks = {check.label: check for check in report.checks}
         launcher_check = next(check for check in report.checks if check.label == "Runtime Launcher")
         assert launcher_check.status == CheckStatus.FAIL
         assert any("not found on PATH" in issue for issue in launcher_check.issues)
+        assert checks["Workflow Presets"].status == CheckStatus.WARN
+        assert all(preset["status"] == "blocked" for preset in checks["Workflow Presets"].details["presets"])
 
     def test_runtime_mode_fails_when_target_parent_is_not_writable(self, tmp_path: Path):
         specs_dir = self._make_specs_dir(tmp_path)
@@ -1121,27 +1129,29 @@ trigger:
         assert checks["Bootstrap Network Access"].status == CheckStatus.WARN
         assert checks["Provider/Auth Guidance"].status == CheckStatus.OK
         assert checks["LaTeX Toolchain"].status == CheckStatus.WARN
-        assert checks["Optional Workflow Add-ons"].status == CheckStatus.WARN
-        assert checks["Optional Workflow Add-ons"].details["ready"] == 0
-        assert checks["Optional Workflow Add-ons"].details["degraded"] == 1
-        assert checks["Optional Workflow Add-ons"].details["missing"] == 0
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["status"] == "degraded"
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["usable"] is True
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["summary"] == (
-            "degraded (draft/review usable; build/submission require LaTeX)"
+        assert checks["Workflow Presets"].status == CheckStatus.WARN
+        assert checks["Workflow Presets"].details["ready"] == 3
+        assert checks["Workflow Presets"].details["degraded"] == 2
+        publication = next(
+            preset
+            for preset in checks["Workflow Presets"].details["presets"]
+            if preset["id"] == "publication-manuscript"
         )
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["ready_workflows"] == []
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["degraded_workflows"] == [
+        assert publication["status"] == "degraded"
+        assert publication["usable"] is True
+        assert publication["summary"] == "degraded without LaTeX: draft/review remain usable, but build/submission stay blocked"
+        assert publication["depends_on"] == ["LaTeX Toolchain"]
+        assert publication["degraded_workflows"] == [
             "write-paper",
             "peer-review",
         ]
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["blocked_workflows"] == [
+        assert publication["blocked_workflows"] == [
             "paper-build",
             "arxiv-submission",
         ]
-        assert checks["Optional Workflow Add-ons"].warnings == [
-            "Paper/manuscript workflows are degraded without LaTeX: `write-paper` and `peer-review` remain usable, "
-            "but `paper-build` and `arxiv-submission` require a LaTeX toolchain."
+        assert checks["Workflow Presets"].warnings == [
+            "Publication / manuscript and full research presets are degraded without LaTeX: "
+            "`write-paper` and `peer-review` remain usable, but `paper-build` and `arxiv-submission` require a LaTeX toolchain."
         ]
         assert all(
             checks[label].status != CheckStatus.FAIL
@@ -1149,7 +1159,7 @@ trigger:
                 "Bootstrap Network Access",
                 "Provider/Auth Guidance",
                 "LaTeX Toolchain",
-                "Optional Workflow Add-ons",
+                "Workflow Presets",
             )
         )
 
@@ -1322,14 +1332,20 @@ trigger:
             "Bootstrap Network Access",
             "Provider/Auth Guidance",
             "LaTeX Toolchain",
-            "Optional Workflow Add-ons",
+            "Workflow Presets",
         ):
             assert label in checks
         assert checks["Runtime Launcher"].status == CheckStatus.OK
         assert checks["Runtime Config Target"].status == CheckStatus.OK
         assert checks["LaTeX Toolchain"].status == CheckStatus.WARN
-        assert checks["Optional Workflow Add-ons"].status == CheckStatus.WARN
-        assert checks["Optional Workflow Add-ons"].details["add_ons"][0]["label"] == "Paper/manuscript workflows"
+        assert checks["Workflow Presets"].status == CheckStatus.WARN
+        publication = next(
+            preset
+            for preset in checks["Workflow Presets"].details["presets"]
+            if preset["id"] == "publication-manuscript"
+        )
+        assert publication["label"] == "Publication / manuscript"
+        assert publication["status"] == "degraded"
 
     def test_runtime_readiness_fails_when_launcher_missing(self, tmp_path: Path, monkeypatch):
         specs_dir = self._make_specs_dir(tmp_path)

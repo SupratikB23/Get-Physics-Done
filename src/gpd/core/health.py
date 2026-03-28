@@ -46,6 +46,7 @@ from gpd.core.conventions import KNOWN_CONVENTIONS, is_bogus_value
 from gpd.core.errors import GPDError, ValidationError
 from gpd.core.frontmatter import FrontmatterParseError, extract_frontmatter, validate_frontmatter
 from gpd.core.observability import gpd_span
+from gpd.core.workflow_presets import resolve_workflow_preset_readiness
 from gpd.core.state import (
     peek_state_json,
     save_state_json,
@@ -1199,52 +1200,30 @@ def _doctor_check_latex_toolchain() -> HealthCheck:
     )
 
 
-def _doctor_check_optional_workflow_addons(latex_check: HealthCheck) -> HealthCheck:
-    """Report readiness for optional workflow add-ons backed by known checks."""
+def _doctor_check_workflow_presets(*, latex_check: HealthCheck, base_ready: bool) -> HealthCheck:
+    """Report readiness for workflow presets backed by known checks."""
     latex_available_detail = latex_check.details.get("available")
     latex_available = (
         bool(latex_available_detail)
         if latex_available_detail is not None
         else latex_check.status == CheckStatus.OK
     )
-    ready_workflows = ["write-paper", "peer-review", "paper-build", "arxiv-submission"] if latex_available else []
-    degraded_workflows = ["write-paper", "peer-review"] if not latex_available else []
-    blocked_workflows = ["paper-build", "arxiv-submission"] if not latex_available else []
-    paper_summary = (
-        "ready"
-        if latex_available
-        else "degraded (draft/review usable; build/submission require LaTeX)"
-    )
-    warnings = []
-    if not latex_available:
+
+    details = resolve_workflow_preset_readiness(base_ready=base_ready, latex_available=latex_available)
+    warnings: list[str] = []
+    if not base_ready:
+        warnings.append("Workflow preset readiness is blocked until the base runtime-readiness failures are fixed.")
+    elif not latex_available:
         warnings.append(
-            "Paper/manuscript workflows are degraded without LaTeX: `write-paper` and `peer-review` remain usable, "
-            "but `paper-build` and `arxiv-submission` require a LaTeX toolchain."
+            "Publication / manuscript and full research presets are degraded without LaTeX: "
+            "`write-paper` and `peer-review` remain usable, but `paper-build` and `arxiv-submission` require a LaTeX toolchain."
         )
 
+    status = CheckStatus.OK if details["degraded"] == 0 and details["blocked"] == 0 else CheckStatus.WARN
     return HealthCheck(
-        status=CheckStatus.OK if latex_available else CheckStatus.WARN,
-        label="Optional Workflow Add-ons",
-        details={
-            "total": 1,
-            "ready": 1 if latex_available else 0,
-            "degraded": 0 if latex_available else 1,
-            "missing": 0,
-            "add_ons": [
-                {
-                    "id": "paper-manuscript-workflows",
-                    "label": "Paper/manuscript workflows",
-                    "status": "ready" if latex_available else "degraded",
-                    "ready": latex_available,
-                    "usable": True,
-                    "depends_on": ["LaTeX Toolchain"],
-                    "ready_workflows": ready_workflows,
-                    "degraded_workflows": degraded_workflows,
-                    "blocked_workflows": blocked_workflows,
-                    "summary": paper_summary,
-                }
-            ],
-        },
+        status=status,
+        label="Workflow Presets",
+        details=details,
         warnings=warnings,
     )
 
@@ -1417,7 +1396,8 @@ def run_doctor(
             )
             latex_check = _doctor_check_latex_toolchain()
             checks.append(latex_check)
-            checks.append(_doctor_check_optional_workflow_addons(latex_check))
+            base_ready = not any(check.status == CheckStatus.FAIL for check in checks)
+            checks.append(_doctor_check_workflow_presets(latex_check=latex_check, base_ready=base_ready))
 
         # Version (passed as parameter, no gpd import needed)
 

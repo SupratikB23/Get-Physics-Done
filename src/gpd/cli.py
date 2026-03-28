@@ -49,6 +49,7 @@ from gpd.core.constants import (
     RECENT_PROJECTS_INDEX_FILENAME,
 )
 from gpd.core.errors import ConfigError, GPDError
+from gpd.core.workflow_presets import get_workflow_preset, list_workflow_presets
 from gpd.hooks.runtime_detect import detect_runtime_for_gpd_use, normalize_runtime_name
 
 if TYPE_CHECKING:
@@ -584,6 +585,7 @@ app = _GPDTyper(
         "  gpd observe execution\n"
         "  gpd cost\n"
         "  gpd resume --recent\n"
+        "  gpd presets list\n"
         "  gpd validate command-context gpd:new-project"
     ),
 )
@@ -2027,7 +2029,6 @@ def doctor(
         )
     )
 
-
 # ═══════════════════════════════════════════════════════════════════════════
 # query — Cross-phase dependency and search
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2818,6 +2819,38 @@ def init_milestone_op() -> None:
     from gpd.core.context import init_milestone_op
 
     _output(init_milestone_op(_get_cwd()))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# presets — Read-only workflow preset surface
+# ═══════════════════════════════════════════════════════════════════════════
+
+presets_app = typer.Typer(help="Read-only workflow presets for local CLI guidance")
+app.add_typer(presets_app, name="presets")
+
+
+@presets_app.command("list")
+def presets_list() -> None:
+    """List the central read-only workflow preset registry."""
+    if _raw:
+        _json_cli_output([dataclasses.asdict(preset) for preset in list_workflow_presets()])
+        return
+    _print_workflow_preset_list()
+
+
+@presets_app.command("show")
+def presets_show(
+    preset_name: str = typer.Argument(..., help="Workflow preset name"),
+) -> None:
+    """Show one preset from the central workflow preset registry."""
+    if _raw:
+        preset = get_workflow_preset(preset_name)
+        if preset is None:
+            supported = ", ".join(preset.id for preset in list_workflow_presets())
+            _error(f"Unknown workflow preset {preset_name!r}. Supported: {supported}")
+        _json_cli_output(dataclasses.asdict(preset))
+        return
+    _print_workflow_preset_details(preset_name)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -5916,9 +5949,10 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
             console.print(
                 "7. If you plan to use paper/manuscript workflows, rerun "
                 f"[bold]gpd doctor --runtime {single_runtime_name} --{doctor_scope}[/] "
-                "and check the `Optional Workflow Add-ons` and `LaTeX Toolchain` rows before publication work.",
+                "and check the `Workflow Presets` and `LaTeX Toolchain` rows before publication work.",
                 soft_wrap=True,
             )
+            console.print(f"8. {_workflow_preset_surface_note()}", soft_wrap=True)
         else:
             for display_name, launch_command, help_command, new_project_command, map_research_command in next_step_entries:
                 console.print(
@@ -5946,9 +5980,10 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
             console.print(
                 "For paper/manuscript workflows, rerun "
                 "[bold]gpd doctor --runtime <runtime> --local|--global[/] "
-                "and check the `Optional Workflow Add-ons` and `LaTeX Toolchain` rows before publication work.",
+                "and check the `Workflow Presets` and `LaTeX Toolchain` rows before publication work.",
                 soft_wrap=True,
             )
+            console.print(_workflow_preset_surface_note(), soft_wrap=True)
         console.print()
 
 
@@ -5984,6 +6019,46 @@ def _target_dir_matches_global(runtime_name: str, target_dir: str, *, action: st
     except (AttributeError, TypeError, ValueError):
         return False
     return resolved_target == canonical_global_target.expanduser().resolve(strict=False)
+
+
+def _workflow_preset_surface_note() -> str:
+    """Return the shared preset-surface note derived from the preset registry."""
+    presets = list_workflow_presets()
+    preset_labels = ", ".join(preset.label for preset in presets)
+    return f"Use `gpd presets list` to inspect the workflow preset surface: {preset_labels}."
+
+
+def _print_workflow_preset_list() -> None:
+    """Render the read-only workflow preset registry as a table."""
+    presets = list_workflow_presets()
+    table = Table(
+        title="Workflow Presets",
+        title_style=f"italic {_INSTALL_ACCENT_COLOR}",
+        show_header=True,
+        header_style=f"bold {_INSTALL_ACCENT_COLOR}",
+    )
+    table.add_column("Preset", style="bold")
+    table.add_column("Label")
+    table.add_column("Ready workflows")
+    table.add_column("Description")
+    table.add_column("Required checks")
+
+    for preset in presets:
+        workflows = ", ".join(preset.ready_workflows) if preset.ready_workflows else "—"
+        requirements = ", ".join(preset.required_checks) if preset.required_checks else "—"
+        table.add_row(preset.id, preset.label, workflows, preset.description, requirements)
+
+    console.print(table)
+
+
+def _print_workflow_preset_details(preset_name: str) -> None:
+    """Render one workflow preset from the central contract."""
+    preset = get_workflow_preset(preset_name)
+    if preset is None:
+        supported = ", ".join(preset.id for preset in list_workflow_presets())
+        _error(f"Unknown workflow preset {preset_name!r}. Supported: {supported}")
+
+    _pretty_print(dataclasses.asdict(preset))
 
 
 def _doctor_check_messages(check: object, field_names: tuple[str, ...]) -> list[str]:

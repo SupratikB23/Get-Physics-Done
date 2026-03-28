@@ -74,7 +74,7 @@ Guided unattended configuration path: use your runtime-specific `settings` comma
 
 For model choice, the safe default is `review` plus runtime defaults. Use your runtime-specific `settings` command to move toward `Max quality`, `Balanced`, or `Budget-aware` only if you want to trade off quality against cost or model access.
 
-Optional workflow add-ons let you keep the base install narrow and only care about extra tooling when you need it. The first supported optional workflow add-on is paper/manuscript workflows such as `write-paper`, `paper-build`, `peer-review`, and `arxiv-submission`. If you plan to use that add-on, run `gpd doctor --runtime <runtime> --local|--global` from your normal system terminal to check runtime-local LaTeX add-on readiness on this machine. Missing add-on tooling degrades those optional workflows; it does not block the base GPD install.
+Workflow presets let you keep the base install narrow and only enable extra workflow surface when you need it. The first supported workflow preset is paper/manuscript workflows such as `write-paper`, `paper-build`, `peer-review`, and `arxiv-submission`. If you plan to use that preset, run `gpd doctor --runtime <runtime> --local|--global` from your normal system terminal to check runtime-local LaTeX preset readiness on this machine. Missing preset tooling degrades that preset; it does not block the base GPD install. Use `gpd presets list` when you want the current preset catalog and its recommended config bundle in one place.
 
 For unattended execution, the recommended default is Balanced (`balanced`). Use your runtime-specific `settings` command to confirm or change autonomy, then run `gpd permissions status --runtime <runtime> --autonomy balanced` from your normal system terminal. If it reports drift, run `gpd permissions sync --runtime <runtime> --autonomy balanced`. If it reports `requires_relaunch`, exit and relaunch the runtime before treating unattended use as ready.
 
@@ -99,15 +99,15 @@ If any of those fail, fix them before troubleshooting GPD itself. These are boot
 - Use your runtime-specific `settings` command after the first successful launch as the guided path for unattended configuration. Balanced (`balanced`) is the recommended unattended default.
 - Use `gpd permissions status --runtime <runtime> --autonomy balanced` to confirm unattended readiness; if it reports `requires_relaunch`, the runtime is not ready yet
 - If you want prompt-free runtime approvals rather than ordinary unattended execution, switch to YOLO (`yolo`) in your runtime-specific `settings` command, run `gpd permissions sync --runtime <runtime> --autonomy yolo`, and relaunch when required
-- Optional workflow add-ons are workflow-specific extra capabilities. The first supported add-on is paper/manuscript workflows; use `gpd doctor --runtime <runtime> --local|--global` to check runtime-local LaTeX add-on readiness before relying on `write-paper`, `paper-build`, `peer-review`, or `arxiv-submission`
-- Missing optional workflow add-on tooling degrades those workflows instead of blocking the base install; treat failed add-on rows as a signal to avoid that workflow until the tooling is fixed
+- Workflow presets are workflow-specific extra capabilities that sit on top of the base install. The first supported preset is paper/manuscript workflows; use `gpd doctor --runtime <runtime> --local|--global` to check runtime-local LaTeX preset readiness before relying on `write-paper`, `paper-build`, `peer-review`, or `arxiv-submission`
+- Missing workflow preset tooling degrades that preset instead of blocking the base install; treat failed preset rows as a signal to avoid that workflow until the tooling is fixed
 - Provider authentication is checked manually in the runtime itself; GPD will point this out, but it does not hard-block installation readiness on it
 - Use `--upgrade` only when you intentionally want the latest unreleased GitHub `main` snapshot
 
 **Quick verification path**
 
 1. Install with an explicit runtime when possible, for example `npx -y get-physics-done --codex --local`.
-2. From the same terminal, run `gpd doctor --runtime codex --local` and `gpd --help`. Here, `gpd doctor --runtime ...` is a runtime-readiness check for the selected runtime target. If you plan to use the paper/manuscript optional workflow add-on later, treat the `Optional Workflow Add-ons` and `LaTeX Toolchain` rows in this doctor report as your LaTeX add-on readiness check too.
+2. From the same terminal, run `gpd doctor --runtime codex --local` and `gpd --help`. Here, `gpd doctor --runtime ...` is a runtime-readiness check for the selected runtime target. If you plan to use the paper/manuscript workflow preset later, treat the `Workflow Presets` and `LaTeX Toolchain` rows in this doctor report as your LaTeX preset readiness check too.
 3. Launch your selected runtime and run its GPD help command (`/gpd:help`, `$gpd-help`, or `/gpd-help`).
 4. If you want unattended execution, use your runtime-specific `settings` command as the guided configuration path and keep autonomy at Balanced (`balanced`) unless you intentionally want prompt-free runtime approvals.
 5. Run `gpd permissions status --runtime codex --autonomy balanced`. If that status reports drift, run `gpd permissions sync --runtime codex --autonomy balanced`; if it reports `requires_relaunch`, exit and relaunch Codex before treating unattended use as ready.
@@ -119,7 +119,7 @@ If any of those fail, fix them before troubleshooting GPD itself. These are boot
 
 - If the bootstrap installer fails before `gpd doctor --runtime <runtime> --local|--global` can run, fix Node / Python / `venv` bootstrap prerequisites first.
 - If `gpd doctor --runtime <runtime> --local|--global` fails, fix the selected runtime's launcher / target / runtime-readiness issue first.
-- If `gpd doctor --runtime <runtime> --local|--global` only warns about `Optional Workflow Add-ons` or `LaTeX Toolchain`, the base install can still be fine; treat that as degraded readiness for paper/manuscript workflows rather than a full install blocker.
+- If `gpd doctor --runtime <runtime> --local|--global` only warns about `Workflow Presets` or `LaTeX Toolchain`, the base install can still be fine; treat that as degraded readiness for paper/manuscript workflows rather than a full install blocker.
 - If the runtime launches but GPD commands are missing, rerun the installer with an explicit runtime and explicit scope from your normal system terminal.
 - If `gpd permissions status --runtime <runtime> --autonomy balanced` reports drift, run `gpd permissions sync --runtime <runtime> --autonomy balanced` and check again.
 - If `gpd permissions status` reports `requires_relaunch`, exit and relaunch the runtime before unattended use.
