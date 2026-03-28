@@ -9,6 +9,12 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError as PydanticValidationError
 from pydantic import field_validator, model_validator
 
+from gpd.mcp.managed_integrations import (
+    WOLFRAM_MANAGED_INTEGRATION,
+    WOLFRAM_MANAGED_SERVER_KEY,
+    get_managed_integration,
+)
+
 _TOOL_ALIASES = {
     "mathematica": "wolfram",
     "wolfram_language": "wolfram",
@@ -118,9 +124,11 @@ _TOOL_SPECS: dict[str, _ToolSpec] = {
     "wolfram": _ToolSpec(
         provider="wolframscript",
         command="wolframscript",
-        warning="Availability is PATH-based only; live execution and license state are not proven.",
+        warning="Availability is PATH-based or shared-integration config only; live execution and license state are not proven.",
     ),
 }
+
+_WOLFRAM_CAVEAT = "Availability is config-level only; live execution and license state are not proven."
 
 
 def _format_validation_error(exc: PydanticValidationError) -> str:
@@ -156,6 +164,36 @@ def _probe_tool(requirement: PlanToolRequirement) -> tuple[bool, str, str, list[
             return True, f"{executable} found at {Path(path).resolve(strict=False)}", "command", []
         return False, f"{executable} not found on PATH", "command", []
 
+    if requirement.tool == "wolfram":
+        path = shutil.which("wolframscript")
+        warnings = [_WOLFRAM_CAVEAT]
+        if path:
+            return (
+                True,
+                f"wolframscript found at {Path(path).resolve(strict=False)}",
+                "wolframscript",
+                warnings,
+            )
+
+        integration = get_managed_integration("wolfram")
+        if integration is not None and integration.is_configured():
+            endpoint = integration.resolved_endpoint()
+            return (
+                True,
+                (
+                    "shared Wolfram integration configured via "
+                    f"{integration.api_key_env_var} for {endpoint}"
+                ),
+                WOLFRAM_MANAGED_SERVER_KEY,
+                warnings,
+            )
+
+        detail = (
+            "wolframscript not found on PATH and shared Wolfram integration is not configured "
+            f"(missing {WOLFRAM_MANAGED_INTEGRATION.api_key_env_var})"
+        )
+        return False, detail, WOLFRAM_MANAGED_SERVER_KEY, warnings
+
     spec = _TOOL_SPECS.get(requirement.tool)
     if spec is None or spec.command is None:
         return False, f"no probe implemented for tool {requirement.tool}", "unknown", []
@@ -177,17 +215,18 @@ def build_plan_tool_preflight(
     from gpd.core.frontmatter import FrontmatterParseError, extract_frontmatter, validate_frontmatter
 
     resolved_path = plan_path.expanduser().resolve(strict=False)
+    if not resolved_path.exists():
+        return PlanToolPreflightResult(
+            plan_path=str(resolved_path),
+            validation_passed=False,
+            valid=False,
+            passed=False,
+            errors=[f"Plan not found: {resolved_path}"],
+            guidance=f"Plan not found: {resolved_path}",
+        )
+
     active_requirements = requirements
     if active_requirements is None:
-        if not resolved_path.exists():
-            return PlanToolPreflightResult(
-                plan_path=str(resolved_path),
-                validation_passed=False,
-                valid=False,
-                passed=False,
-                errors=[f"Plan not found: {resolved_path}"],
-                guidance=f"Plan not found: {resolved_path}",
-            )
         try:
             content = resolved_path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -308,7 +347,7 @@ def build_plan_tool_preflight(
             else (
                 "Optional specialized tools are unavailable; continue only if the plan can genuinely proceed without them."
                 if missing_preferred_without_fallback
-                else "All declared specialized tools are available on this machine."
+                else "All declared specialized tools are available through local or configured capabilities."
             )
         )
     )
