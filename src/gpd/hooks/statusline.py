@@ -14,6 +14,7 @@ from pathlib import Path
 import gpd.hooks.install_context as hook_layout
 from gpd.core.constants import ENV_GPD_DEBUG, PLANNING_DIR_NAME, STATE_JSON_FILENAME
 from gpd.core.observability import resolve_project_root
+from gpd.hooks.payload_policy import resolve_hook_payload_policy
 from gpd.hooks.payload_roots import project_root_from_payload as _shared_project_root_from_payload
 from gpd.hooks.payload_roots import resolve_payload_roots as _resolve_payload_roots
 from gpd.hooks.payload_roots import workspace_dir_from_payload as _shared_workspace_dir_from_payload
@@ -102,12 +103,7 @@ def _compact_age_label(value: object) -> str:
 
 def _hook_payload_policy(workspace_dir: str | None = None):
     """Return hook payload metadata for the active runtime or a merged fallback."""
-    from gpd.adapters.runtime_catalog import get_hook_payload_policy
-    from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, detect_active_runtime_with_gpd_install
-
-    workspace_path = resolve_project_root(workspace_dir) if workspace_dir else None
-    runtime = detect_active_runtime_with_gpd_install(cwd=workspace_path)
-    return get_hook_payload_policy(None if runtime == RUNTIME_UNKNOWN else runtime)
+    return resolve_hook_payload_policy(hook_file=__file__, cwd=workspace_dir, surface="statusline")
 
 
 def _format_context_window_size(value: object) -> str:

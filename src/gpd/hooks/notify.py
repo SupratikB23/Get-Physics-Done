@@ -12,6 +12,7 @@ import gpd.hooks.install_context as hook_layout
 from gpd.core.constants import ENV_GPD_DEBUG, ProjectLayout
 from gpd.core.observability import humanize_execution_reason, resolve_project_root
 from gpd.core.utils import atomic_write, file_lock
+from gpd.hooks.payload_policy import resolve_hook_payload_policy, resolve_hook_surface_runtime
 from gpd.hooks.payload_roots import project_root_from_payload as _shared_project_root_from_payload
 from gpd.hooks.payload_roots import resolve_payload_roots as _resolve_payload_roots
 from gpd.hooks.payload_roots import workspace_dir_from_payload as _shared_workspace_dir_from_payload
@@ -58,29 +59,12 @@ def _trigger_update_check(cwd: str) -> None:
 
 def _hook_payload_policy(cwd: str | None = None):
     """Return hook payload metadata for the active runtime or a merged fallback."""
-    from gpd.adapters.runtime_catalog import get_hook_payload_policy
-    from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, detect_active_runtime_with_gpd_install
-
-    self_install = hook_layout.detect_self_owned_install(__file__)
-    if self_install is not None:
-        return get_hook_payload_policy(self_install.runtime)
-
-    workspace_path = resolve_project_root(cwd) if cwd else None
-    runtime = detect_active_runtime_with_gpd_install(cwd=workspace_path)
-    return get_hook_payload_policy(None if runtime == RUNTIME_UNKNOWN else runtime)
+    return resolve_hook_payload_policy(hook_file=__file__, cwd=cwd, surface="notify")
 
 
 def _payload_runtime(cwd: str | None = None) -> str | None:
     """Return the active installed runtime for one payload workspace, when known."""
-    from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, detect_active_runtime_with_gpd_install
-
-    self_install = hook_layout.detect_self_owned_install(__file__)
-    if self_install is not None:
-        return self_install.runtime
-
-    workspace_path = resolve_project_root(cwd) if cwd else None
-    runtime = detect_active_runtime_with_gpd_install(cwd=workspace_path)
-    return None if runtime == RUNTIME_UNKNOWN else runtime
+    return resolve_hook_surface_runtime(hook_file=__file__, cwd=cwd, surface="notify")
 
 
 def _runtime_supports_usage_telemetry(runtime: str | None) -> bool:

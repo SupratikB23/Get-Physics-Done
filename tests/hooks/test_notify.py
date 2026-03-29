@@ -691,6 +691,31 @@ def test_main_uses_self_owned_hook_policy_even_when_workspace_runtime_differs(tm
     mock_execution.assert_not_called()
 
 
+def test_main_uses_self_owned_hook_policy_with_alias_only_workspace_payload(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    self_owned_runtime_dir = tmp_path / ".codex"
+    hook_path = self_owned_runtime_dir / "hooks" / "notify.py"
+    hook_path.parent.mkdir(parents=True)
+    hook_path.write_text("# hook\n", encoding="utf-8")
+    _mark_complete_install(self_owned_runtime_dir, runtime="codex")
+    _mark_complete_install(workspace / ".claude", runtime="claude-code", install_scope="global")
+
+    payload = json.dumps({"type": "session-end", "workspace": {"current_dir": str(workspace)}})
+    with (
+        patch("sys.stdin", io.StringIO(payload)),
+        patch("gpd.hooks.notify.__file__", str(hook_path)),
+        patch("gpd.hooks.notify._trigger_update_check") as mock_trigger,
+        patch("gpd.hooks.notify._check_and_notify_update") as mock_update,
+        patch("gpd.hooks.notify._emit_execution_notification") as mock_execution,
+    ):
+        main()
+
+    mock_trigger.assert_not_called()
+    mock_update.assert_not_called()
+    mock_execution.assert_not_called()
+
+
 def test_main_accepts_workspace_mapping_with_cwd_field() -> None:
     expected = str(Path("/tmp/project").resolve(strict=False))
     with (
