@@ -7,6 +7,7 @@ Use this if you want to run GPD inside Claude Code.
 Claude Code is the terminal app you talk to. GPD adds physics-research commands to it, so you can ask Claude to help scope, plan, derive, and verify work in a structured way.
 
 If you are on Windows, Claude Code's official docs say you need Git for Windows or WSL.
+If you are on Linux and `claude` is missing, Anthropic recommends the native installer `curl -fsSL https://claude.ai/install.sh | bash`. Anthropic's npm install path is now deprecated.
 
 ## Before you start
 
