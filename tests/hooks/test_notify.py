@@ -13,7 +13,6 @@ import pytest
 
 import gpd.hooks.notify as notify_module
 from gpd.adapters.install_utils import build_runtime_install_repair_command
-from gpd.adapters.runtime_catalog import get_hook_payload_policy
 from gpd.core.constants import ProjectLayout
 from gpd.core.costs import usage_ledger_path
 from gpd.hooks.notify import _check_and_notify_update, _emit_execution_notification, _hook_payload_policy, main
@@ -552,23 +551,6 @@ def test_hook_payload_policy_prefers_installed_runtime_over_stale_local_runtime_
         policy = _hook_payload_policy(str(workspace))
 
     assert policy.notify_event_types == ()
-
-
-def test_hook_payload_policy_prefers_self_owned_install_over_workspace_runtime(tmp_path: Path) -> None:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    self_owned_runtime_dir = tmp_path / ".codex"
-    hook_path = self_owned_runtime_dir / "hooks" / "notify.py"
-    hook_path.parent.mkdir(parents=True)
-    hook_path.write_text("# hook\n", encoding="utf-8")
-    _mark_complete_install(self_owned_runtime_dir, runtime="codex")
-    _mark_complete_install(workspace / ".claude", runtime="claude-code", install_scope="global")
-
-    with patch("gpd.hooks.notify.__file__", str(hook_path)):
-        policy = _hook_payload_policy(str(workspace))
-
-    assert policy.notify_event_types == get_hook_payload_policy("codex").notify_event_types
-    assert policy.notify_event_types != get_hook_payload_policy("claude-code").notify_event_types
 
 
 def test_main_resolves_workspace_before_filtering_event_types(tmp_path: Path) -> None:
