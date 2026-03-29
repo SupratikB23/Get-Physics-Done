@@ -763,10 +763,16 @@ def test_public_readme_keeps_bootstrap_prerequisites_and_runtime_doctor_scopes_d
     readme = (_repo_root() / "README.md").read_text(encoding="utf-8")
     quick_start = _markdown_section(readme, "## Quick Start")
 
+    assert "The intended first-pass order is `help`, then `start`, then `tour`, then `new-project` or `map-research`." in quick_start
     assert "The bootstrap installer requires Node.js 20+, Python 3.11+ with `venv`" in quick_start
     assert "**Bootstrap hard blockers**" in quick_start
     assert "These are bootstrap prerequisites for `npx -y get-physics-done`, not a claim that every local `gpd ...` command rechecks them." in quick_start
     assert "Here, `gpd doctor --runtime ...` is a runtime-readiness check for the selected runtime target." in quick_start
+    assert "If you are not sure what fits this folder yet, run your runtime's `start` command first." in quick_start
+    assert "If you want a guided walkthrough of the main commands and when to use them, run your runtime's `tour` command." in quick_start
+    assert "Otherwise start with `new-project --minimal` for new work, `map-research` for existing work, or `resume-work` for an existing GPD project using your runtime's command syntax." in quick_start
+    assert quick_start.index("If you are not sure what fits this folder yet, run your runtime's `start` command first.") < quick_start.index("If you want a guided walkthrough of the main commands and when to use them, run your runtime's `tour` command.")
+    assert quick_start.index("If you want a guided walkthrough of the main commands and when to use them, run your runtime's `tour` command.") < quick_start.index("Otherwise start with `new-project --minimal` for new work, `map-research` for existing work, or `resume-work` for an existing GPD project using your runtime's command syntax.")
     _assert_unattended_readiness_surface(quick_start)
     _assert_wolfram_plan_boundary(quick_start)
     assert DOCTOR_RUNTIME_SCOPE_RE.search(quick_start) is not None
@@ -787,6 +793,25 @@ def test_public_readme_keeps_bootstrap_prerequisites_and_runtime_doctor_scopes_d
         "like `pdflatex` or `wolframscript`; that still stays separate from `gpd integrations status wolfram` and from "
         "`gpd validate plan-preflight <PLAN.md>`. Use `gpd paper-build` to judge whether the manuscript scaffold is buildable."
     ) in quick_start
+
+
+def test_public_help_surface_keeps_start_tour_new_project_and_map_research_ordered() -> None:
+    repo_root = _repo_root()
+    help_workflow = (repo_root / "src/gpd/specs/workflows/help.md").read_text(encoding="utf-8")
+
+    start_snippet = "/gpd:start               — Guided router when you are not sure whether to create, map, resume, or just explain something"
+    tour_snippet = "/gpd:tour               — Optional guided tour of the main commands and when to use them"
+    new_project_snippet = "/gpd:new-project         — Start a new research project with full scoping"
+    map_research_snippet = "/gpd:map-research        — Map an existing research project"
+
+    assert "Getting started:" in help_workflow
+    assert start_snippet in help_workflow
+    assert tour_snippet in help_workflow
+    assert new_project_snippet in help_workflow
+    assert map_research_snippet in help_workflow
+    assert help_workflow.index(start_snippet) < help_workflow.index(tour_snippet)
+    assert help_workflow.index(tour_snippet) < help_workflow.index(new_project_snippet)
+    assert help_workflow.index(new_project_snippet) < help_workflow.index(map_research_snippet)
 
 
 def test_public_readme_recovery_surfaces_keep_runtime_pause_and_resume_roles_distinct() -> None:

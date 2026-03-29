@@ -2,6 +2,8 @@
 
 Use this if you are a physics researcher and want GPD inside the OpenAI Codex CLI.
 
+This guide uses the simplest path to get started. OpenAI's official Codex docs may list additional install, auth, or platform-specific options.
+
 ## What Codex is here
 
 In this project, “Codex” means the Codex CLI runtime that GPD installs into. Once GPD is set up, you run GPD commands inside Codex with the `$gpd-...` syntax.
@@ -53,21 +55,16 @@ Type these inside Codex, not in your normal terminal:
 ```text
 $gpd-help
 $gpd-start
+$gpd-tour
+$gpd-new-project --minimal
+$gpd-map-research
+$gpd-resume-work
 ```
 
 If you are not sure what this folder is yet, start with `$gpd-start`.
+If you want a read-only walkthrough first, use `$gpd-tour`.
 
-If you want the fastest new-project start:
-
-```text
-$gpd-new-project --minimal
-```
-
-If you already have research in this folder:
-
-```text
-$gpd-map-research
-```
+Suggested order for beginners: `$gpd-help`, `$gpd-start`, `$gpd-tour`, then either `$gpd-new-project --minimal`, `$gpd-map-research`, or `$gpd-resume-work`.
 
 ## 5) What success looks like
 
@@ -76,7 +73,9 @@ You are in the right place when:
 - `codex --help` works.
 - `npx -y get-physics-done --codex --local` finishes without errors.
 - Inside Codex, `$gpd-help` shows the GPD command list.
-- `$gpd-start`, `$gpd-new-project --minimal`, or `$gpd-map-research` starts asking structured research questions instead of failing with “command not found.”
+- `$gpd-start` routes a beginner to the right entry point.
+- `$gpd-tour` gives a read-only walkthrough of the main commands.
+- `$gpd-new-project --minimal`, `$gpd-map-research`, or `$gpd-resume-work` starts the right GPD flow for new work, existing research, or an existing GPD project.
 
 ## 6) Quick troubleshooting
 

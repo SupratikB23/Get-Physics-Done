@@ -2,6 +2,8 @@
 
 Gemini CLI is the terminal app where GPD runs for Gemini users. In this setup, you open `gemini`, then use GPD commands inside that session.
 
+This guide uses the simplest path to get started. Google's official Gemini CLI docs may list additional install, auth, or platform-specific options.
+
 ## Before you start
 
 Open your normal terminal in the folder where you want this research project to live.
@@ -45,28 +47,25 @@ Type these inside Gemini CLI, not in your normal terminal:
 ```text
 /gpd:help
 /gpd:start
+/gpd:tour
+/gpd:new-project --minimal
+/gpd:map-research
+/gpd:resume-work
 ```
 
 If you are not sure what this folder is yet, start with `/gpd:start`.
+If you want a read-only walkthrough first, use `/gpd:tour`.
 
-If you want the fastest new-project start:
-
-```text
-/gpd:new-project --minimal
-```
-
-If you already have research in this folder:
-
-```text
-/gpd:map-research
-```
+Suggested order for beginners: `/gpd:help`, `/gpd:start`, `/gpd:tour`, then either `/gpd:new-project --minimal`, `/gpd:map-research`, or `/gpd:resume-work`.
 
 ## 5) What success looks like
 
 - `gemini --help` works.
 - `npx -y get-physics-done --gemini --local` finishes without errors.
 - `/gpd:help` shows GPD commands.
-- `/gpd:start`, `/gpd:new-project --minimal`, or `/gpd:map-research` starts the GPD workflow.
+- `/gpd:start` routes a beginner to the right entry point.
+- `/gpd:tour` gives a read-only walkthrough of the main commands.
+- `/gpd:new-project --minimal`, `/gpd:map-research`, or `/gpd:resume-work` starts the right GPD flow for new work, existing research, or an existing GPD project.
 
 ## 6) Quick troubleshooting
 

@@ -88,12 +88,14 @@ We welcome contributions and feedback via GitHub issues or pull requests; if GPD
 
 If you already know your runtime and are comfortable in a terminal:
 
+The intended first-pass order is `help`, then `start`, then `tour`, then `new-project` or `map-research`.
+
 1. From inside the folder where your project should live, run the matching install command from [Start Here](#start-here).
 2. Launch your runtime with `claude`, `codex`, `gemini`, or `opencode`.
 3. Run the matching GPD help command shown below.
-4. If you are not sure what fits this folder yet, run your runtime's `start` command.
+4. If you are not sure what fits this folder yet, run your runtime's `start` command first.
 5. If you want a guided walkthrough of the main commands and when to use them, run your runtime's `tour` command.
-6. Otherwise start with `new-project --minimal`, `resume-work`, or `map-research` using your runtime's command syntax.
+6. Otherwise start with `new-project --minimal` for new work, `map-research` for existing work, or `resume-work` for an existing GPD project using your runtime's command syntax.
 
 | Runtime | First help command | Guided first-run command | Guided walkthrough command | Fastest first project |
 |---------|--------------------|--------------------------|-----------------------------|-----------------------|
@@ -145,10 +147,13 @@ If any of those fail, fix them before troubleshooting GPD itself. These are boot
 **Advisories**
 
 - Choose `--local` or `--global` explicitly if you do not want the installer's default path selection
+- Runtime permissions are runtime-owned permission alignment only; use the guided checks after startup to decide whether the runtime is ready.
 - Use your runtime-specific `settings` command after the first successful launch as the guided path for unattended configuration. Balanced (`balanced`) is the recommended unattended default.
 - Use `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced` for the unattended or overnight verdict; if it returns `not-ready`, run `gpd permissions sync --runtime <runtime> --autonomy balanced`, and if it returns `relaunch-required`, the runtime is not ready yet.
 - If you want prompt-free runtime approvals rather than ordinary unattended execution, switch to YOLO (`yolo`) in your runtime-specific `settings` command, run `gpd permissions sync --runtime <runtime> --autonomy yolo`, and relaunch when required.
-- Workflow presets are bundles over the existing config keys only; they do not add a separate persisted preset block. Use `gpd presets list` / `show` / `apply --dry-run` for the shared preview/apply flow, or choose the same preset in your runtime-specific `settings` command. The first supported preset is paper/manuscript workflows; run `gpd doctor --runtime <runtime> --local|--global` first if you plan to use that preset.
+- Workflow presets are bundles over the existing config keys only; they do not add a separate persisted preset block. Use `gpd presets list`, `gpd presets show <preset>`, and `gpd presets apply <preset> --dry-run` for the shared preview/apply flow, or choose the same preset in your runtime-specific `settings` command. The first supported preset is paper/manuscript workflows; run `gpd doctor --runtime <runtime> --local|--global` first if you plan to use that preset.
+- Local Mathematica installs are separate from the shared Wolfram integration config.
+- The shared Wolfram integration does not replace `gpd validate plan-preflight <PLAN.md>`.
 - Missing workflow preset tooling degrades that preset instead of blocking the base install; treat failed preset rows as a signal to avoid that workflow until the tooling is fixed
 - Provider authentication is checked manually in the runtime itself; GPD will point this out, but it does not hard-block installation readiness on it
 - Use `--upgrade` only when you intentionally want the latest unreleased GitHub `main` snapshot

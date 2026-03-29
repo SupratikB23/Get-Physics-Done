@@ -1145,7 +1145,7 @@ function printHelp() {
   console.log(` ${yellow}After install:${reset}`);
   console.log(` ${dim}# Recommended unattended configuration${reset}`);
   console.log(" Bootstrap preflight checks runtime launcher/target blockers only; configure unattended behavior after startup.");
-  console.log(" Use the runtime-specific `settings` command after startup to review autonomy, workflow defaults, and model-cost posture.");
+  console.log(" Open your runtime, run its help command first, then use `start` if you are not sure what fits this folder. Use `tour` for a read-only walkthrough before creating a project.");
   console.log(" Recommended unattended default: Balanced autonomy (`balanced`). The safest model starting point is `review` plus runtime defaults.");
   console.log(
     " For returning work, use `gpd resume` for the current-workspace read-only recovery snapshot. "

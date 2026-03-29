@@ -111,7 +111,7 @@ gpd --help
 - Codex: `$gpd-help`
 - OpenCode: `/gpd-help`
 
-If both of those work, the install is in good shape.
+If that works, the install is in good shape. If you are not sure what fits this folder yet, use the runtime-specific `start` command below. If you want a guided overview first, use the runtime-specific `tour` command below.
 
 ## Where to go next
 
@@ -119,6 +119,8 @@ Use the exact command for your runtime:
 
 | What you want to do | Claude Code / Gemini CLI | Codex | OpenCode |
 |---------------------|--------------------------|-------|----------|
+| Not sure which path fits this folder | `/gpd:start` | `$gpd-start` | `/gpd-start` |
+| Want a guided overview | `/gpd:tour` | `$gpd-tour` | `/gpd-tour` |
 | Start a new project | `/gpd:new-project --minimal` | `$gpd-new-project --minimal` | `/gpd-new-project --minimal` |
 | Map an existing folder | `/gpd:map-research` | `$gpd-map-research` | `/gpd-map-research` |
 | Reopen work from your normal terminal | `gpd resume` | `gpd resume` | `gpd resume` |

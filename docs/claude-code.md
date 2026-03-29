@@ -2,6 +2,8 @@
 
 Use this if you want to run GPD inside Claude Code.
 
+This guide shows the simplest path to get started. Anthropic's official Claude Code docs may list additional install and platform-specific options.
+
 ## What Claude Code is here
 
 Claude Code is the terminal app you talk to. GPD adds physics-research commands to it, so you can ask Claude to help scope, plan, derive, and verify work in a structured way.
@@ -49,28 +51,25 @@ Type these inside Claude Code, not in your normal terminal:
 ```text
 /gpd:help
 /gpd:start
+/gpd:tour
+/gpd:new-project --minimal
+/gpd:map-research
+/gpd:resume-work
 ```
 
 If you are not sure what this folder is yet, start with `/gpd:start`.
+If you want a read-only walkthrough first, use `/gpd:tour`.
 
-If you already know you want the fastest new-project path, use:
-
-```text
-/gpd:new-project --minimal
-```
-
-If you already have research in this folder, use:
-
-```text
-/gpd:map-research
-```
+Suggested order for beginners: `/gpd:help`, `/gpd:start`, `/gpd:tour`, then either `/gpd:new-project --minimal`, `/gpd:map-research`, or `/gpd:resume-work`.
 
 ## What success looks like
 
 - `claude --version` prints a version.
 - `npx -y get-physics-done --claude --local` finishes without errors.
 - Inside Claude Code, `/gpd:help` shows the GPD commands.
-- `/gpd:start`, `/gpd:new-project --minimal`, or `/gpd:map-research` starts a guided GPD flow instead of saying the command is unknown.
+- `/gpd:start` routes a beginner to the right entry point.
+- `/gpd:tour` explains the main commands without changing anything.
+- `/gpd:new-project --minimal`, `/gpd:map-research`, or `/gpd:resume-work` starts the right GPD flow for new work, existing research, or an existing GPD project.
 
 ## Quick troubleshooting
 
