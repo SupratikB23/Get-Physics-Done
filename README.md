@@ -383,7 +383,7 @@ Passing a manuscript path to a project-required command such as `/gpd:peer-revie
 The full command reference below uses Claude Code / Gemini CLI syntax. Codex uses `$gpd-...` and OpenCode uses `/gpd-...`.
 
 <details>
-<summary><strong>Full Command Reference (62 Commands)</strong></summary>
+<summary><strong>Full Command Reference (63 Commands)</strong></summary>
 
 #### Project Initialization
 

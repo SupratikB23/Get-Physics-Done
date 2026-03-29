@@ -88,6 +88,7 @@ Offer only the options that make sense for the detected state.
 **If this is an existing GPD project:**
 
 - `Resume this project` — continue from the selected project state through `/gpd:resume-work`
+- `Suggest the next best action` — get the shortest high-signal recommendation through `/gpd:suggest-next`
 - `Review project status first` — inspect broader state through `/gpd:progress`
 - `Do a small bounded task` — use `/gpd:quick`
 - `Explain a concept` — use `/gpd:explain`
@@ -130,6 +131,11 @@ Route immediately into the real existing workflow for the chosen path.
 
 - Read `{GPD_INSTALL_DIR}/workflows/progress.md` with the file-read tool.
 - Follow that workflow as if the researcher had run `/gpd:progress`.
+
+**If the researcher chooses `Suggest the next best action`:**
+
+- Read `{GPD_INSTALL_DIR}/commands/suggest-next.md` with the file-read tool.
+- Follow that command contract as if the researcher had run `/gpd:suggest-next`.
 
 **If the researcher chooses `Map this folder first` or `Refresh the research map`:**
 

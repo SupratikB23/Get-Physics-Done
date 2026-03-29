@@ -1102,6 +1102,24 @@ class TestReviewValidationCommands:
         assert payload["passed"] is True
         assert f"public `{codex_command_prefix}*` runtime command surface" in payload["dispatch_note"]
 
+    def test_command_context_start_passes_without_project(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, codex_command_prefix: str
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "command-context", "start"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["command"] == "gpd:start"
+        assert payload["context_mode"] == "projectless"
+        assert payload["passed"] is True
+        assert f"public `{codex_command_prefix}*` runtime command surface" in payload["dispatch_note"]
+
     @pytest.mark.parametrize("command_name", ["health", "suggest-next"])
     def test_command_context_projectless_recovery_commands_pass_without_project(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command_name: str
@@ -1487,6 +1505,28 @@ class TestReviewValidationCommands:
         payload = json.loads(result.output)
         checks = {check["name"]: check for check in payload["checks"]}
         assert payload["command"] == "gpd:new-project"
+        assert payload["context_mode"] == "projectless"
+        assert payload["passed"] is True
+        assert checks["project_context"]["passed"] is True
+
+    def test_command_context_start_command_passes_without_project(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        empty_dir = tmp_path / "empty-context"
+        empty_dir.mkdir()
+        monkeypatch.chdir(empty_dir)
+        result = runner.invoke(
+            app,
+            ["--raw", "--cwd", str(empty_dir), "validate", "command-context", "start"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert payload["command"] == "gpd:start"
         assert payload["context_mode"] == "projectless"
         assert payload["passed"] is True
         assert checks["project_context"]["passed"] is True

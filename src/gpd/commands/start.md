@@ -32,7 +32,7 @@ run.
 - `/gpd:map-research` remains the existing-work importer
 - `/gpd:resume-work` remains the in-runtime return path for an existing GPD project
 - `gpd resume --recent` remains the normal-terminal cross-project recovery path
-- `/gpd:quick`, `/gpd:explain`, and `/gpd:help` remain separate downstream entry points
+- `/gpd:suggest-next`, `/gpd:quick`, `/gpd:explain`, and `/gpd:help` remain separate downstream entry points
 
 </inline_guidance>
 
