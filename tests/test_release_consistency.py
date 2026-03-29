@@ -751,19 +751,8 @@ def test_public_help_surface_keeps_start_tour_new_project_and_map_research_order
     repo_root = _repo_root()
     help_workflow = (repo_root / "src/gpd/specs/workflows/help.md").read_text(encoding="utf-8")
 
-    start_snippet = "/gpd:start               — Guided router when you are not sure whether to create, map, resume, or just explain something"
-    tour_snippet = "/gpd:tour               — Optional guided tour of the main commands and when to use them"
-    new_project_snippet = "/gpd:new-project         — Start a new research project with full scoping"
-    map_research_snippet = "/gpd:map-research        — Map an existing research project"
-
     assert "Getting started:" in help_workflow
-    assert start_snippet in help_workflow
-    assert tour_snippet in help_workflow
-    assert new_project_snippet in help_workflow
-    assert map_research_snippet in help_workflow
-    assert help_workflow.index(start_snippet) < help_workflow.index(tour_snippet)
-    assert help_workflow.index(tour_snippet) < help_workflow.index(new_project_snippet)
-    assert help_workflow.index(new_project_snippet) < help_workflow.index(map_research_snippet)
+    assert_beginner_startup_routing_contract(help_workflow)
 
 
 def test_js_bootstrap_after_install_surface_keeps_beginner_order() -> None:

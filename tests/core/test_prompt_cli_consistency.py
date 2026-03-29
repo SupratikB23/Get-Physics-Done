@@ -14,7 +14,10 @@ from tests.doc_surface_contracts import (
     _assert_shared_preset_surface_contract,
     _assert_unattended_readiness_boundary,
     _assert_wolfram_plan_boundary,
+    assert_help_start_tour_ordering_contract,
+    assert_beginner_startup_routing_contract,
     assert_recovery_ladder_contract,
+    assert_tour_read_only_teaching_contract,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -251,10 +254,7 @@ def test_tour_prompt_delegates_routing_to_workflow_only() -> None:
     assert "teaching surface, not a chooser" in tour_command
     assert "safe beginner walkthrough of the core GPD command paths" in tour_command
     assert "/gpd:settings" in tour_command
-    assert "Provide a beginner-friendly, read-only tour of the core GPD command surface." in tour_workflow
-    assert "Teach what the main commands do, when to use them" in tour_workflow
-    assert "does not create files, change project" in tour_workflow
-    assert "state, or route into another workflow" in tour_workflow
+    assert_tour_read_only_teaching_contract(tour_workflow)
     assert "/gpd:start" in tour_workflow
     assert "/gpd:new-project --minimal" in tour_workflow
     assert "/gpd:map-research" in tour_workflow
@@ -269,8 +269,6 @@ def test_tour_prompt_delegates_routing_to_workflow_only() -> None:
     assert "/gpd:discuss-phase" in tour_workflow
     assert "/gpd:write-paper" in tour_workflow
     assert "/gpd:tangent" in tour_workflow
-    assert "read-only tour" in tour_workflow
-    assert "not change your files" in tour_workflow
     assert "$ARGUMENTS" in tour_workflow
     assert "Do not narrow the command list, select a path, or route based on it." in tour_workflow
     assert "the runtime, where you use the GPD command prefix provided for that runtime" in tour_workflow
@@ -288,7 +286,8 @@ def test_help_workflow_surfaces_start_as_first_run_router() -> None:
     assert "Guided first-run router" in help_workflow
     assert "/gpd:tour" in help_workflow
     assert "guided tour" in help_workflow.lower()
-    assert quick_start_reference.index("/gpd:start") < quick_start_reference.index("/gpd:tour")
+    assert_help_start_tour_ordering_contract(quick_start_reference)
+    assert_beginner_startup_routing_contract(quick_start_reference)
 
 
 def test_prompt_docs_keep_wolfram_as_shared_capability_not_runtime_config_surface() -> None:

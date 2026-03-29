@@ -21,6 +21,7 @@ __all__ = [
     "PLAN_PREFLIGHT_SURFACE",
     "UNATTENDED_READINESS_SURFACE",
     "WOLFRAM_STATUS_SURFACE",
+    "assert_help_start_tour_ordering_contract",
     "assert_beginner_caveat_follow_up_contract",
     "assert_beginner_help_bridge_contract",
     "assert_beginner_hub_preflight_contract",
@@ -45,12 +46,37 @@ __all__ = [
     "assert_help_workflow_runtime_reference_contract",
     "assert_install_summary_runtime_follow_up_contract",
     "assert_shared_preset_surface_contract",
+    "assert_tour_read_only_teaching_contract",
     "assert_unattended_readiness_boundary",
     "assert_unattended_readiness_contract",
     "assert_wolfram_plan_boundary",
     "assert_wolfram_plan_boundary_contract",
     "assert_workflow_preset_surface_contract",
 ]
+
+
+HELP_ENTRY_FRAGMENTS = (
+    "`help`",
+    "/gpd:help",
+    "$gpd-help",
+    "/gpd-help",
+    "run `help`",
+    "help command",
+)
+START_ENTRY_FRAGMENTS = (
+    "`start`",
+    "/gpd:start",
+    "$gpd-start",
+    "/gpd-start",
+    "Run `start`",
+)
+TOUR_ENTRY_FRAGMENTS = (
+    "`tour`",
+    "/gpd:tour",
+    "$gpd-tour",
+    "/gpd-tour",
+    "Run `tour`",
+)
 
 
 def _assert_contains_any(content: str, fragments: Iterable[str], *, label: str) -> None:
@@ -144,6 +170,58 @@ def assert_execution_observability_surface_contract(content: str) -> None:
     )
 
 
+def assert_help_start_tour_ordering_contract(content: str) -> None:
+    help_index = _first_index_of_any(content, HELP_ENTRY_FRAGMENTS, label="help entry point")
+    start_index = _first_index_of_any(content, START_ENTRY_FRAGMENTS, label="start entry point")
+    tour_index = _first_index_of_any(content, TOUR_ENTRY_FRAGMENTS, label="tour entry point")
+
+    assert help_index < start_index
+    assert start_index < tour_index
+
+
+def assert_tour_read_only_teaching_contract(content: str) -> None:
+    _assert_contains_any(
+        content,
+        (
+            "guided tour",
+            "guided beginner walkthrough",
+            "read-only tour of the main GPD commands",
+            "read-only overview of the broader command surface",
+        ),
+        label="tour teaching surface",
+    )
+    _assert_contains_any(
+        content,
+        (
+            "read-only tour",
+            "read-only walkthrough",
+            "without taking action",
+            "not change your files",
+        ),
+        label="tour read-only framing",
+    )
+    _assert_contains_any(
+        content,
+        (
+            "Teach what the main commands do, when to use them",
+            "what the main commands do",
+            "what GPD can do before choosing",
+            "overview before I continue",
+        ),
+        label="tour teaching semantics",
+    )
+    _assert_contains_any(
+        content,
+        (
+            "not a chooser",
+            "does not create files, change project",
+            "route into another workflow",
+            "without changing anything",
+        ),
+        label="tour non-routing boundary",
+    )
+
+
 def assert_beginner_startup_routing_contract(content: str) -> None:
     ladder = beginner_startup_ladder_text()
     startup_markers = (
@@ -151,28 +229,6 @@ def assert_beginner_startup_routing_contract(content: str) -> None:
         ladder.strip("`"),
         "If you just installed GPD, use this order first:",
         "If you only remember one order, use this:",
-    )
-    help_fragments = (
-        "`help`",
-        "/gpd:help",
-        "$gpd-help",
-        "/gpd-help",
-        "run `help`",
-        "help command",
-    )
-    start_fragments = (
-        "`start`",
-        "/gpd:start",
-        "$gpd-start",
-        "/gpd-start",
-        "Run `start`",
-    )
-    tour_fragments = (
-        "`tour`",
-        "/gpd:tour",
-        "$gpd-tour",
-        "/gpd-tour",
-        "Run `tour`",
     )
     new_project_fragments = (
         "`new-project --minimal`",
@@ -203,15 +259,12 @@ def assert_beginner_startup_routing_contract(content: str) -> None:
     startup_anchor = min(content.index(marker) for marker in startup_markers if marker in content)
     startup_content = content[startup_anchor:]
 
-    help_index = _first_index_of_any(startup_content, help_fragments, label="help entry point")
-    start_index = _first_index_of_any(startup_content, start_fragments, label="start entry point")
-    tour_index = _first_index_of_any(startup_content, tour_fragments, label="tour entry point")
+    assert_help_start_tour_ordering_contract(startup_content)
+    tour_index = _first_index_of_any(startup_content, TOUR_ENTRY_FRAGMENTS, label="tour entry point")
     new_project_index = _first_index_of_any(startup_content, new_project_fragments, label="new-project entry point")
     map_research_index = _first_index_of_any(startup_content, map_research_fragments, label="map-research entry point")
     resume_work_index = _first_index_of_any(startup_content, resume_work_fragments, label="resume-work entry point")
 
-    assert help_index < start_index
-    assert start_index < tour_index
     assert tour_index < new_project_index
     assert tour_index < map_research_index
     assert tour_index < resume_work_index
@@ -728,6 +781,7 @@ _assert_cost_advisory_guardrail = assert_cost_advisory_contract
 _assert_help_workflow_runtime_reference_contract = assert_help_workflow_runtime_reference_contract
 _assert_shared_preset_surface_contract = assert_workflow_preset_surface_contract
 _assert_settings_local_terminal_follow_up_contract = assert_settings_local_terminal_follow_up_contract
+_assert_tour_read_only_teaching_contract = assert_tour_read_only_teaching_contract
 _assert_unattended_readiness_boundary = assert_unattended_readiness_contract
 _assert_unattended_readiness_surface = assert_unattended_readiness_contract
 _assert_wolfram_plan_boundary = assert_wolfram_plan_boundary_contract

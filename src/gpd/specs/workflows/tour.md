@@ -32,10 +32,10 @@ When you first use an official GPD term such as `runtime`, `read-only`, or
 Close the opening with one sentence that says this tour explains the common
 commands without executing them.
 
-Also add one short sentence near the opening that frames a common first-pass
-path rather than a rigid requirement:
+Also add one short sentence near the opening that frames a common first pass
+without turning it into a rigid startup ladder, for example:
 
-`Most first-time users follow this order: help -> start -> tour -> new-project / map-research -> resume-work.`
+`A common first pass is help -> start -> tour, then the path that fits the folder.`
 </step>
 
 <step name="explain_the_core_paths">
@@ -99,16 +99,7 @@ Explain in plain language:
   successful start or later.
 - `tour` only explains; it does not run `start`, `new-project`, `map-research`,
   `resume-work`, or `settings` for you.
-
-Include one example sentence for each:
-
-- `In your normal terminal, you install GPD and verify it.`
-- `Inside your runtime, you ask GPD what to do next.`
 - `Use \`gpd resume\` first if you need to reopen the project before using \`/gpd:resume-work\`.`
-
-If you want one slightly longer recovery reminder in the same section, use:
-
-- `If you need to reopen the project itself from your normal terminal, use \`gpd resume\` first and then \`/gpd:resume-work\` in the runtime.`
 </step>
 
 <step name="highlight_common_mistakes">
@@ -121,8 +112,7 @@ Call out beginner traps in a gentle, plain-English way:
   empty folder
 - Use `resume-work` only when the project already has GPD state
 - Use `settings` when you want to change autonomy, permissions, or runtime
-  preferences after your first successful start or later, not `help` or
-  `doctor`
+  preferences after your first successful start or later
 - Use `help` when you want the command reference, not a setup wizard
 
 Keep the tone explanatory, not corrective.

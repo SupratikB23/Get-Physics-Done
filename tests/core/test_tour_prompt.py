@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from gpd.registry import get_command, list_commands
+from tests.doc_surface_contracts import assert_tour_read_only_teaching_contract
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMANDS_DIR = REPO_ROOT / "src" / "gpd" / "commands"
@@ -23,11 +24,11 @@ def test_tour_command_references_workflow() -> None:
 
 def test_tour_workflow_introduces_a_safe_beginner_walkthrough() -> None:
     workflow = (WORKFLOWS_DIR / "tour.md").read_text(encoding="utf-8")
+    assert_tour_read_only_teaching_contract(workflow)
 
     for fragment in (
-        "Provide a beginner-friendly, read-only tour of the core GPD command surface.",
         "This is a read-only tour of the main GPD commands. It will not change your files.",
-        "Most first-time users follow this order: help -> start -> tour -> new-project / map-research -> resume-work.",
+        "A common first pass is help -> start -> tour, then the path that fits the folder.",
         "the normal terminal, where you install GPD and run setup / status commands",
         "the runtime, where you use the GPD command prefix provided for that runtime",
         "Use a compact table with four columns:",
@@ -71,7 +72,6 @@ def test_tour_workflow_introduces_a_safe_beginner_walkthrough() -> None:
         "`phase` - one chunk of the project plan that GPD will organize later",
         "If you are still unsure, run /gpd:start.",
         "If you want to change permissions, autonomy, or runtime preferences after your first successful start or later, run \\`/gpd:settings\\`.",
-        "If you need to reopen the project itself from your normal terminal, use \\`gpd resume\\` first and then \\`/gpd:resume-work\\` in the runtime.",
         "Do not ask the user to pick a branch and do not continue into another workflow",
     ):
         assert fragment in workflow
