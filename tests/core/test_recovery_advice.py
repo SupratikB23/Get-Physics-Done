@@ -92,3 +92,104 @@ def test_build_recovery_advice_keeps_missing_handoff_in_current_workspace_priori
     assert advice.primary_command == "gpd resume"
     assert advice.missing_session_resume_file is True
     assert advice.recent_projects_count == 1
+
+
+def test_build_recovery_advice_keeps_interrupted_agent_in_current_workspace_mode(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+
+    advice = build_recovery_advice(
+        project,
+        recent_rows=[{"project_root": "/tmp/other", "available": True, "resumable": True}],
+        resume_payload={"has_interrupted_agent": True},
+    )
+
+    assert advice.mode == "current-workspace"
+    assert advice.status == "interrupted-agent"
+    assert advice.primary_command == "gpd resume"
+    assert advice.current_workspace_has_recovery is True
+    assert advice.current_workspace_resumable is False
+    assert advice.has_interrupted_agent is True
+
+
+def test_build_recovery_advice_prefers_session_handoff_over_advisory_live_execution(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    handoff = project / "GPD" / "phases" / "07" / ".continue-here.md"
+    handoff.parent.mkdir(parents=True, exist_ok=True)
+    handoff.write_text("resume\n", encoding="utf-8")
+
+    advice = build_recovery_advice(
+        project,
+        recent_rows=[{"project_root": "/tmp/other", "available": True, "resumable": True}],
+        resume_payload={
+            "has_live_execution": True,
+            "session_resume_file": "GPD/phases/07/.continue-here.md",
+        },
+    )
+
+    assert advice.mode == "current-workspace"
+    assert advice.status == "session-handoff"
+    assert advice.primary_command == "gpd resume"
+    assert advice.current_workspace_has_resume_file is True
+    assert advice.primary_reason == "Current workspace has a recorded session handoff."
+
+
+def test_build_recovery_advice_recovers_session_handoff_from_candidate_only_payload(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+
+    advice = build_recovery_advice(
+        project,
+        recent_rows=[],
+        resume_payload={
+            "segment_candidates": [
+                {
+                    "source": "session_resume_file",
+                    "status": "handoff",
+                    "resume_file": "GPD/phases/05/.continue-here.md",
+                }
+            ]
+        },
+    )
+
+    assert advice.mode == "current-workspace"
+    assert advice.status == "session-handoff"
+    assert advice.has_session_resume_file is True
+    assert advice.current_workspace_has_resume_file is True
+
+
+def test_build_recovery_advice_keeps_missing_handoff_without_false_resume_file(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+
+    advice = build_recovery_advice(
+        project,
+        recent_rows=[],
+        resume_payload={
+            "missing_session_resume_file": "GPD/phases/06/.continue-here.md",
+        },
+    )
+
+    assert advice.mode == "current-workspace"
+    assert advice.status == "missing-handoff"
+    assert advice.primary_command == "gpd resume"
+    assert advice.current_workspace_has_recovery is True
+    assert advice.current_workspace_has_resume_file is False
+    assert advice.has_local_recovery_target is False
+
+
+def test_build_recovery_advice_prefers_missing_handoff_over_advisory_live_execution(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+
+    advice = build_recovery_advice(
+        project,
+        recent_rows=[],
+        resume_payload={
+            "has_live_execution": True,
+            "missing_session_resume_file": "GPD/phases/08/.continue-here.md",
+        },
+    )
+
+    assert advice.mode == "current-workspace"
+    assert advice.status == "missing-handoff"
+    assert advice.primary_command == "gpd resume"
+    assert advice.current_workspace_has_resume_file is False
+    assert advice.has_local_recovery_target is False
+    assert advice.primary_reason == "Current workspace has recorded recovery state, but the last handoff file is missing."

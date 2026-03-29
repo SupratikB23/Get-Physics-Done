@@ -57,7 +57,7 @@ def recovery_fast_next_action(*, fast_next_command: str) -> str:
 
 def recovery_next_actions(
     *,
-    primary_command: str,
+    primary_command: str | None,
     mode: str,
     continue_command: str | None = None,
     fast_next_command: str | None = None,

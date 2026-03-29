@@ -1275,3 +1275,62 @@ If we want the shortest path to user-visible improvement, the first implementati
 5. Add `gpd execution show` plus stale/stuck groundwork.
 
 That sequence addresses the main pain in the transcript without waiting for deep runtime changes.
+
+## Current Iteration Ledger
+
+### Step 1 Completed: RecoveryAdvice Consistency And Runtime-Hint Resume Dedup
+
+Status: completed on March 28, 2026.
+
+What shipped:
+
+- `RecoveryAdvice` now keeps local interrupted-agent, session-handoff, and missing-handoff states in `mode="current-workspace"` instead of falling back to `idle` or recent-project rediscovery.
+- Candidate-only `segment_candidates` for:
+  - `interrupted_agent`
+  - `session_resume_file` with `status=handoff`
+  - `session_resume_file` with `status=missing`
+  now normalize into the same shared booleans as top-level `init_resume` payload fields.
+- Status and primary-reason precedence now prefer:
+  - bounded segment
+  - interrupted agent
+  - session handoff
+  - missing handoff
+  ahead of advisory-only live execution context.
+- `current_workspace_resumable` now means bounded-segment resumability only; it no longer overclaims interrupted-agent state as resumable.
+- `current_workspace_has_resume_file` now reflects an actually usable current-workspace resume pointer from:
+  - `execution_resume_file`
+  - `session_resume_file`
+  - candidate payloads with a non-missing `resume_file`
+- `has_local_recovery_target` is now narrower than `current_workspace_has_recovery`:
+  - true for actionable local targets
+  - false for advisory-only or missing-file states such as missing handoff alone
+- Runtime hints now suppress the duplicate generic `Run \`gpd resume\`` recovery nudge when execution visibility already emitted one, while preserving the `resume-work` and `suggest-next` follow-ups.
+
+Verification:
+
+- Focused recovery/runtime slice:
+  - `uv run pytest -q tests/core/test_recovery_advice.py tests/core/test_runtime_hints.py tests/core/test_resume_runtime.py`
+- Broader resume/CLI slice:
+  - `uv run pytest -q tests/core/test_cli.py tests/test_cli_integration.py tests/core/test_resume_alignment.py -k "resume or recovery or orientation"`
+- Lint:
+  - `uv run ruff check src/gpd/core/recovery_advice.py src/gpd/core/runtime_hints.py src/gpd/core/surface_phrases.py tests/core/test_recovery_advice.py tests/core/test_runtime_hints.py`
+- Result:
+  - `32 passed`
+  - `19 passed, 213 deselected`
+  - `ruff clean`
+
+Six-agent execution/review feedback summary:
+
+- Four lanes found no blocking issues in the Step 1 scope.
+- One lane surfaced an unpinned `missing_session_resume_file + has_live_execution` precedence branch; that regression test was added before commit.
+- One lane surfaced that `has_local_recovery_target` had become too broad after the first patch; that was fixed before commit by separating actionable local targets from broader local recovery context.
+
+Remaining friction after Step 1:
+
+- Machine-change-only state still falls back to the broad `workspace-recovery` status label even though it is informative-only context.
+- There is still no explicit regression for candidate-only interrupted-agent or candidate-only missing-handoff payloads.
+- The human `gpd resume` status row still uses its own wording path instead of directly reflecting the richer `RecoveryAdvice.status` distinctions.
+
+Next recommended step:
+
+1. Align the human `gpd resume` status summary with `RecoveryAdvice.status` / `primary_reason` so interrupted-agent, session-handoff, and missing-handoff states render explicitly instead of collapsing into the generic fallback line.

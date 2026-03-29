@@ -92,6 +92,40 @@ def _text_field(payload: Mapping[str, object], field: str) -> str | None:
     return stripped or None
 
 
+def _candidate_text(candidate: Mapping[str, object], field: str) -> str | None:
+    value = candidate.get(field)
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _has_segment_candidate(
+    segment_candidates: Sequence[Mapping[str, object]],
+    *,
+    source: str,
+    status: str,
+) -> bool:
+    for candidate in segment_candidates:
+        if _candidate_text(candidate, "source") != source:
+            continue
+        if _candidate_text(candidate, "status") != status:
+            continue
+        return True
+    return False
+
+
+def _has_usable_candidate_resume_file(segment_candidates: Sequence[Mapping[str, object]]) -> bool:
+    for candidate in segment_candidates:
+        resume_file = _candidate_text(candidate, "resume_file")
+        if resume_file is None:
+            continue
+        if _candidate_text(candidate, "status") == "missing":
+            continue
+        return True
+    return False
+
+
 def _primary_reason(
     *,
     execution_resumable: bool,
@@ -105,12 +139,12 @@ def _primary_reason(
         return "Current workspace has a bounded resumable execution segment."
     if has_interrupted_agent:
         return "Current workspace has an interrupted-agent marker to inspect."
-    if has_live_execution:
-        return "Current workspace has a live execution snapshot that should be inspected first."
     if has_session_resume_file:
         return "Current workspace has a recorded session handoff."
     if missing_session_resume_file:
         return "Current workspace has recorded recovery state, but the last handoff file is missing."
+    if has_live_execution:
+        return "Current workspace has a live execution snapshot that should be inspected first."
     if machine_change_notice:
         return "Current workspace has recorded recovery state and a machine-change notice to inspect."
     return "Current workspace has recorded recovery state."
@@ -130,12 +164,12 @@ def _status(
         return "bounded-segment"
     if has_interrupted_agent:
         return "interrupted-agent"
-    if has_live_execution:
-        return "live-execution"
     if has_session_resume_file:
         return "session-handoff"
     if missing_session_resume_file:
         return "missing-handoff"
+    if has_live_execution:
+        return "live-execution"
     if current_workspace_has_recovery:
         return "workspace-recovery"
     if recent_projects_count > 0:
@@ -215,17 +249,46 @@ def build_recovery_advice(
     segment_candidates = [item for item in segment_candidates_raw if isinstance(item, Mapping)] if isinstance(segment_candidates_raw, list) else []
 
     execution_resumable = _bool_field(payload, "execution_resumable")
-    has_interrupted_agent = _bool_field(payload, "has_interrupted_agent")
+    has_interrupted_agent = _bool_field(payload, "has_interrupted_agent") or _has_segment_candidate(
+        segment_candidates,
+        source="interrupted_agent",
+        status="interrupted",
+    )
     has_live_execution = _bool_field(payload, "has_live_execution")
-    has_session_resume_file = _text_field(payload, "session_resume_file") is not None
-    current_workspace_has_resume_file = _text_field(payload, "execution_resume_file") is not None
-    missing_session_resume_file = _text_field(payload, "missing_session_resume_file") is not None
+    has_session_resume_file = _text_field(payload, "session_resume_file") is not None or _has_segment_candidate(
+        segment_candidates,
+        source="session_resume_file",
+        status="handoff",
+    )
+    missing_session_resume_file = _text_field(payload, "missing_session_resume_file") is not None or _has_segment_candidate(
+        segment_candidates,
+        source="session_resume_file",
+        status="missing",
+    )
+    current_workspace_has_resume_file = (
+        _text_field(payload, "execution_resume_file") is not None
+        or _text_field(payload, "session_resume_file") is not None
+        or _has_usable_candidate_resume_file(segment_candidates)
+    )
     machine_change_notice = _text_field(payload, "machine_change_notice")
     resume_mode = _text_field(payload, "resume_mode")
     execution_resume_file = _text_field(payload, "execution_resume_file")
     execution_resume_file_source = _text_field(payload, "execution_resume_file_source")
 
-    current_workspace_has_recovery = bool(segment_candidates) or has_live_execution or machine_change_notice is not None
+    current_workspace_has_recovery = bool(
+        segment_candidates
+        or execution_resumable
+        or has_interrupted_agent
+        or has_session_resume_file
+        or missing_session_resume_file
+        or has_live_execution
+        or machine_change_notice is not None
+    )
+    has_local_recovery_target = bool(
+        execution_resumable
+        or has_interrupted_agent
+        or has_session_resume_file
+    )
     status = _status(
         execution_resumable=execution_resumable,
         has_interrupted_agent=has_interrupted_agent,
@@ -290,14 +353,14 @@ def build_recovery_advice(
         continue_reason=continue_reason,
         fast_next_command=resolved_fast_next_command,
         fast_next_reason=fast_next_reason,
-        current_workspace_resumable=execution_resumable or has_interrupted_agent,
+        current_workspace_resumable=execution_resumable,
         current_workspace_has_recovery=current_workspace_has_recovery,
         current_workspace_has_resume_file=current_workspace_has_resume_file,
         current_workspace_candidate_count=len(segment_candidates),
         resume_mode=resume_mode,
         execution_resume_file=execution_resume_file,
         execution_resume_file_source=execution_resume_file_source,
-        has_local_recovery_target=current_workspace_has_recovery,
+        has_local_recovery_target=has_local_recovery_target,
         segment_candidates_count=len(segment_candidates),
         has_live_execution=has_live_execution,
         execution_resumable=execution_resumable,

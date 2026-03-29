@@ -121,12 +121,16 @@ def _resume_context(cwd: Path) -> dict[str, object]:
 
 
 def _recovery_next_actions(advice: RecoveryAdvice, *, existing_actions: list[str] | None = None) -> list[str]:
+    existing = list(existing_actions or [])
+    primary_command = advice.primary_command
+    if primary_command == "gpd resume" and any("`gpd resume`" in action for action in existing):
+        primary_command = None
     return recovery_next_actions(
-        primary_command=advice.primary_command,
+        primary_command=primary_command,
         mode=advice.mode,
         continue_command=advice.continue_command,
         fast_next_command=advice.fast_next_command,
-        existing_actions=existing_actions or (),
+        existing_actions=existing,
     )
 
 

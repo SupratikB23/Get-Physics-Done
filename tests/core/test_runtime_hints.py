@@ -537,6 +537,29 @@ def test_build_runtime_hint_payload_formats_generic_runtime_follow_up_when_runti
     assert not any("`runtime `resume-work``" in action for action in payload.next_actions)
 
 
+def test_build_runtime_hint_payload_suppresses_duplicate_resume_recovery_nudge(tmp_path: Path) -> None:
+    project = _bootstrap_project(tmp_path)
+    data_root = tmp_path / "data"
+    resume_file = project / "GPD" / "phases" / "03" / ".continue-here.md"
+    resume_file.parent.mkdir(parents=True, exist_ok=True)
+    resume_file.write_text("resume\n", encoding="utf-8")
+
+    _write_current_execution(project, session_id="sess-012")
+
+    payload = build_runtime_hint_payload(
+        project,
+        data_root=data_root,
+        include_cost=False,
+        include_workflow_presets=False,
+    )
+
+    resume_actions = [action for action in payload.next_actions if "`gpd resume`" in action]
+
+    assert len(resume_actions) == 1
+    assert "runtime `resume-work` continues in-runtime from the selected project state." in payload.next_actions
+    assert "runtime `suggest-next` is the fastest post-resume next command when you only need the next action." in payload.next_actions
+
+
 def test_workflow_preset_surface_note_is_command_oriented_and_preview_first() -> None:
     note = workflow_preset_surface_note()
 
