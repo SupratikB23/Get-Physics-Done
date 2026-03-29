@@ -35,6 +35,7 @@ from tests.doc_surface_contracts import (
     UNATTENDED_READINESS_SURFACE,
     WOLFRAM_STATUS_SURFACE,
     assert_beginner_caveat_follow_up_contract,
+    assert_beginner_help_bridge_contract,
     assert_beginner_hub_preflight_contract,
     assert_beginner_preflight_notice_contract,
     _assert_cost_advisory_contract,
@@ -616,7 +617,7 @@ def test_public_readme_quick_start_keeps_runtime_first_next_steps() -> None:
     readme = (_repo_root() / "README.md").read_text(encoding="utf-8")
     quick_start = _markdown_section(readme, "## Quick Start")
 
-    assert_beginner_router_bridge_contract(quick_start)
+    assert_beginner_help_bridge_contract(quick_start)
 
 
 def test_public_help_default_quick_start_keeps_runtime_surface_readiness_path() -> None:
@@ -959,16 +960,12 @@ def test_public_readme_points_to_runtime_and_local_cli_help_for_full_command_sur
     quick_start = _markdown_section(readme, "## Quick Start")
     key_commands = _readme_key_commands_section(readme)
 
-    assert "Run its help command first: Claude Code / Gemini CLI use `/gpd:help`." in quick_start
-    assert "Codex uses `$gpd-help`, and OpenCode uses `/gpd-help`." in quick_start
-    assert "`gpd --help` works in your normal terminal." in quick_start
-    assert "gpd --help" in quick_start
-    assert "broader terminal-side diagnostics, readiness, recovery, visibility, cost, and preset surface" in quick_start
+    assert_beginner_router_bridge_contract(quick_start)
     assert "This README is the onboarding and orientation surface, not the complete in-runtime command manual." in key_commands
-    assert "run your runtime's help command such as `/gpd:help --all`, `$gpd-help --all`, or `/gpd-help --all`." in key_commands
-    assert (
-        "run `gpd --help` in your normal system terminal."
-    ) in key_commands
+    assert "gpd --help" in key_commands
+    assert "normal system terminal" in key_commands
+    for help_command in {f"{surface.help_command} --all" for surface in beginner_runtime_surfaces()}:
+        assert help_command in key_commands
 
 
 def test_public_readme_typical_new_project_loop_includes_discuss_phase_before_planning() -> None:

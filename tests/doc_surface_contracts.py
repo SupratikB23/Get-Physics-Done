@@ -22,6 +22,7 @@ __all__ = [
     "UNATTENDED_READINESS_SURFACE",
     "WOLFRAM_STATUS_SURFACE",
     "assert_beginner_caveat_follow_up_contract",
+    "assert_beginner_help_bridge_contract",
     "assert_beginner_hub_preflight_contract",
     "assert_beginner_preflight_notice_contract",
     "assert_beginner_router_bridge_contract",
@@ -302,6 +303,37 @@ def assert_beginner_router_bridge_contract(content: str) -> None:
             "For post-startup configuration, use your runtime's `settings` command",
         ),
         label="post-startup settings bridge",
+    )
+
+
+def assert_beginner_help_bridge_contract(content: str) -> None:
+    _assert_contains_any(
+        content,
+        (
+            "Run its help command first:",
+            "Open your runtime, run its help command first",
+            "help command",
+        ),
+        label="beginner help bridge framing",
+    )
+    _assert_contains_any(
+        content,
+        (
+            "/gpd:help",
+            "$gpd-help",
+            "/gpd-help",
+            "help command",
+        ),
+        label="runtime help bridge",
+    )
+    assert "gpd --help" in content
+    _assert_contains_any(
+        content,
+        (
+            "normal system terminal",
+            "normal terminal",
+        ),
+        label="local cli bridge",
     )
 
 

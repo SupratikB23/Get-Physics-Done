@@ -106,14 +106,8 @@ If any of those fail, fix them before troubleshooting GPD itself. These are boot
 - Runtime permissions are runtime-owned permission alignment only; use the guided checks after startup to decide whether the runtime is ready.
 - Use your runtime-specific `settings` command after the first successful launch as the guided path for unattended configuration. Balanced (`balanced`) is the recommended unattended default.
 - For the broader terminal-side diagnostics, readiness, recovery, visibility, cost, and preset surface, start with `gpd --help` from your normal terminal.
-- Use `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced` for the unattended or overnight verdict; if it returns `not-ready`, run `gpd permissions sync --runtime <runtime> --autonomy balanced`, and if it returns `relaunch-required`, the runtime is not ready yet.
-- If it returns `relaunch-required`, exit and relaunch the runtime before treating unattended use as ready.
-- If you want prompt-free runtime approvals rather than ordinary unattended execution, switch to YOLO (`yolo`) in your runtime-specific `settings` command, run `gpd permissions sync --runtime <runtime> --autonomy yolo`, and relaunch when required.
-- Workflow presets are bundles over the existing config keys only; they do not add a separate persisted preset block. Use `gpd presets list`, `gpd presets show <preset>`, and `gpd presets apply <preset> --dry-run` for the shared preview/apply flow, or choose the same preset in your runtime-specific `settings` command. The first supported preset is paper/manuscript workflows; run `gpd doctor --runtime <runtime> --local|--global` first if you plan to use that preset.
-- Local Mathematica installs are separate from the shared Wolfram integration config.
-- The shared Wolfram integration does not replace `gpd validate plan-preflight <PLAN.md>`.
-- Missing preset tooling degrades that preset; it does not block the base GPD install.
-- Failed preset rows still mean degraded readiness for `write-paper` and related local smoke checks until the tooling is fixed.
+- Use `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced` when you want a terminal-side unattended or overnight verdict.
+- If you plan paper/manuscript work later, use `gpd doctor --runtime <runtime> --local|--global` as the terminal-side readiness check first. For the fuller preset catalog, shared Wolfram integration details, and plan-preflight boundaries, use runtime `help` or `settings`.
 - Provider authentication is checked manually in the runtime itself; GPD will point this out, but it does not hard-block installation readiness on it
 - Use `--upgrade` only when you intentionally want the latest unreleased GitHub `main` snapshot
 
@@ -122,19 +116,17 @@ If any of those fail, fix them before troubleshooting GPD itself. These are boot
 1. Install with an explicit runtime when possible, for example `npx -y get-physics-done --codex --local`.
 2. From the same terminal, run `gpd doctor --runtime codex --local` and `gpd --help`. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. Here, `gpd doctor --runtime ...` is a runtime-readiness check for the selected runtime target. If you plan to use the paper/manuscript workflow preset later, treat the `Workflow Presets` and `LaTeX Toolchain` rows in this doctor report as paper-toolchain readiness signals for local smoke checks; `write-paper` can still proceed degraded, but `paper-build` is the build truth.
 3. Launch your selected runtime and run its GPD help command (`/gpd:help`, `$gpd-help`, or `/gpd-help`).
-4. If you want unattended execution, use your runtime-specific `settings` command as the guided configuration path and keep autonomy at Balanced (`balanced`) unless you intentionally want prompt-free runtime approvals.
+4. If you want unattended execution, use your runtime-specific `settings` command as the guided configuration path and keep autonomy at Balanced (`balanced`) unless you intentionally want a more hands-off posture.
 5. Run `gpd validate unattended-readiness --runtime codex --autonomy balanced`. If it returns `not-ready`, run `gpd permissions sync --runtime codex --autonomy balanced`; if it returns `relaunch-required`, exit and relaunch Codex before treating unattended use as ready.
-6. If you explicitly want prompt-free runtime approvals, switch to YOLO (`yolo`) in your runtime-specific `settings` command, run `gpd permissions sync --runtime codex --autonomy yolo`, and relaunch when required by the runtime.
-7. If those checks pass, continue with the runtime-specific `new-project`, `new-project --minimal`, `resume-work`, or `map-research` command.
+6. If those checks pass, continue with the runtime-specific `new-project`, `new-project --minimal`, `resume-work`, or `map-research` command.
 
 **Troubleshooting**
 
 - If the bootstrap installer fails before `gpd doctor --runtime <runtime> --local|--global` can run, fix Node / Python / `venv` bootstrap prerequisites first.
 - If `gpd doctor --runtime <runtime> --local|--global` fails, fix the selected runtime's launcher / target / runtime-readiness issue first.
-- If `gpd doctor --runtime <runtime> --local|--global` only warns about `Workflow Presets` or `LaTeX Toolchain`, the base install can still be fine; treat that as degraded readiness for `write-paper` and local smoke checks rather than a full install blocker. If you pass `--live-executable-probes`, doctor may also report missing local tools like `pdflatex` or `wolframscript`; that still stays separate from `gpd integrations status wolfram` and from `gpd validate plan-preflight <PLAN.md>`. Use `gpd paper-build` to judge whether the manuscript scaffold is buildable.
+- If `gpd doctor --runtime <runtime> --local|--global` only warns about `Workflow Presets` or `LaTeX Toolchain`, the base install can still be fine; treat that as degraded readiness for `write-paper` and local smoke checks rather than a full install blocker. Use `gpd paper-build` to judge whether the manuscript scaffold is buildable.
 - If the runtime launches but GPD commands are missing, rerun the installer with an explicit runtime and explicit scope from your normal system terminal.
-- If `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced` returns `not-ready`, run `gpd permissions sync --runtime <runtime> --autonomy balanced` and check again.
-- If `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced` returns `relaunch-required`, exit and relaunch the runtime before unattended use.
+- If `gpd validate unattended-readiness --runtime <runtime> --autonomy balanced` returns `not-ready`, run `gpd permissions sync --runtime <runtime> --autonomy balanced` and check again; if it returns `relaunch-required`, exit and relaunch the runtime before unattended use.
 - If the runtime itself cannot launch or is not authenticated, fix the runtime/provider setup outside GPD before retrying the GPD install.
 
 </details>
