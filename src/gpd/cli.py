@@ -50,7 +50,7 @@ from gpd.core.constants import (
     RECENT_PROJECTS_INDEX_FILENAME,
 )
 from gpd.core.errors import ConfigError, GPDError
-from gpd.core.recovery_advice import build_recovery_advice
+from gpd.core.recovery_advice import RecoveryAdvice, build_recovery_advice
 from gpd.core.surface_phrases import (
     recovery_continue_action,
     recovery_fast_next_action,
@@ -1004,29 +1004,27 @@ def milestone_complete(
 _RECENT_PROJECTS_INDEX_FILENAMES = (RECENT_PROJECTS_INDEX_FILENAME,)
 
 
-def _resume_status_message(payload: dict[str, object]) -> str:
+def _resume_status_message(payload: dict[str, object], *, recovery_advice: RecoveryAdvice) -> str:
     """Return a concise human summary of resume readiness for this workspace."""
-    segment_candidates = [
-        candidate for candidate in payload.get("segment_candidates", []) if isinstance(candidate, dict)
-    ]
-    if segment_candidates and all(
-        str(candidate.get("source") or "").strip() == "session_resume_file"
-        and str(candidate.get("status") or "").strip() == "missing"
-        for candidate in segment_candidates
-    ):
-        return "Session continuity metadata exists, but the recorded handoff file is missing."
     if not bool(payload.get("planning_exists")):
         return "No GPD planning directory is present in this workspace."
     if not any(bool(payload.get(key)) for key in ("state_exists", "roadmap_exists", "project_exists")):
         return "Planning scaffolding exists, but there is no recoverable project state yet."
-    if payload.get("resume_mode") == "bounded_segment":
+
+    if recovery_advice.status == "bounded-segment":
         return "A bounded execution segment is resumable from the current workspace state."
-    if payload.get("resume_mode") == "interrupted_agent":
+    if recovery_advice.status == "interrupted-agent":
         return "An interrupted agent marker is present, but no bounded resume segment is active."
-    if isinstance(payload.get("segment_candidates"), list) and payload["segment_candidates"]:
-        return "Recovery context is available, but no live bounded segment is currently resumable."
-    if bool(payload.get("has_live_execution")):
-        return "Live execution telemetry exists, but it does not expose a portable resume target."
+    if recovery_advice.status == "session-handoff":
+        return "A recorded session handoff is available, but no resumable live execution snapshot is currently active."
+    if recovery_advice.status == "missing-handoff":
+        return "Session continuity metadata exists, but the recorded handoff file is missing."
+    if recovery_advice.status == "live-execution":
+        return "A live execution snapshot exists, but it is advisory only and does not expose a portable resume target."
+    if recovery_advice.status == "workspace-recovery" and recovery_advice.machine_change_notice:
+        return "A machine change was detected, but the project state is portable and does not require repair."
+    if recovery_advice.status == "workspace-recovery":
+        return "Current workspace has recorded recovery context to inspect."
     return "No recent local recovery target is currently recorded."
 
 
@@ -1472,6 +1470,8 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
     segment_candidates = [item for item in candidates if isinstance(item, dict)] if isinstance(candidates, list) else []
     active_execution_raw = payload.get("active_execution_segment")
     active_execution = active_execution_raw if isinstance(active_execution_raw, dict) else None
+    recovery_advice = _resume_recovery_advice(resume_payload=payload, recent_rows=[])
+
     console.print("[bold]Resume Summary[/]")
     console.print("[dim]Read-only local recovery snapshot for this workspace.[/]")
     console.print()
@@ -1480,7 +1480,7 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
     summary.add_column(style=f"bold {_INSTALL_ACCENT_COLOR}")
     summary.add_column()
     summary.add_row("Workspace", _format_display_path(_get_cwd()))
-    summary.add_row("Status", _resume_status_message(payload))
+    summary.add_row("Status", _resume_status_message(payload, recovery_advice=recovery_advice))
     summary.add_row("Resume mode", _resume_mode_label(payload.get("resume_mode")))
     summary.add_row("Candidates", str(len(segment_candidates)))
     summary.add_row("Live execution", "yes" if bool(payload.get("has_live_execution")) else "no")
