@@ -134,8 +134,8 @@ Route immediately into the real existing workflow for the chosen path.
 
 **If the researcher chooses `Suggest the next best action`:**
 
-- Read `{GPD_INSTALL_DIR}/commands/suggest-next.md` with the file-read tool.
-- Follow that command contract as if the researcher had run `/gpd:suggest-next`.
+- `suggest-next` is a workflow-exempt command, not a shared workflow include.
+- Follow the installed `/gpd:suggest-next` command contract directly, as if the researcher had run it.
 
 **If the researcher chooses `Map this folder first` or `Refresh the research map`:**
 

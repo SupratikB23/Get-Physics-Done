@@ -221,6 +221,8 @@ def test_start_prompt_delegates_routing_to_workflow_only() -> None:
     assert "/gpd:quick" in start_workflow
     assert "/gpd:explain" in start_workflow
     assert "/gpd:help" in start_workflow
+    assert "workflow-exempt command" in start_workflow
+    assert "{GPD_INSTALL_DIR}/commands/suggest-next.md" not in start_workflow
     assert "not a parallel onboarding state machine" in start_workflow
 
 
