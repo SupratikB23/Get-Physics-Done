@@ -1038,6 +1038,203 @@ class UnattendedReadinessResult:
     validated_surface: str = "public_runtime_command_surface"
 
 
+def _permissions_capability_payload(runtime_name: object) -> dict[str, object]:
+    """Return the structured runtime capability contract for permissions surfaces."""
+    if isinstance(runtime_name, str) and runtime_name:
+        try:
+            from gpd.adapters.runtime_catalog import get_runtime_capabilities
+
+            capabilities = get_runtime_capabilities(runtime_name)
+        except Exception:
+            pass
+        else:
+            return {
+                "contract_source": "runtime-catalog",
+                "permissions_surface": capabilities.permissions_surface,
+                "statusline_surface": capabilities.statusline_surface,
+                "notify_surface": capabilities.notify_surface,
+                "telemetry_source": capabilities.telemetry_source,
+                "telemetry_completeness": capabilities.telemetry_completeness,
+            }
+    return {
+        "contract_source": "generic-fallback",
+        "permissions_surface": "adapter-defined",
+        "statusline_surface": "unknown",
+        "notify_surface": "unknown",
+        "telemetry_source": "unknown",
+        "telemetry_completeness": "unknown",
+    }
+
+
+def _permissions_requested_surface(payload: dict[str, object]) -> str:
+    """Return the requested user-facing permissions surface."""
+    desired_mode = payload.get("desired_mode")
+    if isinstance(desired_mode, str) and desired_mode == "yolo":
+        return "prompt-free"
+    return "ordinary-unattended"
+
+
+def _permissions_status_scope(payload: dict[str, object]) -> str:
+    """Return what the local CLI can actually attest to for this payload."""
+    capabilities = payload.get("capabilities")
+    if not isinstance(capabilities, dict):
+        return "adapter-defined"
+
+    permissions_surface = capabilities.get("permissions_surface")
+    requested_surface = _permissions_requested_surface(payload)
+    if requested_surface == "prompt-free" and permissions_surface == "launch-wrapper":
+        return "next-launch"
+    if bool(payload.get("requires_relaunch", False)):
+        return "next-launch"
+    if permissions_surface == "config-file":
+        return "config-only"
+    if permissions_surface == "launch-wrapper":
+        return "launcher-available"
+    if permissions_surface == "unsupported":
+        return "unsupported"
+    return "adapter-defined"
+
+
+def _permissions_more_permissive_than_requested(payload: dict[str, object]) -> bool:
+    """Return whether local config is clearly more permissive than the requested autonomy."""
+    if _permissions_requested_surface(payload) != "ordinary-unattended":
+        return False
+
+    capabilities = payload.get("capabilities")
+    if not isinstance(capabilities, dict) or capabilities.get("permissions_surface") != "config-file":
+        return False
+
+    configured_mode = payload.get("configured_mode")
+    if configured_mode in {"yolo", "bypassPermissions"}:
+        return True
+
+    approval_policy = payload.get("approval_policy")
+    sandbox_mode = payload.get("sandbox_mode")
+    return approval_policy == "never" and sandbox_mode == "danger-full-access"
+
+
+def annotate_permissions_payload(
+    payload: dict[str, object],
+    *,
+    requested_runtime: str | None = None,
+) -> dict[str, object]:
+    """Attach structured capability and evidence metadata to a permissions payload."""
+
+    annotated = dict(payload)
+    runtime_name = annotated.get("runtime")
+    if not isinstance(annotated.get("capabilities"), dict):
+        annotated["capabilities"] = _permissions_capability_payload(
+            runtime_name if isinstance(runtime_name, str) and runtime_name else requested_runtime
+        )
+    annotated["requested_surface"] = _permissions_requested_surface(annotated)
+    if not isinstance(annotated.get("status_scope"), str) or not str(annotated.get("status_scope")).strip():
+        annotated["status_scope"] = _permissions_status_scope(annotated)
+    if "current_session_verified" not in annotated:
+        annotated["current_session_verified"] = False
+    if "more_permissive_than_requested" not in annotated:
+        annotated["more_permissive_than_requested"] = _permissions_more_permissive_than_requested(annotated)
+    return annotated
+
+
+def normalize_permissions_readiness_payload(
+    payload: dict[str, object],
+    *,
+    requested_runtime: str | None,
+    requested_autonomy: str | None,
+) -> dict[str, object]:
+    """Normalize runtime-permissions status into unattended-readiness verdict fields.
+
+    The returned payload preserves the public field names currently consumed by the
+    CLI and unattended-readiness surfaces: ``readiness``, ``ready``,
+    ``readiness_message``, ``next_step``, ``status_scope``,
+    ``current_session_verified``, and ``more_permissive_than_requested``.
+    """
+
+    normalized = annotate_permissions_payload(payload, requested_runtime=requested_runtime)
+    runtime_name = normalized.get("runtime")
+
+    explicit_readiness = (
+        isinstance(normalized.get("readiness"), str)
+        and str(normalized.get("readiness")).strip()
+        and isinstance(normalized.get("ready"), bool)
+        and isinstance(normalized.get("readiness_message"), str)
+        and str(normalized.get("readiness_message")).strip()
+    )
+
+    more_permissive_than_requested = bool(normalized.get("more_permissive_than_requested", False))
+    if not explicit_readiness:
+        ready = (
+            bool(normalized.get("runtime"))
+            and bool(normalized.get("target"))
+            and bool(normalized.get("config_aligned", False))
+            and not bool(normalized.get("requires_relaunch", False))
+            and not more_permissive_than_requested
+        )
+
+        if ready:
+            readiness = "ready"
+            readiness_message = "Runtime permissions are ready for unattended use."
+        elif bool(normalized.get("requires_relaunch", False)):
+            readiness = "relaunch-required"
+            readiness_message = "Runtime permissions are aligned, but the runtime must be relaunched before unattended use."
+        elif more_permissive_than_requested:
+            readiness = "not-ready"
+            readiness_message = (
+                "Runtime permissions are more permissive than the requested autonomy, so unattended readiness is not confirmed."
+            )
+        elif "config_aligned" in normalized:
+            readiness = "not-ready"
+            readiness_message = "Runtime permissions are not ready for unattended use under the requested autonomy."
+        else:
+            readiness = "unresolved"
+            readiness_message = str(normalized.get("message") or "Runtime permissions are not ready for unattended use.")
+
+        next_step = normalized.get("next_step")
+        if not isinstance(next_step, str) or not next_step.strip():
+            next_step = None
+        capability_payload = normalized.get("capabilities")
+        permissions_surface = (
+            capability_payload.get("permissions_surface")
+            if isinstance(capability_payload, dict) and isinstance(capability_payload.get("permissions_surface"), str)
+            else None
+        )
+
+        if next_step is None:
+            autonomy_value = normalized.get("autonomy")
+            if readiness == "relaunch-required" and isinstance(runtime_name, str) and runtime_name:
+                if permissions_surface == "launch-wrapper":
+                    next_step = f"Exit and relaunch {runtime_name} through the GPD-managed launcher before treating unattended use as ready."
+                else:
+                    next_step = f"Exit and relaunch {runtime_name} before treating unattended use as ready."
+            elif (
+                readiness == "not-ready"
+                and isinstance(runtime_name, str)
+                and runtime_name
+                and isinstance(autonomy_value, str)
+                and autonomy_value
+            ):
+                if permissions_surface == "launch-wrapper":
+                    next_step = (
+                        "Use `gpd:settings` inside the runtime for guided changes, or run "
+                        f"`gpd permissions sync --runtime {runtime_name} --autonomy {autonomy_value}` "
+                        "from your normal system terminal to generate the launcher needed for the next session."
+                    )
+                else:
+                    next_step = (
+                        "Use `gpd:settings` inside the runtime for guided changes, or run "
+                        f"`gpd permissions sync --runtime {runtime_name} --autonomy {autonomy_value}` "
+                        "from your normal system terminal."
+                    )
+            elif readiness == "unresolved" and requested_runtime is None:
+                next_step = "Pass `--runtime <name>` to inspect a specific installed runtime."
+
+        normalized["readiness"] = readiness
+        normalized["ready"] = ready
+        normalized["readiness_message"] = readiness_message
+        normalized["next_step"] = next_step
+    return normalized
+
+
 def _doctor_active_virtualenv() -> bool:
     """Return whether the active interpreter is running inside a virtualenv."""
     return bool(
@@ -1541,6 +1738,11 @@ def build_unattended_readiness_result(
     validated_surface: str = "public_runtime_command_surface",
 ) -> UnattendedReadinessResult:
     """Compose doctor and permissions status into one unattended-readiness verdict."""
+    normalized_permissions = normalize_permissions_readiness_payload(
+        permissions_payload,
+        requested_runtime=runtime,
+        requested_autonomy=autonomy,
+    )
     blocker_messages: list[str] = []
     seen_blockers: set[str] = set()
     for check in extract_doctor_blockers(doctor_report):
@@ -1553,10 +1755,10 @@ def build_unattended_readiness_result(
                 blocker_messages.append(message)
 
     advisory_messages = extract_doctor_advisories(doctor_report)
-    readiness = str(permissions_payload.get("readiness") or "unresolved")
-    permissions_ready = bool(permissions_payload.get("ready", False))
+    readiness = str(normalized_permissions.get("readiness") or "unresolved")
+    permissions_ready = bool(normalized_permissions.get("ready", False))
     readiness_message = str(
-        permissions_payload.get("readiness_message") or "Runtime permissions are not ready for unattended use."
+        normalized_permissions.get("readiness_message") or "Runtime permissions are not ready for unattended use."
     )
 
     doctor_detail = "Runtime readiness checks passed."
@@ -1592,18 +1794,18 @@ def build_unattended_readiness_result(
         if message not in warnings:
             warnings.append(message)
 
-    next_step = str(permissions_payload.get("next_step") or "").strip()
+    next_step = str(normalized_permissions.get("next_step") or "").strip()
     if not next_step and blocker_messages:
         next_step = (
             f"Run `{runtime_doctor_hint(runtime, install_scope=install_scope, target_dir=target_dir)}` "
             "to inspect and clear the blocking runtime-readiness issues."
         )
 
-    target = permissions_payload.get("target")
+    target = normalized_permissions.get("target")
     if not isinstance(target, str) or not target.strip():
         target = str(target_dir) if target_dir is not None else getattr(doctor_report, "target", None)
 
-    resolved_autonomy = permissions_payload.get("autonomy")
+    resolved_autonomy = normalized_permissions.get("autonomy")
     autonomy_value = str(resolved_autonomy) if isinstance(resolved_autonomy, str) and resolved_autonomy else (autonomy or "")
     passed = permissions_ready and not blocker_messages
     return UnattendedReadinessResult(
@@ -1620,8 +1822,8 @@ def build_unattended_readiness_result(
         blocking_conditions=blocking_conditions,
         warnings=warnings,
         next_step=next_step,
-        status_scope=str(permissions_payload.get("status_scope") or "unknown"),
-        current_session_verified=bool(permissions_payload.get("current_session_verified", False)),
+        status_scope=str(normalized_permissions.get("status_scope") or "unknown"),
+        current_session_verified=bool(normalized_permissions.get("current_session_verified", False)),
         validated_surface=validated_surface,
     )
 
@@ -1786,6 +1988,8 @@ __all__ = [
     "HealthCheck",
     "HealthReport",
     "HealthSummary",
+    "annotate_permissions_payload",
+    "normalize_permissions_readiness_payload",
     "UnattendedReadinessCheck",
     "UnattendedReadinessResult",
     "build_unattended_readiness_result",

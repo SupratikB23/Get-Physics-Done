@@ -22,7 +22,14 @@ from gpd.adapters import get_adapter, list_runtimes
 from gpd.cli import app
 from gpd.core import cli_args as cli_args_module
 from gpd.core.costs import CostBudgetThresholdSummary, CostProjectSummary, CostSessionSummary, CostSummary
-from gpd.core.health import CheckStatus, DoctorReport, HealthCheck, HealthSummary
+from gpd.core.health import (
+    CheckStatus,
+    DoctorReport,
+    HealthCheck,
+    HealthSummary,
+    UnattendedReadinessCheck,
+    UnattendedReadinessResult,
+)
 
 runner = CliRunner()
 
@@ -1948,7 +1955,7 @@ def test_validate_unattended_readiness_requires_runtime() -> None:
     assert "--runtime" in result.output
 
 
-def test_validate_unattended_readiness_ready_composes_doctor_and_permissions(
+def test_validate_unattended_readiness_wires_local_runtime_scope_through_health_builder(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1956,7 +1963,7 @@ def test_validate_unattended_readiness_ready_composes_doctor_and_permissions(
 
     runtime_name = list_runtimes()[0]
     expected_target = get_adapter(runtime_name).resolve_target_dir(False, tmp_path)
-    captured_permissions: dict[str, object] = {}
+    captured: dict[str, object] = {}
     doctor_report = DoctorReport(
         overall=CheckStatus.WARN,
         version="0.1.0",
@@ -1969,6 +1976,41 @@ def test_validate_unattended_readiness_ready_composes_doctor_and_permissions(
             HealthCheck(status=CheckStatus.WARN, label="LaTeX Toolchain", warnings=["LaTeX toolchain is partial."]),
         ],
     )
+    permissions_payload = {
+        "runtime": runtime_name,
+        "target": str(expected_target),
+        "autonomy": "balanced",
+        "readiness": "ready",
+        "ready": True,
+        "readiness_message": "Runtime permissions are ready for unattended use.",
+        "next_step": "",
+        "status_scope": "config-only",
+        "current_session_verified": False,
+    }
+    expected_result = UnattendedReadinessResult(
+        runtime=runtime_name,
+        autonomy="balanced",
+        install_scope="local",
+        target=str(expected_target),
+        readiness="ready",
+        ready=True,
+        passed=True,
+        readiness_message="Runtime permissions are ready for unattended use.",
+        live_executable_probes=False,
+        checks=[
+            UnattendedReadinessCheck(
+                name="permissions",
+                passed=True,
+                blocking=False,
+                detail="Runtime permissions are ready for unattended use.",
+            )
+        ],
+        blocking_conditions=[],
+        warnings=["LaTeX toolchain is partial."],
+        status_scope="config-only",
+        current_session_verified=False,
+        validated_surface="runtime-surface-test",
+    )
 
     def fake_run_doctor(
         *,
@@ -1980,159 +2022,91 @@ def test_validate_unattended_readiness_ready_composes_doctor_and_permissions(
         cwd: Path | None = None,
         live_executable_probes: bool = False,
     ) -> MagicMock:
-        assert specs_dir == SPECS_DIR
-        assert version is None
-        assert runtime == runtime_name
-        assert install_scope == "local"
-        assert target_dir is None
-        assert cwd == tmp_path
-        assert live_executable_probes is False
+        captured["doctor_kwargs"] = {
+            "specs_dir": specs_dir,
+            "version": version,
+            "runtime": runtime,
+            "install_scope": install_scope,
+            "target_dir": target_dir,
+            "cwd": cwd,
+            "live_executable_probes": live_executable_probes,
+        }
         return doctor_report
 
     def fake_permissions_status_payload(*, runtime: str | None, autonomy: str | None, target_dir: str | None) -> dict[str, object]:
-        captured_permissions["runtime"] = runtime
-        captured_permissions["autonomy"] = autonomy
-        captured_permissions["target_dir"] = target_dir
-        return {
+        captured["permissions_kwargs"] = {
             "runtime": runtime,
-            "target": target_dir,
-            "autonomy": "balanced",
-            "readiness": "ready",
-            "ready": True,
-            "readiness_message": "Runtime permissions are ready for unattended use.",
-            "next_step": "",
-            "status_scope": "config-only",
-            "current_session_verified": False,
+            "autonomy": autonomy,
+            "target_dir": target_dir,
         }
+        return permissions_payload
+
+    def fake_build_unattended_readiness_result(**kwargs) -> UnattendedReadinessResult:
+        captured["builder_kwargs"] = kwargs
+        return expected_result
 
     monkeypatch.setattr("gpd.core.health.run_doctor", fake_run_doctor)
+    monkeypatch.setattr("gpd.core.health.build_unattended_readiness_result", fake_build_unattended_readiness_result)
     monkeypatch.setattr(cli_module, "_permissions_status_payload", fake_permissions_status_payload)
+    monkeypatch.setattr(cli_module, "_validated_runtime_surface", lambda cwd=None: "runtime-surface-test")
     result = runner.invoke(
         app,
         ["--cwd", str(tmp_path), "--raw", "validate", "unattended-readiness", "--runtime", runtime_name, "--local"],
     )
 
     assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["runtime"] == runtime_name
-    assert payload["autonomy"] == "balanced"
-    assert payload["install_scope"] == "local"
-    assert payload["target"] == str(expected_target)
-    assert payload["readiness"] == "ready"
-    assert payload["ready"] is True
-    assert payload["passed"] is True
-    assert payload["live_executable_probes"] is False
-    assert payload["blocking_conditions"] == []
-    assert payload["warnings"] == ["LaTeX toolchain is partial."]
-    assert payload["checks"] == [
-        {
-            "name": "permissions",
-            "passed": True,
-            "blocking": False,
-            "detail": "Runtime permissions are ready for unattended use.",
-        },
-        {
-            "name": "doctor",
-            "passed": True,
-            "blocking": False,
-            "detail": "Runtime readiness checks passed with 1 advisory(s).",
-        },
-    ]
-    assert captured_permissions == {
+    assert json.loads(result.output) == {
+        "runtime": runtime_name,
+        "autonomy": "balanced",
+        "install_scope": "local",
+        "target": str(expected_target),
+        "readiness": "ready",
+        "ready": True,
+        "passed": True,
+        "readiness_message": "Runtime permissions are ready for unattended use.",
+        "live_executable_probes": False,
+        "checks": [
+            {
+                "name": "permissions",
+                "passed": True,
+                "blocking": False,
+                "detail": "Runtime permissions are ready for unattended use.",
+            }
+        ],
+        "blocking_conditions": [],
+        "warnings": ["LaTeX toolchain is partial."],
+        "next_step": "",
+        "status_scope": "config-only",
+        "current_session_verified": False,
+        "validated_surface": "runtime-surface-test",
+    }
+    assert captured["doctor_kwargs"] == {
+        "specs_dir": SPECS_DIR,
+        "version": None,
+        "runtime": runtime_name,
+        "install_scope": "local",
+        "target_dir": None,
+        "cwd": tmp_path,
+        "live_executable_probes": False,
+    }
+    assert captured["permissions_kwargs"] == {
         "runtime": runtime_name,
         "autonomy": None,
         "target_dir": str(expected_target),
     }
+    assert captured["builder_kwargs"] == {
+        "runtime": runtime_name,
+        "autonomy": None,
+        "install_scope": "local",
+        "target_dir": None,
+        "doctor_report": doctor_report,
+        "permissions_payload": permissions_payload,
+        "live_executable_probes": False,
+        "validated_surface": "runtime-surface-test",
+    }
 
 
-def test_validate_unattended_readiness_preserves_permissions_taxonomy(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    from gpd.specs import SPECS_DIR
-
-    runtime_name = list_runtimes()[0]
-    expected_target = get_adapter(runtime_name).resolve_target_dir(True, tmp_path)
-    doctor_report = DoctorReport(
-        overall=CheckStatus.OK,
-        version="0.1.0",
-        runtime=runtime_name,
-        install_scope="global",
-        target=str(expected_target),
-        summary=HealthSummary(ok=2, warn=0, fail=0, total=2),
-        checks=[
-            HealthCheck(status=CheckStatus.OK, label="Runtime Launcher"),
-            HealthCheck(status=CheckStatus.OK, label="Runtime Config Target"),
-        ],
-    )
-
-    def fake_run_doctor(
-        *,
-        specs_dir: Path | None = None,
-        version: str | None = None,
-        runtime: str | None = None,
-        install_scope: str | None = None,
-        target_dir: str | Path | None = None,
-        cwd: Path | None = None,
-        live_executable_probes: bool = False,
-    ) -> MagicMock:
-        assert specs_dir == SPECS_DIR
-        assert runtime == runtime_name
-        assert install_scope == "global"
-        assert target_dir is None
-        assert cwd == tmp_path
-        assert live_executable_probes is False
-        return doctor_report
-
-    monkeypatch.setattr("gpd.core.health.run_doctor", fake_run_doctor)
-    monkeypatch.setattr(
-        cli_module,
-        "_permissions_status_payload",
-        lambda *, runtime, autonomy, target_dir: {
-            "runtime": runtime,
-            "target": target_dir,
-            "autonomy": autonomy or "balanced",
-            "readiness": "relaunch-required",
-            "ready": False,
-            "readiness_message": "Runtime permissions are aligned, but the runtime must be relaunched before unattended use.",
-            "next_step": "Exit and relaunch the runtime.",
-            "status_scope": "next-launch",
-            "current_session_verified": False,
-        },
-    )
-    result = runner.invoke(
-        app,
-        [
-            "--cwd",
-            str(tmp_path),
-            "--raw",
-            "validate",
-            "unattended-readiness",
-            "--runtime",
-            runtime_name,
-            "--autonomy",
-            "balanced",
-            "--global",
-        ],
-    )
-
-    assert result.exit_code == 1
-    payload = json.loads(result.output)
-    assert payload["runtime"] == runtime_name
-    assert payload["autonomy"] == "balanced"
-    assert payload["install_scope"] == "global"
-    assert payload["target"] == str(expected_target)
-    assert payload["readiness"] == "relaunch-required"
-    assert payload["ready"] is False
-    assert payload["passed"] is False
-    assert payload["blocking_conditions"] == [
-        "Runtime permissions are aligned, but the runtime must be relaunched before unattended use."
-    ]
-    assert payload["warnings"] == []
-    assert payload["next_step"] == "Exit and relaunch the runtime."
-
-
-def test_validate_unattended_readiness_uses_doctor_hint_when_permissions_are_ready_but_doctor_blocks(
+def test_validate_unattended_readiness_infers_global_target_scope_and_propagates_failed_result(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -2141,7 +2115,7 @@ def test_validate_unattended_readiness_uses_doctor_hint_when_permissions_are_rea
     runtime_name = list_runtimes()[0]
     target_dir = tmp_path / ".gpd-target"
     resolved_target = target_dir.resolve(strict=False)
-    captured_permissions: dict[str, object] = {}
+    captured: dict[str, object] = {}
     doctor_report = DoctorReport(
         overall=CheckStatus.FAIL,
         version="0.1.0",
@@ -2155,6 +2129,42 @@ def test_validate_unattended_readiness_uses_doctor_hint_when_permissions_are_rea
             HealthCheck(status=CheckStatus.WARN, label="LaTeX Toolchain", warnings=["LaTeX toolchain is partial."]),
         ],
     )
+    permissions_payload = {
+        "runtime": runtime_name,
+        "target": str(resolved_target),
+        "autonomy": "balanced",
+        "readiness": "ready",
+        "ready": True,
+        "readiness_message": "Runtime permissions are ready for unattended use.",
+        "next_step": "",
+        "status_scope": "config-only",
+        "current_session_verified": False,
+    }
+    expected_result = UnattendedReadinessResult(
+        runtime=runtime_name,
+        autonomy="balanced",
+        install_scope="global",
+        target=str(resolved_target),
+        readiness="ready",
+        ready=True,
+        passed=False,
+        readiness_message="Runtime permissions are ready for unattended use.",
+        live_executable_probes=True,
+        checks=[
+            UnattendedReadinessCheck(
+                name="doctor",
+                passed=False,
+                blocking=True,
+                detail="Runtime launcher not found on PATH",
+            )
+        ],
+        blocking_conditions=["Runtime launcher not found on PATH"],
+        warnings=["LaTeX toolchain is partial."],
+        next_step="Inspect the runtime-specific doctor output before retrying unattended use.",
+        status_scope="config-only",
+        current_session_verified=False,
+        validated_surface="runtime-surface-test",
+    )
 
     def fake_run_doctor(
         *,
@@ -2166,32 +2176,33 @@ def test_validate_unattended_readiness_uses_doctor_hint_when_permissions_are_rea
         cwd: Path | None = None,
         live_executable_probes: bool = False,
     ) -> MagicMock:
-        assert specs_dir == SPECS_DIR
-        assert runtime == runtime_name
-        assert install_scope == "global"
-        assert target_dir == resolved_target
-        assert cwd == tmp_path
-        assert live_executable_probes is True
+        captured["doctor_kwargs"] = {
+            "specs_dir": specs_dir,
+            "version": version,
+            "runtime": runtime,
+            "install_scope": install_scope,
+            "target_dir": target_dir,
+            "cwd": cwd,
+            "live_executable_probes": live_executable_probes,
+        }
         return doctor_report
 
     def fake_permissions_status_payload(*, runtime: str | None, autonomy: str | None, target_dir: str | None) -> dict[str, object]:
-        captured_permissions["runtime"] = runtime
-        captured_permissions["autonomy"] = autonomy
-        captured_permissions["target_dir"] = target_dir
-        return {
+        captured["permissions_kwargs"] = {
             "runtime": runtime,
-            "target": target_dir,
-            "autonomy": "balanced",
-            "readiness": "ready",
-            "ready": True,
-            "readiness_message": "Runtime permissions are ready for unattended use.",
-            "next_step": "",
-            "status_scope": "config-only",
-            "current_session_verified": False,
+            "autonomy": autonomy,
+            "target_dir": target_dir,
         }
+        return permissions_payload
+
+    def fake_build_unattended_readiness_result(**kwargs) -> UnattendedReadinessResult:
+        captured["builder_kwargs"] = kwargs
+        return expected_result
 
     monkeypatch.setattr("gpd.core.health.run_doctor", fake_run_doctor)
+    monkeypatch.setattr("gpd.core.health.build_unattended_readiness_result", fake_build_unattended_readiness_result)
     monkeypatch.setattr(cli_module, "_permissions_status_payload", fake_permissions_status_payload)
+    monkeypatch.setattr(cli_module, "_validated_runtime_surface", lambda cwd=None: "runtime-surface-test")
     with patch("gpd.cli._target_dir_matches_global", return_value=True) as mock_matches_global:
         result = runner.invoke(
             app,
@@ -2210,25 +2221,55 @@ def test_validate_unattended_readiness_uses_doctor_hint_when_permissions_are_rea
         )
 
     assert result.exit_code == 1
-    payload = json.loads(result.output)
     mock_matches_global.assert_called_once_with(runtime_name, str(target_dir), action="validate unattended-readiness")
-    assert payload["runtime"] == runtime_name
-    assert payload["install_scope"] == "global"
-    assert payload["target"] == str(resolved_target)
-    assert payload["readiness"] == "ready"
-    assert payload["ready"] is True
-    assert payload["passed"] is False
-    assert payload["live_executable_probes"] is True
-    assert payload["blocking_conditions"] == ["Runtime launcher not found on PATH"]
-    assert payload["warnings"] == ["LaTeX toolchain is partial."]
-    assert payload["next_step"] == (
-        f"Run `gpd doctor --runtime {runtime_name} --global --target-dir {resolved_target}` "
-        "to inspect and clear the blocking runtime-readiness issues."
-    )
-    assert captured_permissions == {
+    assert json.loads(result.output) == {
+        "runtime": runtime_name,
+        "autonomy": "balanced",
+        "install_scope": "global",
+        "target": str(resolved_target),
+        "readiness": "ready",
+        "ready": True,
+        "passed": False,
+        "readiness_message": "Runtime permissions are ready for unattended use.",
+        "live_executable_probes": True,
+        "checks": [
+            {
+                "name": "doctor",
+                "passed": False,
+                "blocking": True,
+                "detail": "Runtime launcher not found on PATH",
+            }
+        ],
+        "blocking_conditions": ["Runtime launcher not found on PATH"],
+        "warnings": ["LaTeX toolchain is partial."],
+        "next_step": "Inspect the runtime-specific doctor output before retrying unattended use.",
+        "status_scope": "config-only",
+        "current_session_verified": False,
+        "validated_surface": "runtime-surface-test",
+    }
+    assert captured["doctor_kwargs"] == {
+        "specs_dir": SPECS_DIR,
+        "version": None,
+        "runtime": runtime_name,
+        "install_scope": "global",
+        "target_dir": resolved_target,
+        "cwd": tmp_path,
+        "live_executable_probes": True,
+    }
+    assert captured["permissions_kwargs"] == {
         "runtime": runtime_name,
         "autonomy": None,
         "target_dir": str(resolved_target),
+    }
+    assert captured["builder_kwargs"] == {
+        "runtime": runtime_name,
+        "autonomy": None,
+        "install_scope": "global",
+        "target_dir": resolved_target,
+        "doctor_report": doctor_report,
+        "permissions_payload": permissions_payload,
+        "live_executable_probes": True,
+        "validated_surface": "runtime-surface-test",
     }
 
 

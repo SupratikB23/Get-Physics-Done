@@ -138,6 +138,66 @@ class TestHealthModels:
 
         assert advisories == ["shared warning", "extra warning", "non-blocking issue"]
 
+    def test_build_unattended_readiness_result_composes_ready_permissions_with_doctor_advisories(self):
+        report = DoctorReport(
+            overall=CheckStatus.WARN,
+            version="0.1.0",
+            summary=HealthSummary(ok=1, warn=1, fail=0, total=2),
+            checks=[
+                HealthCheck(status=CheckStatus.OK, label="Runtime Launcher"),
+                HealthCheck(status=CheckStatus.WARN, label="LaTeX Toolchain", warnings=["LaTeX toolchain is partial."]),
+            ],
+        )
+
+        result = build_unattended_readiness_result(
+            runtime="codex",
+            autonomy=None,
+            install_scope="local",
+            target_dir=Path("/tmp/project/.codex"),
+            doctor_report=report,
+            permissions_payload={
+                "autonomy": "balanced",
+                "target": "/tmp/project/.codex",
+                "readiness": "ready",
+                "ready": True,
+                "readiness_message": "Runtime permissions are ready for unattended use.",
+                "next_step": "",
+                "status_scope": "config-only",
+                "current_session_verified": False,
+            },
+            live_executable_probes=False,
+            validated_surface="public_runtime_command_surface",
+        )
+
+        assert result.runtime == "codex"
+        assert result.autonomy == "balanced"
+        assert result.install_scope == "local"
+        assert result.target == "/tmp/project/.codex"
+        assert result.readiness == "ready"
+        assert result.ready is True
+        assert result.passed is True
+        assert result.live_executable_probes is False
+        assert result.status_scope == "config-only"
+        assert result.current_session_verified is False
+        assert result.validated_surface == "public_runtime_command_surface"
+        assert result.blocking_conditions == []
+        assert result.warnings == ["LaTeX toolchain is partial."]
+        assert result.next_step == ""
+        assert [check.__dict__ for check in result.checks] == [
+            {
+                "name": "permissions",
+                "passed": True,
+                "blocking": False,
+                "detail": "Runtime permissions are ready for unattended use.",
+            },
+            {
+                "name": "doctor",
+                "passed": True,
+                "blocking": False,
+                "detail": "Runtime readiness checks passed with 1 advisory(s).",
+            },
+        ]
+
     def test_build_unattended_readiness_result_prefers_permissions_next_step_when_present(self):
         report = DoctorReport(
             overall=CheckStatus.OK,
@@ -170,9 +230,29 @@ class TestHealthModels:
         )
 
         assert result.readiness == "relaunch-required"
+        assert result.ready is False
+        assert result.passed is False
         assert result.next_step == "Exit and relaunch codex before treating unattended use as ready."
+        assert result.status_scope == "next-launch"
+        assert result.current_session_verified is False
+        assert result.validated_surface == "public_runtime_command_surface"
         assert result.blocking_conditions == [
             "Runtime permissions are aligned, but the runtime must be relaunched before unattended use."
+        ]
+        assert result.warnings == []
+        assert [check.__dict__ for check in result.checks] == [
+            {
+                "name": "permissions",
+                "passed": False,
+                "blocking": True,
+                "detail": "Runtime permissions are aligned, but the runtime must be relaunched before unattended use.",
+            },
+            {
+                "name": "doctor",
+                "passed": True,
+                "blocking": False,
+                "detail": "Runtime readiness checks passed.",
+            },
         ]
 
     def test_build_unattended_readiness_result_falls_back_to_doctor_hint_for_blockers(self):
@@ -210,11 +290,31 @@ class TestHealthModels:
         )
 
         assert result.passed is False
+        assert result.ready is True
+        assert result.readiness == "ready"
+        assert result.status_scope == "config-only"
+        assert result.current_session_verified is False
+        assert result.validated_surface == "public_runtime_command_surface"
         assert result.next_step == (
             f"Run `{runtime_doctor_hint('codex', install_scope='local', target_dir=Path('/tmp/project/.codex'))}` "
             "to inspect and clear the blocking runtime-readiness issues."
         )
         assert result.blocking_conditions == ["Runtime config target not writable"]
+        assert result.warnings == []
+        assert [check.__dict__ for check in result.checks] == [
+            {
+                "name": "permissions",
+                "passed": True,
+                "blocking": False,
+                "detail": "Runtime permissions are ready for unattended use.",
+            },
+            {
+                "name": "doctor",
+                "passed": False,
+                "blocking": True,
+                "detail": "Runtime config target not writable",
+            },
+        ]
 
 
 # ─── Individual Check Tests ──────────────────────────────────────────────────

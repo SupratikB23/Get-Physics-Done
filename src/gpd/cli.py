@@ -3723,90 +3723,11 @@ def _resolve_permissions_target_dir(
     return resolved
 
 
-def _permissions_capability_payload(runtime_name: object) -> dict[str, object]:
-    """Return the structured runtime capability contract for permissions surfaces."""
-    if isinstance(runtime_name, str) and runtime_name:
-        try:
-            from gpd.adapters.runtime_catalog import get_runtime_capabilities
-
-            capabilities = get_runtime_capabilities(runtime_name)
-        except Exception:
-            pass
-        else:
-            return {
-                "contract_source": "runtime-catalog",
-                "permissions_surface": capabilities.permissions_surface,
-                "statusline_surface": capabilities.statusline_surface,
-                "notify_surface": capabilities.notify_surface,
-                "telemetry_source": capabilities.telemetry_source,
-                "telemetry_completeness": capabilities.telemetry_completeness,
-            }
-    return {
-        "contract_source": "generic-fallback",
-        "permissions_surface": "adapter-defined",
-        "statusline_surface": "unknown",
-        "notify_surface": "unknown",
-        "telemetry_source": "unknown",
-        "telemetry_completeness": "unknown",
-    }
-
-
-def _permissions_requested_surface(payload: dict[str, object]) -> str:
-    """Return the requested user-facing permissions surface."""
-    desired_mode = payload.get("desired_mode")
-    if isinstance(desired_mode, str) and desired_mode == "yolo":
-        return "prompt-free"
-    return "ordinary-unattended"
-
-
-def _permissions_status_scope(payload: dict[str, object]) -> str:
-    """Return what the local CLI can actually attest to for this payload."""
-    capabilities = payload.get("capabilities")
-    if not isinstance(capabilities, dict):
-        return "adapter-defined"
-
-    permissions_surface = capabilities.get("permissions_surface")
-    requested_surface = _permissions_requested_surface(payload)
-    if requested_surface == "prompt-free" and permissions_surface == "launch-wrapper":
-        return "next-launch"
-    if bool(payload.get("requires_relaunch", False)):
-        return "next-launch"
-    if permissions_surface == "config-file":
-        return "config-only"
-    if permissions_surface == "launch-wrapper":
-        return "launcher-available"
-    if permissions_surface == "unsupported":
-        return "unsupported"
-    return "adapter-defined"
-
-
-def _permissions_more_permissive_than_requested(payload: dict[str, object]) -> bool:
-    """Return whether local config is clearly more permissive than the requested autonomy."""
-    if _permissions_requested_surface(payload) != "ordinary-unattended":
-        return False
-
-    capabilities = payload.get("capabilities")
-    if not isinstance(capabilities, dict) or capabilities.get("permissions_surface") != "config-file":
-        return False
-
-    configured_mode = payload.get("configured_mode")
-    if configured_mode in {"yolo", "bypassPermissions"}:
-        return True
-
-    approval_policy = payload.get("approval_policy")
-    sandbox_mode = payload.get("sandbox_mode")
-    return approval_policy == "never" and sandbox_mode == "danger-full-access"
-
-
 def _annotate_permissions_payload(payload: dict[str, object]) -> dict[str, object]:
     """Attach structured capability and evidence metadata to a permissions payload."""
-    annotated = dict(payload)
-    annotated["capabilities"] = _permissions_capability_payload(payload.get("runtime"))
-    annotated["requested_surface"] = _permissions_requested_surface(annotated)
-    annotated["status_scope"] = _permissions_status_scope(annotated)
-    annotated["current_session_verified"] = False
-    annotated["more_permissive_than_requested"] = _permissions_more_permissive_than_requested(annotated)
-    return annotated
+    from gpd.core.health import annotate_permissions_payload
+
+    return annotate_permissions_payload(payload, requested_runtime=None)
 
 
 def _runtime_permissions_payload(
@@ -3890,6 +3811,8 @@ def _permissions_status_payload(
     target_dir: str | None,
 ) -> dict[str, object]:
     """Return a status payload annotated for unattended-readiness checks."""
+    from gpd.core.health import normalize_permissions_readiness_payload
+
     payload = _runtime_permissions_payload(
         runtime=runtime,
         autonomy=autonomy,
@@ -3897,80 +3820,11 @@ def _permissions_status_payload(
         apply_sync=False,
         strict=True,
     )
-    more_permissive_than_requested = bool(payload.get("more_permissive_than_requested", False))
-    ready = (
-        bool(payload.get("runtime"))
-        and bool(payload.get("target"))
-        and bool(payload.get("config_aligned", False))
-        and not bool(payload.get("requires_relaunch", False))
-        and not more_permissive_than_requested
+    return normalize_permissions_readiness_payload(
+        payload,
+        requested_runtime=runtime,
+        requested_autonomy=autonomy,
     )
-
-    if ready:
-        readiness = "ready"
-        readiness_message = "Runtime permissions are ready for unattended use."
-    elif bool(payload.get("requires_relaunch", False)):
-        readiness = "relaunch-required"
-        readiness_message = "Runtime permissions are aligned, but the runtime must be relaunched before unattended use."
-    elif more_permissive_than_requested:
-        readiness = "not-ready"
-        readiness_message = (
-            "Runtime permissions are more permissive than the requested autonomy, so unattended readiness is not confirmed."
-        )
-    elif "config_aligned" in payload:
-        readiness = "not-ready"
-        readiness_message = "Runtime permissions are not ready for unattended use under the requested autonomy."
-    else:
-        readiness = "unresolved"
-        readiness_message = str(payload.get("message") or "Runtime permissions are not ready for unattended use.")
-
-    next_step = payload.get("next_step")
-    if not isinstance(next_step, str) or not next_step.strip():
-        next_step = None
-    capability_payload = payload.get("capabilities")
-    permissions_surface = (
-        capability_payload.get("permissions_surface")
-        if isinstance(capability_payload, dict) and isinstance(capability_payload.get("permissions_surface"), str)
-        else None
-    )
-
-    if next_step is None:
-        runtime_name = payload.get("runtime")
-        autonomy_value = payload.get("autonomy")
-        if readiness == "relaunch-required" and isinstance(runtime_name, str) and runtime_name:
-            if permissions_surface == "launch-wrapper":
-                next_step = f"Exit and relaunch {runtime_name} through the GPD-managed launcher before treating unattended use as ready."
-            else:
-                next_step = f"Exit and relaunch {runtime_name} before treating unattended use as ready."
-        elif (
-            readiness == "not-ready"
-            and isinstance(runtime_name, str)
-            and runtime_name
-            and isinstance(autonomy_value, str)
-            and autonomy_value
-        ):
-            if permissions_surface == "launch-wrapper":
-                next_step = (
-                    "Use `gpd:settings` inside the runtime for guided changes, or run "
-                    f"`gpd permissions sync --runtime {runtime_name} --autonomy {autonomy_value}` "
-                    "from your normal system terminal to generate the launcher needed for the next session."
-                )
-            else:
-                next_step = (
-                    "Use `gpd:settings` inside the runtime for guided changes, or run "
-                    f"`gpd permissions sync --runtime {runtime_name} --autonomy {autonomy_value}` "
-                    "from your normal system terminal."
-                )
-        elif readiness == "unresolved" and runtime is None:
-            next_step = "Pass `--runtime <name>` to inspect a specific installed runtime."
-
-    return {
-        **payload,
-        "readiness": readiness,
-        "ready": ready,
-        "readiness_message": readiness_message,
-        "next_step": next_step,
-    }
 
 
 permissions_app = typer.Typer(help="Runtime permission readiness and sync")
