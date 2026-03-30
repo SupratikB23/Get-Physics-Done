@@ -23,7 +23,7 @@ import re
 import shlex
 import shutil
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 
@@ -1257,6 +1257,94 @@ def _resume_candidate_rerun_anchor(candidate: dict[str, object]) -> str | None:
     return f"rerun anchor: {last_result_id_text}"
 
 
+def _resume_result_payload(value: object) -> dict[str, object] | None:
+    """Normalize a hydrated result payload into a plain dictionary."""
+    if hasattr(value, "model_dump"):
+        try:
+            value = value.model_dump(mode="json")
+        except Exception:
+            return None
+    if isinstance(value, Mapping):
+        return dict(value)
+    return None
+
+
+def _resume_result_summary(result: Mapping[str, object] | None, *, include_id: bool = True) -> str | None:
+    """Render a concise human summary for one hydrated intermediate result."""
+    if not isinstance(result, Mapping):
+        return None
+
+    result_id = _recent_project_text(result, "id")
+    description = _recent_project_text(result, "description", "label", "name", "title")
+    equation = _recent_project_text(result, "equation")
+    if description and equation:
+        summary = f"{description} [{equation}]"
+    elif description:
+        summary = description
+    elif equation:
+        summary = equation
+    elif result_id:
+        summary = result_id
+    else:
+        return None
+
+    if include_id and result_id and summary != result_id:
+        summary = f"{summary} ({result_id})"
+    if bool(result.get("verified")) or bool(result.get("verification_records")):
+        summary = f"{summary} · verified"
+    return summary
+
+
+def _resume_candidate_last_result(
+    candidate: dict[str, object],
+    *,
+    payload: dict[str, object] | None = None,
+    compat_surface: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    """Return the hydrated last-result payload for one candidate, if available."""
+    result = _resume_result_payload(candidate.get("last_result"))
+    if result is not None:
+        return result
+
+    if payload is None:
+        return None
+
+    last_result_id = _recent_project_text(candidate, "last_result_id")
+    if not isinstance(last_result_id, str) or not last_result_id.strip():
+        return None
+
+    active_result = _resume_result_payload(_resume_surface_value(payload, compat_surface, "active_resume_result"))
+    if active_result is not None and _recent_project_text(active_result, "id") == last_result_id:
+        return active_result
+
+    derived_results = _resume_surface_value(payload, compat_surface, "derived_intermediate_results")
+    if isinstance(derived_results, list):
+        for item in derived_results:
+            result = _resume_result_payload(item)
+            if result is not None and _recent_project_text(result, "id") == last_result_id:
+                return result
+
+    return None
+
+
+def _resume_active_result(
+    payload: dict[str, object],
+    compat_surface: dict[str, object] | None,
+    candidates: list[dict[str, object]],
+) -> dict[str, object] | None:
+    """Return the most relevant hydrated result for the current resume view."""
+    active_result = _resume_result_payload(_resume_surface_value(payload, compat_surface, "active_resume_result"))
+    if active_result is not None:
+        return active_result
+
+    for candidate in candidates:
+        result = _resume_candidate_last_result(candidate, payload=payload, compat_surface=compat_surface)
+        if result is not None:
+            return result
+
+    return None
+
+
 def _resume_candidate_origin(
     candidate: dict[str, object],
     *,
@@ -1374,8 +1462,10 @@ def _recent_project_selection_reason(row: dict[str, object]) -> str:
 def _resume_candidate_notes(
     candidate: dict[str, object],
     *,
-    active_execution: dict[str, object] | None,
-    current_execution: dict[str, object] | None,
+    payload: dict[str, object] | None = None,
+    compat_surface: dict[str, object] | None = None,
+    active_execution: dict[str, object] | None = None,
+    current_execution: dict[str, object] | None = None,
 ) -> str:
     """Render the most relevant resume notes for one candidate."""
     notes: list[str] = []
@@ -1392,9 +1482,15 @@ def _resume_candidate_notes(
     if isinstance(blocked_reason, str) and blocked_reason.strip():
         notes.append(f"blocked: {blocked_reason.strip()}")
 
-    rerun_anchor = _resume_candidate_rerun_anchor(candidate)
-    if rerun_anchor is not None:
-        notes.append(rerun_anchor)
+    hydrated_result = _resume_candidate_last_result(candidate, payload=payload, compat_surface=compat_surface)
+    if hydrated_result is not None:
+        hydrated_summary = _resume_result_summary(hydrated_result)
+        if hydrated_summary is not None:
+            notes.append(f"result: {hydrated_summary}")
+    else:
+        rerun_anchor = _resume_candidate_rerun_anchor(candidate)
+        if rerun_anchor is not None:
+            notes.append(rerun_anchor)
 
     if bool(candidate.get("first_result_gate_pending")):
         notes.append("first-result gate pending")
@@ -1436,8 +1532,10 @@ def _resume_candidate_notes(
 def _resume_candidate_projection(
     candidate: dict[str, object],
     *,
-    active_execution: dict[str, object] | None,
-    current_execution: dict[str, object] | None,
+    payload: dict[str, object] | None = None,
+    compat_surface: dict[str, object] | None = None,
+    active_execution: dict[str, object] | None = None,
+    current_execution: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Project one legacy candidate into a canonical recovery view."""
     origin, origin_label = _resume_candidate_origin(
@@ -1460,6 +1558,8 @@ def _resume_candidate_projection(
         "target": _resume_candidate_target(candidate),
         "notes": _resume_candidate_notes(
             candidate,
+            payload=payload,
+            compat_surface=compat_surface,
             active_execution=active_execution,
             current_execution=current_execution,
         ),
@@ -1812,6 +1912,8 @@ def _resume_augmented_payload(payload: dict[str, object], *, cwd: Path | None = 
     projected_candidates = [
         _resume_candidate_projection(
             candidate,
+            payload=public_payload,
+            compat_surface=compat_surface,
             active_execution=active_execution
             if _resume_candidate_canonical_kind(candidate) == "bounded_segment"
             else None,
@@ -1819,6 +1921,7 @@ def _resume_augmented_payload(payload: dict[str, object], *, cwd: Path | None = 
         )
         for candidate in segment_candidates
     ]
+    active_resume_result = _resume_active_result(public_payload, compat_surface, segment_candidates)
     augmented = dict(public_payload)
     compat_resume_surface = augmented.pop("compat_resume_surface", None)
     augmented["recovery_status"] = recovery_advice.status
@@ -1827,6 +1930,10 @@ def _resume_augmented_payload(payload: dict[str, object], *, cwd: Path | None = 
     augmented["active_resume_kind_label"] = _resume_mode_label(active_resume_kind)
     augmented["recovery_advice"] = recovery_advice.model_dump(mode="json")
     augmented["recovery_candidates"] = projected_candidates
+    if active_resume_result is not None and "active_resume_result_summary" not in augmented:
+        active_resume_result_summary = _resume_result_summary(active_resume_result)
+        if active_resume_result_summary is not None:
+            augmented["active_resume_result_summary"] = active_resume_result_summary
     if projected_candidates:
         augmented["primary_recovery_target"] = projected_candidates[0]
     if compat_resume_surface is not None:
@@ -1948,6 +2055,11 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
     if isinstance(primary_resume_file, str) and primary_resume_file.strip():
         summary.add_row("Primary pointer", _format_display_path(primary_resume_file.strip()))
 
+    active_resume_result = _resume_active_result(public_payload, compat_surface, segment_candidates)
+    active_resume_result_summary = _resume_result_summary(active_resume_result)
+    if active_resume_result_summary is not None:
+        summary.add_row("Resume result", active_resume_result_summary)
+
     console.print(summary)
 
     machine_change_notice = public_payload.get("machine_change_notice")
@@ -1997,6 +2109,8 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
         for idx, candidate in enumerate(segment_candidates, start=1):
             projected_candidate = _resume_candidate_projection(
                 candidate,
+                payload=public_payload,
+                compat_surface=compat_surface,
                 active_execution=active_execution if _resume_candidate_canonical_kind(candidate) == "bounded_segment" else None,
                 current_execution=current_execution if _resume_candidate_canonical_kind(candidate) == "bounded_segment" else None,
             )
