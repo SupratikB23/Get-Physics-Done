@@ -6,6 +6,7 @@ All functions operate on state dicts (the caller handles persistence).
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 import time
 from collections import deque
@@ -22,10 +23,12 @@ from gpd.core.utils import phase_normalize, phase_unpad
 __all__ = [
     "RESULT_FIELDS",
     "IntermediateResult",
+    "ResultSearchResult",
     "ResultDeps",
     "MissingDep",
     "result_add",
     "result_list",
+    "result_search",
     "result_deps",
     "result_verify",
     "result_update",
@@ -61,6 +64,15 @@ class ResultDeps(BaseModel):
     depends_on: list[str]
     direct_deps: list[IntermediateResult | MissingDep]
     transitive_deps: list[IntermediateResult | MissingDep]
+
+
+class ResultSearchResult(BaseModel):
+    """Search results for the intermediate result registry."""
+
+    model_config = ConfigDict(frozen=True)
+
+    matches: list[IntermediateResult] = Field(default_factory=list)
+    total: int = 0
 
 
 class MissingDep(BaseModel):
@@ -188,6 +200,26 @@ def _find_result_index(results: list, result_id: str) -> int:
     return -1
 
 
+def term_matches(term: str, value: str) -> bool:
+    """Check whether a term matches a value using case-insensitive substring matching."""
+    if not term or not value:
+        return False
+    return str(term).lower() in str(value).lower()
+
+
+def _normalize_identifier(value: object) -> str:
+    """Return a normalized identifier token for exact matching."""
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").strip().casefold()).strip()
+
+
+def _normalized_identifier_matches(identifier: str, value: object) -> bool:
+    """Check whether two identifiers match after normalization."""
+    normalized_identifier = _normalize_identifier(identifier)
+    if not normalized_identifier:
+        return False
+    return _normalize_identifier(value) == normalized_identifier
+
+
 # --- Functions ---
 
 
@@ -298,6 +330,63 @@ def result_list(
         results = [r for r in results if not _has_verification_evidence(r)]
 
     return [IntermediateResult(**r) for r in results]
+
+
+@instrument_gpd_function("results.search")
+def result_search(
+    state: dict,
+    *,
+    id: str | None = None,
+    text: str | None = None,
+    equation: str | None = None,
+    phase: str | None = None,
+    depends_on: str | None = None,
+    verified: bool | None = None,
+    unverified: bool | None = None,
+) -> ResultSearchResult:
+    """Search the intermediate result registry.
+
+    Only structured result entries are searched. Legacy string entries in
+    ``state["intermediate_results"]`` are ignored.
+    """
+    if verified is True and unverified is True:
+        raise ResultError("Cannot filter by both verified=True and unverified=True; the result would always be empty.")
+
+    def _normalize_term(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    id = _normalize_term(id)
+    text = _normalize_term(text)
+    equation = _normalize_term(equation)
+    phase = _normalize_term(phase)
+    depends_on = _normalize_term(depends_on)
+
+    candidates = result_list(state, phase=phase, verified=verified, unverified=unverified)
+    matches: list[IntermediateResult] = []
+
+    for result in candidates:
+        if id is not None and not _normalized_identifier_matches(id, result.id):
+            continue
+
+        if equation is not None and not term_matches(equation, result.equation or ""):
+            continue
+
+        if depends_on is not None and not any(
+            _normalized_identifier_matches(depends_on, dependency) for dependency in result.depends_on
+        ):
+            continue
+
+        if text is not None:
+            searchable_values = (result.id, result.description or "", result.equation or "")
+            if not any(term_matches(text, value) for value in searchable_values):
+                continue
+
+        matches.append(result)
+
+    return ResultSearchResult(matches=matches, total=len(matches))
 
 
 @instrument_gpd_function("results.deps")
