@@ -930,7 +930,6 @@ def test_resume_recovery_advice_uses_resolved_runtime_commands(monkeypatch: pyte
             "resume_candidates": [
                 {
                     "kind": "continuity_handoff",
-                    "source": "session_resume_file",
                     "status": "handoff",
                     "resume_file": "GPD/phases/01/.continue-here.md",
                     "resumable": False,
@@ -1157,7 +1156,6 @@ def test_resume_plain_output_surfaces_auto_selected_recent_project(tmp_path: Pat
             "resume_candidates": [
                 {
                     "kind": "bounded_segment",
-                    "source": "current_execution",
                     "status": "paused",
                     "phase": "03",
                     "plan": "01",
@@ -1226,7 +1224,6 @@ def test_resume_plain_output_keeps_recent_project_selection_explicit_when_not_au
             "resume_candidates": [
                 {
                     "kind": "bounded_segment",
-                    "source": "current_execution",
                     "status": "paused",
                     "phase": "03",
                     "plan": "01",
@@ -1274,7 +1271,6 @@ def test_resume_plain_output_surfaces_session_handoff_status(tmp_path: Path, mon
             "resume_candidates": [
                 {
                     "kind": "continuity_handoff",
-                    "source": "session_resume_file",
                     "status": "handoff",
                     "resume_file": "GPD/phases/01/.continue-here.md",
                     "resumable": False,
@@ -1316,7 +1312,6 @@ def test_resume_plain_output_surfaces_bounded_segment_status_from_canonical_resu
             "resume_candidates": [
                 {
                     "kind": "bounded_segment",
-                    "source": "current_execution",
                     "status": "paused",
                     "phase": "03",
                     "plan": "01",
@@ -1367,7 +1362,6 @@ def test_resume_plain_output_surfaces_canonical_bounded_segment_without_live_sna
             "resume_candidates": [
                 {
                     "kind": "bounded_segment",
-                    "source": "current_execution",
                     "status": "paused",
                     "phase": "06",
                     "plan": "01",
@@ -1416,7 +1410,6 @@ def test_resume_plain_output_surfaces_interrupted_agent_status_from_candidate(tm
             "resume_candidates": [
                 {
                     "kind": "interrupted_agent",
-                    "source": "interrupted_agent",
                     "status": "interrupted",
                     "agent_id": "agent-123",
                     "origin": "interrupted_agent",

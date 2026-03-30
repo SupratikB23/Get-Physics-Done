@@ -35,6 +35,7 @@ __all__ = [
     "lookup_resume_surface_list",
     "lookup_resume_surface_mapping",
     "lookup_resume_surface_text",
+    "lookup_resume_surface_value",
     "resume_candidate_kind",
     "resume_candidate_origin",
     "resume_candidate_kind_from_source",
@@ -232,6 +233,35 @@ def lookup_resume_surface_text(
             value = source.get(source_key)
             if isinstance(value, str) and value.strip():
                 return value
+    return None
+
+
+def lookup_resume_surface_value(
+    payload: Mapping[str, object] | None,
+    key: str,
+    *,
+    compat_surface: Mapping[str, object] | None = None,
+    compat_key: str | None = None,
+    compat_keys: Sequence[str] = (),
+    prefer_compat: bool = False,
+) -> object | None:
+    """Return the first non-empty canonical or compat value for one field."""
+    lookup_order = ((compat_surface, (compat_key, *compat_keys)), (payload, (key,))) if prefer_compat else (
+        (payload, (key,)),
+        (compat_surface, (compat_key, *compat_keys)),
+    )
+    for source, source_keys in lookup_order:
+        if not isinstance(source, Mapping):
+            continue
+        for source_key in source_keys:
+            if source_key is None or source_key not in source:
+                continue
+            value = source[source_key]
+            if value is None:
+                continue
+            if isinstance(value, str) and not value.strip():
+                continue
+            return value
     return None
 
 

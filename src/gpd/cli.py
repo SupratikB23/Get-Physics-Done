@@ -34,10 +34,6 @@ from rich.table import Table
 from rich.text import Text
 
 from gpd.command_labels import canonical_command_label
-from gpd.core.onboarding_surfaces import (
-    beginner_onboarding_hub_url,
-    beginner_startup_ladder_text,
-)
 from gpd.core.cli_args import (
     normalize_root_global_cli_options as _normalize_root_global_cli_options,
 )
@@ -54,6 +50,10 @@ from gpd.core.constants import (
     RECENT_PROJECTS_INDEX_FILENAME,
 )
 from gpd.core.errors import ConfigError, GPDError
+from gpd.core.onboarding_surfaces import (
+    beginner_onboarding_hub_url,
+    beginner_startup_ladder_text,
+)
 from gpd.core.project_reentry import (
     ProjectReentryResolution,
     recoverable_project_context,
@@ -61,12 +61,16 @@ from gpd.core.project_reentry import (
 )
 from gpd.core.recovery_advice import RecoveryAdvice, build_recovery_advice
 from gpd.core.resume_surface import (
-    build_resume_compat_surface,
     canonicalize_resume_public_payload,
+    lookup_resume_surface_list,
+    lookup_resume_surface_value,
+    resolve_resume_compat_surface,
+    resume_candidate_kind,
+    resume_candidate_kind_from_source,
 )
 from gpd.core.surface_phrases import (
-    local_cli_bridge_note,
     cost_inspect_action,
+    local_cli_bridge_note,
     post_start_settings_note,
     post_start_settings_recommendation,
     recovery_action_lines,
@@ -1129,22 +1133,7 @@ def _resume_candidate_source_label(source: object) -> str:
 
 def _resume_candidate_canonical_kind(candidate: dict[str, object]) -> str:
     """Return the canonical family name for one resume candidate."""
-    kind = candidate.get("kind")
-    if isinstance(kind, str):
-        kind_text = kind.strip()
-        if kind_text in {"handoff", "continuity_handoff", "missing_handoff", "missing_continuity_handoff"}:
-            return "continuity_handoff"
-        if kind_text in {"bounded_segment", "interrupted_agent"}:
-            return kind_text
-
-    source = str(candidate.get("source") or "").strip()
-    if source == "current_execution":
-        return "bounded_segment"
-    if source == "session_resume_file":
-        return "continuity_handoff"
-    if source == "interrupted_agent":
-        return "interrupted_agent"
-    return "unknown"
+    return resume_candidate_kind(candidate) or "unknown"
 
 
 def _resume_candidate_kind_label(candidate: dict[str, object]) -> str:
@@ -1161,14 +1150,8 @@ def _resume_candidate_kind_label(candidate: dict[str, object]) -> str:
 def _resume_candidate_kind(source: object, *, status: object) -> str:
     """Return a stable machine label for the candidate concept."""
     source_text = str(source).strip() if source is not None else ""
-    status_text = str(status).strip() if status is not None else ""
-    if source_text == "current_execution":
-        return "bounded_segment"
-    if source_text == "session_resume_file":
-        return "continuity_handoff"
-    if source_text == "interrupted_agent":
-        return "interrupted_agent"
-    return "unknown"
+    _ = str(status).strip() if status is not None else ""
+    return resume_candidate_kind_from_source(source_text) or "unknown"
 
 
 def _resume_origin_label(origin: object) -> str:
@@ -1200,7 +1183,7 @@ def _resume_candidate_phase_plan(candidate: dict[str, object]) -> str:
 
 def _resume_compat_surface(payload: dict[str, object]) -> dict[str, object] | None:
     """Return the nested compatibility resume block when it exists or can be synthesized."""
-    return build_resume_compat_surface(payload)
+    return resolve_resume_compat_surface(payload)
 
 
 def _resume_surface_value(
@@ -1209,35 +1192,33 @@ def _resume_surface_value(
     key: str,
 ) -> object | None:
     """Return one resume field from canonical payload data or the compatibility block."""
-    for source in (payload, compat_surface or {}):
-        if key not in source:
-            continue
-        value = source[key]
-        if isinstance(value, str) and not value.strip():
-            continue
-        if value is None:
-            continue
-        return value
-    return None
+    return lookup_resume_surface_value(
+        payload,
+        key,
+        compat_surface=compat_surface,
+        compat_key=key,
+    )
 
 
 def _resume_visible_candidates(payload: dict[str, object], compat_surface: dict[str, object] | None) -> list[dict[str, object]]:
     """Return the candidate list to render, preferring canonical resume candidates."""
-    for source in (payload, compat_surface or {}):
-        if "resume_candidates" in source:
-            candidates = source.get("resume_candidates")
-            if isinstance(candidates, list):
-                return [item for item in candidates if isinstance(item, dict)]
-            return []
-
-    for source in (payload, compat_surface or {}):
-        if "segment_candidates" in source:
-            candidates = source.get("segment_candidates")
-            if isinstance(candidates, list):
-                return [item for item in candidates if isinstance(item, dict)]
-            return []
-
-    return []
+    candidates = lookup_resume_surface_list(
+        payload,
+        "resume_candidates",
+        compat_surface=compat_surface,
+        compat_key="resume_candidates",
+        compat_keys=("segment_candidates",),
+    )
+    if candidates is None:
+        candidates = lookup_resume_surface_list(
+            payload,
+            "segment_candidates",
+            compat_surface=compat_surface,
+            compat_key="segment_candidates",
+        )
+    if not isinstance(candidates, list):
+        return []
+    return [item for item in candidates if isinstance(item, dict)]
 
 
 def _resume_candidate_target(candidate: dict[str, object]) -> str:

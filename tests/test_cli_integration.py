@@ -470,6 +470,58 @@ class TestResume:
         assert compat["segment_candidates"][0]["resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
         assert compat["segment_candidates"][0]["resumable"] is False
 
+    def test_resume_raw_marks_missing_continuity_handoff_as_canonical_missing_state(
+        self, gpd_project: Path
+    ) -> None:
+        state_path = gpd_project / "GPD" / "state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["position"]["status"] = "Paused"
+        state["continuation"] = {
+            "schema_version": 1,
+            "handoff": {
+                "resume_file": "GPD/phases/01-test-phase/.continue-here.md",
+                "stopped_at": "Paused in phase 01",
+            },
+        }
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+
+        result = _invoke("--raw", "resume")
+        parsed = json.loads(result.output)
+
+        _assert_no_top_level_resume_aliases(parsed)
+        assert parsed["active_resume_kind"] is None
+        assert parsed["active_resume_origin"] is None
+        assert parsed["active_resume_pointer"] is None
+        assert parsed["continuity_handoff_file"] is None
+        assert parsed["recorded_continuity_handoff_file"] == "GPD/phases/01-test-phase/.continue-here.md"
+        assert parsed["missing_continuity_handoff_file"] == "GPD/phases/01-test-phase/.continue-here.md"
+        assert parsed["has_continuity_handoff"] is True
+        assert parsed["has_live_execution"] is False
+        assert parsed["execution_resumable"] is False
+        assert parsed["recovery_status"] == "missing-handoff"
+        assert parsed["recovery_status_label"] == "Missing continuity handoff"
+        assert parsed["recovery_advice"]["active_resume_kind"] == "continuity_handoff"
+        assert parsed["recovery_advice"]["active_resume_origin"] == "continuation.handoff"
+        assert parsed["recovery_advice"]["active_resume_pointer"] is None
+        assert parsed["recovery_advice"]["missing_continuity_handoff"] is True
+        assert parsed["recovery_advice"]["missing_continuity_handoff_file"] == "GPD/phases/01-test-phase/.continue-here.md"
+        assert parsed["recovery_advice"]["status"] == "missing-handoff"
+        assert parsed["recovery_candidates"][0]["kind"] == "continuity_handoff"
+        assert parsed["recovery_candidates"][0]["status"] == "missing"
+        assert parsed["recovery_candidates"][0]["advisory"] is True
+
+        compat = parsed["compat_resume_surface"]
+        _assert_resume_compat_surface_inventory(compat)
+        assert compat["execution_resume_file"] is None
+        assert compat["execution_resume_file_source"] is None
+        assert compat["missing_session_resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
+        assert compat["recorded_session_resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
+        assert compat["resume_mode"] is None
+        assert len(compat["segment_candidates"]) == 1
+        assert compat["segment_candidates"][0]["source"] == "session_resume_file"
+        assert compat["segment_candidates"][0]["status"] == "missing"
+        assert compat["segment_candidates"][0]["advisory"] is True
+
     def test_resume_raw_uses_canonical_bounded_segment_without_live_snapshot(
         self, gpd_project: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -629,7 +681,7 @@ class TestResume:
         assert "resume-work" in result.output
         assert "suggest-next" in result.output
 
-    def test_resume_human_output_marks_missing_session_handoff_as_advisory(self, gpd_project: Path) -> None:
+    def test_resume_human_output_marks_missing_continuity_handoff_as_advisory(self, gpd_project: Path) -> None:
         # Compatibility-only regression: keep the legacy session mirror callable until it fully ages out.
         state_path = gpd_project / "GPD" / "state.json"
         state = json.loads(state_path.read_text(encoding="utf-8"))
