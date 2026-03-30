@@ -25,6 +25,7 @@ from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.cli import app
 from gpd.core.constants import AGENT_ID_FILENAME, ENV_DATA_DIR
 from gpd.core.costs import UsageRecord, usage_ledger_path
+from gpd.core.recent_projects import record_recent_project
 from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
 from gpd.core.state import default_state_dict, generate_state_markdown
 from tests.runtime_install_helpers import seed_complete_runtime_install
@@ -538,6 +539,52 @@ def _bootstrap_recent_project(root: Path, *, phase_slug: str, title: str) -> Pat
     return root
 
 
+def _setup_auto_selected_recent_bounded_segment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, Path, str]:
+    data_dir = tmp_path / "gpd-data"
+    monkeypatch.setenv("GPD_DATA_DIR", str(data_dir))
+
+    project = _bootstrap_recent_project(
+        tmp_path / "recent-bounded",
+        phase_slug="02-bounded",
+        title="Recent Bounded Project",
+    )
+    resume_file = "GPD/phases/02-bounded/.continue-here.md"
+
+    monkeypatch.chdir(project)
+    _invoke(
+        "state",
+        "record-session",
+        "--stopped-at",
+        "Phase 02",
+        "--resume-file",
+        resume_file,
+    )
+    record_recent_project(
+        project,
+        session_data={
+            "last_date": "2026-03-27T11:55:00+00:00",
+            "stopped_at": "Phase 02",
+            "resume_file": resume_file,
+            "resume_target_kind": "bounded_segment",
+            "resume_target_recorded_at": "2026-03-27T11:55:00+00:00",
+            "source_kind": "continuation.bounded_segment",
+            "source_segment_id": "seg-recent-02",
+            "source_transition_id": "transition-recent-02",
+            "recovery_phase": "02",
+            "recovery_plan": "01",
+        },
+        store_root=data_dir,
+    )
+
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir(exist_ok=True)
+    monkeypatch.chdir(outside)
+    return project, outside, resume_file
+
+
 def _result_command_names() -> set[str]:
     result_group = next(group for group in app.registered_groups if group.name == "result")
     return {command.name for command in result_group.typer_instance.registered_commands}
@@ -861,6 +908,68 @@ class TestResume:
         assert "Canonical candidate kinds" in result.output
         assert "continuity_handoff" in result.output
         assert "./GPD/phases/01-test-phase/.continue-here.md" in result.output
+
+    def test_resume_raw_promotes_auto_selected_recent_bounded_segment_over_same_pointer_handoff(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        project, outside, resume_file = _setup_auto_selected_recent_bounded_segment(tmp_path, monkeypatch)
+
+        result = _invoke("--raw", "--cwd", str(outside), "resume")
+        parsed = json.loads(result.output)
+
+        _assert_no_top_level_resume_aliases(parsed)
+        assert parsed["project_root"] == project.resolve(strict=False).as_posix()
+        assert parsed["project_root_source"] == "recent_project"
+        assert parsed["project_root_auto_selected"] is True
+        assert parsed["project_reentry_mode"] == "auto-recent-project"
+        assert parsed["project_reentry_requires_selection"] is False
+        assert parsed["project_reentry_selected_candidate"]["source"] == "recent_project"
+        assert parsed["project_reentry_selected_candidate"]["resume_target_kind"] == "bounded_segment"
+        assert parsed["project_reentry_selected_candidate"]["source_kind"] == "continuation.bounded_segment"
+        assert parsed["project_reentry_selected_candidate"]["source_segment_id"] == "seg-recent-02"
+        assert parsed["project_reentry_selected_candidate"]["source_transition_id"] == "transition-recent-02"
+        assert parsed["project_reentry_selected_candidate"]["recovery_phase"] == "02"
+        assert parsed["project_reentry_selected_candidate"]["recovery_plan"] == "01"
+        assert parsed["active_bounded_segment"]["resume_file"] == resume_file
+        assert parsed["active_bounded_segment"]["segment_id"] == "seg-recent-02"
+        assert parsed["active_bounded_segment"]["phase"] == "02"
+        assert parsed["active_bounded_segment"]["plan"] == "01"
+        assert parsed["active_resume_kind"] == "bounded_segment"
+        assert parsed["active_resume_origin"] == "continuation.bounded_segment"
+        assert parsed["active_resume_pointer"] == resume_file
+        assert parsed["execution_resumable"] is True
+        assert parsed["resume_candidates"][0]["kind"] == "bounded_segment"
+        assert parsed["resume_candidates"][0]["origin"] == "continuation.bounded_segment"
+        assert parsed["recovery_status"] == "bounded-segment"
+        assert parsed["recovery_status_label"] == "Bounded segment"
+        assert parsed["primary_recovery_target"]["kind"] == "bounded_segment"
+        compat = parsed["compat_resume_surface"]
+        _assert_resume_compat_surface_inventory(compat)
+        assert compat["resume_mode"] == "bounded_segment"
+        assert compat["active_execution_segment"]["resume_file"] == resume_file
+        assert compat["segment_candidates"][0]["source"] == "recent_project"
+
+    def test_resume_human_output_surfaces_auto_selected_recent_bounded_segment(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _project, outside, resume_file = _setup_auto_selected_recent_bounded_segment(tmp_path, monkeypatch)
+
+        result = _invoke("--cwd", str(outside), "resume")
+        normalized = " ".join(result.output.split())
+
+        assert "Resume Summary" in result.output
+        assert "Read-only local recovery snapshot for this workspace." in result.output
+        assert "A bounded segment is resumable from an auto-selected recent project." in normalized
+        assert "auto-selected recent project" in result.output
+        assert "Bounded segment" in result.output
+        assert "Primary pointer" in result.output
+        assert f"./{resume_file}" in result.output
+        assert "Canonical candidate kinds" in result.output
+        assert "continuity handoff is available" not in normalized.lower()
+        assert "gpd resume --recent" in result.output
+        assert "gpd init resume" in result.output
+        assert "resume-work" in result.output
+        assert "suggest-next" in result.output
 
     def test_resume_recent_lists_recent_projects_in_recency_order(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

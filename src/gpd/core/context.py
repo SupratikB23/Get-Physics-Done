@@ -1545,6 +1545,128 @@ def _build_resume_read_state(
         return result
 
 
+def _mapping_text(value: Mapping[str, object] | None, key: str) -> str | None:
+    if not isinstance(value, Mapping):
+        return None
+    candidate = value.get(key)
+    if not isinstance(candidate, str):
+        return None
+    stripped = candidate.strip()
+    return stripped or None
+
+
+def _promote_auto_selected_recent_bounded_segment(
+    continuation_state: dict[str, object],
+    *,
+    reentry_metadata: Mapping[str, object],
+) -> tuple[dict[str, object], bool]:
+    """Promote a stronger auto-selected recent bounded segment over a same-pointer handoff."""
+
+    selected_candidate = reentry_metadata.get("project_reentry_selected_candidate")
+    if not isinstance(selected_candidate, Mapping):
+        return continuation_state, False
+    if not bool(reentry_metadata.get("project_root_auto_selected")):
+        return continuation_state, False
+    if _mapping_text(selected_candidate, "source") != "recent_project":
+        return continuation_state, False
+    if _mapping_text(selected_candidate, "resume_target_kind") != "bounded_segment":
+        return continuation_state, False
+    if not bool(selected_candidate.get("resumable", False)):
+        return continuation_state, False
+
+    resume_file = _mapping_text(selected_candidate, "resume_file")
+    if resume_file is None:
+        return continuation_state, False
+
+    active_resume_kind = _mapping_text(continuation_state, "active_resume_kind")
+    active_resume_pointer = _mapping_text(continuation_state, "active_resume_pointer")
+    if active_resume_kind == "bounded_segment":
+        return continuation_state, False
+    if active_resume_kind not in {None, "continuity_handoff"}:
+        return continuation_state, False
+    if active_resume_pointer is not None and active_resume_pointer != resume_file:
+        return continuation_state, False
+
+    active_bounded_segment = continuation_state.get("active_bounded_segment")
+    if isinstance(active_bounded_segment, dict) and _mapping_text(active_bounded_segment, "resume_file") not in {
+        None,
+        resume_file,
+    }:
+        return continuation_state, False
+
+    recorded_by = _mapping_text(selected_candidate, "source_kind")
+    bounded_segment = {
+        "segment_status": "paused",
+        "resume_file": resume_file,
+        "phase": _mapping_text(selected_candidate, "recovery_phase"),
+        "plan": _mapping_text(selected_candidate, "recovery_plan"),
+        "segment_id": _mapping_text(selected_candidate, "source_segment_id"),
+        "transition_id": _mapping_text(selected_candidate, "source_transition_id"),
+        "updated_at": (
+            _mapping_text(selected_candidate, "resume_target_recorded_at")
+            or _mapping_text(selected_candidate, "source_recorded_at")
+        ),
+    }
+    bounded_segment = {
+        key: value
+        for key, value in bounded_segment.items()
+        if not isinstance(value, str) or value.strip()
+    }
+
+    raw_candidate = build_resume_segment_candidate(bounded_segment, source="recent_project")
+    raw_candidate["resumable"] = True
+    canonical_candidate = build_resume_candidate(
+        raw_candidate,
+        kind="bounded_segment",
+        origin=resume_origin_for_bounded_segment(recorded_by=recorded_by),
+        resume_pointer=resume_file,
+    )
+
+    def _replace_matching_candidate(
+        candidates: object,
+        replacement: dict[str, object],
+        *,
+        canonical: bool,
+    ) -> list[dict[str, object]]:
+        normalized = [item for item in candidates if isinstance(item, dict)] if isinstance(candidates, list) else []
+        updated: list[dict[str, object]] = []
+        replaced = False
+        for item in normalized:
+            item_resume_file = _mapping_text(item, "resume_file")
+            item_kind = _mapping_text(item, "kind") if canonical else None
+            item_status = str(item.get("status") or "").strip() if not canonical else None
+            if item_resume_file == resume_file and (
+                item_kind in {None, "continuity_handoff"} if canonical else item_status in {"handoff", "missing"}
+            ):
+                if not replaced:
+                    updated.append(dict(replacement))
+                    replaced = True
+                continue
+            updated.append(item)
+        if not replaced:
+            updated.insert(0, dict(replacement))
+        return updated
+
+    promoted = dict(continuation_state)
+    promoted["active_bounded_segment"] = bounded_segment
+    promoted["active_execution_segment"] = bounded_segment
+    promoted["active_resume_kind"] = "bounded_segment"
+    promoted["active_resume_origin"] = resume_origin_for_bounded_segment(recorded_by=recorded_by)
+    promoted["active_resume_pointer"] = resume_file
+    promoted["resume_mode"] = "bounded_segment"
+    promoted["resume_candidates"] = _replace_matching_candidate(
+        promoted.get("resume_candidates"),
+        canonical_candidate,
+        canonical=True,
+    )
+    promoted["segment_candidates"] = _replace_matching_candidate(
+        promoted.get("segment_candidates"),
+        raw_candidate,
+        canonical=False,
+    )
+    return promoted, True
+
+
 # ─── Config Loader ────────────────────────────────────────────────────────────
 
 
@@ -2019,6 +2141,10 @@ def init_resume(cwd: Path, *, data_root: Path | None = None) -> dict:
         execution_context,
         interrupted_agent_id=interrupted_agent_id,
     )
+    continuation_state, recent_bounded_segment_promoted = _promote_auto_selected_recent_bounded_segment(
+        continuation_state,
+        reentry_metadata=reentry_metadata,
+    )
     active_bounded_segment = continuation_state.get("active_bounded_segment")
     if not isinstance(active_bounded_segment, dict):
         active_bounded_segment = None
@@ -2111,6 +2237,8 @@ def init_resume(cwd: Path, *, data_root: Path | None = None) -> dict:
         key: value for key, value in execution_context.items() if key != "resume_projection"
     }
     result.update(execution_public)
+    if recent_bounded_segment_promoted and not bool(result.get("execution_resumable")):
+        result["execution_resumable"] = True
     result["compat_resume_surface"] = build_resume_compat_surface(result, continuation_state, execution_context) or {}
     return canonicalize_resume_public_payload(result)
 

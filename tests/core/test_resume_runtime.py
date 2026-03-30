@@ -293,6 +293,73 @@ def test_init_resume_auto_selects_unique_recoverable_recent_project(tmp_path: Pa
     assert ctx["project_exists"] is True
 
 
+def test_init_resume_promotes_auto_selected_recent_bounded_segment_over_same_pointer_handoff(
+    tmp_path: Path, state_project_factory
+) -> None:
+    project_parent = tmp_path / "project-root"
+    project_parent.mkdir()
+    project_root = state_project_factory(project_parent)
+    resume_file = "GPD/phases/03-analysis/.continue-here.md"
+    resume_path = project_root / resume_file
+    resume_path.parent.mkdir(parents=True, exist_ok=True)
+    resume_path.write_text("resume\n", encoding="utf-8")
+    _update_state_session(
+        project_root,
+        hostname="builder-01",
+        platform="Linux 6.1 x86_64",
+        stopped_at="Phase 03",
+        resume_file=resume_file,
+    )
+    data_root = tmp_path / "data"
+    record_recent_project(
+        project_root,
+        session_data={
+            "last_date": "2026-03-29T12:00:00+00:00",
+            "stopped_at": "Phase 03",
+            "resume_file": resume_file,
+            "resume_target_kind": "bounded_segment",
+            "resume_target_recorded_at": "2026-03-29T12:00:00+00:00",
+            "source_kind": "continuation.bounded_segment",
+            "source_segment_id": "seg-recent-03",
+            "source_transition_id": "transition-recent-03",
+            "recovery_phase": "03",
+            "recovery_plan": "01",
+        },
+        store_root=data_root,
+    )
+    workspace = tmp_path / "outside"
+    workspace.mkdir()
+
+    ctx = init_resume(workspace, data_root=data_root)
+
+    assert ctx["project_root"] == project_root.resolve(strict=False).as_posix()
+    assert ctx["project_root_source"] == "recent_project"
+    assert ctx["project_root_auto_selected"] is True
+    assert ctx["project_reentry_mode"] == "auto-recent-project"
+    assert ctx["project_reentry_selected_candidate"] is not None
+    assert ctx["project_reentry_selected_candidate"]["source"] == "recent_project"
+    assert ctx["project_reentry_selected_candidate"]["resume_target_kind"] == "bounded_segment"
+    assert ctx["project_reentry_selected_candidate"]["source_kind"] == "continuation.bounded_segment"
+    assert ctx["project_reentry_selected_candidate"]["source_segment_id"] == "seg-recent-03"
+    assert ctx["project_reentry_selected_candidate"]["source_transition_id"] == "transition-recent-03"
+    assert ctx["project_reentry_selected_candidate"]["recovery_phase"] == "03"
+    assert ctx["project_reentry_selected_candidate"]["recovery_plan"] == "01"
+    assert ctx["active_bounded_segment"]["resume_file"] == resume_file
+    assert ctx["active_bounded_segment"]["segment_id"] == "seg-recent-03"
+    assert ctx["active_bounded_segment"]["phase"] == "03"
+    assert ctx["active_bounded_segment"]["plan"] == "01"
+    assert ctx["active_resume_kind"] == "bounded_segment"
+    assert ctx["active_resume_origin"] == "continuation.bounded_segment"
+    assert ctx["active_resume_pointer"] == resume_file
+    assert ctx["execution_resumable"] is True
+    assert ctx["resume_candidates"][0]["kind"] == "bounded_segment"
+    assert ctx["resume_candidates"][0]["origin"] == "continuation.bounded_segment"
+    assert ctx["continuity_handoff_file"] == resume_file
+    assert ctx["compat_resume_surface"]["resume_mode"] == "bounded_segment"
+    assert ctx["compat_resume_surface"]["active_execution_segment"]["resume_file"] == resume_file
+    assert ctx["compat_resume_surface"]["segment_candidates"][0]["source"] == "recent_project"
+
+
 def test_init_resume_keeps_current_execution_primary_and_includes_session_resume_file(
     tmp_path: Path, state_project_factory, monkeypatch
 ) -> None:
