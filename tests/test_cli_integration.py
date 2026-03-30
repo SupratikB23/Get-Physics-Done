@@ -259,6 +259,55 @@ def gpd_project(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def test_result_upsert_reuses_unique_equation_match_when_preferred_id_is_new(gpd_project: Path) -> None:
+    planning = gpd_project / "GPD"
+    state_path = planning / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["intermediate_results"] = [
+        {
+            "id": "R-01",
+            "equation": "E = mc^2",
+            "description": "Original description",
+            "phase": "01",
+            "depends_on": [],
+            "verified": False,
+            "verification_records": [],
+        }
+    ]
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "--raw",
+            "--cwd",
+            str(gpd_project),
+            "result",
+            "upsert",
+            "--id",
+            "R-new",
+            "--equation",
+            "E=mc^2",
+            "--description",
+            "Canonical description",
+            "--phase",
+            "01",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["action"] == "updated"
+    assert payload["result"]["id"] == "R-01"
+    assert payload["result"]["description"] == "Canonical description"
+
+    reloaded = json.loads(state_path.read_text(encoding="utf-8"))
+    assert len(reloaded["intermediate_results"]) == 1
+    assert reloaded["intermediate_results"][0]["id"] == "R-01"
+    assert reloaded["intermediate_results"][0]["description"] == "Canonical description"
+
+
 @pytest.fixture(autouse=True)
 def _chdir(gpd_project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """All tests run from the project directory."""
