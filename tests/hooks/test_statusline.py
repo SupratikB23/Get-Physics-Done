@@ -1282,6 +1282,7 @@ class TestMain:
                             "first_result_gate_pending": True,
                             "review_cadence": "adaptive",
                             "last_result_label": "Benchmark reproduction",
+                            "last_result_id": "R-bridge-01",
                         },
                     )
                 ),
@@ -1297,6 +1298,40 @@ class TestMain:
         assert "REVIEW:first-result adaptive" in output
         assert "Routine task" not in output
         assert "Benchmark reproduction" in output
+        assert "rerun anchor: R-bridge-01" not in output
+
+    def test_first_result_gate_renders_last_result_id_when_label_missing(self) -> None:
+        captured = io.StringIO()
+        with (
+            patch("sys.stdin", io.StringIO(json.dumps({}))),
+            patch("sys.stdout", captured),
+            patch(
+                "gpd.hooks.statusline._read_runtime_hints",
+                return_value=_runtime_hints_payload(
+                    _visibility_state(
+                        has_live_execution=True,
+                        status_classification="waiting",
+                        assessment="waiting",
+                        current_execution={
+                            "segment_status": "waiting_review",
+                            "first_result_gate_pending": True,
+                            "review_cadence": "adaptive",
+                            "last_result_id": "R-bridge-01",
+                        },
+                    )
+                ),
+            ),
+            patch("gpd.hooks.statusline._read_position", return_value="P3/10"),
+            patch("gpd.hooks.statusline._read_current_task", return_value="Routine task"),
+            patch("gpd.hooks.statusline._read_execution_state", return_value={}),
+            patch("gpd.hooks.statusline._check_update", return_value=""),
+        ):
+            main()
+
+        output = captured.getvalue()
+        assert "REVIEW:first-result adaptive" in output
+        assert "Routine task" not in output
+        assert "rerun anchor: R-bridge-01" in output
 
     def test_skeptical_review_prefers_anchor_label_over_result_label(self) -> None:
         captured = io.StringIO()
@@ -1318,6 +1353,7 @@ class TestMain:
                             "skeptical_requestioning_required": True,
                             "weakest_unchecked_anchor": "Direct observable benchmark",
                             "last_result_label": "Proxy fit",
+                            "last_result_id": "R-bridge-01",
                         },
                     )
                 ),
@@ -1333,6 +1369,7 @@ class TestMain:
         assert "REVIEW:skeptical" in output
         assert "Direct observable benchmark" in output
         assert "Proxy fit" not in output
+        assert "rerun anchor: R-bridge-01" not in output
 
     def test_execution_state_rendering_does_not_claim_stuck(self) -> None:
         captured = io.StringIO()

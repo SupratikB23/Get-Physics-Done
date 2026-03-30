@@ -10,6 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 import gpd.hooks.notify as notify_module
 from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.core.constants import ProjectLayout
@@ -1202,6 +1204,72 @@ def test_emit_execution_notification_for_first_result_gate(tmp_path: Path) -> No
 
     assert "First-result review due for 03-01" in stderr.getvalue()
     assert "Benchmark reproduction" in stderr.getvalue()
+
+
+def test_emit_execution_notification_falls_back_to_last_result_id_when_no_label_or_task(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    snapshot = _ExecutionSnapshot(
+        phase="03",
+        plan="01",
+        segment_id="seg-1",
+        first_result_gate_pending=True,
+        last_result_id="result-42",
+    )
+
+    stderr = io.StringIO()
+    with (
+        patch("gpd.core.observability.get_current_execution", return_value=snapshot),
+        patch("sys.stderr", stderr),
+    ):
+        _emit_execution_notification(str(workspace))
+
+    output = stderr.getvalue()
+    assert "First-result review due for 03-01" in output
+    assert "rerun anchor: result-42" in output
+
+
+@pytest.mark.parametrize(
+    ("snapshot_kwargs", "expected_artifact"),
+    [
+        (
+            {"last_result_label": "Benchmark reproduction", "last_result_id": "result-42"},
+            "Benchmark reproduction",
+        ),
+        (
+            {"current_task": "Investigating the current task", "last_result_id": "result-42"},
+            "Investigating the current task",
+        ),
+    ],
+)
+def test_emit_execution_notification_prefers_label_or_current_task_over_last_result_id(
+    tmp_path: Path,
+    snapshot_kwargs: dict[str, object],
+    expected_artifact: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    snapshot = _ExecutionSnapshot(
+        phase="03",
+        plan="01",
+        segment_id="seg-1",
+        first_result_gate_pending=True,
+        **snapshot_kwargs,
+    )
+
+    stderr = io.StringIO()
+    with (
+        patch("gpd.core.observability.get_current_execution", return_value=snapshot),
+        patch("sys.stderr", stderr),
+    ):
+        _emit_execution_notification(str(workspace))
+
+    output = stderr.getvalue()
+    assert "First-result review due for 03-01" in output
+    assert expected_artifact in output
+    assert "rerun anchor: result-42" not in output
 
 
 def test_emit_execution_notification_walks_up_from_nested_workspace(tmp_path: Path) -> None:

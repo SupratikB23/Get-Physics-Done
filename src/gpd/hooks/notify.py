@@ -194,6 +194,10 @@ def _execution_notification_message(cwd: str) -> tuple[str | None, str | None]:
 
     phase_plan = "-".join(part for part in (snapshot.phase, snapshot.plan) if part) or "current work"
     artifact = snapshot.last_result_label or snapshot.last_artifact_path or snapshot.current_task or "latest result"
+    if artifact == "latest result":
+        last_result_id = snapshot.last_result_id
+        if isinstance(last_result_id, str) and last_result_id.strip():
+            artifact = f"rerun anchor: {last_result_id.strip()}"
     segment_status = (snapshot.segment_status or "").strip().lower()
 
     if snapshot.blocked_reason:

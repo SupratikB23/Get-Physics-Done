@@ -472,7 +472,7 @@ def _execution_badge(snapshot: dict[str, object], visibility: object | None = No
 
 
 def _execution_artifact_label(snapshot: dict[str, object]) -> str:
-    """Return the latest artifact or result label for live execution state."""
+    """Return the latest artifact, result, or rerun anchor label for live execution state."""
     if bool(snapshot.get("skeptical_requestioning_required")):
         weakest_anchor = _first_string(snapshot, "weakest_unchecked_anchor")
         if weakest_anchor:
@@ -486,7 +486,13 @@ def _execution_artifact_label(snapshot: dict[str, object]) -> str:
     artifact = _first_string(snapshot, "last_artifact_path")
     if artifact:
         return Path(artifact).name
-    return _first_string(snapshot, "last_result_label")
+    last_result_label = _first_string(snapshot, "last_result_label")
+    if last_result_label:
+        return last_result_label
+    last_result_id = _first_string(snapshot, "last_result_id")
+    if last_result_id:
+        return f"rerun anchor: {last_result_id}"
+    return ""
 
 
 def _latest_update_cache(workspace_dir: str | None = None) -> tuple[dict[str, object] | None, object | None]:
