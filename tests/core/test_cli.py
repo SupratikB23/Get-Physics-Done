@@ -1224,7 +1224,7 @@ def test_resume_plain_output_surfaces_session_handoff_status(tmp_path: Path, mon
 
     assert result.exit_code == 0
     normalized = " ".join(result.output.split())
-    assert "A projected continuity handoff is available" in normalized
+    assert "A continuity handoff is available" in normalized
     assert "no resumable bounded segment is currently active." in normalized
     assert "Recovery context is available, but no live bounded segment is currently resumable." not in result.output
 
@@ -1260,7 +1260,7 @@ def test_resume_plain_output_surfaces_bounded_segment_status_from_canonical_resu
 
     assert result.exit_code == 0
     normalized = " ".join(result.output.split())
-    assert "A bounded execution segment is resumable from the current workspace state." in normalized
+    assert "A bounded segment is resumable from the current workspace state." in normalized
     assert "resume-work" in result.output
     assert "suggest-next" in result.output
 
@@ -1292,7 +1292,7 @@ def test_resume_plain_output_surfaces_canonical_bounded_segment_without_live_sna
 
     assert result.exit_code == 0
     normalized = " ".join(result.output.split())
-    assert "A bounded execution segment is resumable from the current workspace state." in normalized
+    assert "A bounded segment is resumable from the current workspace state." in normalized
     assert "resume-work" in result.output
     assert "suggest-next" in result.output
 
@@ -1407,7 +1407,7 @@ def test_resume_plain_output_keeps_machine_change_notice_when_session_handoff_is
 
     assert result.exit_code == 0
     normalized = " ".join(result.output.split())
-    assert "A projected continuity handoff is available" in normalized
+    assert "A continuity handoff is available" in normalized
     assert "Rerun the installer" in normalized
     assert "resume-work" in result.output
     assert "suggest-next" in result.output
@@ -1442,7 +1442,7 @@ def test_resume_plain_output_surfaces_advisory_live_execution_status(tmp_path: P
     assert result.exit_code == 0
     normalized = " ".join(result.output.split())
     assert "A live execution snapshot exists" in normalized
-    assert "it is advisory only and does not expose a portable resume target." in normalized
+    assert "it is advisory only and does not expose a portable bounded-segment target." in normalized
     assert "resume-work" not in result.output
     assert "suggest-next" not in result.output
 
@@ -1481,9 +1481,84 @@ def test_resume_plain_output_surfaces_missing_handoff_status(tmp_path: Path, mon
     assert result.exit_code == 0
     normalized = " ".join(result.output.split())
     assert "Canonical recovery metadata exists" in normalized
-    assert "the projected handoff file is missing." in normalized
+    assert "the continuity handoff file is missing." in normalized
     assert "resume-work" not in result.output
     assert "suggest-next" not in result.output
+
+
+def test_resume_raw_adds_canonical_recovery_projection_fields(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "gpd.core.context.init_resume",
+        lambda _cwd: {
+            "planning_exists": True,
+            "state_exists": True,
+            "roadmap_exists": True,
+            "project_exists": True,
+            "segment_candidates": [
+                {
+                    "source": "session_resume_file",
+                    "status": "handoff",
+                    "resume_file": "GPD/phases/01/.continue-here.md",
+                    "resumable": False,
+                }
+            ],
+            "has_live_execution": False,
+            "resume_mode": None,
+            "execution_resume_file": "GPD/phases/01/.continue-here.md",
+            "execution_resume_file_source": "session_resume_file",
+            "execution_paused_at": None,
+            "autonomy": None,
+            "research_mode": None,
+            "active_execution_segment": None,
+        },
+    )
+
+    result = runner.invoke(app, ["--raw", "resume"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["execution_resume_file"] == "GPD/phases/01/.continue-here.md"
+    assert payload["recovery_status"] == "session-handoff"
+    assert payload["recovery_status_label"] == "Continuity handoff"
+    assert payload["recovery_summary"] == (
+        "A continuity handoff is available, but no resumable bounded segment is currently active."
+    )
+    assert payload["resume_mode_label"] == "none"
+    assert payload["recovery_candidates"][0]["kind"] == "continuity_handoff"
+    assert payload["recovery_candidates"][0]["kind_label"] == "Continuity handoff"
+    assert payload["recovery_candidates"][0]["origin"] == "continuation_metadata"
+    assert payload["primary_recovery_target"]["target"] == "./GPD/phases/01/.continue-here.md"
+
+
+def test_command_supports_project_reentry_prefers_explicit_metadata() -> None:
+    assert (
+        cli_module._command_supports_project_reentry(
+            SimpleNamespace(name="gpd:custom", context_mode="project-required", project_reentry_capable=True)
+        )
+        is True
+    )
+    assert (
+        cli_module._command_supports_project_reentry(
+            SimpleNamespace(name="gpd:progress", context_mode="project-required", project_reentry_capable=False)
+        )
+        is False
+    )
+
+
+def test_command_supports_project_reentry_falls_back_to_legacy_default_when_metadata_missing() -> None:
+    assert (
+        cli_module._command_supports_project_reentry(
+            SimpleNamespace(name="gpd:progress", context_mode="project-required")
+        )
+        is True
+    )
+    assert (
+        cli_module._command_supports_project_reentry(
+            SimpleNamespace(name="gpd:plan-phase", context_mode="project-required")
+        )
+        is False
+    )
 
 
 def test_observe_execution_help_surfaces_read_only_local_status_role() -> None:

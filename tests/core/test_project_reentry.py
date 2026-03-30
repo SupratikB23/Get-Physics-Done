@@ -23,17 +23,44 @@ def _make_gpd_workspace(
     return root
 
 
-def _recent_row(project_root: Path, *, last_session_at: str, resumable: bool = True) -> dict[str, object]:
-    return {
+def _recent_row(
+    project_root: Path,
+    *,
+    last_session_at: str,
+    resumable: bool = True,
+    resume_target_kind: str = "handoff",
+) -> dict[str, object]:
+    row: dict[str, object] = {
         "project_root": project_root.resolve(strict=False).as_posix(),
         "last_session_at": last_session_at,
         "stopped_at": "Phase 02",
         "resume_file": "GPD/phases/02/.continue-here.md",
+        "resume_target_kind": resume_target_kind,
+        "resume_target_recorded_at": last_session_at,
         "resume_file_available": True,
         "resume_file_reason": None,
         "available": True,
         "resumable": resumable,
     }
+    if resume_target_kind == "bounded_segment":
+        row.update(
+            {
+                "source_kind": "continuation.bounded_segment",
+                "source_segment_id": f"segment-{project_root.name}",
+                "source_transition_id": f"transition-{project_root.name}",
+                "source_recorded_at": last_session_at,
+                "recovery_phase": "02",
+                "recovery_plan": "01",
+            }
+        )
+    elif resume_target_kind == "handoff":
+        row.update(
+            {
+                "source_kind": "continuation.handoff",
+                "source_recorded_at": last_session_at,
+            }
+        )
+    return row
 
 
 def test_resolve_project_reentry_prefers_current_workspace_recovery(tmp_path: Path) -> None:
@@ -118,6 +145,8 @@ def test_resolve_project_reentry_auto_selects_unique_recoverable_recent_project(
     assert resolution.candidates[0].source == "recent_project"
     assert resolution.candidates[0].auto_selectable is True
     assert resolution.candidates[0].recoverable is True
+    assert resolution.candidates[0].resume_target_kind == "handoff"
+    assert resolution.candidates[0].reason == "recent project cache entry with projected continuity handoff"
 
 
 def test_resolve_project_reentry_prefers_unique_strong_recent_candidate_over_weak_recent_candidate(
@@ -152,6 +181,7 @@ def test_resolve_project_reentry_prefers_unique_strong_recent_candidate_over_wea
     assert resolution.candidates[0].project_root == strong.resolve(strict=False).as_posix()
     assert resolution.candidates[0].auto_selectable is True
     assert resolution.candidates[0].confidence == "high"
+    assert resolution.candidates[0].resume_target_kind == "handoff"
     assert resolution.candidates[1].project_root == weak.resolve(strict=False).as_posix()
     assert resolution.candidates[1].auto_selectable is False
     assert resolution.candidates[1].confidence == "medium"
@@ -211,6 +241,42 @@ def test_resolve_project_reentry_requires_user_selection_for_ambiguous_recent_pr
     assert all(candidate.auto_selectable is False for candidate in resolution.candidates)
     assert resolution.candidates[0].last_session_at == "2026-03-28T13:00:00+00:00"
     assert resolution.candidates[1].last_session_at == "2026-03-28T12:00:00+00:00"
+
+
+def test_resolve_project_reentry_orders_bounded_recent_target_ahead_of_handoff_without_auto_selecting(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    bounded = _make_gpd_workspace(tmp_path / "recent-bounded", project=True)
+    handoff = _make_gpd_workspace(tmp_path / "recent-handoff", project=True)
+
+    resolution = resolve_project_reentry(
+        workspace,
+        recent_rows=[
+            _recent_row(
+                handoff,
+                last_session_at="2026-03-28T13:00:00+00:00",
+                resume_target_kind="handoff",
+            ),
+            _recent_row(
+                bounded,
+                last_session_at="2026-03-28T12:00:00+00:00",
+                resume_target_kind="bounded_segment",
+            ),
+        ],
+    )
+
+    assert resolution.mode == "ambiguous-recent-projects"
+    assert resolution.auto_selected is False
+    assert resolution.requires_user_selection is True
+    assert resolution.project_root is None
+    assert resolution.candidates[0].project_root == bounded.resolve(strict=False).as_posix()
+    assert resolution.candidates[0].resume_target_kind == "bounded_segment"
+    assert resolution.candidates[0].reason == "recent project cache entry with confirmed bounded segment resume target"
+    assert resolution.candidates[1].project_root == handoff.resolve(strict=False).as_posix()
+    assert resolution.candidates[1].resume_target_kind == "handoff"
+    assert resolution.candidates[1].reason == "recent project cache entry with projected continuity handoff"
 
 
 def test_resolve_project_reentry_prefers_current_workspace_over_recent_project(tmp_path: Path) -> None:

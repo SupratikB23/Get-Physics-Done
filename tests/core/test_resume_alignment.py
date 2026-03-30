@@ -43,39 +43,40 @@ def test_resume_docs_use_canonical_paths_and_no_legacy_resume_command() -> None:
     assert "execution_resume_file" in resume_doc
     assert "execution_resume_file" in portability_doc
     assert "machine_change_detected" in resume_doc
+    assert "Compatibility-only handoff cues in the current raw envelope:" in resume_doc
     assert "missing_session_resume_file" in resume_doc
     assert "session_resume_file" in resume_doc
-    assert "Recorded session handoff is missing" in resume_doc
-    assert "stopped-at handoff" in resume_doc
+    assert "Compatibility note: the current raw envelope still uses legacy candidate/source labels" in resume_doc
+    assert "Recorded handoff artifact is missing" in resume_doc
+    assert "stopped-at continuation point" in resume_doc
     assert "previous hostname/platform" in resume_doc
     assert "machine-change notice" in resume_doc
     assert "rerunning the installer so runtime-local config stays current" in resume_doc
-    assert "stopped-at handoff" in portability_doc
-    assert "resume pointer or interrupted segment" in portability_doc
+    assert "stopped-at continuation point" in portability_doc
+    assert "bounded resume pointer, recorded handoff, or interrupted segment" in portability_doc
     assert "hostname/platform differ" in portability_doc
     assert "machine-change advisory" in portability_doc
     assert "rerunning the installer" in portability_doc
     assert "current-execution.json" in portability_doc
     assert "bounded-segment resume state" in portability_doc
     assert "advisory continuity context only" in portability_doc
-    assert "does not create a resumable `current_execution` candidate" in portability_doc
+    assert "does not create a resumable bounded-segment candidate" in portability_doc
+    assert "current raw compatibility label for that candidate family remains `current_execution`" in portability_doc
     assert 'set `resume_mode="bounded_segment"`' in portability_doc
-    assert "Phase 5 splits execution provenance from bounded-resume authority." in portability_doc
+    assert "The current continuation architecture separates execution provenance from bounded-resume authority." in portability_doc
     assert "Execution lineage" in portability_doc
     assert "Compatibility mirror showing the latest execution snapshot" in portability_doc
     assert "No single handoff file, lineage row, or execution snapshot is, by itself, the canonical continuation state." in portability_doc
     assert "Canonical state in `state.json.continuation` wins first" in portability_doc
     assert "Storage authority for machine-readable project state and canonical continuation hierarchy" in portability_doc
     assert "Editable human-readable mirror of state" in portability_doc
-    assert "Temporary handoff artifact written by `/gpd:pause-work`" in portability_doc
+    assert "Temporary continuation handoff artifact written by `/gpd:pause-work`" in portability_doc
     assert "derived execution head and `GPD/observability/current-execution.json` are compatibility projections" in portability_doc
     assert "temporary handoff artifact" in resume_doc
-    assert "derived execution head compatibility mirror" in resume_doc
+    assert "supporting continuity surfaces only" in resume_doc
     assert "Do not treat any single `.continue-here.md` file or compatibility snapshot as the sole authority in isolation." in resume_doc
     assert "The derived execution head and the temporary handoff artifact are both subordinate to the storage authority chain." in resume_doc
-    assert "Current public behavior distinguishes four continuation-facing layers plus the derived execution head:" in resume_doc or (
-        "Current public behavior distinguishes canonical continuation, compatibility projections, and the derived execution head:" in resume_doc
-    )
+    assert "Current public behavior distinguishes canonical continuation authority, continuity mirrors, and the derived execution head:" in resume_doc
     assert "project-relative paths" in portability_doc
     assert "normalizes project-local absolute `resume_file` paths back to relative form" in portability_doc
     assert "usable state from `GPD/state.json`, `GPD/state.json.bak`, or `GPD/STATE.md`" in resume_doc
@@ -205,6 +206,22 @@ def test_init_resume_surfaces_machine_change_and_session_resume_candidate(
         context_module,
         "_current_machine_identity",
         lambda: {"hostname": "new-host", "platform": "Linux 6.1 x86_64"},
+    )
+    monkeypatch.setattr(
+        context_module,
+        "_resolve_reentry_context",
+        lambda requested_cwd, data_root=None: (
+            requested_cwd,
+            {
+                "workspace_root": requested_cwd.as_posix(),
+                "project_root": requested_cwd.as_posix(),
+                "project_root_source": "current-workspace",
+                "project_root_auto_selected": False,
+                "project_reentry_mode": "current-workspace",
+                "project_reentry_requires_selection": False,
+                "project_reentry_candidates": [],
+            },
+        ),
     )
 
     ctx = init_resume(tmp_path)

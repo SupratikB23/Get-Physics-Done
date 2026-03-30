@@ -334,14 +334,15 @@ class TestResume:
 
         assert parsed["resume_mode"] is None
         assert parsed["execution_resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
-        assert parsed["segment_candidates"] == [
-            {
-                "source": "session_resume_file",
-                "status": "handoff",
-                "resume_file": "GPD/phases/01-test-phase/.continue-here.md",
-                "resumable": False,
-            }
-        ]
+        assert parsed["recovery_status"] == "session-handoff"
+        assert parsed["recovery_status_label"] == "Continuity handoff"
+        assert parsed["recovery_candidates"][0]["kind"] == "continuity_handoff"
+        assert parsed["recovery_candidates"][0]["origin"] == "continuation_metadata"
+        assert len(parsed["segment_candidates"]) == 1
+        assert parsed["segment_candidates"][0]["source"] == "session_resume_file"
+        assert parsed["segment_candidates"][0]["status"] == "handoff"
+        assert parsed["segment_candidates"][0]["resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
+        assert parsed["segment_candidates"][0]["resumable"] is False
 
     def test_resume_raw_uses_canonical_bounded_segment_without_live_snapshot(self, gpd_project: Path) -> None:
         canonical_resume_file = "GPD/phases/01-test-phase/.continue-here.md"
@@ -377,6 +378,9 @@ class TestResume:
         assert parsed["resume_mode"] == "bounded_segment"
         assert parsed["execution_resume_file"] == canonical_resume_file
         assert parsed["execution_resume_file_source"] == "current_execution"
+        assert parsed["recovery_status"] == "bounded-segment"
+        assert parsed["recovery_status_label"] == "Bounded segment"
+        assert parsed["primary_recovery_target"]["kind"] == "bounded_segment"
         candidate = parsed["segment_candidates"][0]
         assert candidate["source"] == "current_execution"
         assert candidate["status"] == "paused"
@@ -460,6 +464,7 @@ class TestResume:
         assert "handoff is available" in normalized.lower()
         assert "no resumable" in normalized.lower()
         assert "currently active" in normalized.lower()
+        assert "Continuity handoff" in result.output
         assert "gpd resume" in result.output
         assert "gpd resume --recent" in result.output
         assert "gpd init resume" in result.output

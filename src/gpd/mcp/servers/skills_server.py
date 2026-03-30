@@ -422,6 +422,7 @@ def get_skill(name: str) -> dict:
                 payload.update(
                     {
                         "context_mode": command.context_mode,
+                        "project_reentry_capable": command.project_reentry_capable,
                         "argument_hint": command.argument_hint,
                         "loading_hint": command_loading_hint,
                         "review_contract": (

@@ -21,14 +21,18 @@ from gpd.core.utils import atomic_write, file_lock, safe_read_file
 
 __all__ = [
     "RecentProjectEntry",
+    "RecentProjectRecoveryClassification",
     "RecentProjectIndex",
     "RecentProjectsError",
+    "classify_recent_project_recovery",
     "list_recent_projects",
     "load_recent_projects_index",
     "recent_projects_index_path",
     "recent_projects_root",
     "record_recent_project",
 ]
+
+_RECENT_PROJECT_TARGET_KINDS = {"bounded_segment", "handoff"}
 
 
 class RecentProjectsError(ValueError):
@@ -46,6 +50,8 @@ class RecentProjectEntry(BaseModel):
     last_seen_at: str | None = None
     stopped_at: str | None = None
     resume_file: str | None = None
+    resume_target_kind: str | None = None
+    resume_target_recorded_at: str | None = None
     resume_file_available: bool | None = None
     resume_file_reason: str | None = None
     hostname: str | None = None
@@ -67,6 +73,7 @@ class RecentProjectEntry(BaseModel):
         "last_seen_at",
         "stopped_at",
         "resume_file",
+        "resume_target_recorded_at",
         "resume_file_reason",
         "hostname",
         "platform",
@@ -92,6 +99,79 @@ class RecentProjectEntry(BaseModel):
         if normalized is None:
             raise ValueError("project_root is required")
         return Path(normalized).expanduser().resolve(strict=False).as_posix()
+
+    @field_validator("resume_target_kind", mode="before")
+    @classmethod
+    def _normalize_resume_target_kind(cls, value: object) -> str | None:
+        return _normalize_resume_target_kind(value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _backfill_recovery_fields(cls, value: object) -> object:
+        if isinstance(value, RecentProjectEntry):
+            payload: object = value.model_dump(mode="python")
+        elif isinstance(value, dict):
+            payload = dict(value)
+        else:
+            return value
+
+        payload_dict = payload if isinstance(payload, dict) else {}
+        resume_target_kind = _normalize_resume_target_kind(payload_dict.get("resume_target_kind")) or infer_recent_project_resume_target_kind(
+            payload_dict
+        )
+        resume_target_recorded_at = _normalize_recent_text(payload_dict.get("resume_target_recorded_at"))
+        if resume_target_recorded_at is None:
+            if resume_target_kind == "bounded_segment":
+                resume_target_recorded_at = (
+                    _normalize_recent_text(payload_dict.get("source_recorded_at"))
+                    or _normalize_recent_text(payload_dict.get("last_session_at"))
+                    or _normalize_recent_text(payload_dict.get("last_seen_at"))
+                )
+            elif resume_target_kind == "handoff":
+                resume_target_recorded_at = (
+                    _normalize_recent_text(payload_dict.get("source_recorded_at"))
+                    or _normalize_recent_text(payload_dict.get("last_session_at"))
+                    or _normalize_recent_text(payload_dict.get("last_seen_at"))
+                )
+
+        payload_dict["resume_target_kind"] = resume_target_kind
+        payload_dict["resume_target_recorded_at"] = resume_target_recorded_at
+        return payload_dict
+
+
+class RecentProjectRecoveryClassification(BaseModel):
+    """Shared recent-project recovery classification for ranking and explanations."""
+
+    model_config = ConfigDict(frozen=True)
+
+    resume_target_kind: str | None = None
+    resume_target_recorded_at: str | None = None
+    has_recorded_target: bool = False
+    has_concrete_target: bool = False
+    target_priority: int = 0
+
+    def candidate_reason(self, *, recoverable: bool) -> str:
+        if self.has_concrete_target:
+            if self.resume_target_kind == "bounded_segment":
+                return "recent project cache entry with confirmed bounded segment resume target"
+            if self.resume_target_kind == "handoff":
+                return "recent project cache entry with projected continuity handoff"
+            return "recent project cache entry with confirmed resume target"
+        if recoverable:
+            if self.has_recorded_target:
+                if self.resume_target_kind == "bounded_segment":
+                    return "recent project cache entry with recoverable project state and a recorded bounded segment target"
+                if self.resume_target_kind == "handoff":
+                    return "recent project cache entry with recoverable project state and a recorded continuity handoff"
+                return "recent project cache entry with recoverable project state and a recorded resume target"
+            return "recent project cache entry with recoverable project state"
+        if self.has_recorded_target:
+            if self.resume_target_kind == "bounded_segment":
+                return "recent project cache entry with a recorded bounded segment target but without recoverable project state"
+            if self.resume_target_kind == "handoff":
+                return "recent project cache entry with a recorded continuity handoff but without recoverable project state"
+            return "recent project cache entry with a recorded resume target but without recoverable project state"
+        return "recent project cache entry without recoverable project state"
 
 
 class RecentProjectIndex(BaseModel):
@@ -199,6 +279,50 @@ def _normalize_recent_text(value: object) -> str | None:
     return stripped
 
 
+def _normalize_resume_target_kind(value: object) -> str | None:
+    normalized = _normalize_recent_text(value)
+    if normalized is None:
+        return None
+    if normalized == "continuity_handoff":
+        return "handoff"
+    if normalized in _RECENT_PROJECT_TARGET_KINDS:
+        return normalized
+    return None
+
+
+def _row_value(row: object, field: str) -> object:
+    if isinstance(row, dict):
+        return row.get(field)
+    return getattr(row, field, None)
+
+
+def infer_recent_project_resume_target_kind(row: object) -> str | None:
+    """Infer one additive resume target classification for a recent-project row."""
+
+    explicit = _normalize_resume_target_kind(_row_value(row, "resume_target_kind"))
+    if explicit is not None:
+        return explicit
+
+    resume_file = _normalize_recent_text(_row_value(row, "resume_file"))
+    if resume_file is None:
+        return None
+
+    source_kind = _normalize_recent_text(_row_value(row, "source_kind"))
+    if source_kind in {"continuation.bounded_segment", "bounded_segment"}:
+        return "bounded_segment"
+    if source_kind in {"continuation.handoff", "handoff", "legacy_session"}:
+        return "handoff"
+    if isinstance(source_kind, str) and source_kind.startswith("segment."):
+        return "bounded_segment"
+
+    source_segment_id = _normalize_recent_text(_row_value(row, "source_segment_id"))
+    source_transition_id = _normalize_recent_text(_row_value(row, "source_transition_id"))
+    if source_segment_id is not None or source_transition_id is not None:
+        return "bounded_segment"
+
+    return "handoff"
+
+
 def _extract_recent_project_rows(value: object) -> list[object]:
     if isinstance(value, list):
         return value
@@ -229,6 +353,43 @@ def _updated_text(
 ) -> str | None:
     updated = _session_text(session_data, *keys)
     return updated if updated is not None or any(key in session_data for key in keys) else existing_value
+
+
+def classify_recent_project_recovery(row: object) -> RecentProjectRecoveryClassification:
+    """Return one shared recovery classification for a recent-project row."""
+
+    resume_target_kind = infer_recent_project_resume_target_kind(row)
+    resume_target_recorded_at = _normalize_recent_text(_row_value(row, "resume_target_recorded_at"))
+    if resume_target_recorded_at is None:
+        resume_target_recorded_at = _normalize_recent_text(_row_value(row, "source_recorded_at"))
+    if resume_target_recorded_at is None:
+        resume_target_recorded_at = _normalize_recent_text(_row_value(row, "last_session_at"))
+    if resume_target_recorded_at is None:
+        resume_target_recorded_at = _normalize_recent_text(_row_value(row, "last_seen_at"))
+
+    available_value = _row_value(row, "available")
+    available = True if available_value is None else bool(available_value)
+    resume_file = _normalize_recent_text(_row_value(row, "resume_file"))
+    resume_file_available = _row_value(row, "resume_file_available")
+    if not isinstance(resume_file_available, bool):
+        resume_file_available = None
+
+    has_recorded_target = resume_file is not None
+    has_concrete_target = bool(has_recorded_target and available and resume_file_available is not False)
+    if has_concrete_target and resume_target_kind == "bounded_segment":
+        target_priority = 2
+    elif has_concrete_target:
+        target_priority = 1
+    else:
+        target_priority = 0
+
+    return RecentProjectRecoveryClassification(
+        resume_target_kind=resume_target_kind,
+        resume_target_recorded_at=resume_target_recorded_at,
+        has_recorded_target=has_recorded_target,
+        has_concrete_target=has_concrete_target,
+        target_priority=target_priority,
+    )
 
 
 def _annotate_availability(entry: RecentProjectEntry) -> RecentProjectEntry:
@@ -283,6 +444,16 @@ def record_recent_project(
         "last_session_at",
     )
     normalized_resume_file = _updated_text(session_data, existing.resume_file if existing is not None else None, "resume_file")
+    resume_target_kind = _updated_text(
+        session_data,
+        existing.resume_target_kind if existing is not None else None,
+        "resume_target_kind",
+    )
+    resume_target_recorded_at = _updated_text(
+        session_data,
+        existing.resume_target_recorded_at if existing is not None else None,
+        "resume_target_recorded_at",
+    )
     normalized_hostname = _updated_text(session_data, existing.hostname if existing is not None else None, "hostname")
     normalized_platform = _updated_text(session_data, existing.platform if existing is not None else None, "platform")
     source_kind = _updated_text(session_data, existing.source_kind if existing is not None else None, "source_kind", "provenance_kind")
@@ -335,6 +506,8 @@ def record_recent_project(
         last_seen_at=last_seen_at,
         stopped_at=_updated_text(session_data, existing.stopped_at if existing is not None else None, "stopped_at"),
         resume_file=normalized_resume_file,
+        resume_target_kind=resume_target_kind,
+        resume_target_recorded_at=resume_target_recorded_at,
         hostname=normalized_hostname,
         platform=normalized_platform,
         source_kind=source_kind,

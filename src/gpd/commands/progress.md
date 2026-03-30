@@ -3,6 +3,7 @@ name: gpd:progress
 description: Check research progress, show context, and route to next action (execute or plan)
 argument-hint: "[--brief] [--full] [--reconcile]"
 context_mode: project-required
+project_reentry_capable: true
 requires:
   files: ["GPD/PROJECT.md"]
 allowed-tools:

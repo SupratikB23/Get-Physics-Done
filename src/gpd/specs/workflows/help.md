@@ -489,7 +489,7 @@ Usage: `/gpd:progress --reconcile` (fix diverged STATE.md and state.json)
 **`/gpd:resume-work`**
 Resume research from previous session with full context restoration.
 
-- Restores live execution state, recent progress, and projected handoff context through the canonical continuation hierarchy
+- Restores bounded execution state, recent progress, and recorded handoff context through the canonical continuation hierarchy
 - Uses the recovery ladder (`gpd resume` -> `gpd resume --recent` when needed -> `/gpd:resume-work`) to pick up where you left off
 - Best first in-runtime command when returning to paused or interrupted work
 - This is the in-runtime continue path; for a current-workspace read-only recovery snapshot, use `gpd resume`
@@ -498,12 +498,12 @@ Resume research from previous session with full context restoration.
 Usage: `/gpd:resume-work`
 
 **`/gpd:pause-work`**
-Create projected context handoff when pausing work mid-phase.
+Create a continuation handoff artifact when pausing work mid-phase.
 
-- Creates projected .continue-here file with current state
-- Updates the projected STATE.md session continuity mirror
+- Creates the canonical `.continue-here.md` continuation handoff artifact with current state
+- Updates the mirrored STATE.md session continuity entry
 - Captures in-progress work context
-- Run this before leaving mid-phase so `/gpd:resume-work` has an explicit handoff to restore, projected from canonical continuation
+- Run this before leaving mid-phase so `/gpd:resume-work` has an explicit recorded handoff artifact to restore, mirrored from canonical continuation
 
 Usage: `/gpd:pause-work`
 
@@ -1090,7 +1090,7 @@ Example config:
 **Leaving and returning after a break:**
 
 ```
-/gpd:pause-work        # Before leaving mid-phase, capture a projected handoff
+/gpd:pause-work        # Before leaving mid-phase, capture a continuation handoff artifact
 /clear                 # then run gpd resume to reopen the current workspace
 gpd resume             # Current-workspace read-only recovery snapshot
 gpd resume --recent    # Find the workspace first when you need to reopen a different one

@@ -225,6 +225,22 @@ class TestConvertToGeminiToml:
         result = _convert_to_gemini_toml(content)
         assert 'context_mode = "project-aware"' in result
 
+    def test_preserves_project_reentry_capable_as_source_metadata_comment(self) -> None:
+        content = (
+            "---\n"
+            "name: gpd:resume-work\n"
+            "context_mode: project-required\n"
+            "project_reentry_capable: true\n"
+            "---\n"
+            "Prompt body"
+        )
+
+        result = _convert_to_gemini_toml(content)
+
+        assert 'context_mode = "project-required"' in result
+        assert "# project_reentry_capable: true" in result
+        assert "project_reentry_capable =" not in result
+
     def test_prepends_review_contract_to_prompt(self) -> None:
         content = compile_markdown_for_runtime(
             (

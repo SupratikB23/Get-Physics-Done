@@ -91,7 +91,7 @@ err_console = Console(stderr=True)
 _raw: bool = False
 _cwd: Path = Path(".")
 
-_PROJECT_ROOT_AWARE_STATUS_COMMANDS = frozenset({"gpd:progress", "gpd:resume-work"})
+_DEFAULT_PROJECT_REENTRY_COMMANDS = frozenset({"gpd:progress", "gpd:resume-work"})
 
 
 def _output(data: object) -> None:
@@ -1014,16 +1014,16 @@ def _resume_status_message(payload: dict[str, object], *, recovery_advice: Recov
 
     if recovery_advice.status == "bounded-segment":
         if auto_selected:
-            return "A bounded execution segment is resumable from an auto-selected recent project."
-        return "A bounded execution segment is resumable from the current workspace state."
+            return "A bounded segment is resumable from an auto-selected recent project."
+        return "A bounded segment is resumable from the current workspace state."
     if recovery_advice.status == "interrupted-agent":
         return "An interrupted agent marker is present, but no bounded resume segment is active."
     if recovery_advice.status == "session-handoff":
-        return "A projected continuity handoff is available, but no resumable bounded segment is currently active."
+        return "A continuity handoff is available, but no resumable bounded segment is currently active."
     if recovery_advice.status == "missing-handoff":
-        return "Canonical recovery metadata exists, but the projected handoff file is missing."
+        return "Canonical recovery metadata exists, but the continuity handoff file is missing."
     if recovery_advice.status == "live-execution":
-        return "A live execution snapshot exists, but it is advisory only and does not expose a portable resume target."
+        return "A live execution snapshot exists, but it is advisory only and does not expose a portable bounded-segment target."
     if recovery_advice.status == "workspace-recovery" and recovery_advice.machine_change_notice:
         return "A machine change was detected, but the project state is portable and does not require repair."
     if recovery_advice.status == "workspace-recovery":
@@ -1080,6 +1080,22 @@ def _resume_mode_label(value: object) -> str:
     return value.replace("_", " ")
 
 
+def _resume_status_label(status: object) -> str:
+    """Return a canonical human label for one recovery status."""
+    labels = {
+        "bounded-segment": "Bounded segment",
+        "interrupted-agent": "Interrupted agent",
+        "session-handoff": "Continuity handoff",
+        "missing-handoff": "Missing continuity handoff",
+        "live-execution": "Advisory live execution",
+        "workspace-recovery": "Recovery context",
+        "recent-projects": "Recent projects",
+        "no-recovery": "No recovery target",
+    }
+    status_text = str(status).strip() if status is not None else ""
+    return labels.get(status_text, status_text.replace("_", " ") if status_text else "Unknown")
+
+
 def _project_root_source_label(source: object, *, auto_selected: bool = False) -> str:
     """Map a project-root source to a plain-language re-entry label."""
     labels = {
@@ -1097,14 +1113,29 @@ def _project_root_source_label(source: object, *, auto_selected: bool = False) -
 
 
 def _resume_candidate_source_label(source: object) -> str:
-    """Map internal resume candidate sources to concise user-facing labels."""
+    """Map internal resume candidate sources to canonical user-facing labels."""
     labels = {
-        "current_execution": "Live execution",
-        "session_resume_file": "Session handoff",
+        "current_execution": "Bounded segment",
+        "session_resume_file": "Continuity handoff",
         "interrupted_agent": "Interrupted agent",
     }
     source_text = str(source).strip() if source is not None else ""
     return labels.get(source_text, source_text or "Unknown")
+
+
+def _resume_candidate_kind(source: object, *, status: object) -> str:
+    """Return a stable machine label for the candidate concept."""
+    source_text = str(source).strip() if source is not None else ""
+    status_text = str(status).strip() if status is not None else ""
+    if source_text == "current_execution":
+        return "bounded_segment"
+    if source_text == "session_resume_file":
+        if status_text == "missing":
+            return "missing_continuity_handoff"
+        return "continuity_handoff"
+    if source_text == "interrupted_agent":
+        return "interrupted_agent"
+    return "unknown"
 
 
 def _resume_candidate_phase_plan(candidate: dict[str, object]) -> str:
@@ -1133,6 +1164,45 @@ def _resume_candidate_target(candidate: dict[str, object]) -> str:
     if isinstance(resume_file, str) and resume_file.strip():
         return _format_display_path(resume_file.strip())
     return "—"
+
+
+def _resume_candidate_origin(
+    candidate: dict[str, object],
+    *,
+    active_execution: dict[str, object] | None,
+    current_execution: dict[str, object] | None,
+) -> tuple[str, str]:
+    """Return a machine label and human summary for one candidate origin."""
+    source = str(candidate.get("source") or "").strip()
+    status = str(candidate.get("status") or "").strip()
+    if source == "current_execution":
+        active_resume = (
+            str(active_execution.get("resume_file")).strip()
+            if isinstance(active_execution, dict) and active_execution.get("resume_file") is not None
+            else ""
+        )
+        current_resume = (
+            str(current_execution.get("resume_file")).strip()
+            if isinstance(current_execution, dict) and current_execution.get("resume_file") is not None
+            else ""
+        )
+        if isinstance(active_execution, dict):
+            if active_resume and current_resume and active_resume != current_resume:
+                return (
+                    "canonical_continuation",
+                    "canonical bounded segment; live compatibility snapshot points at a different file",
+                )
+            return ("canonical_continuation", "canonical bounded segment")
+        if isinstance(current_execution, dict):
+            return ("compatibility_snapshot", "derived execution compatibility snapshot")
+        return ("unknown", "bounded-segment candidate")
+    if source == "session_resume_file":
+        if status == "missing":
+            return ("continuation_metadata", "canonical continuity metadata; handoff file missing")
+        return ("continuation_metadata", "canonical continuity metadata")
+    if source == "interrupted_agent":
+        return ("interrupted_agent", "interrupted-agent marker")
+    return ("unknown", "unknown origin")
 
 
 def _recent_project_label(row: dict[str, object]) -> str | None:
@@ -1206,6 +1276,7 @@ def _resume_candidate_notes(
     candidate: dict[str, object],
     *,
     active_execution: dict[str, object] | None,
+    current_execution: dict[str, object] | None,
 ) -> str:
     """Render the most relevant resume notes for one candidate."""
     notes: list[str] = []
@@ -1235,17 +1306,18 @@ def _resume_candidate_notes(
     if bool(candidate.get("downstream_locked")):
         notes.append("downstream locked")
 
-    if active_execution is not None:
-        current_task = active_execution.get("current_task")
-        current_task_index = active_execution.get("current_task_index")
-        current_task_total = active_execution.get("current_task_total")
+    execution_view = current_execution or active_execution
+    if execution_view is not None:
+        current_task = execution_view.get("current_task")
+        current_task_index = execution_view.get("current_task_index")
+        current_task_total = execution_view.get("current_task_total")
         if isinstance(current_task, str) and current_task.strip():
             if current_task_index is not None and current_task_total is not None:
                 notes.append(f"task {current_task_index}/{current_task_total}: {current_task.strip()}")
             else:
                 notes.append(current_task.strip())
 
-        updated_at = active_execution.get("updated_at")
+        updated_at = execution_view.get("updated_at")
         if isinstance(updated_at, str) and updated_at.strip():
             notes.append(f"updated {updated_at.strip()}")
 
@@ -1253,13 +1325,47 @@ def _resume_candidate_notes(
         source = str(candidate.get("source") or "").strip()
         status = str(candidate.get("status") or "").strip()
         if source == "session_resume_file" and status == "missing":
-            return "Recorded in session continuity metadata, but the handoff file is missing from this workspace."
+            return "Recorded in canonical continuity metadata, but the handoff file is missing from this workspace."
         if source == "session_resume_file":
-            return "Recorded in session continuity metadata."
+            return "Recorded in canonical continuity metadata."
         if source == "interrupted_agent":
             return "Interrupted agent marker only; inspect agent output before continuing."
         return "No additional resume notes recorded."
     return "; ".join(notes[:5])
+
+
+def _resume_candidate_projection(
+    candidate: dict[str, object],
+    *,
+    active_execution: dict[str, object] | None,
+    current_execution: dict[str, object] | None,
+) -> dict[str, object]:
+    """Project one legacy candidate into a canonical recovery view."""
+    origin, origin_label = _resume_candidate_origin(
+        candidate,
+        active_execution=active_execution,
+        current_execution=current_execution,
+    )
+    status = str(candidate.get("status") or "unknown").strip() or "unknown"
+    return {
+        "kind": _resume_candidate_kind(candidate.get("source"), status=status),
+        "kind_label": _resume_candidate_source_label(candidate.get("source")),
+        "status": status,
+        "status_label": status.replace("_", " "),
+        "origin": origin,
+        "origin_label": origin_label,
+        "phase_plan": _resume_candidate_phase_plan(candidate),
+        "target": _resume_candidate_target(candidate),
+        "notes": _resume_candidate_notes(
+            candidate,
+            active_execution=active_execution,
+            current_execution=current_execution,
+        ),
+        "source": candidate.get("source"),
+        "resume_file": candidate.get("resume_file"),
+        "resumable": candidate.get("resumable"),
+        "advisory": candidate.get("advisory"),
+    }
 
 
 def _recent_project_resume_file_state(project_root: object, resume_file: object) -> tuple[bool | None, str | None]:
@@ -1498,6 +1604,9 @@ def _resume_recent_project_command(row: dict[str, object]) -> str:
 
 def _resume_recent_project_notes(row: dict[str, object]) -> str:
     """Return a concise availability/resumability note for one recent project row."""
+    recovery_note = _recent_project_text(row, "recovery_note")
+    if recovery_note is not None:
+        return recovery_note
     if not bool(row.get("available")):
         reason = row.get("availability_reason")
         if isinstance(reason, str) and reason.strip():
@@ -1511,6 +1620,58 @@ def _resume_recent_project_notes(row: dict[str, object]) -> str:
     return "inspect local recovery state"
 
 
+def _recent_project_recovery_view(row: dict[str, object]) -> dict[str, str] | None:
+    """Return a canonical recovery summary for one recent-project row when available."""
+    project_root = row.get("project_root")
+    if not isinstance(project_root, str) or not project_root.strip():
+        return None
+
+    project_path = Path(project_root).expanduser().resolve(strict=False)
+    if not project_path.exists() or not project_path.is_dir():
+        return {
+            "recovery_status": "no-recovery",
+            "recovery_status_label": "Unavailable checkout",
+            "recovery_note": "project unavailable on this machine",
+        }
+
+    state_exists, roadmap_exists, project_exists = recoverable_project_context(project_path)
+    if not (state_exists or roadmap_exists or project_exists):
+        return None
+
+    try:
+        from gpd.core.context import init_resume
+
+        payload = init_resume(project_path)
+        advice = _resume_recovery_advice(resume_payload=payload, recent_rows=[], cwd=project_path)
+    except Exception:
+        return None
+
+    view: dict[str, str] = {
+        "recovery_status": advice.status,
+        "recovery_status_label": _resume_status_label(advice.status),
+        "recovery_note": _resume_status_message(payload, recovery_advice=advice),
+    }
+    primary_resume_file = payload.get("execution_resume_file")
+    if isinstance(primary_resume_file, str) and primary_resume_file.strip():
+        view["recovery_target"] = _format_display_path(primary_resume_file.strip())
+    execution_source = payload.get("execution_resume_file_source")
+    if isinstance(execution_source, str) and execution_source.strip():
+        view["recovery_origin"] = execution_source.strip()
+    return view
+
+
+def _annotate_recent_project_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Add canonical recovery summaries to recent-project rows without removing legacy fields."""
+    annotated: list[dict[str, object]] = []
+    for row in rows:
+        payload = dict(row)
+        recovery_view = _recent_project_recovery_view(payload)
+        if recovery_view is not None:
+            payload.update(recovery_view)
+        annotated.append(payload)
+    return annotated
+
+
 def _resume_follow_up_actions(recovery_advice: RecoveryAdvice) -> list[str]:
     """Render recovery follow-up lines from the shared structured action contract."""
     return recovery_action_lines(
@@ -1518,6 +1679,35 @@ def _resume_follow_up_actions(recovery_advice: RecoveryAdvice) -> list[str]:
         mode=recovery_advice.mode,
         include_primary=False,
     )
+
+
+def _resume_augmented_payload(payload: dict[str, object], *, cwd: Path | None = None) -> dict[str, object]:
+    """Augment the raw resume payload with canonical recovery projections."""
+    recovery_advice = _resume_recovery_advice(resume_payload=payload, recent_rows=[], cwd=cwd)
+    augmented = dict(payload)
+    active_execution_raw = payload.get("active_execution_segment")
+    active_execution = active_execution_raw if isinstance(active_execution_raw, dict) else None
+    current_execution_raw = payload.get("current_execution")
+    current_execution = current_execution_raw if isinstance(current_execution_raw, dict) else None
+    candidates = payload.get("segment_candidates")
+    segment_candidates = [item for item in candidates if isinstance(item, dict)] if isinstance(candidates, list) else []
+    projected_candidates = [
+        _resume_candidate_projection(
+            candidate,
+            active_execution=active_execution if candidate.get("source") == "current_execution" else None,
+            current_execution=current_execution if candidate.get("source") == "current_execution" else None,
+        )
+        for candidate in segment_candidates
+    ]
+    augmented["recovery_status"] = recovery_advice.status
+    augmented["recovery_status_label"] = _resume_status_label(recovery_advice.status)
+    augmented["recovery_summary"] = _resume_status_message(payload, recovery_advice=recovery_advice)
+    augmented["resume_mode_label"] = _resume_mode_label(payload.get("resume_mode"))
+    augmented["recovery_advice"] = recovery_advice.model_dump(mode="json")
+    augmented["recovery_candidates"] = projected_candidates
+    if projected_candidates:
+        augmented["primary_recovery_target"] = projected_candidates[0]
+    return augmented
 
 
 def _render_recent_resume_summary(rows: list[dict[str, object]]) -> None:
@@ -1553,6 +1743,9 @@ def _render_recent_resume_summary(rows: list[dict[str, object]]) -> None:
             console.print(f"   Current: {current_state}")
         console.print(f"   Last session: {str(row.get('last_session_at') or row.get('last_seen_at') or row.get('last_event_at') or '—')}")
         console.print(f"   Stopped at: {str(row.get('stopped_at') or '—')}")
+        recovery_label = _recent_project_text(row, "recovery_status_label")
+        if recovery_label is not None:
+            console.print(f"   Recovery: {recovery_label}")
         console.print(f"   Resumable: {'yes' if bool(row.get('resumable')) else 'no'}")
         console.print(f"   Why shown: {_recent_project_selection_reason(row)}")
         console.print(f"   Notes: {_resume_recent_project_notes(row)}")
@@ -1571,6 +1764,8 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
     segment_candidates = [item for item in candidates if isinstance(item, dict)] if isinstance(candidates, list) else []
     active_execution_raw = payload.get("active_execution_segment")
     active_execution = active_execution_raw if isinstance(active_execution_raw, dict) else None
+    current_execution_raw = payload.get("current_execution")
+    current_execution = current_execution_raw if isinstance(current_execution_raw, dict) else None
     recovery_advice = _resume_recovery_advice(resume_payload=payload, recent_rows=[])
 
     console.print("[bold]Resume Summary[/]")
@@ -1602,6 +1797,7 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
             _project_root_source_label(payload.get("project_root_source"), auto_selected=False),
         )
     summary.add_row("Status", _resume_status_message(payload, recovery_advice=recovery_advice))
+    summary.add_row("Recovery", _resume_status_label(recovery_advice.status))
     summary.add_row("Resume mode", _resume_mode_label(payload.get("resume_mode")))
     summary.add_row("Candidates", str(len(segment_candidates)))
     summary.add_row("Live execution", "yes" if bool(payload.get("has_live_execution")) else "no")
@@ -1653,13 +1849,20 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
     if segment_candidates:
         table = Table(show_header=True, header_style=f"bold {_INSTALL_ACCENT_COLOR}")
         table.add_column("#", justify="right", no_wrap=True)
-        table.add_column("Source")
+        table.add_column("Kind")
         table.add_column("Status")
         table.add_column("Phase/Plan")
         table.add_column("Target")
+        table.add_column("Origin")
         table.add_column("Notes")
         for idx, candidate in enumerate(segment_candidates, start=1):
-            candidate_execution = active_execution if candidate.get("source") == "current_execution" else None
+            candidate_active_execution = active_execution if candidate.get("source") == "current_execution" else None
+            candidate_current_execution = current_execution if candidate.get("source") == "current_execution" else None
+            origin_label = _resume_candidate_origin(
+                candidate,
+                active_execution=candidate_active_execution,
+                current_execution=candidate_current_execution,
+            )[1]
             status = str(candidate.get("status") or "unknown").strip().replace("_", " ")
             table.add_row(
                 str(idx),
@@ -1667,12 +1870,17 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
                 status or "unknown",
                 _resume_candidate_phase_plan(candidate),
                 _resume_candidate_target(candidate),
-                _resume_candidate_notes(candidate, active_execution=candidate_execution),
+                origin_label,
+                _resume_candidate_notes(
+                    candidate,
+                    active_execution=candidate_active_execution,
+                    current_execution=candidate_current_execution,
+                ),
             )
         console.print(table)
     else:
         console.print(
-            "[dim]No resumable execution segment, projected continuity handoff, or interrupted-agent marker is currently recorded.[/]"
+            "[dim]No bounded segment, continuity handoff, or interrupted-agent marker is currently recorded.[/]"
         )
 
     console.print()
@@ -1698,9 +1906,16 @@ def resume(
 ) -> None:
     """Summarize local recovery state or list machine-local recent projects."""
     if recent:
-        rows = _load_recent_projects_rows()
+        rows = _annotate_recent_project_rows(_load_recent_projects_rows())
+        recovery_advice = _resume_recovery_advice(recent_rows=rows, force_recent=True)
         if _raw:
-            _output({"count": len(rows), "projects": rows})
+            _output(
+                {
+                    "count": len(rows),
+                    "projects": rows,
+                    "recovery_advice": recovery_advice.model_dump(mode="json"),
+                }
+            )
             return
         _render_recent_resume_summary(rows)
         return
@@ -1709,7 +1924,7 @@ def resume(
 
     payload = init_resume(_get_cwd())
     if _raw:
-        _output(payload)
+        _output(_resume_augmented_payload(payload, cwd=_get_cwd()))
         return
     _render_resume_summary(payload)
 
@@ -4820,6 +5035,17 @@ def _canonical_command_name(command_name: str) -> str:
     return canonical_command_label(command_name)
 
 
+def _command_supports_project_reentry(command: object) -> bool:
+    """Return whether one registry command can recover a project root before execution."""
+    explicit = getattr(command, "project_reentry_capable", None)
+    if isinstance(explicit, bool):
+        return explicit
+    command_name = getattr(command, "name", None)
+    if isinstance(command_name, str):
+        return command_name in _DEFAULT_PROJECT_REENTRY_COMMANDS
+    return False
+
+
 def _resolve_registry_command(command_name: str) -> tuple[object, str]:
     """Resolve a command name through the registry and preserve its public name."""
     from gpd import registry as content_registry
@@ -4838,7 +5064,7 @@ def _build_command_context_preflight(
 
     cwd = _get_cwd()
     command, public_command_name = _resolve_registry_command(command_name)
-    context_cwd = _status_command_cwd(cwd) if command.name in _PROJECT_ROOT_AWARE_STATUS_COMMANDS else cwd
+    context_cwd = _status_command_cwd(cwd) if _command_supports_project_reentry(command) else cwd
     layout = ProjectLayout(context_cwd)
     project_exists = layout.project_md.exists()
     dispatch_note = _runtime_surface_dispatch_note(cwd=cwd)
@@ -4889,7 +5115,7 @@ def _build_command_context_preflight(
         )
 
     if command.context_mode == "project-required":
-        if command.name in _PROJECT_ROOT_AWARE_STATUS_COMMANDS:
+        if _command_supports_project_reentry(command):
             reentry = _status_command_reentry(cwd)
             selected_root = reentry.resolved_project_root or context_cwd
             layout = ProjectLayout(selected_root)

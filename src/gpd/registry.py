@@ -64,6 +64,7 @@ class CommandDef:
     path: str
     source: str  # "commands"
     context_mode: str = "project-required"
+    project_reentry_capable: bool = False
     review_contract: ReviewCommandContract | None = None
 
 
@@ -272,6 +273,21 @@ def _parse_bool_field(raw: object, *, field_name: str, command_name: str, defaul
         if normalized in {"false", "0", "no", "n", "off"}:
             return False
     raise ValueError(f"{field_name} for {command_name} must be a boolean")
+
+
+def _parse_project_reentry_capable(raw: object, *, command_name: str, context_mode: str) -> bool:
+    """Normalize project re-entry metadata and reject invalid command-mode pairings."""
+    value = _parse_bool_field(
+        raw,
+        field_name="project_reentry_capable",
+        command_name=command_name,
+        default=False,
+    )
+    if value and context_mode != "project-required":
+        raise ValueError(
+            f"project_reentry_capable for {command_name} requires context_mode 'project-required'"
+        )
+    return value
 
 
 def _parse_non_negative_int_field(raw: object, *, field_name: str, command_name: str, default: int = 0) -> int:
@@ -663,6 +679,12 @@ def _parse_command_file(path: Path, source: str) -> CommandDef:
         raise ValueError(f"Invalid review-contract in {path}: {exc}") from exc
 
     body = body.strip()
+    context_mode = _parse_context_mode(meta.get("context_mode"), command_name=command_name)
+    project_reentry_capable = _parse_project_reentry_capable(
+        meta.get("project_reentry_capable"),
+        command_name=command_name,
+        context_mode=context_mode,
+    )
 
     return CommandDef(
         name=command_name,
@@ -676,7 +698,8 @@ def _parse_command_file(path: Path, source: str) -> CommandDef:
             field_name="argument-hint",
             owner_name=command_name,
         ),
-        context_mode=_parse_context_mode(meta.get("context_mode"), command_name=command_name),
+        context_mode=context_mode,
+        project_reentry_capable=project_reentry_capable,
         requires=requires,
         allowed_tools=allowed_tools,
         review_contract=review_contract,

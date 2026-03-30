@@ -1984,6 +1984,7 @@ def test_resume_workflow_surfaces_contract_load_and_validation_state() -> None:
     assert "project_contract_validation" in resume_work
     assert "project_contract_load_info" in resume_work
     assert "execution_resume_file_source" in resume_work
+    assert "Compatibility-only handoff cues in the current raw envelope:" in resume_work
     assert "session_resume_file" in resume_work
     assert "machine_change_detected" in resume_work
     assert "machine_change_notice" in resume_work
@@ -2032,12 +2033,13 @@ def test_pause_resume_and_help_wiring_keep_runtime_handoff_and_local_snapshot_bo
     assert "reloads that project's canonical state" in resume_work
     assert "machine-readable intake" in resume_work
     assert "segment_candidates" in resume_work
+    assert "legacy candidate/source labels" in resume_work
     assert "Do NOT invent additional candidates from plan files without summaries, auto-checkpoints, or other ad hoc checkpoints." in resume_work
     assert "/gpd:resume-work" in pause_work
     assert "gpd resume" in pause_work
     assert "gpd resume --recent" in pause_work
-    assert "This is the canonical pause/resume handoff for the current phase." in pause_work
-    assert "context handoff" in pause_work or "session continuity" in pause_work
+    assert "This is the canonical recorded handoff artifact for the current phase." in pause_work
+    assert "continuation handoff artifact" in pause_work or "session continuity" in pause_work
     assert_recovery_ladder_contract(
         help_workflow,
         resume_work_fragments=("/gpd:resume-work",),

@@ -13,7 +13,10 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from gpd.core.constants import ProjectLayout
-from gpd.core.recent_projects import list_recent_projects
+from gpd.core.recent_projects import (
+    classify_recent_project_recovery,
+    list_recent_projects,
+)
 from gpd.core.root_resolution import (
     RootResolutionConfidence,
     normalize_workspace_hint,
@@ -44,10 +47,19 @@ class ProjectReentryCandidate(BaseModel):
     roadmap_exists: bool = False
     project_exists: bool = False
     resume_file: str | None = None
+    resume_target_kind: str | None = None
+    resume_target_recorded_at: str | None = None
     resume_file_available: bool | None = None
     resume_file_reason: str | None = None
     last_session_at: str | None = None
     stopped_at: str | None = None
+    source_kind: str | None = None
+    source_session_id: str | None = None
+    source_segment_id: str | None = None
+    source_transition_id: str | None = None
+    source_recorded_at: str | None = None
+    recovery_phase: str | None = None
+    recovery_plan: str | None = None
     auto_selectable: bool = False
 
 
@@ -91,7 +103,8 @@ def recoverable_project_context(project_root: Path) -> tuple[bool, bool, bool]:
     return state_exists, roadmap_exists, project_exists
 
 
-def _candidate_sort_key(candidate: ProjectReentryCandidate) -> tuple[int, int, int, int, str, str]:
+def _candidate_sort_key(candidate: ProjectReentryCandidate) -> tuple[int, int, int, int, int, str, str]:
+    recovery = classify_recent_project_recovery(candidate)
     source_rank = 0
     if candidate.source == "current_workspace":
         source_rank = 3
@@ -102,10 +115,11 @@ def _candidate_sort_key(candidate: ProjectReentryCandidate) -> tuple[int, int, i
 
     return (
         source_rank,
+        recovery.target_priority,
         1 if _candidate_has_concrete_target(candidate) else 0,
         1 if candidate.resumable else 0,
         1 if candidate.available else 0,
-        candidate.last_session_at or "",
+        recovery.resume_target_recorded_at or candidate.last_session_at or "",
         candidate.project_root,
     )
 
@@ -147,6 +161,7 @@ def _candidate_from_recent_row(row: Mapping[str, object]) -> ProjectReentryCandi
     if not isinstance(resume_file_available, bool):
         resume_file_available = None
     resumable = bool(row.get("resumable", False)) or resume_file_available is True
+    recovery = classify_recent_project_recovery(row)
     candidate = ProjectReentryCandidate(
         source="recent_project",
         project_root=project_root.as_posix(),
@@ -159,22 +174,25 @@ def _candidate_from_recent_row(row: Mapping[str, object]) -> ProjectReentryCandi
         roadmap_exists=roadmap_exists,
         project_exists=project_exists,
         resume_file=resume_file,
+        resume_target_kind=recovery.resume_target_kind,
+        resume_target_recorded_at=recovery.resume_target_recorded_at,
         resume_file_available=resume_file_available,
         resume_file_reason=_normalize_recent_text(row, "resume_file_reason"),
         last_session_at=_normalize_recent_text(row, "last_session_at", "last_seen_at", "last_event_at"),
         stopped_at=_normalize_recent_text(row, "stopped_at"),
+        source_kind=_normalize_recent_text(row, "source_kind"),
+        source_session_id=_normalize_recent_text(row, "source_session_id"),
+        source_segment_id=_normalize_recent_text(row, "source_segment_id"),
+        source_transition_id=_normalize_recent_text(row, "source_transition_id"),
+        source_recorded_at=_normalize_recent_text(row, "source_recorded_at"),
+        recovery_phase=_normalize_recent_text(row, "recovery_phase"),
+        recovery_plan=_normalize_recent_text(row, "recovery_plan"),
     )
     concrete_target = _candidate_has_concrete_target(candidate)
     return candidate.model_copy(
         update={
             "confidence": "high" if concrete_target else "medium" if recoverable else "low",
-            "reason": (
-                "recent project cache entry with confirmed resume target"
-                if concrete_target
-                else "recent project cache entry with recoverable project state"
-                if recoverable
-                else "recent project cache entry without recoverable project state"
-            ),
+            "reason": recovery.candidate_reason(recoverable=recoverable),
         }
     )
 

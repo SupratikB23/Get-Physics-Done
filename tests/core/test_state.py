@@ -2466,8 +2466,14 @@ def test_state_record_session_updates_recent_project_index(
     assert row.last_seen_at is not None
     assert row.stopped_at == "Phase 4 P2"
     assert row.resume_file == "NEXT.md"
+    assert row.resume_target_kind == "handoff"
+    assert row.resume_target_recorded_at == row.last_session_at
     assert row.hostname == "builder-01"
     assert row.platform == "Linux 6.1 x86_64"
+    assert row.source_kind == "continuation.handoff"
+    assert row.source_session_id is None
+    assert row.source_segment_id is None
+    assert row.source_transition_id is None
     assert row.available is True
 
 
@@ -2533,16 +2539,29 @@ def test_save_state_json_projects_recent_project_resume_file_from_canonical_cont
         "segment_status": "paused",
         "transition_id": "transition-03-02",
         "last_result_id": "result-03-02",
+        "source_session_id": "session-03",
+        "updated_at": "2026-03-29T12:30:00+00:00",
     }
 
     save_state_json(cwd, state)
 
     index = _load_recent_projects_index()
     assert len(index.rows) == 1
-    assert index.rows[0].project_root == cwd.resolve(strict=False).as_posix()
-    assert index.rows[0].resume_file == "GPD/phases/03-analysis/.continue-here.md"
-    assert index.rows[0].resume_file_available is True
-    assert index.rows[0].resumable is True
+    row = index.rows[0]
+    assert row.project_root == cwd.resolve(strict=False).as_posix()
+    assert row.resume_file == "GPD/phases/03-analysis/.continue-here.md"
+    assert row.resume_target_kind == "bounded_segment"
+    assert row.resume_target_recorded_at == "2026-03-29T12:30:00+00:00"
+    assert row.resume_file_available is True
+    assert row.resumable is True
+    assert row.stopped_at == "Phase 03 Plan 02"
+    assert row.source_kind == "continuation.bounded_segment"
+    assert row.source_session_id == "session-03"
+    assert row.source_segment_id == "segment-03-02"
+    assert row.source_transition_id == "transition-03-02"
+    assert row.source_recorded_at == "2026-03-29T12:30:00+00:00"
+    assert row.recovery_phase == "03"
+    assert row.recovery_plan == "02"
 
 
 def test_save_state_json_preserves_canonical_continuation_when_session_conflicts(
@@ -2617,6 +2636,8 @@ def test_save_state_markdown_does_not_override_canonical_continuation_session_mi
     assert len(cleared_index.rows) == 1
     assert cleared_index.rows[0].project_root == cwd.resolve(strict=False).as_posix()
     assert cleared_index.rows[0].resume_file is None
+    assert cleared_index.rows[0].resume_target_kind is None
+    assert cleared_index.rows[0].resume_target_recorded_at is None
     assert cleared_index.rows[0].resume_file_available is None
     assert cleared_index.rows[0].resumable is False
 
@@ -2678,6 +2699,7 @@ def test_state_record_session_preserves_existing_recent_project_rows(
     assert len(index.rows) == 2
     assert index.rows[0].stopped_at == "Phase 4 P2"
     assert index.rows[0].resume_file == "NEXT.md"
+    assert index.rows[0].resume_target_kind == "handoff"
     assert index.rows[0].hostname == "builder-02"
     assert index.rows[0].platform == "Linux 6.2 x86_64"
     assert index.rows[1].available is False

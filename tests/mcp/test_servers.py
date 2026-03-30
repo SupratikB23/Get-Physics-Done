@@ -1014,12 +1014,49 @@ class TestSkillsServer:
         assert "schema_documents and contract_documents already include" in result["loading_hint"]
         assert "inject `review_contract` alongside `content`" in result["loading_hint"]
         assert result["context_mode"] == "project-required"
+        assert result["project_reentry_capable"] is False
         assert result["review_contract"] is not None
         assert result["review_contract"]["review_mode"] == "publication"
         assert "## Review Contract" in result["content"]
         assert "review_contract:" in result["content"]
         assert all(not entry["path"].startswith("/") for entry in result["schema_documents"])
         assert all(not entry["path"].startswith("/") for entry in result["contract_documents"])
+
+    def test_get_skill_resume_work_surfaces_project_reentry_metadata(self):
+        from gpd.mcp.servers.skills_server import get_skill
+        from gpd.registry import CommandDef, SkillDef
+
+        command = CommandDef(
+            name="gpd:resume-work",
+            description="Resume.",
+            argument_hint="",
+            requires={},
+            allowed_tools=["file_read", "shell"],
+            content="Resume body.",
+            path="/tmp/gpd-resume-work.md",
+            source="commands",
+            context_mode="project-required",
+            project_reentry_capable=True,
+        )
+        skill = SkillDef(
+            name="gpd-resume-work",
+            description="Resume.",
+            content="Resume body.",
+            category="session",
+            path="/tmp/gpd-resume-work.md",
+            source_kind="command",
+            registry_name="resume-work",
+        )
+
+        with (
+            patch("gpd.mcp.servers.skills_server._resolve_skill", return_value=skill),
+            patch("gpd.mcp.servers.skills_server.content_registry.get_command", return_value=command),
+        ):
+            result = get_skill("gpd-resume-work")
+
+        assert result["context_mode"] == "project-required"
+        assert result["project_reentry_capable"] is True
+        assert result["argument_hint"] == ""
 
     def test_get_skill_agent_uses_primary_agent_content(self):
         from gpd.mcp.servers.skills_server import get_skill

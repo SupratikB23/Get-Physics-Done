@@ -325,6 +325,7 @@ class TestGeminiRoundtrip:
             'description: Check research progress\n'
             'argument-hint: "[--brief] [--full] [--reconcile]"\n'
             "context_mode: project-required\n"
+            "project_reentry_capable: true\n"
             "requires:\n"
             '  files: ["GPD/ROADMAP.md"]\n'
             "allowed-tools:\n"
@@ -344,6 +345,7 @@ class TestGeminiRoundtrip:
         assert "# Source frontmatter preserved for parity:" in content
         assert '# name: gpd:progress' in content
         assert '# argument-hint: "[--brief] [--full] [--reconcile]"' in content
+        assert "# project_reentry_capable: true" in content
         assert "# requires:" in content
         assert '#   files: ["GPD/ROADMAP.md"]' in content
         assert "# allowed-tools:" not in content

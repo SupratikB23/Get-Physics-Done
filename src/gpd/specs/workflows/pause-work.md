@@ -1,5 +1,5 @@
 <purpose>
-Create the canonical `.continue-here.md` handoff surface to preserve complete research state across sessions. This is the phase-level handoff artifact paired with `/gpd:resume-work`, the local `gpd resume` recovery surface, and `gpd resume --recent` when the user needs to rediscover the project first. It is a discovery surface, not the bounded authority store.
+Create the canonical `.continue-here.md` continuation handoff artifact to preserve complete research state across sessions. This phase-level handoff artifact pairs with `/gpd:resume-work`, the local `gpd resume` recovery surface, and `gpd resume --recent` when the user needs to rediscover the project first. It is a recovery artifact, not the bounded authority store.
 </purpose>
 
 <required_reading>
@@ -20,7 +20,7 @@ If no active phase detected, ask user which phase they're pausing work on.
 </step>
 
 <step name="gather">
-**Collect complete research state for handoff:**
+**Collect complete research state for the continuation handoff artifact:**
 
 1. **Current position**: Which phase, which plan, which task
 2. **Derivation state**: Where in the calculation or derivation are we? What equations have been established, what remains to be shown?
@@ -41,7 +41,7 @@ Ask user for clarifications if needed via conversational questions.
 <step name="extract_persistent_state">
 **Extract and append persistent derivation state to `GPD/DERIVATION-STATE.md`:**
 
-Before writing the canonical continue-here handoff surface, extract all equations,
+Before writing the canonical continue-here continuation handoff artifact, extract all equations,
 conventions, and results from the current session and append them to the cumulative
 derivation state file. This file is append-only and never deleted -- it is the
 permanent record that prevents lossy compression across context resets.
@@ -165,7 +165,7 @@ gpd commit "wip: append derivation state from session" --files GPD/DERIVATION-ST
 </step>
 
 <step name="write">
-**Write the canonical handoff surface to `GPD/phases/{phase_slug}/.continue-here.md`** (where `{phase_slug}` is the detected phase directory name from the `detect` step, e.g., `03-dispersion`).
+**Write the canonical continuation handoff artifact to `GPD/phases/{phase_slug}/.continue-here.md`** (where `{phase_slug}` is the detected phase directory name from the `detect` step, e.g., `03-dispersion`).
 
 Use the shared template at `@{GPD_INSTALL_DIR}/templates/continue-here.md` as the authoritative structure. Do not invent alternate tag names when writing the handoff. The canonical file should keep:
 
@@ -203,7 +203,7 @@ timestamp=$(gpd --raw timestamp full)
 ```bash
 # Record session continuity so /gpd:resume-work, local gpd resume,
 # and gpd resume --recent
-# see the same canonical handoff pointer
+# see the same recorded continuation pointer
 gpd state record-session \
   --stopped-at "Paused at task [X]/[Y] in phase [{phase_slug}]" \
   --resume-file "GPD/phases/[{phase_slug}]/.continue-here.md"
@@ -231,8 +231,8 @@ gpd commit "wip: [phase-name] paused at task [X]/[Y]" --files GPD/phases/*/.cont
 ```
 Handoff created: GPD/phases/[{phase_slug}]/.continue-here.md
 
-This is the canonical pause/resume handoff for the current phase. `/gpd:resume-work`
-and the local `gpd resume` recovery surface should now point to the same file.
+This is the canonical recorded handoff artifact for the current phase. `/gpd:resume-work`
+and the local `gpd resume` recovery surface should now point to the same continuation file.
 If the user is not sure which repo to reopen, `gpd resume --recent` should be
 the first discovery step before the per-project resume flow.
 

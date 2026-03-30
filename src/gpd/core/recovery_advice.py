@@ -24,7 +24,21 @@ __all__ = [
     "RecoveryAdvice",
     "RecoveryAdviceAction",
     "build_recovery_advice",
+    "serialize_recovery_orientation",
 ]
+
+RESUME_SURFACE_SCHEMA_VERSION = 1
+_COMPAT_SOURCE_TO_CANONICAL_ORIGIN = {
+    "current_execution": "compat.current_execution",
+    "session_resume_file": "compat.session_resume_file",
+    "interrupted_agent": "interrupted_agent_marker",
+}
+_CANONICAL_ORIGIN_TO_COMPAT_SOURCE = {
+    "continuation.bounded_segment": "current_execution",
+    "compat.current_execution": "current_execution",
+    "continuation.handoff": "session_resume_file",
+    "compat.session_resume_file": "session_resume_file",
+}
 
 
 class RecoveryAdviceAction(BaseModel):
@@ -64,8 +78,15 @@ class RecoveryAdvice(BaseModel):
     current_workspace_has_resume_file: bool = False
     current_workspace_candidate_count: int = 0
     resume_mode: str | None = None
+    active_resume_kind: str | None = None
+    active_resume_origin: str | None = None
+    active_resume_pointer: str | None = None
     execution_resume_file: str | None = None
     execution_resume_file_source: str | None = None
+    continuity_handoff_file: str | None = None
+    recorded_continuity_handoff_file: str | None = None
+    missing_continuity_handoff_file: str | None = None
+    has_continuity_handoff: bool = False
     has_local_recovery_target: bool = False
     segment_candidates_count: int = 0
     has_live_execution: bool = False
@@ -112,28 +133,70 @@ def _candidate_text(candidate: Mapping[str, object], field: str) -> str | None:
     return stripped or None
 
 
-def _has_segment_candidate(
+def _mapping_field(payload: Mapping[str, object], field: str) -> Mapping[str, object] | None:
+    value = payload.get(field)
+    return value if isinstance(value, Mapping) else None
+
+
+def _candidate_kind(candidate: Mapping[str, object]) -> str | None:
+    kind = _candidate_text(candidate, "kind")
+    if kind is not None:
+        return kind
+    origin = _candidate_text(candidate, "origin")
+    if origin == "interrupted_agent_marker":
+        return "interrupted_agent"
+    if origin in {"continuation.bounded_segment", "compat.current_execution"}:
+        return "bounded_segment"
+    if origin in {"continuation.handoff", "compat.session_resume_file"}:
+        return "continuity_handoff"
+    source = _candidate_text(candidate, "source")
+    if source == "interrupted_agent":
+        return "interrupted_agent"
+    if source == "current_execution":
+        return "bounded_segment"
+    if source == "session_resume_file":
+        return "continuity_handoff"
+    return None
+
+
+def _candidate_origin(candidate: Mapping[str, object]) -> str | None:
+    origin = _candidate_text(candidate, "origin")
+    if origin is not None:
+        return origin
+    source = _candidate_text(candidate, "source")
+    if source is None:
+        return None
+    return _COMPAT_SOURCE_TO_CANONICAL_ORIGIN.get(source)
+
+
+def _has_candidate(
     segment_candidates: Sequence[Mapping[str, object]],
     *,
-    source: str,
-    status: str,
+    kind: str | None = None,
+    origin: str | None = None,
+    status: str | None = None,
 ) -> bool:
     for candidate in segment_candidates:
-        if _candidate_text(candidate, "source") != source:
+        if kind is not None and _candidate_kind(candidate) != kind:
             continue
-        if _candidate_text(candidate, "status") != status:
+        if origin is not None and _candidate_origin(candidate) != origin:
+            continue
+        if status is not None and _candidate_text(candidate, "status") != status:
             continue
         return True
     return False
 
 
-def _has_usable_segment_candidate(
+def _has_usable_candidate(
     segment_candidates: Sequence[Mapping[str, object]],
     *,
-    source: str,
+    kind: str | None = None,
+    origin: str | None = None,
 ) -> bool:
     for candidate in segment_candidates:
-        if _candidate_text(candidate, "source") != source:
+        if kind is not None and _candidate_kind(candidate) != kind:
+            continue
+        if origin is not None and _candidate_origin(candidate) != origin:
             continue
         resume_file = _candidate_text(candidate, "resume_file")
         if resume_file is None:
@@ -153,6 +216,140 @@ def _has_usable_candidate_resume_file(segment_candidates: Sequence[Mapping[str, 
             continue
         return True
     return False
+
+
+def _resume_file_source_for_origin(origin: str | None) -> str | None:
+    if origin is None:
+        return None
+    return _CANONICAL_ORIGIN_TO_COMPAT_SOURCE.get(origin)
+
+
+def _derive_active_resume_kind(
+    *,
+    payload: Mapping[str, object],
+    resume_mode: str | None,
+    active_resume_pointer: str | None,
+    continuity_handoff_file: str | None,
+    resume_candidates: Sequence[Mapping[str, object]],
+) -> str | None:
+    explicit = _text_field(payload, "active_resume_kind")
+    if explicit is not None:
+        return explicit
+    explicit_origin = _text_field(payload, "active_resume_origin")
+    if explicit_origin == "interrupted_agent_marker":
+        return "interrupted_agent"
+    if explicit_origin in {"continuation.bounded_segment", "compat.current_execution"}:
+        return "bounded_segment"
+    if explicit_origin in {"continuation.handoff", "compat.session_resume_file"}:
+        return "continuity_handoff"
+    if resume_mode == "bounded_segment":
+        return "bounded_segment"
+    if active_resume_pointer is not None and _text_field(payload, "execution_resume_file_source") == "session_resume_file":
+        return "continuity_handoff"
+    if continuity_handoff_file is not None:
+        return "continuity_handoff"
+    if _has_candidate(resume_candidates, kind="continuity_handoff", status="handoff"):
+        return "continuity_handoff"
+    if _has_candidate(resume_candidates, kind="interrupted_agent", status="interrupted"):
+        return "interrupted_agent"
+    return None
+
+
+def _derive_active_resume_origin(
+    *,
+    payload: Mapping[str, object],
+    active_resume_kind: str | None,
+    continuity_handoff_file: str | None,
+    recorded_continuity_handoff_file: str | None,
+    missing_continuity_handoff_file: str | None,
+) -> str | None:
+    explicit = _text_field(payload, "active_resume_origin")
+    if explicit is not None:
+        return explicit
+
+    legacy_source = _text_field(payload, "execution_resume_file_source")
+    if active_resume_kind == "bounded_segment":
+        if _mapping_field(payload, "active_bounded_segment") is not None:
+            return "continuation.bounded_segment"
+        if _mapping_field(payload, "derived_execution_head") is not None or _mapping_field(payload, "current_execution") is not None:
+            return "compat.current_execution"
+        if legacy_source == "current_execution":
+            return "compat.current_execution"
+        if _mapping_field(payload, "active_execution_segment") is not None:
+            return "continuation.bounded_segment"
+        return "continuation.bounded_segment"
+    if active_resume_kind == "continuity_handoff":
+        if any(
+            value is not None
+            for value in (
+                _text_field(payload, "continuity_handoff_file"),
+                _text_field(payload, "recorded_continuity_handoff_file"),
+                _text_field(payload, "missing_continuity_handoff_file"),
+            )
+        ):
+            return "continuation.handoff"
+        if any(value is not None for value in (continuity_handoff_file, recorded_continuity_handoff_file, missing_continuity_handoff_file)):
+            return "continuation.handoff"
+        if legacy_source == "session_resume_file":
+            return "compat.session_resume_file"
+        return "continuation.handoff"
+    if active_resume_kind == "interrupted_agent":
+        return "interrupted_agent_marker"
+    if legacy_source == "current_execution":
+        return "compat.current_execution"
+    if legacy_source == "session_resume_file":
+        return "compat.session_resume_file"
+    return None
+
+
+def serialize_recovery_orientation(advice: RecoveryAdvice) -> dict[str, object]:
+    """Return the explicit public orientation surface for runtime hints."""
+
+    return {
+        "resume_surface_schema_version": RESUME_SURFACE_SCHEMA_VERSION,
+        "mode": advice.mode,
+        "status": advice.status,
+        "decision_source": advice.decision_source,
+        "primary_command": advice.primary_command,
+        "primary_reason": advice.primary_reason,
+        "continue_command": advice.continue_command,
+        "continue_reason": advice.continue_reason,
+        "fast_next_command": advice.fast_next_command,
+        "fast_next_reason": advice.fast_next_reason,
+        "workspace_root": advice.workspace_root,
+        "project_root": advice.project_root,
+        "project_root_source": advice.project_root_source,
+        "project_root_auto_selected": advice.project_root_auto_selected,
+        "project_reentry_mode": advice.project_reentry_mode,
+        "project_reentry_requires_selection": advice.project_reentry_requires_selection,
+        "project_reentry_reason": advice.project_reentry_reason,
+        "current_workspace_resumable": advice.current_workspace_resumable,
+        "current_workspace_has_recovery": advice.current_workspace_has_recovery,
+        "current_workspace_has_resume_file": advice.current_workspace_has_resume_file,
+        "current_workspace_candidate_count": advice.current_workspace_candidate_count,
+        "resume_mode": advice.resume_mode,
+        "active_resume_kind": advice.active_resume_kind,
+        "active_resume_origin": advice.active_resume_origin,
+        "active_resume_pointer": advice.active_resume_pointer,
+        "execution_resume_file": advice.execution_resume_file,
+        "execution_resume_file_source": advice.execution_resume_file_source,
+        "continuity_handoff_file": advice.continuity_handoff_file,
+        "recorded_continuity_handoff_file": advice.recorded_continuity_handoff_file,
+        "missing_continuity_handoff_file": advice.missing_continuity_handoff_file,
+        "has_continuity_handoff": advice.has_continuity_handoff,
+        "has_local_recovery_target": advice.has_local_recovery_target,
+        "segment_candidates_count": advice.segment_candidates_count,
+        "has_live_execution": advice.has_live_execution,
+        "execution_resumable": advice.execution_resumable,
+        "has_interrupted_agent": advice.has_interrupted_agent,
+        "recent_projects_count": advice.recent_projects_count,
+        "resumable_projects_count": advice.resumable_projects_count,
+        "available_projects_count": advice.available_projects_count,
+        "machine_change_notice": advice.machine_change_notice,
+        # Compatibility aliases for existing consumers while canonical fields roll out.
+        "has_session_resume_file": advice.has_session_resume_file,
+        "missing_session_resume_file": advice.missing_session_resume_file,
+    }
 
 
 def _status(
@@ -278,68 +475,112 @@ def build_recovery_advice(
     resumable_projects_count = sum(1 for row in rows if bool(_row_value(row, "resumable", False)))
     available_projects_count = sum(1 for row in rows if bool(_row_value(row, "available", False)))
 
-    segment_candidates_raw = payload.get("segment_candidates")
+    segment_candidates_raw = payload.get("resume_candidates")
+    if not isinstance(segment_candidates_raw, list):
+        segment_candidates_raw = payload.get("segment_candidates")
     segment_candidates = [item for item in segment_candidates_raw if isinstance(item, Mapping)] if isinstance(segment_candidates_raw, list) else []
 
     resume_mode = _text_field(payload, "resume_mode")
-    execution_resume_file = _text_field(payload, "execution_resume_file")
-    execution_resume_file_source = _text_field(payload, "execution_resume_file_source")
-    session_resume_file = _text_field(payload, "session_resume_file")
-    recorded_session_resume_file = _text_field(payload, "recorded_session_resume_file")
+    continuity_handoff_file = _text_field(payload, "continuity_handoff_file") or _text_field(payload, "session_resume_file")
+    recorded_continuity_handoff_file = _text_field(payload, "recorded_continuity_handoff_file") or _text_field(payload, "recorded_session_resume_file")
+    missing_continuity_handoff_file = _text_field(payload, "missing_continuity_handoff_file") or _text_field(payload, "missing_session_resume_file")
+    active_resume_pointer = _text_field(payload, "active_resume_pointer") or _text_field(payload, "execution_resume_file")
+    active_resume_kind = _derive_active_resume_kind(
+        payload=payload,
+        resume_mode=resume_mode,
+        active_resume_pointer=active_resume_pointer,
+        continuity_handoff_file=continuity_handoff_file,
+        resume_candidates=segment_candidates,
+    )
+    active_resume_origin = _derive_active_resume_origin(
+        payload=payload,
+        active_resume_kind=active_resume_kind,
+        continuity_handoff_file=continuity_handoff_file,
+        recorded_continuity_handoff_file=recorded_continuity_handoff_file,
+        missing_continuity_handoff_file=missing_continuity_handoff_file,
+    )
+    execution_resume_file = active_resume_pointer
+    execution_resume_file_source = _resume_file_source_for_origin(active_resume_origin) or _text_field(
+        payload,
+        "execution_resume_file_source",
+    )
     workspace_root = _text_field(payload, "workspace_root")
     project_root = _text_field(payload, "project_root")
     project_root_source = _text_field(payload, "project_root_source")
     project_root_auto_selected = _bool_field(payload, "project_root_auto_selected")
     project_reentry_mode = _text_field(payload, "project_reentry_mode")
     project_reentry_requires_selection = _bool_field(payload, "project_reentry_requires_selection")
+    active_bounded_segment = _mapping_field(payload, "active_bounded_segment")
+    legacy_active_execution_segment = _mapping_field(payload, "active_execution_segment")
+    if active_bounded_segment is None and active_resume_kind == "bounded_segment" and legacy_active_execution_segment is not None:
+        active_bounded_segment = legacy_active_execution_segment
+    derived_execution_head = _mapping_field(payload, "derived_execution_head") or _mapping_field(payload, "current_execution")
 
-    has_bounded_segment_candidate = _has_usable_segment_candidate(
-        segment_candidates,
-        source="current_execution",
-    )
-    execution_resumable = (
-        _bool_field(payload, "execution_resumable")
-        or resume_mode == "bounded_segment"
-        or has_bounded_segment_candidate
-    )
+    has_bounded_segment_candidate = _has_usable_candidate(segment_candidates, kind="bounded_segment")
+    if active_resume_kind == "bounded_segment":
+        execution_resumable = bool(
+            execution_resume_file
+            or has_bounded_segment_candidate
+            or _bool_field(payload, "execution_resumable")
+            or resume_mode == "bounded_segment"
+        )
+    elif active_resume_kind == "continuity_handoff":
+        execution_resumable = False
+    else:
+        execution_resumable = (
+            _bool_field(payload, "execution_resumable")
+            or resume_mode == "bounded_segment"
+            or has_bounded_segment_candidate
+        )
     has_interrupted_agent = (
         _bool_field(payload, "has_interrupted_agent")
+        or active_resume_kind == "interrupted_agent"
         or resume_mode == "interrupted_agent"
-        or _has_segment_candidate(
+        or _has_candidate(
             segment_candidates,
-            source="interrupted_agent",
+            kind="interrupted_agent",
             status="interrupted",
         )
     )
-    has_live_execution = _bool_field(payload, "has_live_execution") or isinstance(payload.get("active_execution_segment"), Mapping)
-    has_session_resume_file = (
-        session_resume_file is not None
+    has_live_execution = (
+        _bool_field(payload, "has_live_execution")
+        or derived_execution_head is not None
         or (
-            execution_resume_file_source == "session_resume_file"
+            legacy_active_execution_segment is not None
+            and active_resume_kind != "bounded_segment"
+            and not execution_resumable
+        )
+    )
+    has_continuity_handoff = (
+        continuity_handoff_file is not None
+        or (
+            active_resume_kind == "continuity_handoff"
             and execution_resume_file is not None
         )
-        or _has_segment_candidate(
+        or _has_candidate(
             segment_candidates,
-            source="session_resume_file",
+            kind="continuity_handoff",
             status="handoff",
         )
     )
-    missing_session_resume_file = (
-        _text_field(payload, "missing_session_resume_file") is not None
-        or _has_segment_candidate(
+    missing_continuity_handoff = (
+        missing_continuity_handoff_file is not None
+        or _has_candidate(
             segment_candidates,
-            source="session_resume_file",
+            kind="continuity_handoff",
             status="missing",
         )
         or (
-            recorded_session_resume_file is not None
-            and session_resume_file is None
-            and not has_session_resume_file
+            recorded_continuity_handoff_file is not None
+            and continuity_handoff_file is None
+            and not has_continuity_handoff
         )
     )
+    has_session_resume_file = has_continuity_handoff
+    missing_session_resume_file = missing_continuity_handoff
     current_workspace_has_resume_file = (
         execution_resume_file is not None
-        or session_resume_file is not None
+        or continuity_handoff_file is not None
         or _has_usable_candidate_resume_file(segment_candidates)
     )
     machine_change_notice = _text_field(payload, "machine_change_notice")
@@ -348,17 +589,17 @@ def build_recovery_advice(
         segment_candidates
         or execution_resumable
         or has_interrupted_agent
-        or has_session_resume_file
-        or missing_session_resume_file
+        or has_continuity_handoff
+        or missing_continuity_handoff
         or has_live_execution
         or machine_change_notice is not None
-        or recorded_session_resume_file is not None
+        or recorded_continuity_handoff_file is not None
         or execution_resume_file is not None
     )
     has_local_recovery_target = bool(
         execution_resumable
         or has_interrupted_agent
-        or has_session_resume_file
+        or has_continuity_handoff
     )
     inferred_reentry_mode = project_reentry_mode or (
         "auto-recent-project"
@@ -379,8 +620,8 @@ def build_recovery_advice(
         execution_resumable=execution_resumable,
         has_interrupted_agent=has_interrupted_agent,
         has_live_execution=has_live_execution,
-        has_session_resume_file=has_session_resume_file,
-        missing_session_resume_file=missing_session_resume_file,
+        has_session_resume_file=has_continuity_handoff,
+        missing_session_resume_file=missing_continuity_handoff,
         current_workspace_has_recovery=current_workspace_has_recovery,
         recent_projects_count=recent_projects_count,
     )
@@ -469,8 +710,15 @@ def build_recovery_advice(
         current_workspace_has_resume_file=current_workspace_has_resume_file,
         current_workspace_candidate_count=len(segment_candidates),
         resume_mode=resume_mode,
+        active_resume_kind=active_resume_kind,
+        active_resume_origin=active_resume_origin,
+        active_resume_pointer=active_resume_pointer,
         execution_resume_file=execution_resume_file,
         execution_resume_file_source=execution_resume_file_source,
+        continuity_handoff_file=continuity_handoff_file,
+        recorded_continuity_handoff_file=recorded_continuity_handoff_file,
+        missing_continuity_handoff_file=missing_continuity_handoff_file,
+        has_continuity_handoff=has_continuity_handoff,
         has_local_recovery_target=has_local_recovery_target,
         segment_candidates_count=len(segment_candidates),
         has_live_execution=has_live_execution,

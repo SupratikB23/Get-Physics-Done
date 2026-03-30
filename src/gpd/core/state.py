@@ -182,8 +182,10 @@ def _project_recent_project_entry(
         return None
 
     session = state_obj.get("session") if isinstance(state_obj.get("session"), dict) else {}
+    position = state_obj.get("position") if isinstance(state_obj.get("position"), dict) else {}
     continuation = projection.continuation
     handoff = continuation.handoff
+    bounded_segment = continuation.bounded_segment
     machine = continuation.machine
 
     def _pick(*values: object) -> str | None:
@@ -193,17 +195,69 @@ def _project_recent_project_entry(
                 return text
         return None
 
-    last_session_at = _pick(
+    def _phase_plan_stop_label(
+        phase: str | None,
+        plan: str | None,
+        *,
+        fallback: str | None,
+    ) -> str | None:
+        phase_text = _optional_state_text(phase)
+        plan_text = _optional_state_text(plan)
+        if phase_text is None and plan_text is None:
+            return fallback
+        if phase_text is not None and not phase_text.lower().startswith("phase"):
+            phase_text = f"Phase {phase_text}"
+        if plan_text is not None and not plan_text.lower().startswith("plan"):
+            plan_text = f"Plan {plan_text}"
+        label = " ".join(part for part in (phase_text, plan_text) if part is not None).strip()
+        return label or fallback
+
+    target_kind: str | None = None
+    if bounded_segment is not None and bounded_segment.resume_file is not None:
+        target_kind = "bounded_segment"
+    elif handoff.resume_file is not None:
+        target_kind = "handoff"
+
+    handoff_recorded_at = _pick(
         handoff.recorded_at,
         machine.recorded_at,
         session.get("last_date") if isinstance(session, dict) else None,
+    )
+    bounded_recorded_at = _pick(
+        bounded_segment.updated_at if bounded_segment is not None else None,
+        handoff_recorded_at,
+    )
+    resume_target_recorded_at = (
+        bounded_recorded_at
+        if target_kind == "bounded_segment"
+        else handoff_recorded_at
+        if target_kind == "handoff"
+        else None
+    )
+
+    last_session_at = _pick(
+        resume_target_recorded_at,
         existing.last_session_at if existing is not None else None,
     )
     last_seen_at = last_session_at or (existing.last_seen_at if existing is not None else None)
-    stopped_at = _pick(
-        handoff.stopped_at,
-        session.get("stopped_at") if isinstance(session, dict) else None,
-        existing.stopped_at if existing is not None else None,
+    recovery_phase = _pick(
+        bounded_segment.phase if bounded_segment is not None else None,
+        position.get("current_phase") if isinstance(position, dict) else None,
+        existing.recovery_phase if existing is not None else None,
+    )
+    recovery_plan = _pick(
+        bounded_segment.plan if bounded_segment is not None else None,
+        position.get("current_plan") if isinstance(position, dict) else None,
+        existing.recovery_plan if existing is not None else None,
+    )
+    stopped_at = _phase_plan_stop_label(
+        recovery_phase if target_kind == "bounded_segment" else None,
+        recovery_plan if target_kind == "bounded_segment" else None,
+        fallback=_pick(
+            handoff.stopped_at,
+            session.get("stopped_at") if isinstance(session, dict) else None,
+            existing.stopped_at if existing is not None else None,
+        ),
     )
     hostname = _pick(
         machine.hostname,
@@ -216,10 +270,28 @@ def _project_recent_project_entry(
         existing.platform if existing is not None else None,
     )
     resume_file = None
-    if continuation.bounded_segment is not None and continuation.bounded_segment.resume_file is not None:
-        resume_file = continuation.bounded_segment.resume_file
-    elif continuation.handoff.resume_file is not None:
-        resume_file = continuation.handoff.resume_file
+    if bounded_segment is not None and bounded_segment.resume_file is not None:
+        resume_file = bounded_segment.resume_file
+    elif handoff.resume_file is not None:
+        resume_file = handoff.resume_file
+
+    source_kind = (
+        "continuation.bounded_segment"
+        if target_kind == "bounded_segment"
+        else "continuation.handoff"
+        if target_kind == "handoff"
+        else None
+    )
+    source_session_id = bounded_segment.source_session_id if bounded_segment is not None and target_kind == "bounded_segment" else None
+    source_segment_id = bounded_segment.segment_id if bounded_segment is not None and target_kind == "bounded_segment" else None
+    source_transition_id = bounded_segment.transition_id if bounded_segment is not None and target_kind == "bounded_segment" else None
+    source_recorded_at = resume_target_recorded_at
+    source_event_id = None
+    if existing is not None and existing.resume_file == resume_file and existing.resume_target_kind == target_kind:
+        if target_kind != "bounded_segment" or (
+            existing.source_segment_id == source_segment_id and existing.source_transition_id == source_transition_id
+        ):
+            source_event_id = existing.source_event_id
 
     return RecentProjectEntry(
         project_root=cwd.resolve(strict=False).as_posix(),
@@ -227,10 +299,20 @@ def _project_recent_project_entry(
         last_seen_at=last_seen_at,
         stopped_at=stopped_at,
         resume_file=resume_file,
+        resume_target_kind=target_kind,
+        resume_target_recorded_at=resume_target_recorded_at,
         resume_file_available=None,
         resume_file_reason=None,
         hostname=hostname,
         platform=platform,
+        source_kind=source_kind,
+        source_session_id=source_session_id,
+        source_segment_id=source_segment_id,
+        source_transition_id=source_transition_id,
+        source_event_id=source_event_id,
+        source_recorded_at=source_recorded_at,
+        recovery_phase=recovery_phase,
+        recovery_plan=recovery_plan,
         resumable=bool(resume_file),
         available=True,
         availability_reason=None,

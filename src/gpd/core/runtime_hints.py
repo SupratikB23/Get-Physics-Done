@@ -18,7 +18,11 @@ from gpd.core.costs import build_cost_summary, resolve_cost_advisory
 from gpd.core.observability import derive_execution_visibility
 from gpd.core.project_reentry import resolve_project_reentry
 from gpd.core.recent_projects import list_recent_projects
-from gpd.core.recovery_advice import RecoveryAdvice, build_recovery_advice
+from gpd.core.recovery_advice import (
+    RecoveryAdvice,
+    build_recovery_advice,
+    serialize_recovery_orientation,
+)
 from gpd.core.root_resolution import normalize_workspace_hint, resolve_project_roots
 from gpd.core.surface_phrases import (
     command_follow_up_action,
@@ -355,7 +359,7 @@ def build_runtime_hint_payload(
         if include_recovery
         else {}
     )
-    orientation = recovery_advice.model_dump(mode="json") if recovery_advice is not None else {}
+    orientation = serialize_recovery_orientation(recovery_advice) if recovery_advice is not None else {}
     if include_recovery:
         orientation["workspace_root"] = workspace_hint.as_posix()
         orientation["project_root"] = _path_text(reentry.resolved_project_root)

@@ -126,13 +126,13 @@ Wait for user decision.
 
 <step name="cleanup_handoff">
 
-Check for lingering handoffs:
+Check for lingering continuation handoff artifacts:
 
 ```bash
 ls ${PHASE_DIR}/.continue-here*.md 2>/dev/null
 ```
 
-If found, delete them — phase is complete, handoffs are stale.
+If found, delete them — phase is complete, so those continuation handoff artifacts are stale.
 
 </step>
 

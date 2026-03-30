@@ -226,18 +226,23 @@ def test_build_runtime_hint_payload_merges_source_sections_and_actions(tmp_path:
     assert payload.recovery["current_project_summary"] == payload.recovery["current_project"]["summary"]
     assert "resume file ready" in payload.recovery["current_project_summary"]
     assert "current_workspace" not in payload.recovery
+    assert payload.orientation["resume_surface_schema_version"] == 1
     assert payload.orientation["mode"] == "current-workspace"
     assert payload.orientation["primary_command"] == "gpd resume"
     assert "bounded resumable execution segment" in str(payload.orientation["primary_reason"])
     assert payload.orientation["continue_reason"] == recovery_continue_reason(mode="current-workspace")
     assert payload.orientation["fast_next_reason"] == recovery_fast_next_reason()
     assert payload.orientation["resume_mode"] == "bounded_segment"
+    assert payload.orientation["active_resume_kind"] == "bounded_segment"
+    assert payload.orientation["active_resume_origin"] == "derived_execution_head"
+    assert payload.orientation["active_resume_pointer"] == "GPD/phases/03/.continue-here.md"
     assert payload.orientation["execution_resume_file"] == "GPD/phases/03/.continue-here.md"
     assert payload.orientation["execution_resume_file_source"] == "current_execution"
     assert payload.orientation["segment_candidates_count"] >= 1
     assert payload.orientation["has_local_recovery_target"] is True
     assert "resume-work" in str(payload.orientation["continue_command"])
     assert "suggest-next" in str(payload.orientation["fast_next_command"])
+    assert "actions" not in payload.orientation
 
     assert payload.cost["project_root"] == project.resolve(strict=False).as_posix()
     assert "workspace_root" not in payload.cost
@@ -772,6 +777,64 @@ def test_build_runtime_hint_payload_uses_canonical_bounded_resume_mode_without_l
     assert payload.orientation["current_workspace_resumable"] is True
     assert payload.orientation["has_local_recovery_target"] is True
     assert any(action.startswith("Run `gpd resume`") for action in payload.next_actions)
+    assert any("resume-work" in action for action in payload.next_actions)
+    assert any("suggest-next" in action for action in payload.next_actions)
+
+
+def test_build_runtime_hint_payload_prefers_canonical_continuity_fields_over_conflicting_legacy_execution_flags(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _bootstrap_project(tmp_path)
+    data_root = tmp_path / "data"
+    handoff = project / "GPD" / "phases" / "09" / ".continue-here.md"
+    handoff.parent.mkdir(parents=True, exist_ok=True)
+    handoff.write_text("resume\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "gpd.core.runtime_hints._resume_context",
+        lambda _cwd: {
+            "planning_exists": True,
+            "state_exists": True,
+            "roadmap_exists": True,
+            "project_exists": True,
+            "resume_candidates": [
+                {
+                    "kind": "continuity_handoff",
+                    "origin": "continuation.handoff",
+                    "status": "handoff",
+                    "resume_file": "GPD/phases/09/.continue-here.md",
+                }
+            ],
+            "active_resume_kind": "continuity_handoff",
+            "active_resume_origin": "continuation.handoff",
+            "active_resume_pointer": "GPD/phases/09/.continue-here.md",
+            "continuity_handoff_file": "GPD/phases/09/.continue-here.md",
+            "recorded_continuity_handoff_file": "GPD/phases/09/.continue-here.md",
+            "execution_resumable": True,
+            "execution_resume_file": "GPD/phases/09/legacy-live.md",
+            "execution_resume_file_source": "current_execution",
+            "has_live_execution": True,
+        },
+    )
+
+    payload = build_runtime_hint_payload(
+        project,
+        data_root=data_root,
+        include_cost=False,
+        include_workflow_presets=False,
+    )
+
+    assert payload.orientation["resume_surface_schema_version"] == 1
+    assert payload.orientation["status"] == "session-handoff"
+    assert payload.orientation["active_resume_kind"] == "continuity_handoff"
+    assert payload.orientation["active_resume_origin"] == "continuation.handoff"
+    assert payload.orientation["active_resume_pointer"] == "GPD/phases/09/.continue-here.md"
+    assert payload.orientation["continuity_handoff_file"] == "GPD/phases/09/.continue-here.md"
+    assert payload.orientation["execution_resumable"] is False
+    assert payload.orientation["execution_resume_file"] == "GPD/phases/09/.continue-here.md"
+    assert payload.orientation["execution_resume_file_source"] == "session_resume_file"
+    assert payload.orientation["has_continuity_handoff"] is True
+    assert payload.orientation["has_session_resume_file"] is True
+    assert "actions" not in payload.orientation
     assert any("resume-work" in action for action in payload.next_actions)
     assert any("suggest-next" in action for action in payload.next_actions)
 

@@ -1033,6 +1033,19 @@ class TestInitResume:
         ctx = init_resume(tmp_path)
         assert ctx["has_interrupted_agent"] is True
         assert ctx["interrupted_agent_id"] == "agent-123"
+        assert ctx["active_resume_kind"] == "interrupted_agent"
+        assert ctx["active_resume_origin"] == "interrupted_agent"
+        assert ctx["active_resume_pointer"] == "agent-123"
+        assert ctx["resume_candidates"] == [
+            {
+                "source": "interrupted_agent",
+                "status": "interrupted",
+                "agent_id": "agent-123",
+                "kind": "interrupted_agent",
+                "origin": "interrupted_agent",
+                "resume_pointer": "agent-123",
+            }
+        ]
 
     def test_json_only_state_counts_as_existing(self, tmp_path: Path) -> None:
         from gpd.core.state import default_state_dict
@@ -1061,9 +1074,20 @@ class TestInitResume:
 
         ctx = init_resume(tmp_path)
 
+        assert ctx["resume_surface_schema_version"] == 1
         assert ctx["resume_mode"] == "bounded_segment"
+        assert ctx["active_resume_kind"] == "bounded_segment"
+        assert ctx["active_resume_origin"] == "derived_execution_head"
+        assert ctx["active_resume_pointer"] == "GPD/phases/03-analysis/.continue-here.md"
+        assert ctx["active_bounded_segment"]["segment_id"] == "seg-4"
+        assert ctx["derived_execution_head"]["segment_id"] == "seg-4"
         assert ctx["active_execution_segment"]["segment_id"] == "seg-4"
         assert ctx["segment_candidates"][0]["source"] == "current_execution"
+        assert "kind" not in ctx["segment_candidates"][0]
+        assert "origin" not in ctx["segment_candidates"][0]
+        assert ctx["resume_candidates"][0]["kind"] == "bounded_segment"
+        assert ctx["resume_candidates"][0]["origin"] == "derived_execution_head"
+        assert ctx["resume_candidates"][0]["resume_pointer"] == "GPD/phases/03-analysis/.continue-here.md"
 
     def test_normalizes_live_execution_phase_plan_and_checkpoint_reason(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)
@@ -1174,7 +1198,11 @@ class TestInitResume:
         ctx = init_resume(tmp_path)
 
         assert ctx["resume_mode"] is None
+        assert ctx["active_bounded_segment"] is None
+        assert ctx["derived_execution_head"]["segment_id"] == "seg-4"
+        assert ctx["active_resume_kind"] is None
         assert ctx["segment_candidates"] == []
+        assert ctx["resume_candidates"] == []
         assert ctx["active_execution_segment"]["segment_id"] == "seg-4"
 
 # ─── init_verify_work ─────────────────────────────────────────────────────────
