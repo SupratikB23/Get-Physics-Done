@@ -44,6 +44,7 @@ __all__ = [
     "assert_beginner_router_bridge_contract",
     "assert_beginner_startup_routing_contract",
     "assert_recovery_ladder_contract",
+    "assert_runtime_reset_rediscovery_contract",
     "assert_resume_authority_contract",
     "assert_runtime_readiness_handoff_contract",
     "assert_settings_local_terminal_follow_up_contract",
@@ -812,6 +813,40 @@ def assert_recovery_ladder_contract(
             "usable recovery target",
         ),
         label="pause/resume handoff semantics",
+    )
+
+
+def assert_runtime_reset_rediscovery_contract(content: str) -> None:
+    assert "/clear" in content
+    assert "gpd resume" in content
+    assert "gpd resume --recent" in content
+    _assert_contains_any(
+        content,
+        (
+            "fresh-context reset",
+            "fresh context window",
+            "reset the runtime window",
+            "reset the runtime to a fresh context window",
+            "`/clear` first, then run `{next command}`",
+        ),
+        label="runtime reset wording",
+    )
+    _assert_contains_any(
+        content,
+        (
+            "normal terminal",
+            "your normal terminal",
+            "before reopening the runtime",
+        ),
+        label="rediscovery-before-runtime boundary",
+    )
+    _assert_contains_any(
+        content,
+        (
+            "not as a recovery step",
+            "instead of implying that `/clear` performs recovery",
+        ),
+        label="reset-not-recovery wording",
     )
 
 

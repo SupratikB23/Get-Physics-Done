@@ -22,6 +22,7 @@ from tests.doc_surface_contracts import (
     assert_help_workflow_runtime_reference_contract,
     assert_recovery_ladder_contract,
     assert_resume_authority_contract,
+    assert_runtime_reset_rediscovery_contract,
 )
 
 
@@ -356,12 +357,10 @@ def test_agent_infrastructure_requires_concrete_next_actions_and_continuation_bl
 def test_continuation_format_scopes_clear_to_resolved_runtime_followups() -> None:
     continuation = (REFERENCES_DIR / "orchestration" / "continuation-format.md").read_text(encoding="utf-8")
 
+    assert_runtime_reset_rediscovery_contract(continuation)
     assert "This format is a presentation layer only" in continuation
     assert "`/clear` first, then run `{next command}`" in continuation
     assert "If project rediscovery is still required" in continuation
-    assert "gpd resume" in continuation
-    assert "gpd resume --recent" in continuation
-    assert "instead of implying that `/clear` performs recovery" in continuation
 
 
 def test_executor_completion_examples_use_command_based_next_actions() -> None:

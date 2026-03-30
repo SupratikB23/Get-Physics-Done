@@ -17,6 +17,7 @@ from tests.doc_surface_contracts import (
     assert_help_workflow_runtime_reference_contract,
     assert_recovery_ladder_contract,
     assert_resume_authority_contract,
+    assert_runtime_reset_rediscovery_contract,
     assert_start_workflow_router_contract,
     assert_tour_command_surface_contract,
     assert_unattended_readiness_contract,
@@ -288,6 +289,7 @@ def test_prompt_docs_keep_wolfram_as_shared_capability_not_runtime_config_surfac
 def test_suggest_next_prompt_uses_real_cli_subcommand() -> None:
     suggest_prompt = (REPO_ROOT / "src/gpd/commands/suggest-next.md").read_text(encoding="utf-8")
 
+    assert_runtime_reset_rediscovery_contract(suggest_prompt)
     assert "Uses `gpd --raw suggest`" in suggest_prompt
     assert "Local CLI fallback: `gpd --raw suggest`" in suggest_prompt
     assert (
@@ -300,8 +302,6 @@ def test_suggest_next_prompt_uses_real_cli_subcommand() -> None:
         "If you still need to rediscover the project first, do that in your normal terminal with `gpd resume` for the current workspace or `gpd resume --recent` for a different project before reopening the runtime."
         in suggest_prompt
     )
-    assert "gpd resume --recent" in suggest_prompt
-    assert "before reopening the runtime" in suggest_prompt
     assert (
         "`/clear` first -> fresh context window, then `{command}`; if you still need to rediscover the project, use `gpd resume --recent` before reopening the runtime"
         not in suggest_prompt
