@@ -5,11 +5,13 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pybtex.database import BibliographyData, Entry, Person
 
 from gpd.mcp.paper.bibliography import (
     BibliographyAudit,
     CitationSource,
     audit_citation_source,
+    audit_bibliography,
     build_bibliography,
     build_bibliography_with_audit,
     citation_keys_for_sources,
@@ -271,6 +273,80 @@ class TestBibliographyAudit:
         assert entry.verification_status == "unverified"
         assert entry.errors
         assert "no results" in entry.errors[0]
+
+    def test_audit_bibliography_covers_plain_bibtex_entries(self):
+        bib = BibliographyData()
+        entry = Entry("misc", fields=[("title", "Plain Reference"), ("year", "2024"), ("url", "https://example.com")])
+        entry.persons["author"] = [Person("Doe, J.")]
+        bib.entries["doe2024"] = entry
+
+        audit = audit_bibliography(bib)
+
+        assert audit.total_sources == 1
+        assert audit.resolved_sources == 1
+        assert audit.unverified_sources == 1
+        record = audit.entries[0]
+        assert record.key == "doe2024"
+        assert record.reference_id is None
+        assert record.title == "Plain Reference"
+        assert record.source_type == "tool"
+        assert record.resolution_status == "provided"
+        assert record.verification_status == "unverified"
+        assert record.canonical_identifiers == ["url:https://example.com"]
+        assert record.missing_core_fields == []
+
+    def test_audit_bibliography_combines_source_and_plain_entries(self):
+        source = CitationSource(
+            source_type="paper",
+            reference_id="lit-ref-einstein-1905",
+            title="Relativity",
+            authors=["A. Einstein"],
+            year="1905",
+            doi="10.1002/andp.19053221004",
+        )
+        bib = create_bibliography([source])
+
+        plain_entry = Entry("misc", fields=[("title", "Project Note"), ("year", "2024"), ("url", "https://example.com")])
+        plain_entry.persons["author"] = [Person("Doe, J.")]
+        bib.entries["doe2024"] = plain_entry
+
+        audit = audit_bibliography(bib, citation_sources=[source], enrich=False)
+
+        assert audit.total_sources == 2
+        assert [entry.key for entry in audit.entries] == list(bib.entries.keys())
+        source_record = audit.entries[0]
+        assert source_record.reference_id == "lit-ref-einstein-1905"
+        assert source_record.canonical_identifiers == ["doi:10.1002/andp.19053221004"]
+        plain_record = audit.entries[1]
+        assert plain_record.reference_id is None
+        assert plain_record.title == "Project Note"
+        assert plain_record.verification_status == "unverified"
+        assert plain_record.canonical_identifiers == ["url:https://example.com"]
+
+    def test_audit_bibliography_accepts_precomputed_source_audit_entries(self):
+        source = CitationSource(
+            source_type="paper",
+            reference_id="lit-ref-einstein-1905",
+            title="Relativity",
+            authors=["A. Einstein"],
+            year="1905",
+            doi="10.1002/andp.19053221004",
+        )
+        source_bib, source_audit = build_bibliography_with_audit([source], enrich=False)
+        plain_entry = Entry("misc", fields=[("title", "Project Note"), ("year", "2024"), ("url", "https://example.com")])
+        plain_entry.persons["author"] = [Person("Doe, J.")]
+        source_bib.entries["doe2024"] = plain_entry
+
+        audit = audit_bibliography(source_bib, source_audit_entries=list(source_audit.entries))
+
+        assert audit.total_sources == 2
+        assert [entry.key for entry in audit.entries] == list(source_bib.entries.keys())
+        source_record = audit.entries[0]
+        assert source_record.reference_id == "lit-ref-einstein-1905"
+        assert source_record.verification_status == source_audit.entries[0].verification_status
+        plain_record = audit.entries[1]
+        assert plain_record.reference_id is None
+        assert plain_record.title == "Project Note"
 
     def test_write_bibliography_audit(self, tmp_path):
         audit = BibliographyAudit(
