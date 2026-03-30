@@ -320,6 +320,25 @@ def test_result_upsert_updates_existing_result_by_description_match():
     assert len(state["intermediate_results"]) == 1
 
 
+def test_result_upsert_reuses_unique_description_match_when_preferred_id_is_new():
+    state: dict = {}
+    result_add(state, result_id="R-01", description="critical coupling", phase="1")
+
+    result = result_upsert(
+        state,
+        result_id="R-new",
+        description="Critical coupling",
+        validity="g << 1",
+        phase="1",
+    )
+
+    assert result.action == "updated"
+    assert result.matched_by == "description"
+    assert result.result.id == "R-01"
+    assert result.result.validity == "g << 1"
+    assert len(state["intermediate_results"]) == 1
+
+
 def test_result_upsert_raises_for_ambiguous_description_match():
     state: dict = {}
     result_add(state, result_id="R-01", description="critical coupling", phase="1")

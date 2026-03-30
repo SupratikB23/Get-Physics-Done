@@ -2178,6 +2178,14 @@ result_app = typer.Typer(help="Intermediate results with dependency tracking")
 app.add_typer(result_app, name="result")
 
 
+def _split_depends_on_option(depends_on: str | None) -> list[str] | None:
+    """Parse a comma-separated dependency list, dropping whitespace and empty tokens."""
+    if depends_on is None:
+        return None
+    parsed = [item.strip() for item in depends_on.split(",")]
+    return [item for item in parsed if item]
+
+
 @result_app.command("add")
 def result_add(
     id: str | None = typer.Option(None, "--id", help="Result ID"),
@@ -2197,7 +2205,7 @@ def result_add(
     from gpd.core.state import save_state_json_locked
     from gpd.core.utils import file_lock
 
-    deps = depends_on.split(",") if depends_on else []
+    deps = _split_depends_on_option(depends_on) or []
     cwd = _get_cwd()
     state_path = ProjectLayout(cwd).state_json
 
@@ -2332,7 +2340,7 @@ def result_upsert(
             units=units,
             validity=validity,
             phase=phase,
-            depends_on=depends_on.split(",") if depends_on else None,
+            depends_on=_split_depends_on_option(depends_on),
             verified=verified,
         )
         save_state_json_locked(cwd, state)
@@ -2397,7 +2405,7 @@ def result_update(
     if phase is not None:
         opts["phase"] = phase
     if depends_on is not None:
-        opts["depends_on"] = depends_on.split(",")
+        opts["depends_on"] = _split_depends_on_option(depends_on) or []
     if verified is not None:
         opts["verified"] = verified
 

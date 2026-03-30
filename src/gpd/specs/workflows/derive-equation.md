@@ -442,7 +442,7 @@ Write to `GPD/analysis/derivation-{slug}.md`.
 Persist the final derived equation back into the existing result registry when project state is available.
 
 - If `state_exists` is true:
-  1. Resolve a stable `result_id`. On reruns, prefer the `result_id` already written into the derivation document frontmatter. Otherwise derive a deterministic ID from the derivation slug and phase.
+  1. Resolve a stable `result_id`. On reruns, prefer the `result_id` already associated with the derivation record or invocation context if one is available. Otherwise derive a deterministic ID from the derivation slug and phase.
   2. Re-check `state.json.intermediate_results` for the same `result_id` or an existing canonical equation for the same target. If a matching entry already exists, reuse its `result_id` instead of creating a duplicate.
   3. Persist the final result using the canonical upsert surface first:
 
@@ -472,7 +472,7 @@ or, on reruns / matching entries:
 gpd result update "{result_id}" --equation "{final_equation}" --description "{short description}" --phase "{phase}" --validity "{validity}" [--depends-on "{comma-separated ids}"]
 ```
 
-  4. Write the resulting `result_id` into the derivation document frontmatter so later reruns update the same canonical registry entry.
+  4. Carry the resulting `result_id` forward in the derivation workflow context so later reruns can target the same canonical registry entry.
   5. Keep `verified=false` unless the derivation also produced verification evidence that should be recorded separately.
 - If `state_exists` is false:
   - Skip registry write-back entirely.
@@ -521,7 +521,7 @@ This keeps standalone derivations safe while making project-mode derivations reu
 - [ ] Regime of validity stated
 - [ ] All relevant limiting cases verified
 - [ ] Connection to known results documented
-- [ ] Final derived equation persisted through `gpd result upsert` in project mode, with `result_id` recorded in frontmatter
+- [ ] Final derived equation persisted through `gpd result upsert` in project mode, with the chosen `result_id` retained for later reruns
 - [ ] Standalone mode skipped registry write-back and stayed self-contained
 - [ ] Complete derivation document written
 
