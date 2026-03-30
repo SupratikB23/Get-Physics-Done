@@ -446,6 +446,9 @@ gpd query search --affects "phase boundary"
 # Search canonical equations and derived results
 gpd result search --equation "E = mc^2"
 
+# Inspect one canonical result directly
+gpd result show <identifier>
+
 # Trace dependencies for a canonical result identifier
 gpd result deps <identifier>
 
