@@ -1817,8 +1817,14 @@ def test_entrypoint_normalizes_trailing_global_options(monkeypatch) -> None:
 
 
 @patch("gpd.core.phases.progress_render")
-def test_app_call_accepts_trailing_raw_and_cwd(mock_progress, tmp_path: Path, capsys) -> None:
+def test_app_call_accepts_trailing_raw_and_cwd(
+    mock_progress,
+    tmp_path: Path,
+    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     mock_progress.return_value = {"bar": "ok"}
+    monkeypatch.setenv("GPD_DATA_DIR", str(tmp_path / "data"))
 
     try:
         cli_module.app(args=["progress", "bar", "--cwd", str(tmp_path), "--raw"])

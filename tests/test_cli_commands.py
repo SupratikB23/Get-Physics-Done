@@ -1307,6 +1307,9 @@ class TestReviewValidationCommands:
         (gpd_dir / "STATE.md").write_text("# Research State\n", encoding="utf-8")
         (gpd_dir / "ROADMAP.md").write_text("# Roadmap\n", encoding="utf-8")
         (gpd_dir / "PROJECT.md").write_text("# Project\n", encoding="utf-8")
+        resume_file = gpd_dir / "phases" / "01" / ".continue-here.md"
+        resume_file.parent.mkdir(parents=True, exist_ok=True)
+        resume_file.write_text("resume\n", encoding="utf-8")
         data_root = tmp_path / "data"
         monkeypatch.setenv("GPD_DATA_DIR", str(data_root))
         record_recent_project(
@@ -1314,6 +1317,7 @@ class TestReviewValidationCommands:
             session_data={
                 "last_date": "2026-03-29T12:00:00+00:00",
                 "stopped_at": "Phase 01",
+                "resume_file": "GPD/phases/01/.continue-here.md",
             },
             store_root=data_root,
         )
@@ -1344,6 +1348,9 @@ class TestReviewValidationCommands:
         (gpd_dir / "STATE.md").write_text("# Research State\n", encoding="utf-8")
         (gpd_dir / "ROADMAP.md").write_text("# Roadmap\n", encoding="utf-8")
         (gpd_dir / "PROJECT.md").write_text("# Project\n", encoding="utf-8")
+        resume_file = gpd_dir / "phases" / "02" / ".continue-here.md"
+        resume_file.parent.mkdir(parents=True, exist_ok=True)
+        resume_file.write_text("resume\n", encoding="utf-8")
         data_root = tmp_path / "data"
         monkeypatch.setenv("GPD_DATA_DIR", str(data_root))
         record_recent_project(
@@ -1351,6 +1358,7 @@ class TestReviewValidationCommands:
             session_data={
                 "last_date": "2026-03-29T12:00:00+00:00",
                 "stopped_at": "Phase 02",
+                "resume_file": "GPD/phases/02/.continue-here.md",
             },
             store_root=data_root,
         )
@@ -1385,11 +1393,16 @@ class TestReviewValidationCommands:
             (gpd_dir / "STATE.md").write_text("# Research State\n", encoding="utf-8")
             (gpd_dir / "ROADMAP.md").write_text("# Roadmap\n", encoding="utf-8")
             (gpd_dir / "PROJECT.md").write_text("# Project\n", encoding="utf-8")
+            phase_number = stopped_at.removeprefix("Phase ").strip() or "01"
+            resume_file = gpd_dir / "phases" / phase_number / ".continue-here.md"
+            resume_file.parent.mkdir(parents=True, exist_ok=True)
+            resume_file.write_text("resume\n", encoding="utf-8")
             record_recent_project(
                 project,
                 session_data={
                     "last_date": "2026-03-29T12:00:00+00:00",
                     "stopped_at": stopped_at,
+                    "resume_file": f"GPD/phases/{phase_number}/.continue-here.md",
                 },
                 store_root=data_root,
             )
