@@ -26,6 +26,7 @@ class CitationSource(BaseModel):
     """A citation source from the research provenance chain."""
 
     source_type: Literal["paper", "tool", "data", "website"]
+    reference_id: str | None = None
     title: str
     authors: list[str] = []
     year: str = ""
@@ -46,6 +47,7 @@ class CitationAuditRecord(BaseModel):
 
     key: str
     source_type: Literal["paper", "tool", "data", "website"]
+    reference_id: str | None = None
     title: str
     resolution_status: CitationResolutionStatus
     verification_status: CitationVerificationStatus
@@ -311,6 +313,7 @@ def audit_citation_source(
     record = CitationAuditRecord(
         key=key,
         source_type=resolved.source_type,
+        reference_id=resolved.reference_id,
         title=resolved.title,
         resolution_status=resolution_status,
         verification_status=verification_status,

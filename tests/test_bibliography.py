@@ -186,6 +186,7 @@ class TestBibliographyAudit:
     def test_audit_citation_source_marks_provided_identifiers_as_partial(self):
         source = CitationSource(
             source_type="paper",
+            reference_id="ref-123",
             title="A Paper",
             authors=["J. Smith"],
             year="2024",
@@ -197,8 +198,28 @@ class TestBibliographyAudit:
         assert resolved == source
         assert record.resolution_status == "provided"
         assert record.verification_status == "partial"
+        assert record.reference_id == "ref-123"
         assert record.canonical_identifiers == ["doi:10.1234/example"]
         assert record.missing_core_fields == []
+
+    def test_build_bibliography_with_audit_preserves_reference_id(self):
+        sources = [
+            CitationSource(
+                source_type="paper",
+                reference_id="anchor-ref",
+                title="A Paper",
+                authors=["J. Smith"],
+                year="2024",
+                doi="10.1234/example",
+            )
+        ]
+
+        bib, audit = build_bibliography_with_audit(sources, enrich=False)
+
+        assert len(bib.entries) == 1
+        assert audit.total_sources == 1
+        assert audit.entries[0].reference_id == "anchor-ref"
+        assert audit.entries[0].key.startswith("smith2024")
 
     def test_build_bibliography_with_audit_records_successful_enrichment(self):
         from datetime import datetime
