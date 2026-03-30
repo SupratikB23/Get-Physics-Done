@@ -287,6 +287,57 @@ def test_build_recovery_advice_prefers_canonical_continuity_fields_over_conflict
     assert advice.has_local_recovery_target is True
 
 
+def test_build_recovery_advice_prefers_nested_compat_resume_surface_over_legacy_top_level_aliases(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path)
+    handoff = project / "GPD" / "phases" / "10" / ".continue-here.md"
+    handoff.parent.mkdir(parents=True, exist_ok=True)
+    handoff.write_text("resume\n", encoding="utf-8")
+
+    advice = build_recovery_advice(
+        project,
+        recent_rows=[],
+        resume_payload={
+            "compat_resume_surface": {
+                "active_resume_kind": "continuity_handoff",
+                "active_resume_origin": "continuation.handoff",
+                "active_resume_pointer": "GPD/phases/10/.continue-here.md",
+                "continuity_handoff_file": "GPD/phases/10/.continue-here.md",
+                "recorded_continuity_handoff_file": "GPD/phases/10/.continue-here.md",
+                "resume_candidates": [
+                    {
+                        "kind": "continuity_handoff",
+                        "origin": "continuation.handoff",
+                        "status": "handoff",
+                        "resume_file": "GPD/phases/10/.continue-here.md",
+                    }
+                ],
+                "execution_resumable": False,
+                "execution_resume_file": "GPD/phases/10/.continue-here.md",
+                "execution_resume_file_source": "session_resume_file",
+                "has_live_execution": False,
+            },
+            "resume_mode": "bounded_segment",
+            "execution_resumable": True,
+            "execution_resume_file": "GPD/phases/10/legacy-live.md",
+            "execution_resume_file_source": "current_execution",
+            "has_live_execution": True,
+        },
+    )
+
+    assert advice.status == "session-handoff"
+    assert advice.active_resume_kind == "continuity_handoff"
+    assert advice.active_resume_origin == "continuation.handoff"
+    assert advice.active_resume_pointer == "GPD/phases/10/.continue-here.md"
+    assert advice.continuity_handoff_file == "GPD/phases/10/.continue-here.md"
+    assert advice.execution_resume_file == "GPD/phases/10/.continue-here.md"
+    assert advice.execution_resume_file_source == "session_resume_file"
+    assert advice.execution_resumable is False
+    assert advice.current_workspace_has_resume_file is True
+    assert advice.has_session_resume_file is True
+
+
 def test_build_recovery_advice_recovers_session_handoff_from_candidate_only_payload(tmp_path: Path) -> None:
     project = _project(tmp_path)
 

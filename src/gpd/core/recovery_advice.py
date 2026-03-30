@@ -138,6 +138,129 @@ def _mapping_field(payload: Mapping[str, object], field: str) -> Mapping[str, ob
     return value if isinstance(value, Mapping) else None
 
 
+def _compat_resume_surface(payload: Mapping[str, object]) -> Mapping[str, object] | None:
+    for key in (
+        "compat_resume_surface",
+        "legacy_resume_surface",
+        "resume_surface_compat",
+        "compat_resume",
+        "compat",
+    ):
+        value = payload.get(key)
+        if not isinstance(value, Mapping):
+            continue
+        nested_resume_surface = value.get("resume_surface")
+        if isinstance(nested_resume_surface, Mapping):
+            return nested_resume_surface
+        return value
+    return None
+
+
+def _canonical_text_field(
+    payload: Mapping[str, object],
+    compat_surface: Mapping[str, object] | None,
+    field: str,
+    *,
+    compat_fields: Sequence[str] = (),
+) -> str | None:
+    value = _text_field(payload, field)
+    if value is not None:
+        return value
+    if compat_surface is None:
+        return None
+    for compat_field in (field, *compat_fields):
+        value = _text_field(compat_surface, compat_field)
+        if value is not None:
+            return value
+    return None
+
+
+def _legacy_text_field(
+    payload: Mapping[str, object],
+    compat_surface: Mapping[str, object] | None,
+    field: str,
+    *,
+    compat_fields: Sequence[str] = (),
+) -> str | None:
+    if compat_surface is not None:
+        for compat_field in (field, *compat_fields):
+            value = _text_field(compat_surface, compat_field)
+            if value is not None:
+                return value
+    return _text_field(payload, field)
+
+
+def _canonical_mapping_field(
+    payload: Mapping[str, object],
+    compat_surface: Mapping[str, object] | None,
+    field: str,
+    *,
+    compat_fields: Sequence[str] = (),
+) -> Mapping[str, object] | None:
+    value = _mapping_field(payload, field)
+    if value is not None:
+        return value
+    if compat_surface is None:
+        return None
+    for compat_field in (field, *compat_fields):
+        value = _mapping_field(compat_surface, compat_field)
+        if value is not None:
+            return value
+    return None
+
+
+def _legacy_mapping_field(
+    payload: Mapping[str, object],
+    compat_surface: Mapping[str, object] | None,
+    field: str,
+    *,
+    compat_fields: Sequence[str] = (),
+) -> Mapping[str, object] | None:
+    if compat_surface is not None:
+        for compat_field in (field, *compat_fields):
+            value = _mapping_field(compat_surface, compat_field)
+            if value is not None:
+                return value
+    return _mapping_field(payload, field)
+
+
+def _canonical_list_field(
+    payload: Mapping[str, object],
+    compat_surface: Mapping[str, object] | None,
+    field: str,
+    *,
+    compat_fields: Sequence[str] = (),
+) -> list[object] | None:
+    value = payload.get(field)
+    if isinstance(value, list):
+        return value
+    if compat_surface is None:
+        return None
+    for compat_field in (field, *compat_fields):
+        value = compat_surface.get(compat_field)
+        if isinstance(value, list):
+            return value
+    return None
+
+
+def _legacy_list_field(
+    payload: Mapping[str, object],
+    compat_surface: Mapping[str, object] | None,
+    field: str,
+    *,
+    compat_fields: Sequence[str] = (),
+) -> list[object] | None:
+    if compat_surface is not None:
+        for compat_field in (field, *compat_fields):
+            value = compat_surface.get(compat_field)
+            if isinstance(value, list):
+                return value
+    value = payload.get(field)
+    if isinstance(value, list):
+        return value
+    return None
+
+
 def _candidate_kind(candidate: Mapping[str, object]) -> str | None:
     kind = _candidate_text(candidate, "kind")
     if kind is not None:
@@ -227,15 +350,16 @@ def _resume_file_source_for_origin(origin: str | None) -> str | None:
 def _derive_active_resume_kind(
     *,
     payload: Mapping[str, object],
+    compat_surface: Mapping[str, object] | None,
     resume_mode: str | None,
     active_resume_pointer: str | None,
     continuity_handoff_file: str | None,
     resume_candidates: Sequence[Mapping[str, object]],
 ) -> str | None:
-    explicit = _text_field(payload, "active_resume_kind")
+    explicit = _canonical_text_field(payload, compat_surface, "active_resume_kind")
     if explicit is not None:
         return explicit
-    explicit_origin = _text_field(payload, "active_resume_origin")
+    explicit_origin = _canonical_text_field(payload, compat_surface, "active_resume_origin")
     if explicit_origin == "interrupted_agent_marker":
         return "interrupted_agent"
     if explicit_origin in {"continuation.bounded_segment", "compat.current_execution"}:
@@ -244,7 +368,11 @@ def _derive_active_resume_kind(
         return "continuity_handoff"
     if resume_mode == "bounded_segment":
         return "bounded_segment"
-    if active_resume_pointer is not None and _text_field(payload, "execution_resume_file_source") == "session_resume_file":
+    if active_resume_pointer is not None and _legacy_text_field(
+        payload,
+        compat_surface,
+        "execution_resume_file_source",
+    ) == "session_resume_file":
         return "continuity_handoff"
     if continuity_handoff_file is not None:
         return "continuity_handoff"
@@ -258,33 +386,38 @@ def _derive_active_resume_kind(
 def _derive_active_resume_origin(
     *,
     payload: Mapping[str, object],
+    compat_surface: Mapping[str, object] | None,
     active_resume_kind: str | None,
     continuity_handoff_file: str | None,
     recorded_continuity_handoff_file: str | None,
     missing_continuity_handoff_file: str | None,
 ) -> str | None:
-    explicit = _text_field(payload, "active_resume_origin")
+    explicit = _canonical_text_field(payload, compat_surface, "active_resume_origin")
     if explicit is not None:
         return explicit
 
-    legacy_source = _text_field(payload, "execution_resume_file_source")
+    legacy_source = _legacy_text_field(payload, compat_surface, "execution_resume_file_source")
     if active_resume_kind == "bounded_segment":
-        if _mapping_field(payload, "active_bounded_segment") is not None:
+        if _canonical_mapping_field(payload, compat_surface, "active_bounded_segment") is not None:
             return "continuation.bounded_segment"
-        if _mapping_field(payload, "derived_execution_head") is not None or _mapping_field(payload, "current_execution") is not None:
+        if _canonical_mapping_field(payload, compat_surface, "derived_execution_head") is not None or _legacy_mapping_field(
+            payload,
+            compat_surface,
+            "current_execution",
+        ) is not None:
             return "compat.current_execution"
         if legacy_source == "current_execution":
             return "compat.current_execution"
-        if _mapping_field(payload, "active_execution_segment") is not None:
+        if _legacy_mapping_field(payload, compat_surface, "active_execution_segment") is not None:
             return "continuation.bounded_segment"
         return "continuation.bounded_segment"
     if active_resume_kind == "continuity_handoff":
         if any(
             value is not None
             for value in (
-                _text_field(payload, "continuity_handoff_file"),
-                _text_field(payload, "recorded_continuity_handoff_file"),
-                _text_field(payload, "missing_continuity_handoff_file"),
+                _canonical_text_field(payload, compat_surface, "continuity_handoff_file"),
+                _canonical_text_field(payload, compat_surface, "recorded_continuity_handoff_file"),
+                _canonical_text_field(payload, compat_surface, "missing_continuity_handoff_file"),
             )
         ):
             return "continuation.handoff"
@@ -469,24 +602,59 @@ def build_recovery_advice(
 
     normalized_cwd = cwd.expanduser().resolve(strict=False)
     payload = dict(resume_payload) if resume_payload is not None else init_resume(normalized_cwd)
+    compat_resume_surface = _compat_resume_surface(payload)
     rows = list(recent_rows) if recent_rows is not None else list_recent_projects(data_root, last=recent_projects_last)
 
     recent_projects_count = len(rows)
     resumable_projects_count = sum(1 for row in rows if bool(_row_value(row, "resumable", False)))
     available_projects_count = sum(1 for row in rows if bool(_row_value(row, "available", False)))
 
-    segment_candidates_raw = payload.get("resume_candidates")
-    if not isinstance(segment_candidates_raw, list):
-        segment_candidates_raw = payload.get("segment_candidates")
+    segment_candidates_raw = _canonical_list_field(
+        payload,
+        compat_resume_surface,
+        "resume_candidates",
+        compat_fields=("segment_candidates",),
+    )
+    if segment_candidates_raw is None:
+        segment_candidates_raw = _legacy_list_field(payload, compat_resume_surface, "segment_candidates")
     segment_candidates = [item for item in segment_candidates_raw if isinstance(item, Mapping)] if isinstance(segment_candidates_raw, list) else []
 
-    resume_mode = _text_field(payload, "resume_mode")
-    continuity_handoff_file = _text_field(payload, "continuity_handoff_file") or _text_field(payload, "session_resume_file")
-    recorded_continuity_handoff_file = _text_field(payload, "recorded_continuity_handoff_file") or _text_field(payload, "recorded_session_resume_file")
-    missing_continuity_handoff_file = _text_field(payload, "missing_continuity_handoff_file") or _text_field(payload, "missing_session_resume_file")
-    active_resume_pointer = _text_field(payload, "active_resume_pointer") or _text_field(payload, "execution_resume_file")
+    resume_mode = _legacy_text_field(payload, compat_resume_surface, "resume_mode")
+    continuity_handoff_file = _canonical_text_field(
+        payload,
+        compat_resume_surface,
+        "continuity_handoff_file",
+        compat_fields=("session_resume_file",),
+    )
+    if continuity_handoff_file is None:
+        continuity_handoff_file = _legacy_text_field(payload, compat_resume_surface, "session_resume_file")
+    recorded_continuity_handoff_file = _canonical_text_field(
+        payload,
+        compat_resume_surface,
+        "recorded_continuity_handoff_file",
+        compat_fields=("recorded_session_resume_file",),
+    )
+    if recorded_continuity_handoff_file is None:
+        recorded_continuity_handoff_file = _legacy_text_field(payload, compat_resume_surface, "recorded_session_resume_file")
+    missing_continuity_handoff_file = _canonical_text_field(
+        payload,
+        compat_resume_surface,
+        "missing_continuity_handoff_file",
+        compat_fields=("missing_session_resume_file",),
+    )
+    if missing_continuity_handoff_file is None:
+        missing_continuity_handoff_file = _legacy_text_field(payload, compat_resume_surface, "missing_session_resume_file")
+    active_resume_pointer = _canonical_text_field(
+        payload,
+        compat_resume_surface,
+        "active_resume_pointer",
+        compat_fields=("execution_resume_file",),
+    )
+    if active_resume_pointer is None:
+        active_resume_pointer = _legacy_text_field(payload, compat_resume_surface, "execution_resume_file")
     active_resume_kind = _derive_active_resume_kind(
         payload=payload,
+        compat_surface=compat_resume_surface,
         resume_mode=resume_mode,
         active_resume_pointer=active_resume_pointer,
         continuity_handoff_file=continuity_handoff_file,
@@ -494,14 +662,16 @@ def build_recovery_advice(
     )
     active_resume_origin = _derive_active_resume_origin(
         payload=payload,
+        compat_surface=compat_resume_surface,
         active_resume_kind=active_resume_kind,
         continuity_handoff_file=continuity_handoff_file,
         recorded_continuity_handoff_file=recorded_continuity_handoff_file,
         missing_continuity_handoff_file=missing_continuity_handoff_file,
     )
     execution_resume_file = active_resume_pointer
-    execution_resume_file_source = _resume_file_source_for_origin(active_resume_origin) or _text_field(
+    execution_resume_file_source = _resume_file_source_for_origin(active_resume_origin) or _legacy_text_field(
         payload,
+        compat_resume_surface,
         "execution_resume_file_source",
     )
     workspace_root = _text_field(payload, "workspace_root")
@@ -510,30 +680,43 @@ def build_recovery_advice(
     project_root_auto_selected = _bool_field(payload, "project_root_auto_selected")
     project_reentry_mode = _text_field(payload, "project_reentry_mode")
     project_reentry_requires_selection = _bool_field(payload, "project_reentry_requires_selection")
-    active_bounded_segment = _mapping_field(payload, "active_bounded_segment")
-    legacy_active_execution_segment = _mapping_field(payload, "active_execution_segment")
+    active_bounded_segment = _canonical_mapping_field(payload, compat_resume_surface, "active_bounded_segment")
+    legacy_active_execution_segment = _legacy_mapping_field(payload, compat_resume_surface, "active_execution_segment")
     if active_bounded_segment is None and active_resume_kind == "bounded_segment" and legacy_active_execution_segment is not None:
         active_bounded_segment = legacy_active_execution_segment
-    derived_execution_head = _mapping_field(payload, "derived_execution_head") or _mapping_field(payload, "current_execution")
+    derived_execution_head = _canonical_mapping_field(payload, compat_resume_surface, "derived_execution_head")
+    if derived_execution_head is None:
+        derived_execution_head = _legacy_mapping_field(payload, compat_resume_surface, "current_execution")
+
+    def _compat_bool(field: str) -> bool | None:
+        if compat_resume_surface is None or field not in compat_resume_surface:
+            return None
+        return bool(compat_resume_surface.get(field))
 
     has_bounded_segment_candidate = _has_usable_candidate(segment_candidates, kind="bounded_segment")
+    execution_resumable_flag = _compat_bool("execution_resumable")
+    if execution_resumable_flag is None:
+        execution_resumable_flag = _bool_field(payload, "execution_resumable")
     if active_resume_kind == "bounded_segment":
         execution_resumable = bool(
             execution_resume_file
             or has_bounded_segment_candidate
-            or _bool_field(payload, "execution_resumable")
+            or execution_resumable_flag
             or resume_mode == "bounded_segment"
         )
     elif active_resume_kind == "continuity_handoff":
         execution_resumable = False
     else:
         execution_resumable = (
-            _bool_field(payload, "execution_resumable")
+            execution_resumable_flag
             or resume_mode == "bounded_segment"
             or has_bounded_segment_candidate
         )
+    interrupted_agent_flag = _compat_bool("has_interrupted_agent")
+    if interrupted_agent_flag is None:
+        interrupted_agent_flag = _bool_field(payload, "has_interrupted_agent")
     has_interrupted_agent = (
-        _bool_field(payload, "has_interrupted_agent")
+        interrupted_agent_flag
         or active_resume_kind == "interrupted_agent"
         or resume_mode == "interrupted_agent"
         or _has_candidate(
@@ -542,8 +725,11 @@ def build_recovery_advice(
             status="interrupted",
         )
     )
+    live_execution_flag = _compat_bool("has_live_execution")
+    if live_execution_flag is None:
+        live_execution_flag = _bool_field(payload, "has_live_execution")
     has_live_execution = (
-        _bool_field(payload, "has_live_execution")
+        live_execution_flag
         or derived_execution_head is not None
         or (
             legacy_active_execution_segment is not None

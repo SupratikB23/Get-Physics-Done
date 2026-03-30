@@ -116,23 +116,7 @@ class RecentProjectEntry(BaseModel):
             return value
 
         payload_dict = payload if isinstance(payload, dict) else {}
-        resume_target_kind = _normalize_resume_target_kind(payload_dict.get("resume_target_kind")) or infer_recent_project_resume_target_kind(
-            payload_dict
-        )
-        resume_target_recorded_at = _normalize_recent_text(payload_dict.get("resume_target_recorded_at"))
-        if resume_target_recorded_at is None:
-            if resume_target_kind == "bounded_segment":
-                resume_target_recorded_at = (
-                    _normalize_recent_text(payload_dict.get("source_recorded_at"))
-                    or _normalize_recent_text(payload_dict.get("last_session_at"))
-                    or _normalize_recent_text(payload_dict.get("last_seen_at"))
-                )
-            elif resume_target_kind == "handoff":
-                resume_target_recorded_at = (
-                    _normalize_recent_text(payload_dict.get("source_recorded_at"))
-                    or _normalize_recent_text(payload_dict.get("last_session_at"))
-                    or _normalize_recent_text(payload_dict.get("last_seen_at"))
-                )
+        resume_target_kind, resume_target_recorded_at = _backfill_recent_project_recovery_fields(payload_dict)
 
         payload_dict["resume_target_kind"] = resume_target_kind
         payload_dict["resume_target_recorded_at"] = resume_target_recorded_at
@@ -231,7 +215,7 @@ def _dedupe_rows(rows: list[RecentProjectEntry]) -> list[RecentProjectEntry]:
 
 
 def _recent_project_sort_stamp(row: RecentProjectEntry) -> str:
-    return row.last_session_at or row.last_seen_at or row.source_recorded_at or ""
+    return row.resume_target_recorded_at or row.last_session_at or row.last_seen_at or row.source_recorded_at or ""
 
 
 def _availability_for(project_root: str) -> tuple[bool, str | None]:
@@ -290,19 +274,31 @@ def _normalize_resume_target_kind(value: object) -> str | None:
     return None
 
 
+def _backfill_recent_project_recovery_fields(row: object) -> tuple[str | None, str | None]:
+    """Resolve canonical recovery fields from normalized or legacy row data."""
+
+    resume_target_kind = _normalize_resume_target_kind(_row_value(row, "resume_target_kind"))
+    if resume_target_kind is None:
+        resume_target_kind = infer_recent_project_resume_target_kind(row)
+
+    resume_target_recorded_at = _normalize_recent_text(_row_value(row, "resume_target_recorded_at"))
+    if resume_target_recorded_at is None and resume_target_kind in _RECENT_PROJECT_TARGET_KINDS:
+        resume_target_recorded_at = (
+            _normalize_recent_text(_row_value(row, "source_recorded_at"))
+            or _normalize_recent_text(_row_value(row, "last_session_at"))
+            or _normalize_recent_text(_row_value(row, "last_seen_at"))
+        )
+
+    return resume_target_kind, resume_target_recorded_at
+
+
 def _row_value(row: object, field: str) -> object:
     if isinstance(row, dict):
         return row.get(field)
     return getattr(row, field, None)
 
 
-def infer_recent_project_resume_target_kind(row: object) -> str | None:
-    """Infer one additive resume target classification for a recent-project row."""
-
-    explicit = _normalize_resume_target_kind(_row_value(row, "resume_target_kind"))
-    if explicit is not None:
-        return explicit
-
+def _legacy_recent_project_resume_target_kind(row: object) -> str | None:
     resume_file = _normalize_recent_text(_row_value(row, "resume_file"))
     if resume_file is None:
         return None
@@ -321,6 +317,15 @@ def infer_recent_project_resume_target_kind(row: object) -> str | None:
         return "bounded_segment"
 
     return "handoff"
+
+
+def infer_recent_project_resume_target_kind(row: object) -> str | None:
+    """Infer one additive resume target classification for a recent-project row."""
+
+    explicit = _normalize_resume_target_kind(_row_value(row, "resume_target_kind"))
+    if explicit is not None:
+        return explicit
+    return _legacy_recent_project_resume_target_kind(row)
 
 
 def _extract_recent_project_rows(value: object) -> list[object]:
@@ -358,14 +363,7 @@ def _updated_text(
 def classify_recent_project_recovery(row: object) -> RecentProjectRecoveryClassification:
     """Return one shared recovery classification for a recent-project row."""
 
-    resume_target_kind = infer_recent_project_resume_target_kind(row)
-    resume_target_recorded_at = _normalize_recent_text(_row_value(row, "resume_target_recorded_at"))
-    if resume_target_recorded_at is None:
-        resume_target_recorded_at = _normalize_recent_text(_row_value(row, "source_recorded_at"))
-    if resume_target_recorded_at is None:
-        resume_target_recorded_at = _normalize_recent_text(_row_value(row, "last_session_at"))
-    if resume_target_recorded_at is None:
-        resume_target_recorded_at = _normalize_recent_text(_row_value(row, "last_seen_at"))
+    resume_target_kind, resume_target_recorded_at = _backfill_recent_project_recovery_fields(row)
 
     available_value = _row_value(row, "available")
     available = True if available_value is None else bool(available_value)

@@ -214,7 +214,7 @@ class TestRecentProjectsIndexPersistence:
                 "resume_file": "GPD/phases/03/.continue-here.md",
                 "resume_target_kind": "bounded_segment",
                 "resume_target_recorded_at": "2026-03-26T12:01:00+00:00",
-                "source_kind": "continuation.bounded_segment",
+                "source_kind": "continuation.handoff",
                 "source_session_id": "session-123",
                 "source_segment_id": "segment-7",
                 "source_transition_id": "transition-9",
@@ -231,7 +231,7 @@ class TestRecentProjectsIndexPersistence:
         row = loaded.rows[0]
         assert row.resume_target_kind == "bounded_segment"
         assert row.resume_target_recorded_at == "2026-03-26T12:01:00+00:00"
-        assert row.source_kind == "continuation.bounded_segment"
+        assert row.source_kind == "continuation.handoff"
         assert row.source_session_id == "session-123"
         assert row.source_segment_id == "segment-7"
         assert row.source_transition_id == "transition-9"
@@ -245,6 +245,7 @@ class TestRecentProjectsIndexPersistence:
                 "available": True,
                 "resume_file": "GPD/phases/03/.continue-here.md",
                 "resume_target_kind": "bounded_segment",
+                "source_kind": "continuation.handoff",
                 "resume_file_available": True,
             }
         )
@@ -253,6 +254,7 @@ class TestRecentProjectsIndexPersistence:
                 "available": True,
                 "resume_file": "GPD/phases/03/.continue-here.md",
                 "resume_target_kind": "handoff",
+                "source_kind": "continuation.bounded_segment",
                 "resume_file_available": True,
             }
         )

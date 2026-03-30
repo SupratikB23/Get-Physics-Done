@@ -752,7 +752,7 @@ def test_build_runtime_hint_payload_uses_canonical_bounded_resume_mode_without_l
     data_root = tmp_path / "data"
     monkeypatch.setattr(
         "gpd.core.runtime_hints._resume_context",
-        lambda _cwd: {
+        lambda _cwd, data_root=None: {
             "planning_exists": True,
             "state_exists": True,
             "roadmap_exists": True,
@@ -791,7 +791,7 @@ def test_build_runtime_hint_payload_prefers_canonical_continuity_fields_over_con
     handoff.write_text("resume\n", encoding="utf-8")
     monkeypatch.setattr(
         "gpd.core.runtime_hints._resume_context",
-        lambda _cwd: {
+        lambda _cwd, data_root=None: {
             "planning_exists": True,
             "state_exists": True,
             "roadmap_exists": True,
@@ -831,6 +831,70 @@ def test_build_runtime_hint_payload_prefers_canonical_continuity_fields_over_con
     assert payload.orientation["continuity_handoff_file"] == "GPD/phases/09/.continue-here.md"
     assert payload.orientation["execution_resumable"] is False
     assert payload.orientation["execution_resume_file"] == "GPD/phases/09/.continue-here.md"
+    assert payload.orientation["execution_resume_file_source"] == "session_resume_file"
+    assert payload.orientation["has_continuity_handoff"] is True
+    assert payload.orientation["has_session_resume_file"] is True
+    assert "actions" not in payload.orientation
+    assert any("resume-work" in action for action in payload.next_actions)
+    assert any("suggest-next" in action for action in payload.next_actions)
+
+
+def test_build_runtime_hint_payload_prefers_nested_compat_resume_surface_over_legacy_top_level_aliases(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _bootstrap_project(tmp_path)
+    data_root = tmp_path / "data"
+    handoff = project / "GPD" / "phases" / "10" / ".continue-here.md"
+    handoff.parent.mkdir(parents=True, exist_ok=True)
+    handoff.write_text("resume\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "gpd.core.runtime_hints._resume_context",
+        lambda _cwd, data_root=None: {
+            "planning_exists": True,
+            "state_exists": True,
+            "roadmap_exists": True,
+            "project_exists": True,
+            "compat_resume_surface": {
+                "active_resume_kind": "continuity_handoff",
+                "active_resume_origin": "continuation.handoff",
+                "active_resume_pointer": "GPD/phases/10/.continue-here.md",
+                "continuity_handoff_file": "GPD/phases/10/.continue-here.md",
+                "recorded_continuity_handoff_file": "GPD/phases/10/.continue-here.md",
+                "resume_candidates": [
+                    {
+                        "kind": "continuity_handoff",
+                        "origin": "continuation.handoff",
+                        "status": "handoff",
+                        "resume_file": "GPD/phases/10/.continue-here.md",
+                    }
+                ],
+                "execution_resumable": False,
+                "execution_resume_file": "GPD/phases/10/.continue-here.md",
+                "execution_resume_file_source": "session_resume_file",
+                "has_live_execution": False,
+            },
+            "resume_mode": "bounded_segment",
+            "execution_resumable": True,
+            "execution_resume_file": "GPD/phases/10/legacy-live.md",
+            "execution_resume_file_source": "current_execution",
+            "has_live_execution": True,
+        },
+    )
+
+    payload = build_runtime_hint_payload(
+        project,
+        data_root=data_root,
+        include_cost=False,
+        include_workflow_presets=False,
+    )
+
+    assert payload.orientation["status"] == "session-handoff"
+    assert payload.orientation["active_resume_kind"] == "continuity_handoff"
+    assert payload.orientation["active_resume_origin"] == "continuation.handoff"
+    assert payload.orientation["active_resume_pointer"] == "GPD/phases/10/.continue-here.md"
+    assert payload.orientation["continuity_handoff_file"] == "GPD/phases/10/.continue-here.md"
+    assert payload.orientation["execution_resumable"] is False
+    assert payload.orientation["execution_resume_file"] == "GPD/phases/10/.continue-here.md"
     assert payload.orientation["execution_resume_file_source"] == "session_resume_file"
     assert payload.orientation["has_continuity_handoff"] is True
     assert payload.orientation["has_session_resume_file"] is True
@@ -1000,7 +1064,7 @@ def test_build_runtime_hint_payload_machine_change_only_keeps_local_resume_witho
     data_root = tmp_path / "data"
     monkeypatch.setattr(
         "gpd.core.runtime_hints._resume_context",
-        lambda _cwd: {
+        lambda _cwd, data_root=None: {
             "planning_exists": True,
             "state_exists": True,
             "roadmap_exists": True,
@@ -1037,7 +1101,7 @@ def test_build_runtime_hint_payload_missing_handoff_keeps_local_resume_without_i
     data_root = tmp_path / "data"
     monkeypatch.setattr(
         "gpd.core.runtime_hints._resume_context",
-        lambda _cwd: {
+        lambda _cwd, data_root=None: {
             "planning_exists": True,
             "state_exists": True,
             "roadmap_exists": True,

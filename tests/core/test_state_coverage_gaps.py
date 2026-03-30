@@ -305,16 +305,3 @@ class TestStateSnapshot:
         snap = state_snapshot(cwd)
         assert snap.blockers is not None
         assert len(snap.blockers) == 1
-
-    def test_snapshot_surfaces_structured_state_counts(self, tmp_path: Path) -> None:
-        state = default_state_dict()
-        state["convention_lock"]["metric_signature"] = "mostly-minus"
-        state["approximations"] = [{"name": "small-angle", "validity_range": "theta << 1"}]
-        state["intermediate_results"] = [{"id": "R-01", "description": "Dispersion relation"}]
-        cwd = _bootstrap_project(tmp_path, state_dict=state)
-
-        snap = state_snapshot(cwd)
-
-        assert snap.convention_lock_set_count == 1
-        assert snap.approximation_count == 1
-        assert snap.intermediate_result_count == 1

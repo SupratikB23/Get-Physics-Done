@@ -50,7 +50,6 @@ Use the init payload to extract:
 - Current phase and next phase
 - Whether work is paused or currently executing
 - Research mode, autonomy mode, and model profile
-- Structured state memory: `convention_lock`, `convention_lock_set_count`, `approximations`, `approximation_count`, `intermediate_results`, and `intermediate_result_count`
 
 Search the local workspace for relevant mentions of the requested concept:
 

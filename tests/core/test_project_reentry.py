@@ -29,14 +29,16 @@ def _recent_row(
     last_session_at: str,
     resumable: bool = True,
     resume_target_kind: str = "handoff",
+    resume_target_recorded_at: str | None = None,
 ) -> dict[str, object]:
+    recorded_at = resume_target_recorded_at or last_session_at
     row: dict[str, object] = {
         "project_root": project_root.resolve(strict=False).as_posix(),
         "last_session_at": last_session_at,
         "stopped_at": "Phase 02",
         "resume_file": "GPD/phases/02/.continue-here.md",
         "resume_target_kind": resume_target_kind,
-        "resume_target_recorded_at": last_session_at,
+        "resume_target_recorded_at": recorded_at,
         "resume_file_available": True,
         "resume_file_reason": None,
         "available": True,
@@ -241,6 +243,37 @@ def test_resolve_project_reentry_requires_user_selection_for_ambiguous_recent_pr
     assert all(candidate.auto_selectable is False for candidate in resolution.candidates)
     assert resolution.candidates[0].last_session_at == "2026-03-28T13:00:00+00:00"
     assert resolution.candidates[1].last_session_at == "2026-03-28T12:00:00+00:00"
+
+
+def test_resolve_project_reentry_orders_recent_projects_by_canonical_recorded_at(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    older_session_newer_recorded = _make_gpd_workspace(tmp_path / "recent-newer-recorded", project=True)
+    newer_session_older_recorded = _make_gpd_workspace(tmp_path / "recent-older-recorded", project=True)
+
+    resolution = resolve_project_reentry(
+        workspace,
+        recent_rows=[
+            _recent_row(
+                newer_session_older_recorded,
+                last_session_at="2026-03-28T14:00:00+00:00",
+                resume_target_recorded_at="2026-03-28T12:00:00+00:00",
+            ),
+            _recent_row(
+                older_session_newer_recorded,
+                last_session_at="2026-03-28T12:00:00+00:00",
+                resume_target_recorded_at="2026-03-28T15:00:00+00:00",
+            ),
+        ],
+    )
+
+    assert resolution.mode == "ambiguous-recent-projects"
+    assert resolution.candidates[0].project_root == older_session_newer_recorded.resolve(strict=False).as_posix()
+    assert resolution.candidates[0].resume_target_recorded_at == "2026-03-28T15:00:00+00:00"
+    assert resolution.candidates[1].project_root == newer_session_older_recorded.resolve(strict=False).as_posix()
+    assert resolution.candidates[1].resume_target_recorded_at == "2026-03-28T12:00:00+00:00"
 
 
 def test_resolve_project_reentry_orders_bounded_recent_target_ahead_of_handoff_without_auto_selecting(

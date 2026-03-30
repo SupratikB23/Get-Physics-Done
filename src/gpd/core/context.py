@@ -856,63 +856,6 @@ def _build_reference_runtime_context(cwd: Path) -> dict[str, object]:
     }
 
 
-def _is_populated_state_value(value: object) -> bool:
-    """Return whether one state value should count as meaningfully set."""
-    if value is None:
-        return False
-    if isinstance(value, str):
-        stripped = value.strip()
-        return bool(stripped) and stripped.lower() not in {"none", "null", "undefined"}
-    if isinstance(value, (list, dict, set, tuple)):
-        return bool(value)
-    return True
-
-
-def _build_structured_state_runtime_context(cwd: Path) -> dict[str, object]:
-    """Expose authoritative structured state fields for workflows that need them."""
-    state, _state_issues, _state_source = _peek_state_json(cwd)
-    if not isinstance(state, dict):
-        return {
-            "convention_lock": {},
-            "convention_lock_set_count": 0,
-            "approximations": [],
-            "approximation_count": 0,
-            "intermediate_results": [],
-            "intermediate_result_count": 0,
-        }
-
-    convention_lock = state.get("convention_lock")
-    if not isinstance(convention_lock, dict):
-        convention_lock = {}
-    custom_conventions = (
-        convention_lock.get("custom_conventions")
-        if isinstance(convention_lock.get("custom_conventions"), dict)
-        else {}
-    )
-    convention_lock_set_count = sum(
-        1
-        for key, value in convention_lock.items()
-        if key != "custom_conventions" and _is_populated_state_value(value)
-    ) + sum(1 for value in custom_conventions.values() if _is_populated_state_value(value))
-
-    approximations = state.get("approximations")
-    if not isinstance(approximations, list):
-        approximations = []
-
-    intermediate_results = state.get("intermediate_results")
-    if not isinstance(intermediate_results, list):
-        intermediate_results = []
-
-    return {
-        "convention_lock": convention_lock,
-        "convention_lock_set_count": convention_lock_set_count,
-        "approximations": approximations,
-        "approximation_count": len(approximations),
-        "intermediate_results": intermediate_results,
-        "intermediate_result_count": len(intermediate_results),
-    }
-
-
 def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:
     """Build shared live execution-state context for orchestration surfaces."""
     from gpd.core.observability import get_current_execution
@@ -1175,6 +1118,32 @@ def _has_resume_candidate(
     return False
 
 
+def _build_resume_compat_surface(payload: dict[str, object]) -> dict[str, object]:
+    """Return the legacy resume envelope grouped under a compatibility block."""
+    return {
+        "current_execution": payload.get("current_execution"),
+        "current_execution_resume_file": payload.get("current_execution_resume_file"),
+        "session_resume_file": payload.get("session_resume_file"),
+        "recorded_session_resume_file": payload.get("recorded_session_resume_file"),
+        "missing_session_resume_file": payload.get("missing_session_resume_file"),
+        "execution_resume_file": payload.get("execution_resume_file"),
+        "execution_resume_file_source": payload.get("execution_resume_file_source"),
+        "execution_resumable": payload.get("execution_resumable"),
+        "execution_paused_at": payload.get("execution_paused_at"),
+        "execution_review_pending": payload.get("execution_review_pending"),
+        "execution_pre_fanout_review_pending": payload.get("execution_pre_fanout_review_pending"),
+        "execution_skeptical_requestioning_required": payload.get("execution_skeptical_requestioning_required"),
+        "execution_downstream_locked": payload.get("execution_downstream_locked"),
+        "execution_blocked": payload.get("execution_blocked"),
+        "active_execution_segment": payload.get("active_execution_segment"),
+        "segment_candidates": payload.get("segment_candidates"),
+        "resume_mode": payload.get("resume_mode"),
+        "has_interrupted_agent": payload.get("has_interrupted_agent"),
+        "interrupted_agent_id": payload.get("interrupted_agent_id"),
+        "has_live_execution": payload.get("has_live_execution"),
+    }
+
+
 def _build_legacy_resume_state(
     execution_context: dict[str, object],
     *,
@@ -1284,7 +1253,7 @@ def _build_legacy_resume_state(
         active_resume_origin = None
         active_resume_pointer = None
 
-    return {
+    result = {
         "resume_surface_schema_version": _RESUME_SURFACE_SCHEMA_VERSION,
         "active_bounded_segment": active_bounded_segment if isinstance(active_bounded_segment, dict) else None,
         "derived_execution_head": current_execution if isinstance(current_execution, dict) else None,
@@ -1311,6 +1280,8 @@ def _build_legacy_resume_state(
         "has_interrupted_agent": interrupted_agent_id is not None,
         "interrupted_agent_id": interrupted_agent_id,
     }
+    result["compat_resume_surface"] = _build_resume_compat_surface(result)
+    return result
 
 
 def _build_resume_read_state(
@@ -1442,7 +1413,7 @@ def _build_resume_read_state(
             active_resume_origin = None
             active_resume_pointer = None
 
-        return {
+        result = {
             "resume_surface_schema_version": _RESUME_SURFACE_SCHEMA_VERSION,
             "active_bounded_segment": active_bounded_segment,
             "derived_execution_head": current_execution,
@@ -1460,6 +1431,8 @@ def _build_resume_read_state(
             "has_interrupted_agent": interrupted_agent_id is not None,
             "interrupted_agent_id": interrupted_agent_id,
         }
+        result["compat_resume_surface"] = _build_resume_compat_surface(result)
+        return result
 
     try:
         return _build_legacy_resume_state(execution_context, interrupted_agent_id=interrupted_agent_id)
@@ -1468,7 +1441,7 @@ def _build_resume_read_state(
             "Legacy resume synthesis failed; returning empty resume state: %s",
             exc,
         )
-        return {
+        result = {
             "resume_surface_schema_version": _RESUME_SURFACE_SCHEMA_VERSION,
             "active_bounded_segment": None,
             "derived_execution_head": execution_context.get("current_execution")
@@ -1490,6 +1463,8 @@ def _build_resume_read_state(
             "has_interrupted_agent": interrupted_agent_id is not None,
             "interrupted_agent_id": interrupted_agent_id,
         }
+        result["compat_resume_surface"] = _build_resume_compat_surface(result)
+        return result
 
 
 # ─── Config Loader ────────────────────────────────────────────────────────────
@@ -1708,7 +1683,6 @@ def init_execute_phase(cwd: Path, phase: str | None, includes: set[str] | None =
         "platform": _detect_platform(cwd),
     }
     result.update(_build_reference_runtime_context(cwd))
-    result.update(_build_structured_state_runtime_context(cwd))
     result.update(_build_execution_runtime_context(cwd))
 
     # Include file contents if requested
@@ -2052,6 +2026,7 @@ def init_resume(cwd: Path, *, data_root: Path | None = None) -> dict:
         key: value for key, value in execution_context.items() if key != "resume_projection"
     }
     result.update(execution_public)
+    result["compat_resume_surface"] = _build_resume_compat_surface(result)
     return result
 
 
@@ -2133,7 +2108,6 @@ def init_phase_op(cwd: Path, phase: str | None = None, includes: set[str] | None
         "platform": _detect_platform(cwd),
     }
     result.update(_build_reference_runtime_context(cwd))
-    result.update(_build_structured_state_runtime_context(cwd))
     result.update(_build_execution_runtime_context(cwd))
 
     planning = cwd / PLANNING_DIR_NAME
@@ -2403,7 +2377,6 @@ def init_progress(cwd: Path, includes: set[str] | None = None, *, data_root: Pat
         "platform": _detect_platform(effective_cwd),
     }
     result.update(_build_reference_runtime_context(effective_cwd))
-    result.update(_build_structured_state_runtime_context(effective_cwd))
     result.update(_build_execution_runtime_context(effective_cwd))
     if result.get("execution_paused_at"):
         result["paused_at"] = result["execution_paused_at"]

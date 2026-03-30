@@ -1983,8 +1983,9 @@ def test_resume_workflow_surfaces_contract_load_and_validation_state() -> None:
     assert "@{GPD_INSTALL_DIR}/templates/state-json-schema.md" in resume_work
     assert "project_contract_validation" in resume_work
     assert "project_contract_load_info" in resume_work
-    assert "execution_resume_file_source" in resume_work
-    assert "Compatibility-only handoff cues in the current raw envelope:" in resume_work
+    assert "active_resume_kind" in resume_work
+    assert "resume_candidates" in resume_work
+    assert "Compatibility-only raw envelope cues:" in resume_work
     assert "session_resume_file" in resume_work
     assert "machine_change_detected" in resume_work
     assert "machine_change_notice" in resume_work
@@ -2014,7 +2015,7 @@ def test_execution_observability_and_resume_workflow_surfaces_stay_conservative_
     assert "Start at `# GPD Command Reference`." in help_command
     assert "When STATE.md appears out of sync with disk reality" in progress
     assert "advisory context only" in resume_work
-    assert "it is not a ranked bounded-segment resume candidate and does not justify `resume_mode=\"bounded_segment\"`." in resume_work
+    assert "it is not a ranked bounded-segment resume candidate and does not justify `active_resume_kind=\"bounded_segment\"`." in resume_work
 
 
 def test_pause_resume_and_help_wiring_keep_runtime_handoff_and_local_snapshot_boundary() -> None:
@@ -2032,7 +2033,7 @@ def test_pause_resume_and_help_wiring_keep_runtime_handoff_and_local_snapshot_bo
     assert "advisory and machine-local" in resume_work
     assert "reloads that project's canonical state" in resume_work
     assert "machine-readable intake" in resume_work
-    assert "segment_candidates" in resume_work
+    assert "resume_candidates" in resume_work
     assert "legacy candidate/source labels" in resume_work
     assert "Do NOT invent additional candidates from plan files without summaries, auto-checkpoints, or other ad hoc checkpoints." in resume_work
     assert "/gpd:resume-work" in pause_work

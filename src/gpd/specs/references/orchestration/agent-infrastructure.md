@@ -96,7 +96,7 @@ All agents load conventions from `state.json convention_lock` at startup. Tier 1
 - Flag suspected convention mismatches to the orchestrator (do not resolve)
 - Do not write ASSERT_CONVENTION headers in output files
 
-Agents: project-researcher, phase-researcher, literature-reviewer, roadmapper, planner, plan-checker, research-synthesizer, research-mapper, bibliographer, explainer, referee, experiment-designer
+Agents: project-researcher, phase-researcher, literature-reviewer, roadmapper, planner, plan-checker, research-synthesizer, research-mapper, bibliographer, referee, experiment-designer
 
 **Tier 2 — Convention Enforcer (full tracking protocol, equation-working agents)**
 

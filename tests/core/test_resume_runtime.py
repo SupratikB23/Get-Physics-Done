@@ -148,6 +148,9 @@ def test_init_resume_surfaces_machine_change_and_session_resume_candidate(
     assert ctx["active_resume_origin"] == "canonical_continuation"
     assert ctx["active_resume_pointer"] == "GPD/phases/03-analysis/.continue-here.md"
     assert ctx["resume_mode"] is None
+    assert ctx["compat_resume_surface"]["session_resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
+    assert ctx["compat_resume_surface"]["execution_resume_file_source"] == "session_resume_file"
+    assert ctx["compat_resume_surface"]["resume_mode"] is None
     assert ctx["resume_candidates"] == [
         {
             "source": "session_resume_file",
@@ -320,6 +323,9 @@ def test_init_resume_keeps_current_execution_primary_and_includes_session_resume
     assert ctx["active_resume_origin"] == "derived_execution_head"
     assert ctx["active_resume_pointer"] == "GPD/phases/03-analysis/.continue-here.md"
     assert ctx["resume_mode"] == "bounded_segment"
+    assert ctx["compat_resume_surface"]["execution_resume_file_source"] == "current_execution"
+    assert ctx["compat_resume_surface"]["active_execution_segment"]["resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
+    assert ctx["compat_resume_surface"]["segment_candidates"][0]["source"] == "current_execution"
     assert ctx["segment_candidates"][0]["source"] == "current_execution"
     assert ctx["segment_candidates"][1]["source"] == "session_resume_file"
     assert ctx["segment_candidates"][1]["resume_file"] == "GPD/phases/03-analysis/alternate-resume.md"
@@ -680,6 +686,8 @@ def test_init_resume_ignores_nonportable_current_execution_resume_file_and_uses_
     assert ctx["derived_execution_head"]["segment_id"] == "seg-4"
     assert ctx["active_bounded_segment"] is None
     assert ctx["resume_mode"] is None
+    assert ctx["compat_resume_surface"]["execution_resume_file_source"] == "session_resume_file"
+    assert ctx["compat_resume_surface"]["segment_candidates"][0]["source"] == "session_resume_file"
     assert ctx["active_execution_segment"]["segment_id"] == "seg-4"
     assert ctx["resume_candidates"] == [
         {

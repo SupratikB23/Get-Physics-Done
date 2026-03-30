@@ -119,7 +119,7 @@ def _candidate_sort_key(candidate: ProjectReentryCandidate) -> tuple[int, int, i
         1 if _candidate_has_concrete_target(candidate) else 0,
         1 if candidate.resumable else 0,
         1 if candidate.available else 0,
-        recovery.resume_target_recorded_at or candidate.last_session_at or "",
+        recovery.resume_target_recorded_at or candidate.source_recorded_at or candidate.last_session_at or "",
         candidate.project_root,
     )
 

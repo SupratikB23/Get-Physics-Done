@@ -162,7 +162,7 @@ def _sort_recent_project_rows(rows: list[RecentProjectEntry]) -> list[RecentProj
     return sorted(
         rows,
         key=lambda row: (
-            row.last_session_at or row.last_seen_at or "",
+            row.resume_target_recorded_at or row.last_session_at or row.last_seen_at or "",
             row.project_root,
         ),
         reverse=True,
@@ -611,9 +611,6 @@ class StateSnapshotResult(BaseModel):
     last_activity_desc: str | None = None
     decisions: list[dict] | None = None
     blockers: list[str | dict] | None = None
-    convention_lock_set_count: int = 0
-    approximation_count: int = 0
-    intermediate_result_count: int = 0
     paused_at: str | None = None
     session: dict | None = None
     error: str | None = None
@@ -3898,35 +3895,10 @@ def state_snapshot(cwd: Path) -> StateSnapshotResult:
     if state_obj is None:
         return StateSnapshotResult(error="STATE.md not found")
 
-    def _is_populated(value: object) -> bool:
-        if value is None:
-            return False
-        if isinstance(value, str):
-            stripped = value.strip()
-            return bool(stripped) and stripped.lower() not in {"none", "null", "undefined"}
-        if isinstance(value, (list, dict, set, tuple)):
-            return bool(value)
-        return True
-
     pos = state_obj.get("position")
     if not isinstance(pos, dict):
         pos = {}
     cp = pos.get("current_phase")
-    convention_lock = state_obj.get("convention_lock") if isinstance(state_obj.get("convention_lock"), dict) else {}
-    custom_conventions = (
-        convention_lock.get("custom_conventions")
-        if isinstance(convention_lock.get("custom_conventions"), dict)
-        else {}
-    )
-    convention_lock_set_count = sum(
-        1
-        for key, value in convention_lock.items()
-        if key != "custom_conventions" and _is_populated(value)
-    ) + sum(1 for value in custom_conventions.values() if _is_populated(value))
-    approximations = state_obj.get("approximations") if isinstance(state_obj.get("approximations"), list) else []
-    intermediate_results = (
-        state_obj.get("intermediate_results") if isinstance(state_obj.get("intermediate_results"), list) else []
-    )
     return StateSnapshotResult(
         current_phase=phase_normalize(str(cp)) if cp is not None else None,
         current_phase_name=pos.get("current_phase_name"),
@@ -3939,9 +3911,6 @@ def state_snapshot(cwd: Path) -> StateSnapshotResult:
         last_activity_desc=pos.get("last_activity_desc"),
         decisions=state_obj.get("decisions"),
         blockers=state_obj.get("blockers"),
-        convention_lock_set_count=convention_lock_set_count,
-        approximation_count=len(approximations),
-        intermediate_result_count=len(intermediate_results),
         paused_at=pos.get("paused_at"),
         session=state_obj.get("session"),
     )

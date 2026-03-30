@@ -507,28 +507,6 @@ class TestInitExecutePhase:
 
         assert ctx["state_exists"] is True
 
-    def test_surfaces_structured_state_memory(self, tmp_path: Path) -> None:
-        from gpd.core.state import default_state_dict
-
-        _setup_project(tmp_path)
-        phase_dir = _create_phase_dir(tmp_path, "01-setup")
-        (phase_dir / "a-PLAN.md").write_text("plan")
-
-        state = default_state_dict()
-        state["convention_lock"]["metric_signature"] = "mostly-minus"
-        state["approximations"] = [{"name": "small-angle", "validity_range": "theta << 1"}]
-        state["intermediate_results"] = [{"id": "R-01", "description": "Dispersion relation"}]
-        (tmp_path / "GPD" / "state.json").write_text(json.dumps(state), encoding="utf-8")
-
-        ctx = init_execute_phase(tmp_path, "1")
-
-        assert ctx["convention_lock"]["metric_signature"] == "mostly-minus"
-        assert ctx["convention_lock_set_count"] >= 1
-        assert ctx["approximation_count"] == 1
-        assert ctx["approximations"][0]["name"] == "small-angle"
-        assert ctx["intermediate_result_count"] == 1
-        assert ctx["intermediate_results"][0]["id"] == "R-01"
-
     def test_state_exists_uses_recoverable_backup_without_persisting_repair(
         self,
         tmp_path: Path,
@@ -1104,6 +1082,10 @@ class TestInitResume:
         assert ctx["active_bounded_segment"]["segment_id"] == "seg-4"
         assert ctx["derived_execution_head"]["segment_id"] == "seg-4"
         assert ctx["active_execution_segment"]["segment_id"] == "seg-4"
+        assert ctx["compat_resume_surface"]["execution_resume_file_source"] == "current_execution"
+        assert ctx["compat_resume_surface"]["active_execution_segment"]["segment_id"] == "seg-4"
+        assert ctx["compat_resume_surface"]["segment_candidates"][0]["source"] == "current_execution"
+        assert ctx["compat_resume_surface"]["resume_mode"] == "bounded_segment"
         assert ctx["segment_candidates"][0]["source"] == "current_execution"
         assert "kind" not in ctx["segment_candidates"][0]
         assert "origin" not in ctx["segment_candidates"][0]
@@ -1223,6 +1205,9 @@ class TestInitResume:
         assert ctx["active_bounded_segment"] is None
         assert ctx["derived_execution_head"]["segment_id"] == "seg-4"
         assert ctx["active_resume_kind"] is None
+        assert ctx["compat_resume_surface"]["active_execution_segment"]["segment_id"] == "seg-4"
+        assert ctx["compat_resume_surface"]["segment_candidates"] == []
+        assert ctx["compat_resume_surface"]["resume_mode"] is None
         assert ctx["segment_candidates"] == []
         assert ctx["resume_candidates"] == []
         assert ctx["active_execution_segment"]["segment_id"] == "seg-4"
@@ -1546,39 +1531,6 @@ class TestInitProgress:
         assert ctx["project_contract"]["references"][0]["must_surface"] is True
         assert "Recover known limiting behavior" in ctx["active_reference_context"]
 
-    def test_progress_surfaces_structured_state_memory(self, tmp_path: Path) -> None:
-        from gpd.core.state import default_state_dict
-
-        _setup_project(tmp_path)
-        state = default_state_dict()
-        state["convention_lock"]["metric_signature"] = "mostly-minus"
-        state["approximations"] = [{"name": "hydrodynamic-limit", "validity_range": "k l << 1"}]
-        state["intermediate_results"] = [{"id": "R-01", "description": "Critical exponent"}]
-        (tmp_path / "GPD" / "state.json").write_text(json.dumps(state), encoding="utf-8")
-
-        ctx = init_progress(tmp_path)
-
-        assert ctx["convention_lock"]["metric_signature"] == "mostly-minus"
-        assert ctx["convention_lock_set_count"] >= 1
-        assert ctx["approximation_count"] == 1
-        assert ctx["approximations"][0]["name"] == "hydrodynamic-limit"
-        assert ctx["intermediate_result_count"] == 1
-        assert ctx["intermediate_results"][0]["id"] == "R-01"
-
-    def test_progress_surfaces_empty_structured_state_memory_when_state_is_missing(
-        self, tmp_path: Path
-    ) -> None:
-        _setup_project(tmp_path)
-
-        ctx = init_progress(tmp_path)
-
-        assert ctx["convention_lock"] == {}
-        assert ctx["convention_lock_set_count"] == 0
-        assert ctx["approximations"] == []
-        assert ctx["approximation_count"] == 0
-        assert ctx["intermediate_results"] == []
-        assert ctx["intermediate_result_count"] == 0
-
     def test_progress_hides_project_contract_when_raw_state_requires_contract_scalar_normalization(
         self, tmp_path: Path
     ) -> None:
@@ -1836,26 +1788,3 @@ class TestInitPhaseOp:
         # Phase should be found since we created the directory
         if result.get("phase_found"):
             assert "01" in str(result.get("phase_number", ""))
-
-    def test_surfaces_structured_state_memory(self, tmp_path):
-        """init_phase_op should expose authoritative convention/result state."""
-        from gpd.core.context import init_phase_op
-        from gpd.core.state import default_state_dict
-
-        gpd_dir = tmp_path / "GPD"
-        phases_dir = gpd_dir / "phases" / "01-test"
-        phases_dir.mkdir(parents=True)
-        (gpd_dir / "config.json").write_text("{}", encoding="utf-8")
-
-        state = default_state_dict()
-        state["convention_lock"]["metric_signature"] = "mostly-minus"
-        state["approximations"] = [{"name": "soft-cutoff", "validity_range": "q << Lambda"}]
-        state["intermediate_results"] = [{"id": "R-01", "description": "Gap equation"}]
-        (gpd_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
-
-        result = init_phase_op(tmp_path, phase="1")
-
-        assert result["convention_lock"]["metric_signature"] == "mostly-minus"
-        assert result["convention_lock_set_count"] >= 1
-        assert result["approximation_count"] == 1
-        assert result["intermediate_result_count"] == 1

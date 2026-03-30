@@ -197,9 +197,87 @@ def _runtime_command(action: str, *, cwd: Path) -> str | None:
         return None
 
 
-def _resume_context(cwd: Path) -> dict[str, object]:
-    payload = init_resume(cwd)
+def _resume_context(cwd: Path, *, data_root: Path | None = None) -> dict[str, object]:
+    payload = init_resume(cwd, data_root=data_root)
     return payload if isinstance(payload, dict) else {}
+
+
+def _resume_context_has_local_target(payload: dict[str, object]) -> bool:
+    """Return whether one resume payload already exposes a local recovery target."""
+    if bool(payload.get("has_continuity_handoff")):
+        return True
+    if bool(payload.get("execution_resumable")):
+        return True
+    if bool(payload.get("has_interrupted_agent")):
+        return True
+    candidates = payload.get("resume_candidates")
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            status = str(candidate.get("status") or "").strip()
+            kind = str(candidate.get("kind") or "").strip()
+            if status == "missing":
+                continue
+            if kind in {"bounded_segment", "handoff", "continuity_handoff", "interrupted_agent"}:
+                return True
+    return False
+
+
+def _hydrate_resume_context_from_recent_project(
+    payload: dict[str, object],
+    *,
+    reentry: object,
+    current_project: dict[str, object] | None,
+) -> dict[str, object]:
+    """Fill the selected-recent-project resume gap when local state has not been loaded yet."""
+    if not bool(getattr(reentry, "auto_selected", False)):
+        return payload
+    if current_project is None:
+        return payload
+    if _resume_context_has_local_target(payload):
+        return payload
+
+    resume_file = current_project.get("resume_file")
+    if not isinstance(resume_file, str) or not resume_file.strip():
+        return payload
+    resume_file = resume_file.strip()
+    resume_file_available = bool(current_project.get("resume_file_available"))
+    candidate_status = "handoff" if resume_file_available else "missing"
+
+    hydrated = dict(payload)
+    hydrated.setdefault("project_root", current_project.get("project_root"))
+    hydrated.setdefault("project_root_source", "recent_project")
+    hydrated.setdefault("project_root_auto_selected", True)
+    hydrated.setdefault("project_reentry_mode", getattr(reentry, "mode", None))
+    hydrated.setdefault("active_resume_kind", "continuity_handoff")
+    hydrated.setdefault("active_resume_origin", "continuation.handoff")
+    hydrated.setdefault("active_resume_pointer", resume_file)
+    if resume_file_available:
+        hydrated.setdefault("continuity_handoff_file", resume_file)
+    hydrated.setdefault("recorded_continuity_handoff_file", resume_file)
+    if not resume_file_available:
+        hydrated.setdefault("missing_continuity_handoff_file", resume_file)
+    hydrated.setdefault("has_continuity_handoff", True)
+
+    resume_candidates = hydrated.get("resume_candidates")
+    candidate = {
+        "kind": "continuity_handoff",
+        "origin": "continuation.handoff",
+        "status": candidate_status,
+        "resume_file": resume_file,
+        "resume_pointer": resume_file,
+    }
+    if isinstance(resume_candidates, list):
+        if not any(
+            isinstance(existing, dict)
+            and str(existing.get("resume_file") or "").strip() == resume_file
+            for existing in resume_candidates
+        ):
+            hydrated["resume_candidates"] = [*resume_candidates, candidate]
+    else:
+        hydrated["resume_candidates"] = [candidate]
+    return hydrated
 
 
 def _recovery_next_actions(
@@ -327,7 +405,13 @@ def build_runtime_hint_payload(
 
     recent_rows = list_recent_projects(data_root, last=recent_projects_last) if include_recovery else []
     current_project = _current_project_row(recent_rows, project_root=project_root.as_posix()) if include_recovery else None
-    resume_context = _resume_context(workspace_hint) if include_recovery else {}
+    resume_context = _resume_context(workspace_hint, data_root=data_root) if include_recovery else {}
+    if include_recovery:
+        resume_context = _hydrate_resume_context_from_recent_project(
+            resume_context,
+            reentry=reentry,
+            current_project=current_project,
+        )
     recovery_advice = (
         build_recovery_advice(
             project_root,

@@ -40,10 +40,12 @@ def test_resume_docs_use_canonical_paths_and_no_legacy_resume_command() -> None:
         assert "auto_checkpoint" not in doc
 
     assert "/gpd:resume-work" in portability_doc
-    assert "execution_resume_file" in resume_doc
-    assert "execution_resume_file" in portability_doc
+    assert "active_resume_kind" in resume_doc
+    assert "resume_candidates" in resume_doc
+    assert "active_resume_kind" in portability_doc
+    assert "resume_candidates" in portability_doc
     assert "machine_change_detected" in resume_doc
-    assert "Compatibility-only handoff cues in the current raw envelope:" in resume_doc
+    assert "Compatibility-only raw envelope cues:" in resume_doc
     assert "missing_session_resume_file" in resume_doc
     assert "session_resume_file" in resume_doc
     assert "Compatibility note: the current raw envelope still uses legacy candidate/source labels" in resume_doc
@@ -62,7 +64,8 @@ def test_resume_docs_use_canonical_paths_and_no_legacy_resume_command() -> None:
     assert "advisory continuity context only" in portability_doc
     assert "does not create a resumable bounded-segment candidate" in portability_doc
     assert "current raw compatibility label for that candidate family remains `current_execution`" in portability_doc
-    assert 'set `resume_mode="bounded_segment"`' in portability_doc
+    assert 'set `active_resume_kind="bounded_segment"`' in portability_doc
+    assert "The canonical public resume surface centers on `active_resume_kind`, `active_resume_origin`, `active_resume_pointer`" in portability_doc
     assert "The current continuation architecture separates execution provenance from bounded-resume authority." in portability_doc
     assert "Execution lineage" in portability_doc
     assert "Compatibility mirror showing the latest execution snapshot" in portability_doc
