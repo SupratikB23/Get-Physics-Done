@@ -34,6 +34,7 @@ from gpd.core.constants import ProjectLayout
 from gpd.core.continuation import ContinuationBoundedSegment
 from gpd.core.execution_lineage import (
     ExecutionHeadEffect,
+    ExecutionLineageHead,
     build_execution_lineage_entry,
     clear_execution_lineage_head,
     execution_lineage_ledger_path,
@@ -418,6 +419,196 @@ def _normalized_execution_snapshot(snapshot: CurrentExecutionState | None) -> di
     return snapshot.model_dump(mode="json")
 
 
+def _existing_current_execution_snapshot(layout: ProjectLayout) -> CurrentExecutionState | None:
+    head_raw = _read_json(layout.execution_lineage_head)
+    if head_raw is not None:
+        try:
+            head_snapshot = ExecutionLineageHead.model_validate(head_raw)
+        except Exception:
+            head_snapshot = None
+        else:
+            if isinstance(head_snapshot.execution, dict):
+                try:
+                    return CurrentExecutionState.model_validate(head_snapshot.execution)
+                except Exception:
+                    pass
+
+    raw = _read_current_execution_raw(layout)
+    if raw is None:
+        return None
+    try:
+        return CurrentExecutionState.model_validate(raw)
+    except Exception:
+        return None
+
+
+def _execution_lane_field_value(payload: object, field: str) -> str | None:
+    if isinstance(payload, dict):
+        return _str_or_none(payload.get(field))
+    if hasattr(payload, field):
+        return _str_or_none(getattr(payload, field))
+    return None
+
+
+def _execution_lanes_compatible(left: object, right: object) -> bool:
+    comparisons = 0
+    for field in ("resume_file", "segment_id", "phase", "plan", "transition_id"):
+        left_value = _execution_lane_field_value(left, field)
+        right_value = _execution_lane_field_value(right, field)
+        if left_value is None or right_value is None:
+            continue
+        comparisons += 1
+        if left_value != right_value:
+            return False
+    return comparisons > 0
+
+
+def _canonical_result_payload(state_obj: dict[str, object], result_id: str) -> dict[str, object] | None:
+    results = state_obj.get("intermediate_results")
+    if not isinstance(results, list):
+        return None
+    for result in results:
+        if isinstance(result, dict) and _str_or_none(result.get("id")) == result_id:
+            return result
+    return None
+
+
+def _canonical_result_label(result: object) -> str | None:
+    if not isinstance(result, dict):
+        return None
+    description = _str_or_none(result.get("description"))
+    if description is not None:
+        return description
+    equation = _str_or_none(result.get("equation"))
+    if equation is not None:
+        return equation
+    return None
+
+
+def _sync_execution_visibility_anchors_from_canonical_continuation(
+    layout: ProjectLayout | Path,
+    *,
+    state_obj: dict[str, object] | None = None,
+) -> bool:
+    """Project canonical continuity anchors into existing live execution caches."""
+
+    layout = layout if isinstance(layout, ProjectLayout) else ProjectLayout(Path(layout).expanduser().resolve(strict=False))
+    current_exists = layout.current_observability_execution.exists()
+    head_exists = layout.execution_lineage_head.exists()
+    if not current_exists and not head_exists:
+        return False
+
+    if state_obj is None:
+        from gpd.core.state import peek_state_json
+
+        loaded_state_obj, _issues, _source = peek_state_json(layout.root, recover_intent=False)
+        state_obj = loaded_state_obj
+
+    if not isinstance(state_obj, dict):
+        return False
+
+    canonical_continuation = state_obj.get("continuation")
+    if not isinstance(canonical_continuation, dict):
+        return False
+
+    canonical_bounded_segment = canonical_continuation.get("bounded_segment")
+    if not isinstance(canonical_bounded_segment, dict):
+        return False
+
+    canonical_last_result_id = _str_or_none(canonical_bounded_segment.get("last_result_id"))
+    if canonical_last_result_id is None:
+        return False
+    canonical_result = _canonical_result_payload(state_obj, canonical_last_result_id)
+    if canonical_result is None:
+        return False
+
+    current_snapshot: CurrentExecutionState | None = None
+    current_raw: dict[str, object] | None = None
+    if current_exists:
+        current_raw = _read_current_execution_raw(layout)
+        if current_raw is None:
+            return False
+        try:
+            current_snapshot = CurrentExecutionState.model_validate(current_raw)
+        except Exception:
+            return False
+
+    head_snapshot: CurrentExecutionState | None = None
+    head_payload: ExecutionLineageHead | None = None
+    if head_exists:
+        head_raw = _read_json(layout.execution_lineage_head)
+        if head_raw is None:
+            return False
+        try:
+            head_payload = ExecutionLineageHead.model_validate(head_raw)
+        except Exception:
+            return False
+        if not isinstance(head_payload.execution, dict):
+            return False
+        try:
+            head_snapshot = CurrentExecutionState.model_validate(head_payload.execution)
+        except Exception:
+            return False
+
+    live_snapshot = head_snapshot or current_snapshot
+    if live_snapshot is None:
+        return False
+
+    if current_snapshot is not None and head_snapshot is not None and not _execution_lanes_compatible(current_snapshot, head_snapshot):
+        return False
+    if not _execution_lanes_compatible(live_snapshot, canonical_bounded_segment):
+        return False
+
+    updated_fields = {
+        "last_result_id": canonical_last_result_id,
+        "last_result_label": _canonical_result_label(canonical_result),
+    }
+    updated_snapshot = live_snapshot.model_copy(update=updated_fields)
+    wrote = False
+
+    if current_snapshot is not None:
+        current_updated = (
+            updated_snapshot if head_payload is not None else current_snapshot.model_copy(update=updated_fields)
+        )
+        if current_exists and current_raw != current_updated.model_dump(mode="json"):
+            _save_current_execution(layout, current_updated)
+            wrote = True
+    elif current_exists:
+        _save_current_execution(layout, updated_snapshot)
+        wrote = True
+
+    if head_payload is not None:
+        updated_bounded_segment = (
+            head_payload.bounded_segment.model_copy(update={"last_result_id": canonical_last_result_id})
+            if head_payload.bounded_segment is not None
+            else None
+        )
+        updated_head = head_payload.model_copy(
+            update={
+                "execution": updated_snapshot.model_dump(mode="json"),
+                "bounded_segment": updated_bounded_segment,
+            }
+        )
+        if head_exists and updated_head.model_dump(mode="json") != _read_json(layout.execution_lineage_head):
+            write_execution_lineage_head(layout.root, updated_head)
+            wrote = True
+
+    return wrote
+
+
+def _sync_execution_visibility_from_canonical_continuation(
+    layout: ProjectLayout | Path,
+    *,
+    state_obj: dict[str, object] | None = None,
+) -> bool:
+    """Compatibility alias for the canonical-continuation visibility sync helper."""
+
+    return _sync_execution_visibility_anchors_from_canonical_continuation(layout, state_obj=state_obj)
+
+
+sync_execution_visibility_from_canonical_continuation = _sync_execution_visibility_from_canonical_continuation
+
+
 def _bounded_segment_helper() -> Callable | None:
     for helper_name in (
         "canonical_bounded_segment_from_execution_snapshot",
@@ -481,6 +672,9 @@ def get_current_execution(cwd: Path | None = None) -> CurrentExecutionState | No
     layout = _layout(cwd)
     if layout is None:
         return None
+    if layout.current_observability_execution.exists() or layout.execution_lineage_head.exists():
+        _sync_execution_visibility_anchors_from_canonical_continuation(layout)
+        return _existing_current_execution_snapshot(layout)
     return _current_execution_snapshot(layout)
 
 
