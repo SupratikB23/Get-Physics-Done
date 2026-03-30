@@ -402,6 +402,9 @@ gpd query search --affects <term>
 gpd result search --equation "E = mc^2"
 gpd result search --text "effective mass"
 gpd result search --phase <phase>
+
+# Inspect one canonical result directly
+gpd result show <identifier>
 ```
 
 ---

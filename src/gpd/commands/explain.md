@@ -61,7 +61,7 @@ Extract the target concept from `$ARGUMENTS`.
 
 - If the request is materially ambiguous and the active project does not disambiguate it, ask one focused clarification question.
 - Otherwise infer the intended scope from the current phase, manuscript work, notation, and nearby project files.
-- If the concept looks like a derived equation or stored quantity, search the result registry first with `gpd result search` before falling back to prose-only context. If you find a canonical `result_id`, use `gpd result deps` when the explanation needs upstream context.
+- If the concept looks like a derived equation or stored quantity, search the result registry first with `gpd result search` before falling back to prose-only context. If you find a canonical `result_id`, use `gpd result show "{result_id}"` for the direct stored-result view and `gpd result deps "{result_id}"` when the explanation needs upstream context.
 
 ## 2. Gather Context
 
