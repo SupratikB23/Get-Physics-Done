@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import ANY, MagicMock, patch
 
@@ -26,6 +27,20 @@ runner = CliRunner()
 
 class TestPreCommitCheck:
     """Tests for cmd_pre_commit_check."""
+
+    def _write_convention_lock(self, tmp_path: Path, **lock_fields: object) -> None:
+        gpd_dir = tmp_path / "GPD"
+        gpd_dir.mkdir(parents=True, exist_ok=True)
+        (gpd_dir / "state.json").write_text(
+            json.dumps({"convention_lock": lock_fields}, indent=2),
+            encoding="utf-8",
+        )
+
+    def _write_markdown(self, tmp_path: Path, relative_path: str, content: str) -> Path:
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return path
 
     def test_no_files_passes(self, tmp_path: Path) -> None:
         result = cmd_pre_commit_check(tmp_path, [])
@@ -178,6 +193,63 @@ class TestPreCommitCheck:
         assert result.details[0].storage_valid is False
         assert result.details[0].storage_class == "internal_durable"
         assert any("internal metadata directories" in warning for warning in result.warnings)
+
+    def test_derivation_markdown_with_matching_assertion_passes(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-01.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-minus -->\n\n# Derivation\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-01.md"])
+
+        assert result.passed is True
+        assert result.files_checked == 1
+        assert result.details[0].assert_convention_valid is True
+
+    def test_derivation_markdown_missing_assertion_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-02.md",
+            "# Derivation\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-02.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_valid is False
+        assert any(
+            "Missing ASSERT_CONVENTION header" in warning for warning in result.warnings
+        )
+
+    def test_derivation_markdown_mismatch_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-03.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-plus -->\n\n# Derivation\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-03.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_valid is False
+        assert any("ASSERT_CONVENTION mismatch" in warning for warning in result.warnings)
+
+    def test_non_derivation_markdown_remains_unaffected(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/summary.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-plus -->\n\n# Notes\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/summary.md"])
+
+        assert result.passed is True
+        assert result.details[0].assert_convention_valid is None
 
 
 # ---------------------------------------------------------------------------
