@@ -2200,6 +2200,7 @@ def test_publication_workflows_refresh_bibliography_audit_after_bibliography_cha
     write_paper = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
     respond = (WORKFLOWS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
     peer_review = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
+    arxiv_submission = (WORKFLOWS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
 
     assert (
         "`gpd paper-build` is the authoritative step that regenerates `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` "
@@ -2213,6 +2214,8 @@ def test_publication_workflows_refresh_bibliography_audit_after_bibliography_cha
     assert "refresh `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` before generating the response letter or proceeding to final review" in respond
     assert "`gpd paper-build` is the step that regenerates `BIBLIOGRAPHY-AUDIT.json` for the current bibliography; rerun it before proceeding whenever the manuscript bibliography or citation set has changed." in peer_review
     assert "absent, stale, or not review-ready" in peer_review
+    assert "Strict preflight also requires `ARTIFACT-MANIFEST.json` and `BIBLIOGRAPHY-AUDIT.json` beside the resolved manuscript entry point." in arxiv_submission
+    assert "Treat `gpd paper-build` as the authoritative step that regenerates `BIBLIOGRAPHY-AUDIT.json` for the resolved manuscript root." in arxiv_submission
 
 
 def test_stage9_adaptive_mode_and_review_cadence_docs_stay_aligned() -> None:

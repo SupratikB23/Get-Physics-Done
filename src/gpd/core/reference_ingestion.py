@@ -8,13 +8,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from gpd.core.manuscript_artifacts import resolve_current_manuscript_artifacts
 
 __all__ = [
     "ArtifactReference",
     "ArtifactReferenceIntake",
     "ArtifactReferenceIngestion",
     "CitationSourceRecord",
+    "ManuscriptReferenceStatusIngestion",
+    "ManuscriptReferenceStatusRecord",
     "ingest_reference_artifacts",
+    "ingest_manuscript_reference_status",
 ]
 
 _ALLOWED_ACTIONS = {"read", "use", "compare", "cite", "avoid"}
@@ -247,6 +251,44 @@ class ArtifactReferenceIngestion:
     citation_source_warnings: list[str] = field(default_factory=list)
 
 
+@dataclass
+class ManuscriptReferenceStatusRecord:
+    """Current manuscript citation status derived from the bibliography audit."""
+
+    reference_id: str
+    bibtex_key: str
+    title: str = ""
+    resolution_status: str = ""
+    verification_status: str = ""
+    source_artifacts: list[str] = field(default_factory=list)
+    manuscript_root: str = ""
+    bibliography_audit_path: str = ""
+    source_kind: str = "manuscript_bibliography_audit"
+
+    def to_context_dict(self) -> dict[str, object]:
+        return {
+            "reference_id": self.reference_id,
+            "bibtex_key": self.bibtex_key,
+            "title": self.title,
+            "resolution_status": self.resolution_status,
+            "verification_status": self.verification_status,
+            "source_artifacts": list(self.source_artifacts),
+            "manuscript_root": self.manuscript_root,
+            "bibliography_audit_path": self.bibliography_audit_path,
+            "source_kind": self.source_kind,
+        }
+
+
+@dataclass
+class ManuscriptReferenceStatusIngestion:
+    """Derived manuscript-local citation status from the current bibliography audit."""
+
+    manuscript_root: str = ""
+    bibliography_audit_path: str = ""
+    reference_status: list[ManuscriptReferenceStatusRecord] = field(default_factory=list)
+    reference_status_warnings: list[str] = field(default_factory=list)
+
+
 def _append_unique(items: list[str], value: str | None) -> None:
     cleaned = _clean_text(value)
     if cleaned and cleaned not in items:
@@ -276,6 +318,76 @@ def _normalize_kind(value: str | None) -> str:
     if not raw:
         return "other"
     return _KIND_MAP.get(raw, "other")
+
+
+def _relative_posix(root: Path, path: Path) -> str:
+    """Return a stable repo-relative POSIX path when possible."""
+    resolved_root = root.resolve(strict=False)
+    resolved_path = path.resolve(strict=False)
+    try:
+        return resolved_path.relative_to(resolved_root).as_posix()
+    except ValueError:
+        return resolved_path.as_posix()
+
+
+def ingest_manuscript_reference_status(project_root: Path) -> ManuscriptReferenceStatusIngestion:
+    """Parse the current manuscript's bibliography audit into a derived status view."""
+    from gpd.mcp.paper.bibliography import BibliographyAudit
+
+    manuscript_artifacts = resolve_current_manuscript_artifacts(project_root)
+    manuscript_dir = manuscript_artifacts.manuscript_root or (project_root / "paper")
+    audit_path = manuscript_artifacts.bibliography_audit or (manuscript_dir / "BIBLIOGRAPHY-AUDIT.json")
+    manuscript_root = _relative_posix(project_root, manuscript_dir)
+    bibliography_audit_path = _relative_posix(project_root, audit_path)
+
+    if not audit_path.exists():
+        return ManuscriptReferenceStatusIngestion(
+            manuscript_root=manuscript_root,
+            bibliography_audit_path=bibliography_audit_path,
+        )
+
+    try:
+        raw_audit = json.loads(audit_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return ManuscriptReferenceStatusIngestion(
+            manuscript_root=manuscript_root,
+            bibliography_audit_path=bibliography_audit_path,
+            reference_status_warnings=[f"could not read bibliography audit {bibliography_audit_path}: {exc}"],
+        )
+
+    try:
+        audit = BibliographyAudit.model_validate(raw_audit)
+    except Exception as exc:  # noqa: BLE001
+        return ManuscriptReferenceStatusIngestion(
+            manuscript_root=manuscript_root,
+            bibliography_audit_path=bibliography_audit_path,
+            reference_status_warnings=[f"invalid bibliography audit {bibliography_audit_path}: {exc}"],
+        )
+
+    reference_status: list[ManuscriptReferenceStatusRecord] = []
+    for entry in audit.entries:
+        reference_id = _clean_text(entry.reference_id)
+        bibtex_key = _clean_text(entry.key)
+        if not reference_id or not bibtex_key:
+            continue
+        reference_status.append(
+            ManuscriptReferenceStatusRecord(
+                reference_id=reference_id,
+                bibtex_key=bibtex_key,
+                title=_clean_text(entry.title),
+                resolution_status=_clean_text(entry.resolution_status),
+                verification_status=_clean_text(entry.verification_status),
+                source_artifacts=[bibliography_audit_path],
+                manuscript_root=manuscript_root,
+                bibliography_audit_path=bibliography_audit_path,
+            )
+        )
+
+    return ManuscriptReferenceStatusIngestion(
+        manuscript_root=manuscript_root,
+        bibliography_audit_path=bibliography_audit_path,
+        reference_status=reference_status,
+    )
 
 
 def _normalize_actions(value: object) -> list[str]:

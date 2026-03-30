@@ -52,7 +52,7 @@ from gpd.core.extras import approximation_list
 from gpd.core.phases import _milestone_completion_snapshot
 from gpd.core.project_reentry import resolve_project_reentry
 from gpd.core.protocol_bundles import render_protocol_bundle_context, select_protocol_bundles
-from gpd.core.reference_ingestion import ingest_reference_artifacts
+from gpd.core.reference_ingestion import ingest_manuscript_reference_status, ingest_reference_artifacts
 from gpd.core.results import result_list
 from gpd.core.resume_surface import (
     build_resume_candidate,
@@ -850,8 +850,13 @@ def _build_reference_runtime_context(cwd: Path) -> dict[str, object]:
         literature_review_files=list(artifact_payload["literature_review_files"]),
         research_map_reference_files=list(artifact_payload["research_map_reference_files"]),
     )
+    manuscript_reference_status = ingest_manuscript_reference_status(cwd)
     derived_references = [ref.to_context_dict() for ref in artifact_ingestion.references]
     derived_citation_sources = [item.to_context_dict() for item in artifact_ingestion.citation_sources]
+    derived_manuscript_reference_status = {
+        record.reference_id: record.to_context_dict()
+        for record in manuscript_reference_status.reference_status
+    }
     active_references = _merge_active_references(_serialize_active_references(contract), derived_references)
     effective_reference_intake = _merge_reference_intake(
         contract,
@@ -901,6 +906,8 @@ def _build_reference_runtime_context(cwd: Path) -> dict[str, object]:
         "citation_source_warnings": list(artifact_ingestion.citation_source_warnings),
         "derived_citation_sources": derived_citation_sources,
         "derived_citation_source_count": len(derived_citation_sources),
+        "derived_manuscript_reference_status": derived_manuscript_reference_status,
+        "derived_manuscript_reference_status_count": len(derived_manuscript_reference_status),
         "active_references": active_references,
         "active_reference_count": len(active_references),
         "selected_protocol_bundle_ids": [bundle.bundle_id for bundle in selected_protocol_bundles],

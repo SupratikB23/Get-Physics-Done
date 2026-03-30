@@ -469,6 +469,41 @@ def _write_literature_citation_source_file(tmp_path: Path) -> None:
     )
 
 
+def _write_manuscript_bibliography_audit(tmp_path: Path) -> None:
+    paper_dir = tmp_path / "paper"
+    paper_dir.mkdir(exist_ok=True)
+    (paper_dir / "BIBLIOGRAPHY-AUDIT.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-03-30T00:00:00+00:00",
+                "total_sources": 1,
+                "resolved_sources": 1,
+                "partial_sources": 0,
+                "unverified_sources": 0,
+                "failed_sources": 0,
+                "entries": [
+                    {
+                        "key": "benchmark2024",
+                        "source_type": "paper",
+                        "reference_id": "ref-benchmark",
+                        "title": "Benchmark Paper",
+                        "resolution_status": "provided",
+                        "verification_status": "verified",
+                        "verification_sources": ["manual"],
+                        "canonical_identifiers": ["doi:10.1000/example"],
+                        "missing_core_fields": [],
+                        "enriched_fields": [],
+                        "warnings": [],
+                        "errors": [],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def _write_research_map_anchor_files(tmp_path: Path) -> None:
     map_dir = tmp_path / "GPD" / "research-map"
     map_dir.mkdir(parents=True, exist_ok=True)
@@ -878,6 +913,24 @@ class TestInitPlanPhase:
         assert "GPD/literature/benchmark-CITATION-SOURCES.json" not in ctx["reference_artifact_files"]
         assert "Benchmark Survey" in ctx["reference_artifacts_content"]
         assert "Active Anchor Registry" in ctx["reference_artifacts_content"]
+
+    def test_surfaces_derived_manuscript_reference_status_from_bibliography_audit(self, tmp_path: Path) -> None:
+        _setup_project(tmp_path)
+        _create_phase_dir(tmp_path, "02-analysis")
+        _write_manuscript_bibliography_audit(tmp_path)
+
+        ctx = init_plan_phase(tmp_path, "2")
+
+        assert ctx["derived_manuscript_reference_status_count"] == 1
+        assert ctx["derived_manuscript_reference_status"]["ref-benchmark"]["bibtex_key"] == "benchmark2024"
+        assert ctx["derived_manuscript_reference_status"]["ref-benchmark"]["title"] == "Benchmark Paper"
+        assert ctx["derived_manuscript_reference_status"]["ref-benchmark"]["resolution_status"] == "provided"
+        assert ctx["derived_manuscript_reference_status"]["ref-benchmark"]["verification_status"] == "verified"
+        assert ctx["derived_manuscript_reference_status"]["ref-benchmark"]["manuscript_root"] == "paper"
+        assert ctx["derived_manuscript_reference_status"]["ref-benchmark"]["bibliography_audit_path"] == "paper/BIBLIOGRAPHY-AUDIT.json"
+        assert ctx["derived_manuscript_reference_status"]["ref-benchmark"]["source_artifacts"] == [
+            "paper/BIBLIOGRAPHY-AUDIT.json"
+        ]
 
     def test_surfaces_derived_state_memory_without_including_state_markdown(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from gpd.core.context import init_verify_work
-from gpd.core.reference_ingestion import ingest_reference_artifacts
+from gpd.core.reference_ingestion import ingest_manuscript_reference_status, ingest_reference_artifacts
 from gpd.core.state import default_state_dict
 
 
@@ -110,6 +110,54 @@ def test_ingest_reference_artifacts_parses_citation_source_sidecar(tmp_path: Pat
     assert citation_sources[0].bibtex_key == "benchmark2024"
     assert citation_sources[0].doi == "10.1000/example"
     assert citation_sources[1].arxiv_id == "2301.12345"
+
+
+def test_ingest_manuscript_reference_status_reads_current_audit(tmp_path: Path) -> None:
+    _bootstrap_project(tmp_path)
+    paper_dir = tmp_path / "paper"
+    paper_dir.mkdir()
+    (paper_dir / "BIBLIOGRAPHY-AUDIT.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-03-30T00:00:00+00:00",
+                "total_sources": 1,
+                "resolved_sources": 1,
+                "partial_sources": 0,
+                "unverified_sources": 0,
+                "failed_sources": 0,
+                "entries": [
+                    {
+                        "key": "benchmark2024",
+                        "source_type": "paper",
+                        "reference_id": "ref-benchmark",
+                        "title": "Benchmark Paper",
+                        "resolution_status": "provided",
+                        "verification_status": "verified",
+                        "verification_sources": ["manual"],
+                        "canonical_identifiers": ["doi:10.1000/example"],
+                        "missing_core_fields": [],
+                        "enriched_fields": [],
+                        "warnings": [],
+                        "errors": [],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = ingest_manuscript_reference_status(tmp_path)
+
+    assert result.manuscript_root == "paper"
+    assert result.bibliography_audit_path == "paper/BIBLIOGRAPHY-AUDIT.json"
+    assert result.reference_status_warnings == []
+    assert [record.reference_id for record in result.reference_status] == ["ref-benchmark"]
+    assert result.reference_status[0].bibtex_key == "benchmark2024"
+    assert result.reference_status[0].title == "Benchmark Paper"
+    assert result.reference_status[0].resolution_status == "provided"
+    assert result.reference_status[0].verification_status == "verified"
+    assert result.reference_status[0].source_artifacts == ["paper/BIBLIOGRAPHY-AUDIT.json"]
 
 
 def test_ingest_reference_artifacts_ignores_malformed_citation_source_sidecar(tmp_path: Path) -> None:
