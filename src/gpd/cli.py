@@ -5660,7 +5660,7 @@ def _build_review_preflight(
                         else "no reproducibility manifest found near the manuscript"
                     ),
                 )
-            if strict and command.name == "gpd:peer-review" and bibliography_audit is not None:
+            if strict and command.name in {"gpd:peer-review", "gpd:write-paper"} and bibliography_audit is not None:
                 from gpd.mcp.paper.bibliography import BibliographyAudit
 
                 try:

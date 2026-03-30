@@ -5,10 +5,12 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pybtex.database import BibliographyData, Entry
 
 from gpd.mcp.paper.bibliography import (
     BibliographyAudit,
     CitationSource,
+    audit_bibliography_data,
     audit_citation_source,
     build_bibliography,
     build_bibliography_with_audit,
@@ -199,6 +201,44 @@ class TestBibliographyAudit:
         assert record.verification_status == "partial"
         assert record.canonical_identifiers == ["doi:10.1234/example"]
         assert record.missing_core_fields == []
+
+    def test_build_bibliography_with_audit_normalizes_reserved_keys(self):
+        source = CitationSource(
+            source_type="paper",
+            title="Relativity",
+            authors=["A. Einstein"],
+            year="1905",
+        )
+
+        bib, audit = build_bibliography_with_audit([source], enrich=False, existing_keys={"einstein1905"})
+
+        assert list(bib.entries.keys()) == ["einstein1905a"]
+        assert [entry.key for entry in audit.entries] == ["einstein1905a"]
+        assert audit.entries[0].resolution_status == "provided"
+        assert audit.entries[0].verification_status == "unverified"
+
+    def test_audit_bibliography_data_marks_explicit_bib_entries_conservatively(self):
+        bib = BibliographyData()
+        bib.entries["einstein1905"] = Entry(
+            "article",
+            [("author", "Einstein"), ("title", "Zur Elektrodynamik"), ("year", "1905")],
+        )
+        bib.entries["bohr1913"] = Entry(
+            "article",
+            [("author", "Bohr"), ("title", "Relativity Follow-up"), ("year", "1913"), ("doi", "10.1000/bohr1913")],
+        )
+
+        audit = audit_bibliography_data(bib)
+
+        assert audit.total_sources == 2
+        assert audit.resolved_sources == 2
+        assert audit.partial_sources == 1
+        assert audit.unverified_sources == 1
+        assert [entry.key for entry in audit.entries] == ["einstein1905", "bohr1913"]
+        assert audit.entries[0].resolution_status == "provided"
+        assert audit.entries[0].verification_status == "unverified"
+        assert audit.entries[1].canonical_identifiers == ["doi:10.1000/bohr1913"]
+        assert audit.entries[1].verification_status == "partial"
 
     def test_build_bibliography_with_audit_records_successful_enrichment(self):
         from datetime import datetime

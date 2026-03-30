@@ -252,6 +252,181 @@ def _canonical_identifiers(source: CitationSource) -> list[str]:
     return identifiers
 
 
+def _entry_field(entry: Entry, field: str) -> str:
+    """Return one BibTeX field as stripped text."""
+    value = ""
+    fields = getattr(entry, "fields", {})
+    if hasattr(fields, "get"):
+        value = fields.get(field, "")
+        if value == "" or value is None:
+            for candidate_field, candidate_value in getattr(fields, "items", lambda: [])():
+                if str(candidate_field).strip().lower() == field.strip().lower():
+                    value = candidate_value
+                    break
+    return str(value).strip() if value is not None else ""
+
+
+def _entry_person_names(entry: Entry, role: str) -> list[str]:
+    """Return names for one BibTeX person role from fields or parsed persons."""
+    names: list[str] = []
+    field_value = _entry_field(entry, role)
+    if field_value:
+        names.extend(part.strip() for part in field_value.split(" and ") if part.strip())
+
+    persons = getattr(entry, "persons", {})
+    if hasattr(persons, "items"):
+        for person_role, person_list in persons.items():
+            if str(person_role).strip().lower() != role.strip().lower():
+                continue
+            for person in person_list:
+                person_name = str(person).strip()
+                if person_name and person_name not in names:
+                    names.append(person_name)
+    return names
+
+
+def _bib_entry_source_type(entry: Entry) -> Literal["paper", "tool", "data", "website"]:
+    """Map a BibTeX entry type into the coarse bibliography audit categories."""
+    entry_type = (entry.type or "").strip().lower()
+    if entry_type in {"software"}:
+        return "tool"
+    if entry_type in {"dataset", "data"}:
+        return "data"
+    if entry_type in {"online", "webpage", "website", "www"}:
+        return "website"
+    return "paper"
+
+
+def _bib_entry_missing_fields(entry: Entry) -> list[str]:
+    """Return missing core identity fields for one BibTeX entry."""
+    missing: list[str] = []
+    if not _entry_field(entry, "title"):
+        missing.append("title")
+    if not _entry_person_names(entry, "author") and not _entry_person_names(entry, "editor"):
+        missing.append("authors")
+    if not _entry_field(entry, "year") and not _entry_field(entry, "date"):
+        missing.append("year")
+    return missing
+
+
+def _bib_entry_canonical_identifiers(entry: Entry) -> list[str]:
+    """Extract canonical identifiers from a BibTeX entry without external lookup."""
+    identifiers: list[str] = []
+
+    doi = _entry_field(entry, "doi")
+    if doi:
+        identifiers.append(f"doi:{doi}")
+
+    eprint = _entry_field(entry, "eprint")
+    archive_prefix = _entry_field(entry, "archiveprefix").lower()
+    eprint_type = _entry_field(entry, "eprinttype").lower()
+    note = _entry_field(entry, "note")
+    if eprint and (archive_prefix == "arxiv" or eprint_type == "arxiv"):
+        identifiers.append(f"arxiv:{eprint}")
+    elif note.lower().startswith("arxiv:"):
+        identifiers.append(f"arxiv:{note.split(':', 1)[1].strip()}")
+
+    url = _entry_field(entry, "url")
+    if url:
+        identifiers.append(f"url:{url}")
+
+    return identifiers
+
+
+def audit_bib_entry(
+    key: str,
+    entry: Entry,
+    existing_keys: set[str] | None = None,
+) -> CitationAuditRecord:
+    """Audit one explicit BibTeX entry with conservative, non-verified semantics."""
+    missing_after = _bib_entry_missing_fields(entry)
+    identifiers = _bib_entry_canonical_identifiers(entry)
+    resolution_status: CitationResolutionStatus = "provided" if not missing_after else "incomplete"
+    verification_status: CitationVerificationStatus = "partial" if identifiers else "unverified"
+    warnings: list[str] = []
+
+    if missing_after:
+        warnings.append(f"Missing core citation fields: {', '.join(missing_after)}")
+    if identifiers:
+        warnings.append("Canonical identifiers were provided in BibTeX but not externally verified")
+    else:
+        warnings.append("No canonical identifier available")
+    if existing_keys and key in existing_keys:
+        warnings.append("BibTeX key collides with an existing bibliography key")
+
+    return CitationAuditRecord(
+        key=key,
+        source_type=_bib_entry_source_type(entry),
+        title=_entry_field(entry, "title"),
+        resolution_status=resolution_status,
+        verification_status=verification_status,
+        verification_sources=[],
+        canonical_identifiers=identifiers,
+        missing_core_fields=missing_after,
+        enriched_fields=[],
+        warnings=warnings,
+        errors=[],
+    )
+
+
+def _bibliography_audit_from_entries(entries: list[CitationAuditRecord]) -> BibliographyAudit:
+    """Build a summary audit object from already-audited bibliography entries."""
+    return BibliographyAudit(
+        generated_at=datetime.now(UTC).isoformat(),
+        total_sources=len(entries),
+        resolved_sources=sum(1 for entry in entries if entry.resolution_status in {"provided", "enriched"}),
+        partial_sources=sum(1 for entry in entries if entry.verification_status == "partial"),
+        unverified_sources=sum(1 for entry in entries if entry.verification_status == "unverified"),
+        failed_sources=sum(1 for entry in entries if entry.resolution_status == "failed"),
+        entries=entries,
+    )
+
+
+def audit_bibliography_data(
+    bib_data: BibliographyData,
+    *,
+    existing_keys: set[str] | None = None,
+) -> BibliographyAudit:
+    """Audit an existing BibliographyData payload without claiming external verification."""
+    reserved_keys = set(existing_keys or ())
+    entries = [audit_bib_entry(key, entry, reserved_keys) for key, entry in bib_data.entries.items()]
+    return _bibliography_audit_from_entries(entries)
+
+
+def audit_bibtex_file(
+    bibtex_path: Path,
+    *,
+    existing_keys: set[str] | None = None,
+) -> BibliographyAudit:
+    """Load a ``.bib`` file and audit it conservatively."""
+    from pybtex.database.input import bibtex
+
+    parser = bibtex.Parser()
+    bib_data = parser.parse_file(str(bibtex_path))
+    return audit_bibliography_data(bib_data, existing_keys=existing_keys)
+
+
+def audit_bibliography_file(
+    bibtex_path: Path,
+    *,
+    existing_keys: set[str] | None = None,
+) -> BibliographyAudit:
+    """Compatibility alias for auditing a ``.bib`` file."""
+    return audit_bibtex_file(bibtex_path, existing_keys=existing_keys)
+
+
+def merge_bibliography_audits(*audits: BibliographyAudit | None) -> BibliographyAudit | None:
+    """Merge bibliography audits into a single manuscript-level audit artifact."""
+    merged_entries: list[CitationAuditRecord] = []
+    for audit in audits:
+        if audit is None:
+            continue
+        merged_entries.extend(audit.entries)
+    if not merged_entries:
+        return None
+    return _bibliography_audit_from_entries(merged_entries)
+
+
 def audit_citation_source(
     source: CitationSource,
     existing_keys: set[str] | None = None,
@@ -443,11 +618,14 @@ def enrich_from_arxiv(source: CitationSource) -> CitationSource:
 
 
 def build_bibliography_with_audit(
-    sources: list[CitationSource],
+    sources: list[CitationSource] | BibliographyData,
     enrich: bool = True,
     existing_keys: set[str] | None = None,
 ) -> tuple[BibliographyData, BibliographyAudit]:
     """Build both the BibTeX payload and a machine-readable audit artifact."""
+    if isinstance(sources, BibliographyData):
+        return sources, audit_bibliography_data(sources, existing_keys=existing_keys)
+
     audited_sources, audit_entries = _resolve_sources_for_bibliography(
         sources,
         enrich=enrich,
@@ -463,17 +641,7 @@ def build_bibliography_with_audit(
         else:
             normalized_audit_entries.append(audit_entry.model_copy(update={"key": key}))
 
-    audit = BibliographyAudit(
-        generated_at=datetime.now(UTC).isoformat(),
-        total_sources=len(normalized_audit_entries),
-        resolved_sources=sum(
-            1 for entry in normalized_audit_entries if entry.resolution_status in {"provided", "enriched"}
-        ),
-        partial_sources=sum(1 for entry in normalized_audit_entries if entry.verification_status == "partial"),
-        unverified_sources=sum(1 for entry in normalized_audit_entries if entry.verification_status == "unverified"),
-        failed_sources=sum(1 for entry in normalized_audit_entries if entry.resolution_status == "failed"),
-        entries=normalized_audit_entries,
-    )
+    audit = _bibliography_audit_from_entries(normalized_audit_entries)
     return bib, audit
 
 

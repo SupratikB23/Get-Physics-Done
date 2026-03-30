@@ -1731,6 +1731,8 @@ class TestReviewValidationCommands:
             "research_artifacts",
             "verification_reports",
         } <= check_names
+        assert checks["bibliography_audit_clean"]["passed"] is True
+        assert checks["bibliography_audit_clean"]["blocking"] is True
         assert checks["reproducibility_manifest"]["passed"] is True
         assert checks["reproducibility_ready"]["passed"] is True
 
@@ -1784,6 +1786,7 @@ class TestReviewValidationCommands:
         assert f"{resume_dir_name}/main.tex" in checks["manuscript"]["detail"]
         assert checks["artifact_manifest"]["passed"] is True
         assert checks["bibliography_audit"]["passed"] is True
+        assert checks["bibliography_audit_clean"]["passed"] is True
         assert checks["reproducibility_manifest"]["passed"] is True
         assert checks["reproducibility_ready"]["passed"] is True
 
@@ -1818,6 +1821,67 @@ class TestReviewValidationCommands:
         assert checks["artifact_manifest"]["passed"] is False
         assert checks["bibliography_audit"]["passed"] is False
         assert checks["reproducibility_manifest"]["passed"] is False
+
+    def test_review_preflight_write_paper_strict_blocks_dirty_bibliography_audit(self, gpd_project: Path) -> None:
+        paper_dir = gpd_project / "paper"
+        (paper_dir / "BIBLIOGRAPHY-AUDIT.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-03-10T00:00:00+00:00",
+                    "total_sources": 2,
+                    "resolved_sources": 1,
+                    "partial_sources": 1,
+                    "unverified_sources": 0,
+                    "failed_sources": 0,
+                    "entries": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "write-paper", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["bibliography_audit"]["passed"] is True
+        assert checks["bibliography_audit_clean"]["passed"] is False
+
+    def test_review_preflight_write_paper_strict_rejects_invalid_bibliography_audit_shape(
+        self, gpd_project: Path
+    ) -> None:
+        paper_dir = gpd_project / "paper"
+        (paper_dir / "BIBLIOGRAPHY-AUDIT.json").write_text(
+            json.dumps(
+                {
+                    "generated_at": "2026-03-10T00:00:00+00:00",
+                    "total_sources": "oops",
+                    "resolved_sources": 1,
+                    "partial_sources": 0,
+                    "unverified_sources": 0,
+                    "failed_sources": 0,
+                    "entries": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "write-paper", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["bibliography_audit"]["passed"] is True
+        assert checks["bibliography_audit_clean"]["passed"] is False
+        assert "bibliography audit is invalid" in checks["bibliography_audit_clean"]["detail"]
 
     def test_command_context_global_command_passes_without_project(
         self,

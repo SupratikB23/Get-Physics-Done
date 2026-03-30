@@ -84,6 +84,10 @@ class TestBuildPaper:
         assert output.tex_content != ""
         assert output.pdf_path == pdf_path
         assert output.success is True
+        assert output.bibliography_audit_path == tmp_path / "BIBLIOGRAPHY-AUDIT.json"
+        assert output.bibliography_audit is not None
+        assert output.bibliography_audit.total_sources == 1
+        assert output.bibliography_audit.unverified_sources == 1
         assert output.manifest_path == tmp_path / "ARTIFACT-MANIFEST.json"
         assert output.manifest is not None
         manifest_content = json.loads(output.manifest_path.read_text(encoding="utf-8"))
@@ -91,6 +95,7 @@ class TestBuildPaper:
         assert "tex-paper" in artifact_ids
         assert "bib-references" in artifact_ids
         assert "pdf-main" in artifact_ids
+        assert "audit-bibliography" in artifact_ids
         bib_artifact = next(artifact for artifact in manifest_content["artifacts"] if artifact["artifact_id"] == "bib-references")
         assert bib_artifact["metadata"]["entry_source"] == "bib_data"
 
@@ -143,8 +148,95 @@ class TestBuildPaper:
         assert output.success is True
         assert output.pdf_path == pdf_path
         assert output.bibliography_audit is not None
-        assert output.bibliography_audit.entries[0].key == "bohr1913"
+        assert [entry.key for entry in output.bibliography_audit.entries] == ["einstein1905", "bohr1913"]
+        assert output.bibliography_audit.total_sources == 2
+        assert output.bibliography_audit.partial_sources == 1
+        assert output.bibliography_audit.unverified_sources == 1
         assert output.manifest is not None
+        bib_artifact = next(artifact for artifact in output.manifest.artifacts if artifact.artifact_id == "bib-references")
+        assert bib_artifact.metadata["entry_source"] == "bib_data+citation_sources"
+
+    @pytest.mark.asyncio
+    async def test_build_paper_merges_bib_data_and_citation_sources_with_key_collision(
+        self, tmp_path, monkeypatch
+    ):
+        from gpd.mcp.paper.compiler import build_paper
+
+        config = PaperConfig(
+            title="Colliding Bibliography Paper",
+            authors=[Author(name="A. Einstein", affiliation="ETH Zurich")],
+            abstract="A test abstract.",
+            sections=[Section(title="Introduction", content="Hello world.")],
+        )
+
+        explicit_bib = BibliographyData()
+        explicit_bib.entries["einstein1905"] = Entry(
+            "article",
+            [("author", "Einstein"), ("title", "Zur Elektrodynamik"), ("year", "1905")],
+        )
+
+        pdf_path = tmp_path / "main.pdf"
+        mock_result = CompilationResult(success=True, pdf_path=pdf_path)
+        pdf_path.write_bytes(b"%PDF-fake")
+
+        async def mock_compile(tex_path, output_dir, compiler="pdflatex"):
+            return mock_result
+
+        _allow_journal_dependencies(monkeypatch)
+        monkeypatch.setattr("gpd.mcp.paper.compiler.compile_paper", mock_compile)
+
+        output = await build_paper(
+            config,
+            tmp_path,
+            bib_data=explicit_bib,
+            citation_sources=[
+                CitationSource(
+                    source_type="paper",
+                    title="Notes on Relativity",
+                    authors=["A. Einstein"],
+                    year="1905",
+                    doi="10.1000/relativity-a",
+                ),
+                CitationSource(
+                    source_type="paper",
+                    title="Further Notes on Relativity",
+                    authors=["A. Einstein"],
+                    year="1905",
+                    doi="10.1000/relativity-b",
+                ),
+            ],
+            enrich_bibliography=False,
+        )
+
+        bib_content = (tmp_path / "references.bib").read_text(encoding="utf-8")
+        assert "@article{einstein1905," in bib_content
+        assert "@article{einstein1905a," in bib_content
+        assert "@article{einstein1905b," in bib_content
+        assert output.success is True
+        assert output.pdf_path == pdf_path
+        assert output.bibliography_audit_path == tmp_path / "BIBLIOGRAPHY-AUDIT.json"
+        assert output.bibliography_audit is not None
+        assert [entry.key for entry in output.bibliography_audit.entries] == [
+            "einstein1905",
+            "einstein1905a",
+            "einstein1905b",
+        ]
+        assert output.bibliography_audit.total_sources == 3
+        assert output.bibliography_audit.resolved_sources == 3
+        assert output.bibliography_audit.partial_sources == 2
+        assert output.bibliography_audit.unverified_sources == 1
+        audit_content = json.loads(output.bibliography_audit_path.read_text(encoding="utf-8"))
+        assert [entry["key"] for entry in audit_content["entries"]] == [
+            "einstein1905",
+            "einstein1905a",
+            "einstein1905b",
+        ]
+        assert audit_content["total_sources"] == 3
+        assert audit_content["partial_sources"] == 2
+        assert audit_content["unverified_sources"] == 1
+        assert output.manifest is not None
+        manifest_ids = {artifact.artifact_id for artifact in output.manifest.artifacts}
+        assert "audit-bibliography" in manifest_ids
         bib_artifact = next(artifact for artifact in output.manifest.artifacts if artifact.artifact_id == "bib-references")
         assert bib_artifact.metadata["entry_source"] == "bib_data+citation_sources"
 

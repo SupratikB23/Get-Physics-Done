@@ -21,7 +21,9 @@ from pybtex.database import BibliographyData
 from gpd.mcp.paper.artifact_manifest import build_artifact_manifest, write_artifact_manifest
 from gpd.mcp.paper.bibliography import (
     CitationSource,
+    audit_bibliography_data,
     build_bibliography_with_audit,
+    merge_bibliography_audits,
     write_bib_file,
     write_bibliography_audit,
 )
@@ -567,8 +569,9 @@ async def build_paper(
         config = config.model_copy(update={"figures": prepared})
 
     if citation_sources:
+        existing_bib_audit = await asyncio.to_thread(audit_bibliography_data, bib_data) if bib_data is not None else None
         reserved_bib_keys = set(bib_data.entries) if bib_data is not None else None
-        built_bib, bibliography_audit = await asyncio.to_thread(
+        built_bib, source_audit = await asyncio.to_thread(
             build_bibliography_with_audit,
             citation_sources,
             enrich_bibliography,
@@ -580,6 +583,11 @@ async def build_paper(
         else:
             bib_data = _merge_bibliography_data(bib_data, built_bib)
             bib_entry_source = "bib_data+citation_sources"
+        bibliography_audit = merge_bibliography_audits(existing_bib_audit, source_audit)
+    elif bib_data is not None:
+        bibliography_audit = await asyncio.to_thread(audit_bibliography_data, bib_data)
+
+    if bibliography_audit is not None:
         bibliography_audit_path = output_dir / "BIBLIOGRAPHY-AUDIT.json"
         await asyncio.to_thread(write_bibliography_audit, bibliography_audit, bibliography_audit_path)
 
