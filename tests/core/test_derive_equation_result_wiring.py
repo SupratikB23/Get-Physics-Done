@@ -39,6 +39,7 @@ def test_derive_equation_workflow_reuses_prior_results_and_persists_final_equati
     assert "If `gpd result persist-derived` reports multiple matches for the same equation or description" in text
     assert "`requested_result_id` is the stable derivation-oriented ID the workflow asked for." in text
     assert "`result_id` is the actual canonical registry entry that was persisted or reused." in text
+    assert "`requested_result_redirected=true` means the requested derivation-oriented ID was redirected to an existing canonical entry" in text
     assert "Carry the resulting `result_id` forward in the derivation workflow context and any downstream handoff metadata (`last_result_id` in pause/resume surfaces) so later reruns can target the same canonical registry entry without rediscovering it from prose." in text
     assert "Keep `verified=false` unless the derivation also produced verification evidence" in text
     assert "Skip registry write-back entirely" in text

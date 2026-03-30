@@ -429,7 +429,11 @@ def test_result_persist_derived_bridge_reuses_unique_equation_match_when_preferr
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["action"] == "updated"
+    assert payload["requested_result_id"] == "R-new"
     assert payload["result"]["id"] == "R-01"
+    assert payload["result_id"] == "R-01"
+    assert payload["requested_result_redirected"] is True
+    assert payload["matched_by"] == "equation"
     assert payload["result"]["description"] == "Canonical description"
 
     reloaded = json.loads(state_path.read_text(encoding="utf-8"))
@@ -491,6 +495,7 @@ def test_result_persist_derived_bridge_reports_requested_result_id_from_slug(gpd
     assert payload["status"] == "persisted"
     assert payload["requested_result_id"] == "R-01-effective-mass"
     assert payload["result_id"] == "R-01-effective-mass"
+    assert payload["requested_result_redirected"] is False
     assert payload["result"]["id"] == "R-01-effective-mass"
 
 

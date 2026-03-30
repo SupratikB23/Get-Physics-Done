@@ -2459,11 +2459,13 @@ def result_persist_derived(
         save_state_json_locked(cwd, state)
 
     payload = res.model_dump(mode="json")
+    actual_result_id = payload["result"]["id"]
     _output(
         {
             "status": "persisted",
             "requested_result_id": resolved_id,
-            "result_id": payload["result"]["id"],
+            "result_id": actual_result_id,
+            "requested_result_redirected": resolved_id is not None and actual_result_id != resolved_id,
             **payload,
         }
     )

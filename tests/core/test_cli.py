@@ -2548,6 +2548,7 @@ def test_result_persist_derived_uses_resolved_result_id_for_real_state_write(
     first_payload = json.loads(first.output)
     assert first_payload["requested_result_id"] == "R-02-effective-mass"
     assert first_payload["result_id"] == "R-02-effective-mass"
+    assert first_payload["requested_result_redirected"] is False
     assert first_payload["result"]["id"] == "R-02-effective-mass"
 
     second = runner.invoke(
@@ -2574,6 +2575,7 @@ def test_result_persist_derived_uses_resolved_result_id_for_real_state_write(
     second_payload = json.loads(second.output)
     assert second_payload["requested_result_id"] == "R-02-effective-mass"
     assert second_payload["result_id"] == "R-02-effective-mass"
+    assert second_payload["requested_result_redirected"] is False
     assert second_payload["result"]["id"] == "R-02-effective-mass"
 
     state = json.loads((cwd / "GPD" / "state.json").read_text(encoding="utf-8"))
