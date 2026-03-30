@@ -45,7 +45,7 @@ allowed-tools:
 <!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Structure and write a physics paper from completed research results. Handles the full pipeline from research digest through polished draft: paper-readiness audit, scope and outline, figure generation, wave-parallelized section drafting, notation audit, bibliography verification, staged pre-submission peer review, and revision handling.
+Structure and write a physics paper from completed research results. Handles the full pipeline from research digest through polished draft: paper-readiness audit, scope and outline, figure generation, wave-parallelized section drafting, notation audit, bibliography verification, staged pre-submission peer review, and revision handling. When literature-review has already assembled a machine-readable citation list, treat it as a handoff artifact for `gpd paper-build --citation-sources`, not as a separate project bibliography database.
 
 **Orchestrator role:** Establish paper scope and structure, spawn gpd-paper-writer agents for section drafting (wave-parallelized), gpd-bibliographer for citation verification, run the staged peer-review panel (`gpd-review-reader`, `gpd-review-literature`, `gpd-review-math`, `gpd-review-physics`, `gpd-review-significance`, then `gpd-referee` as final adjudicator), coordinate revisions, ensure internal consistency.
 
@@ -62,7 +62,7 @@ Routes to the write-paper workflow which handles all logic including:
 5. Wave-parallelized section drafting (Wave 1: Results+Methods, Wave 2: Introduction, Wave 3: Discussion, Wave 4: Conclusions, Wave 5: Abstract, Wave 6: Appendices)
 6. Optional local compilation smoke checks after each wave when a compiler is available; `gpd paper-build` remains the canonical manuscript scaffold contract
 7. Consistency check, notation audit, and RESULT PENDING placeholder resolution
-8. Bibliography verification via gpd-bibliographer
+8. Bibliography verification via gpd-bibliographer, with optional `GPD/literature/*-CITATION-SOURCES.json` handoff into `gpd paper-build --citation-sources`
 9. Pre-submission staged peer review via specialist panel plus final gpd-referee adjudication
 10. Bounded revision loop (max 3 iterations) for addressing referee issues
 </objective>

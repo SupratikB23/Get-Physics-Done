@@ -406,10 +406,11 @@ ls GPD/literature/*-REVIEW.md 2>/dev/null
 1. Does a project bibliography exist (`references/references.bib` or `${PAPER_DIR}/references.bib`)?
 2. Does at least one `GPD/literature/*-REVIEW.md` or phase `RESEARCH.md` exist?
 3. Are key prior works identified (the research digest's "Prior Work" or literature review)?
-4. If the bibliography changed after the last audit, refresh `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` before strict review. The JSON audit is the review contract artifact; `${PAPER_DIR}/CITATION-AUDIT.md` is only the human-readable report.
+4. If `GPD/literature/*-CITATION-SOURCES.json` exists for the current topic, treat it as the citation-source handoff from literature-review and prefer wiring it through `gpd paper-build --citation-sources` instead of reconstructing the list manually.
+5. If the bibliography changed after the last audit, refresh `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` before strict review. The JSON audit is the review contract artifact; `${PAPER_DIR}/CITATION-AUDIT.md` is only the human-readable report.
    For the default bootstrap path, this means: `If the bibliography changed after the last audit, refresh `paper/BIBLIOGRAPHY-AUDIT.json` before strict review.`
 
-**No bibliography file and no literature review** → WARNING (citations will need to be built from scratch).
+**No bibliography file, no literature review, and no citation-source sidecar** → WARNING (citations will need to be built from scratch).
 
 ### Check 6: Decisive comparison continuity
 
@@ -828,6 +829,7 @@ Mode: Audit bibliography + Audit manuscript
 
 Paper directory: ${PAPER_DIR}/
 Bibliography: `references/references.bib` (preferred) or `${PAPER_DIR}/references.bib` if the manuscript keeps a local copy
+Citation sources: `GPD/literature/*-CITATION-SOURCES.json` when literature-review has already assembled a machine-readable citation list for the current topic
 Manuscript files: ${PAPER_DIR}/*.tex
 Target journal: {target_journal}
 
@@ -838,6 +840,7 @@ Tasks:
 4. Scan for uncited named results, theorems, or methods that should have citations
 5. Verify BibTeX formatting matches {target_journal} requirements
 6. Check arXiv preprints for published versions (update stale preprint-only entries)
+7. Preserve `GPD/literature/*-CITATION-SOURCES.json` as the source artifact that seeded the bibliography; do not treat it as a competing registry
 
 Write audit report to ${PAPER_DIR}/CITATION-AUDIT.md
 
@@ -850,6 +853,7 @@ Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
 **If CITATION ISSUES FOUND:**
 
 - Read the audit report and `GPD/references-status.json`
+- If a citation-source sidecar exists, keep it aligned with the bibliography output so `gpd paper-build --citation-sources` can continue to consume the same stable reference IDs
 - Replace resolved `MISSING:` markers: for each entry in `resolved_markers`, find-and-replace `\cite{MISSING:X}` → `\cite{resolved_key}` in all .tex files and remove the associated `% MISSING CITATION:` comment
 - Fix hallucinated entries (remove from .bib, update \cite commands)
 - Apply metadata corrections to .bib entries
@@ -862,6 +866,7 @@ Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
 
 - Corrections already applied to .bib by bibliographer
 - Refresh `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` so downstream strict review reads the current bibliography state.
+- If the bibliography was seeded from `GPD/literature/*-CITATION-SOURCES.json`, keep that handoff artifact visible for reruns of `gpd paper-build --citation-sources`.
 - Review the changes summary, proceed to final review
   </step>
 
