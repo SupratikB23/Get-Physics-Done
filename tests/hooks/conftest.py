@@ -8,7 +8,6 @@ import pytest
 
 from tests.hooks.helpers import runtime_env_prefixes, runtime_env_vars_to_clear
 
-
 _RUNTIME_ENV_PREFIXES = runtime_env_prefixes()
 _RUNTIME_ENV_VARS_TO_CLEAR = runtime_env_vars_to_clear()
 

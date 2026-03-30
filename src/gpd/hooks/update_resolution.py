@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
+from collections.abc import Callable
 from pathlib import Path
 
+import gpd.hooks.install_context as hook_layout
 from gpd.adapters.install_utils import CACHE_DIR_NAME, UPDATE_CACHE_FILENAME
 from gpd.core.constants import PLANNING_DIR_NAME
-import gpd.hooks.install_context as hook_layout
 
 DebugLogger = Callable[[str], None]
 

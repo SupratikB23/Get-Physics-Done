@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
 from gpd.core.manuscript_artifacts import resolve_current_manuscript_artifacts
 
 __all__ = [

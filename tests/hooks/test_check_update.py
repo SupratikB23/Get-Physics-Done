@@ -5,14 +5,12 @@ logic, background spawn failure, and graceful degradation.
 """
 
 from __future__ import annotations
+
 import json
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-import gpd.hooks.check_update as check_update
 from gpd.hooks.check_update import (
     UPDATE_CHECK_TTL_SECONDS,
     _do_check,

@@ -16,9 +16,9 @@ from gpd.core.results import (
     result_deps,
     result_list,
     result_search,
+    result_update,
     result_upsert,
     result_upsert_derived,
-    result_update,
     result_verify,
 )
 

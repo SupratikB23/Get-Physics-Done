@@ -9,7 +9,13 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as PydanticValidationError
 
-from gpd.contracts import ComparisonVerdict, ContractResults, ConventionLock, ResearchContract, normalize_contract_results_input
+from gpd.contracts import (
+    ComparisonVerdict,
+    ContractResults,
+    ConventionLock,
+    ResearchContract,
+    normalize_contract_results_input,
+)
 from gpd.core.conventions import check_assertions, convention_check
 from gpd.core.frontmatter import (
     FrontmatterParseError,

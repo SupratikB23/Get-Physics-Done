@@ -6,8 +6,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from gpd.hooks.update_resolution import (
     latest_update_cache,
     ordered_update_cache_candidates,

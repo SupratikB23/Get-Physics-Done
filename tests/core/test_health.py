@@ -20,10 +20,8 @@ from gpd.core.health import (
     HealthCheck,
     HealthReport,
     HealthSummary,
-    build_unattended_readiness_result,
-    extract_doctor_advisories,
-    runtime_doctor_hint,
     _doctor_check_latex_toolchain,
+    build_unattended_readiness_result,
     check_checkpoint_tags,
     check_compaction_needed,
     check_config,
@@ -37,15 +35,23 @@ from gpd.core.health import (
     check_roadmap_consistency,
     check_state_validity,
     check_storage_paths,
+    extract_doctor_advisories,
     extract_doctor_blockers,
     resolve_doctor_runtime_readiness,
     run_doctor,
     run_health,
+    runtime_doctor_hint,
 )
 from gpd.core.state import default_state_dict, generate_state_markdown, save_state_json
 from gpd.core.storage_paths import ProjectStorageLayout
 from gpd.hooks.install_metadata import InstallTargetAssessment
-from tests.runtime_test_support import FOREIGN_RUNTIME, PRIMARY_RUNTIME, runtime_config_dir_name, runtime_launch_executable, runtime_target_dir
+from tests.runtime_test_support import (
+    FOREIGN_RUNTIME,
+    PRIMARY_RUNTIME,
+    runtime_config_dir_name,
+    runtime_launch_executable,
+    runtime_target_dir,
+)
 
 _PRIMARY_CONFIG_DIR = runtime_config_dir_name(PRIMARY_RUNTIME)
 _PRIMARY_TARGET_DIR = runtime_target_dir(Path("/tmp/project"), PRIMARY_RUNTIME)

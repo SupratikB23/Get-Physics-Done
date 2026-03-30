@@ -10,8 +10,8 @@ from pybtex.database import BibliographyData, Entry, Person
 from gpd.mcp.paper.bibliography import (
     BibliographyAudit,
     CitationSource,
-    audit_citation_source,
     audit_bibliography,
+    audit_citation_source,
     build_bibliography,
     build_bibliography_with_audit,
     citation_keys_for_sources,

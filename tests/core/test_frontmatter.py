@@ -541,7 +541,7 @@ class TestValidateFrontmatter:
         assert result.valid is True
         assert result.errors == []
 
-    def test_plan_accepts_valid_tool_requirements(self):
+    def test_plan_accepts_valid_tool_requirements_with_mathematica_alias(self):
         content = (
             _valid_plan_contract_frontmatter()
             .replace(

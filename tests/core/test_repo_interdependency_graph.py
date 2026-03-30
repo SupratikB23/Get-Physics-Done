@@ -113,7 +113,7 @@ def test_graph_captures_checkpoint_feature_edges() -> None:
     assert not graph_has_edge("src/gpd/core/state.py", "src/gpd/core/checkpoints.py::sync_phase_checkpoints", graph)
 
 
-def test_graph_captures_execute_phase_artifact_surfacing_edges() -> None:
+def test_graph_captures_execute_phase_artifact_surfacing_and_checkpoint_edges() -> None:
     graph = read_graph_text()
 
     assert graph_has_edge(
@@ -121,7 +121,7 @@ def test_graph_captures_execute_phase_artifact_surfacing_edges() -> None:
         "src/gpd/specs/{references/orchestration/meta-orchestration.md,references/orchestration/artifact-surfacing.md,",
         graph,
     )
-    assert not graph_has_edge(
+    assert graph_has_edge(
         "src/gpd/specs/workflows/execute-phase.md",
         "src/gpd/specs/{references/orchestration/meta-orchestration.md,references/orchestration/checkpoints.md,",
         graph,

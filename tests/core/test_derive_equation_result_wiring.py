@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMAND_DOC = REPO_ROOT / "src/gpd/commands/derive-equation.md"
 WORKFLOW_DOC = REPO_ROOT / "src/gpd/specs/workflows/derive-equation.md"

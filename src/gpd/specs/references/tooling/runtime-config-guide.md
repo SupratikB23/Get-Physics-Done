@@ -77,7 +77,7 @@ When syncing a GPD project across machines (via git, cloud storage, etc.):
 ### GPD Commands Not Appearing
 
 1. Verify the install completed: check for `get-physics-done/` in the runtime config directory
-2. Check the manifest: `cat <config-dir>/gpd-file-manifest.json`
+2. Check the managed manifest file named `gpd-file-manifest.json` inside `<config-dir>`
 3. Re-install if needed: `npx get-physics-done`
 
 ### Permission Prompts Interrupting Workflow

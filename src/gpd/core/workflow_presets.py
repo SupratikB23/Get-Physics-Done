@@ -7,10 +7,9 @@ doctor-backed readiness for the machine-local surface.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import copy
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 from gpd.core.config import (
     apply_config_update,
@@ -82,7 +81,7 @@ class WorkflowPreset:
     label: str
     description: str
     summary: str
-    recommended_config: dict[str, Any]
+    recommended_config: dict[str, object]
     required_checks: tuple[str, ...] = ()
     ready_workflows: tuple[str, ...] = ()
     degraded_workflows: tuple[str, ...] = ()
@@ -267,7 +266,7 @@ WORKFLOW_PRESETS: tuple[WorkflowPreset, ...] = (
 WORKFLOW_PRESET_INDEX: dict[str, WorkflowPreset] = {preset.id: preset for preset in WORKFLOW_PRESETS}
 
 
-def _preset_actionable_config_bundle(preset: WorkflowPreset) -> dict[str, Any]:
+def _preset_actionable_config_bundle(preset: WorkflowPreset) -> dict[str, object]:
     """Return a config-only bundle for one preset.
 
     The bundle is limited to keys that already exist in the config schema.
@@ -276,7 +275,7 @@ def _preset_actionable_config_bundle(preset: WorkflowPreset) -> dict[str, Any]:
     persisted config keys.
     """
 
-    bundle: dict[str, Any] = {}
+    bundle: dict[str, object] = {}
     supported_keys = set(supported_config_keys())
     for key, value in preset.recommended_config.items():
         if key in _GUIDANCE_ONLY_PRESET_KEYS:
@@ -301,7 +300,7 @@ def _preset_effective_value(raw_config: dict[str, object], key: str) -> object:
     return copy.deepcopy(value)
 
 
-def get_workflow_preset_config_bundle(preset_id: str) -> dict[str, Any] | None:
+def get_workflow_preset_config_bundle(preset_id: str) -> dict[str, object] | None:
     """Return the actionable config bundle for one preset.
 
     The returned bundle is a detached copy that can be merged into a raw

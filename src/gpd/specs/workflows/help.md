@@ -835,6 +835,18 @@ Export research results to HTML, LaTeX, or ZIP package.
 Usage: `/gpd:export --format html`
 Usage: `/gpd:export --format all`
 
+**`/gpd:export-logs [--format jsonl|json|markdown] [--session <id>] [--last N] [--no-traces] [--output-dir <path>]`**
+Export observability sessions and optional traces to files for review, sharing, or archival.
+
+- Reads session event streams from `GPD/observability/sessions/` and optional traces from `GPD/traces/`
+- Writes filtered exports to `GPD/exports/logs/` or a custom directory
+- Supports JSONL, JSON, and markdown output
+- Useful when you need to share or inspect the recorded execution history outside the runtime
+
+Usage: `/gpd:export-logs`
+Usage: `/gpd:export-logs --format markdown`
+Usage: `/gpd:export-logs --last 5`
+
 **`/gpd:slides [topic, audience, or source path]`**
 Create presentation slides from a GPD project or the current folder.
 

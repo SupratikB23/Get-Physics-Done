@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from gpd.core.errors import StateError
 from gpd.core import context as context_module
 from gpd.core import state as state_module
 from gpd.core.context import init_resume
+from gpd.core.errors import StateError
 from gpd.core.observability import CurrentExecutionState
 from gpd.core.recent_projects import record_recent_project
 from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS

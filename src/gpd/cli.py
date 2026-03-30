@@ -88,6 +88,8 @@ from gpd.core.workflow_presets import (
 from gpd.hooks.runtime_detect import detect_runtime_for_gpd_use, normalize_runtime_name
 
 if TYPE_CHECKING:
+    from gpd.core.health import UnattendedReadinessResult
+    from gpd.mcp.paper.bibliography import CitationSource
     from gpd.mcp.paper.models import PaperConfig
 
 # ─── Output helpers ─────────────────────────────────────────────────────────
@@ -2426,6 +2428,8 @@ def result_persist_derived(
     from gpd.core.state import (
         peek_state_json,
         save_state_json_locked,
+    )
+    from gpd.core.state import (
         state_carry_forward_continuation_last_result_id as _state_carry_forward_continuation_last_result_id,
     )
     from gpd.core.utils import file_lock
@@ -5485,7 +5489,7 @@ def _discover_literature_review_citation_sources(cwd: Path) -> tuple[Path | None
     return None, warning
 
 
-def _load_citation_sources_payload(citation_source_path: Path) -> list["CitationSource"]:
+def _load_citation_sources_payload(citation_source_path: Path) -> list[CitationSource]:
     """Load a CitationSource[] payload from JSON."""
     from gpd.mcp.paper.bibliography import CitationSource
 
@@ -6940,7 +6944,6 @@ def paper_build(
     """Build a paper from the canonical mcp.paper JSON config surface."""
 
     from gpd.core.storage_paths import DurableOutputKind, ProjectStorageLayout
-    from gpd.mcp.paper.bibliography import CitationSource
     from gpd.mcp.paper.compiler import build_paper
 
     config_file = _resolve_existing_input_path(
@@ -7604,9 +7607,7 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
                 soft_wrap=True,
             )
             console.print(
-                "8. Run [bold]gpd doctor --runtime {runtime} --local|--global[/] for a focused readiness check.".format(
-                    runtime=single_runtime_name
-                ),
+                f"8. Run [bold]gpd doctor --runtime {single_runtime_name} --local|--global[/] for a focused readiness check.",
                 soft_wrap=True,
             )
             console.print(
@@ -7637,9 +7638,7 @@ def _print_install_summary(results: list[tuple[str, dict[str, object]]]) -> None
             for line in runtime_lines:
                 console.print(line, soft_wrap=True)
             console.print(
-                "Fast bootstrap: use [bold]{command} --minimal[/] for the shortest onboarding path.".format(
-                    command=next_step_entries[0][6]
-                ),
+                f"Fast bootstrap: use [bold]{next_step_entries[0][6]} --minimal[/] for the shortest onboarding path.",
                 soft_wrap=True,
             )
             console.print(
@@ -7800,7 +7799,7 @@ def _build_unattended_readiness(
     live_executable_probes: bool,
 ) -> UnattendedReadinessResult:
     """Compose doctor and permissions status into one unattended-readiness verdict."""
-    from gpd.core.health import UnattendedReadinessResult, build_unattended_readiness_result, run_doctor
+    from gpd.core.health import build_unattended_readiness_result, run_doctor
     from gpd.specs import SPECS_DIR
 
     if global_install and local_install:
@@ -7916,6 +7915,8 @@ def install(
     """
     from rich.progress import Progress, SpinnerColumn, TextColumn
 
+    from gpd.core.health import runtime_doctor_hint
+
     if global_install and local_install:
         _error("Cannot specify both --global and --local")
         return  # unreachable
@@ -7994,7 +7995,7 @@ def install(
                 for message in messages:
                     err_console.print(f"- {display_name}: {message}", highlight=False)
             doctor_hints = ", ".join(
-                f"`{_runtime_doctor_hint(runtime_name, install_scope=install_scope, target_dir=resolved_target_override)}`"
+                f"`{runtime_doctor_hint(runtime_name, install_scope=install_scope, target_dir=resolved_target_override)}`"
                 for runtime_name, _messages in preflight_failures
             )
             console.print(

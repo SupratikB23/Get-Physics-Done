@@ -10,7 +10,6 @@ import pytest
 from gpd.core.onboarding_surfaces import beginner_runtime_surfaces
 from tests.doc_surface_contracts import assert_beginner_hub_preflight_contract, assert_beginner_startup_routing_contract
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 

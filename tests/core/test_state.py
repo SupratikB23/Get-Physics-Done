@@ -1176,6 +1176,7 @@ def test_load_state_json_recovers_backup_continuation_when_primary_continuation_
         "resume_file": "GPD/phases/03-analysis/.continue-here.md",
         "hostname": "builder-01",
         "platform": "Linux 6.1 x86_64",
+        "last_result_id": None,
     }
     persisted = json.loads(layout.state_json.read_text(encoding="utf-8"))
     assert persisted["continuation"]["bounded_segment"]["segment_id"] == "segment-03-02"
@@ -1346,6 +1347,7 @@ def test_ensure_state_schema_mirrors_session_into_canonical_continuation():
         "stopped_at": "Phase 3 P2",
         "resume_file": "resume.md",
         "recorded_by": None,
+        "last_result_id": None,
     }
     assert result["continuation"]["machine"] == {
         "recorded_at": "2026-03-02T12:00:00+00:00",
@@ -1377,6 +1379,7 @@ def test_ensure_state_schema_backfills_session_from_canonical_continuation():
         "resume_file": "continue.md",
         "hostname": "builder-02",
         "platform": "macOS arm64",
+        "last_result_id": None,
     }
 
 
@@ -1407,6 +1410,7 @@ def test_ensure_state_schema_backfills_missing_canonical_machine_fields_from_ses
         "stopped_at": "Canonical stop",
         "resume_file": "canonical.md",
         "recorded_by": None,
+        "last_result_id": None,
     }
     assert result["continuation"]["machine"] == {
         "recorded_at": "2026-03-02T12:00:00+00:00",
@@ -1419,6 +1423,7 @@ def test_ensure_state_schema_backfills_missing_canonical_machine_fields_from_ses
         "resume_file": "canonical.md",
         "hostname": "builder-03",
         "platform": "Linux arm64",
+        "last_result_id": None,
     }
 
 
@@ -1456,6 +1461,7 @@ def test_ensure_state_schema_does_not_let_session_override_canonical_continuatio
         "resume_file": "canonical.md",
         "hostname": "canonical-host",
         "platform": "CanonicalOS",
+        "last_result_id": None,
     }
 
 
@@ -1493,6 +1499,7 @@ def test_ensure_state_schema_prefers_canonical_continuation_over_conflicting_ses
         "resume_file": "continue.md",
         "hostname": "builder-02",
         "platform": "macOS arm64",
+        "last_result_id": None,
     }
 
 

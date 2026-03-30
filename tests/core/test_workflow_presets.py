@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 
 from gpd.core.workflow_presets import (
+    WorkflowPresetConfigChange,
     apply_workflow_preset_config,
     get_workflow_preset,
     get_workflow_preset_config_bundle,
     list_workflow_presets,
     preview_workflow_preset_application,
     resolve_workflow_preset_readiness,
-    WorkflowPresetConfigChange,
 )
 
 

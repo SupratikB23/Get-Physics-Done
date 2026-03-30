@@ -11,8 +11,8 @@ import pytest
 from gpd.hooks.install_context import detect_self_owned_install
 from gpd.hooks.install_metadata import (
     assess_install_target,
-    config_dir_has_managed_install_markers,
     config_dir_has_complete_install,
+    config_dir_has_managed_install_markers,
     installed_update_command,
     load_install_manifest_runtime_status,
     load_install_manifest_state,

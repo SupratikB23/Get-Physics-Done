@@ -7,7 +7,7 @@ import json
 import re
 import subprocess
 import sys
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -97,7 +97,7 @@ def iter_graph_edge_specs(graph_text: str | None = None) -> tuple[tuple[str, str
     return tuple((match.group(1), match.group(2)) for match in _GRAPH_EDGE_RE.finditer(text))
 
 
-@lru_cache(maxsize=None)
+@cache
 def _expand_braced_edge_endpoint(endpoint: str) -> tuple[str, ...]:
     match = re.search(r"\{([^{}]+)\}", endpoint)
     if match is None:

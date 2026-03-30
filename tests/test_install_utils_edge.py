@@ -40,7 +40,6 @@ from gpd.adapters.install_utils import (
 from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.core.constants import HOME_DATA_DIR_NAME
 
-
 _RUNTIME_DESCRIPTORS = tuple(iter_runtime_descriptors())
 _DOLLAR_TEMPLATE_RUNTIMES = tuple(
     descriptor.runtime_name for descriptor in _RUNTIME_DESCRIPTORS if descriptor.agent_prompt_uses_dollar_templates

@@ -106,13 +106,16 @@ def workflow_preset_surface_note() -> str:
 
 
 def _selected_reentry_candidate(reentry: object) -> dict[str, object] | None:
-    selected_candidate = getattr(reentry, "selected_candidate", None)
+    candidates = list(getattr(reentry, "candidates", []) or [])
+    selected_candidate = next(
+        (candidate for candidate in candidates if _suggestion_text(candidate, "source") == "current_workspace"),
+        getattr(reentry, "selected_candidate", None),
+    )
     candidate_payload = _model_dump(selected_candidate)
     if not isinstance(candidate_payload, dict):
         return None
     summary = project_reentry_candidate_summary(selected_candidate)
-    if summary is not None:
-        candidate_payload["summary"] = summary
+    candidate_payload["summary"] = summary
     return candidate_payload
 
 
@@ -131,10 +134,6 @@ def _recent_project_summary(row: dict[str, object] | None) -> str | None:
 
 
 def _selected_project_summary(reentry: object, current_project: dict[str, object] | None) -> str | None:
-    selected_candidate = getattr(reentry, "selected_candidate", None)
-    selected_summary = _suggestion_text(selected_candidate, "summary")
-    if selected_summary is not None:
-        return selected_summary
     return _recent_project_summary(current_project)
 
 
@@ -147,6 +146,13 @@ def _project_reentry_summary(
     auto_selected = bool(getattr(reentry, "auto_selected", False))
     requires_selection = bool(getattr(reentry, "requires_user_selection", False))
     mode = _suggestion_text(reentry, "mode")
+    candidates = list(getattr(reentry, "candidates", []) or [])
+    recent_candidates = [candidate for candidate in candidates if _suggestion_text(candidate, "source") == "recent_project"]
+
+    def _candidate_bool(candidate: object, field: str) -> bool:
+        if isinstance(candidate, dict):
+            return bool(candidate.get(field))
+        return bool(getattr(candidate, field, False))
 
     if auto_selected:
         summary = "GPD auto-selected the only recoverable recent project on this machine."
@@ -156,6 +162,15 @@ def _project_reentry_summary(
         return summary
     if requires_selection:
         return "GPD found multiple recoverable recent projects on this machine, so you need to choose one."
+    if (
+        current_project is not None
+        and current_project.get("source") == "current_workspace"
+        and not bool(current_project.get("recoverable"))
+        and (recent_candidates or _recent_project_summary(current_project) is not None)
+    ):
+        if any(_candidate_bool(candidate, "resumable") for candidate in recent_candidates):
+            return "GPD found recent projects on this machine, but none are selected automatically."
+        return "GPD found recent projects on this machine, but none are ready to reopen automatically."
     if mode == "recent-projects":
         if current_project is not None and bool(current_project.get("resumable")):
             return "GPD found recent projects on this machine, but none are selected automatically."
@@ -401,6 +416,26 @@ def build_runtime_hint_payload(
             reentry=reentry,
             current_project=current_project,
         )
+        candidate_payloads = [
+            candidate_payload
+            for candidate in (getattr(reentry, "candidates", []) or [])
+            if isinstance((candidate_payload := _model_dump(candidate)), dict)
+        ]
+        has_recent_project_candidate = any(
+            _suggestion_text(candidate_payload, "source") == "recent_project"
+            for candidate_payload in candidate_payloads
+        )
+        if isinstance(resume_context, dict):
+            if candidate_payloads and (has_recent_project_candidate or not recent_rows):
+                resume_context["project_reentry_candidates"] = candidate_payloads
+                selected_payload = _model_dump(getattr(reentry, "selected_candidate", None))
+                if isinstance(selected_payload, dict):
+                    resume_context["project_reentry_selected_candidate"] = selected_payload
+                else:
+                    resume_context.pop("project_reentry_selected_candidate", None)
+            else:
+                resume_context.pop("project_reentry_candidates", None)
+                resume_context.pop("project_reentry_selected_candidate", None)
     recovery_advice = (
         build_recovery_advice(
             project_root,
