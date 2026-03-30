@@ -5049,6 +5049,41 @@ def _load_citation_sources_payload(citation_source_path: Path) -> list["Citation
     return [CitationSource.model_validate(item) for item in raw_sources]
 
 
+def _paper_build_reference_bibtex_bridge(result: object) -> list[dict[str, str]]:
+    """Return the emitted reference_id -> bibtex_key bridge for a paper build."""
+    preferred_mapping = getattr(result, "reference_bibtex_keys", None)
+    if isinstance(preferred_mapping, dict):
+        bridge: list[dict[str, str]] = []
+        for reference_id, bibtex_key in preferred_mapping.items():
+            if not isinstance(reference_id, str) or not reference_id.strip():
+                continue
+            if not isinstance(bibtex_key, str) or not bibtex_key.strip():
+                continue
+            bridge.append({"reference_id": reference_id.strip(), "bibtex_key": bibtex_key.strip()})
+        if bridge:
+            return bridge
+
+    bibliography_audit = getattr(result, "bibliography_audit", None)
+    if bibliography_audit is None:
+        return []
+
+    bridge = []
+    seen_reference_ids: set[str] = set()
+    for entry in getattr(bibliography_audit, "entries", []) or []:
+        reference_id = getattr(entry, "reference_id", None)
+        bibtex_key = getattr(entry, "key", None)
+        if not isinstance(reference_id, str) or not reference_id.strip():
+            continue
+        if not isinstance(bibtex_key, str) or not bibtex_key.strip():
+            continue
+        normalized_reference_id = reference_id.strip()
+        if normalized_reference_id in seen_reference_ids:
+            continue
+        bridge.append({"reference_id": normalized_reference_id, "bibtex_key": bibtex_key.strip()})
+        seen_reference_ids.add(normalized_reference_id)
+    return bridge
+
+
 def _paper_build_toolchain_payload() -> dict[str, object]:
     """Return the paper-build toolchain contract payload."""
     from gpd.mcp.paper.compiler import detect_latex_toolchain
@@ -6546,6 +6581,7 @@ def paper_build(
         "tex_path": _format_display_path(output_path / "main.tex"),
         "bibliography_source": _format_display_path(bib_source),
         "citation_sources_path": _format_display_path(citation_source_path),
+        "reference_bibtex_bridge": _paper_build_reference_bibtex_bridge(result),
         "manifest_path": _format_display_path(result.manifest_path),
         "bibliography_audit_path": _format_display_path(result.bibliography_audit_path),
         "pdf_path": _format_display_path(result.pdf_path),

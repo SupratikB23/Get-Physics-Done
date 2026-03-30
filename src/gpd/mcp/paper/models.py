@@ -360,6 +360,7 @@ class PaperOutput(BaseModel):
     pdf_path: Path | None = None
     bibliography_audit_path: Path | None = None
     bibliography_audit: BibliographyAudit | None = None
+    reference_bibtex_keys: dict[str, str] = Field(default_factory=dict)
     manifest_path: Path | None = None
     manifest: ArtifactManifest | None = None
     success: bool

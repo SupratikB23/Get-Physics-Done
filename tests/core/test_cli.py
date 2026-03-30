@@ -3426,6 +3426,14 @@ def test_paper_build_uses_default_config_surface(tmp_path: Path):
     result_payload = MagicMock()
     result_payload.manifest_path = paper_dir / "ARTIFACT-MANIFEST.json"
     result_payload.bibliography_audit_path = None
+    result_payload.bibliography_audit = SimpleNamespace(
+        entries=[
+            SimpleNamespace(
+                key="einstein1905",
+                reference_id="lit-ref-einstein-1905",
+            )
+        ]
+    )
     result_payload.pdf_path = paper_dir / "main.pdf"
     result_payload.success = True
     result_payload.errors = []
@@ -3451,6 +3459,7 @@ def test_paper_build_uses_default_config_surface(tmp_path: Path):
     assert payload["output_dir"] == "./paper"
     assert payload["tex_path"] == "./paper/main.tex"
     assert payload["bibliography_source"] == "./references/references.bib"
+    assert payload["reference_bibtex_bridge"] == [{"reference_id": "lit-ref-einstein-1905", "bibtex_key": "einstein1905"}]
     assert payload["manifest_path"] == "./paper/ARTIFACT-MANIFEST.json"
     assert payload["pdf_path"] == "./paper/main.pdf"
     assert payload["toolchain"] == {
@@ -3525,6 +3534,7 @@ def test_paper_build_prefers_paper_dir_before_later_config_roots(tmp_path: Path)
     result_payload = MagicMock()
     result_payload.manifest_path = paper_dir / "ARTIFACT-MANIFEST.json"
     result_payload.bibliography_audit_path = None
+    result_payload.bibliography_audit = None
     result_payload.pdf_path = paper_dir / "main.pdf"
     result_payload.success = True
     result_payload.errors = []
@@ -3722,6 +3732,8 @@ def test_paper_build_prefers_config_dir_bibliography_before_output_and_reference
 
 
 def test_paper_build_without_bibliography_does_not_import_pybtex(tmp_path: Path, monkeypatch) -> None:
+    import gpd.mcp.paper.compiler  # noqa: F401
+
     paper_dir = tmp_path / "paper"
     paper_dir.mkdir()
     (paper_dir / "PAPER-CONFIG.json").write_text(
@@ -3759,6 +3771,7 @@ def test_paper_build_without_bibliography_does_not_import_pybtex(tmp_path: Path,
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["bibliography_source"] == ""
+    assert payload["reference_bibtex_bridge"] == []
     assert mock_build.await_args.kwargs["bib_data"] is None
 
 

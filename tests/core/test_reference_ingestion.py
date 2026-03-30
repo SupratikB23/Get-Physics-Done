@@ -82,6 +82,7 @@ def test_ingest_reference_artifacts_parses_citation_source_sidecar(tmp_path: Pat
                 "title": "Benchmark Paper",
                 "authors": ["A. Researcher"],
                 "year": "2024",
+                "bibtex_key": "benchmark2024",
                 "doi": "10.1000/example",
                 "journal": "Phys. Rev. D",
             },
@@ -106,6 +107,7 @@ def test_ingest_reference_artifacts_parses_citation_source_sidecar(tmp_path: Pat
     assert result.citation_source_files == ["GPD/literature/REVIEW-CITATION-SOURCES.json"]
     assert result.citation_source_warnings == []
     assert [source.reference_id for source in citation_sources] == ["ref-benchmark", "ref-method"]
+    assert citation_sources[0].bibtex_key == "benchmark2024"
     assert citation_sources[0].doi == "10.1000/example"
     assert citation_sources[1].arxiv_id == "2301.12345"
 

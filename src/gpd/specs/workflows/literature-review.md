@@ -386,7 +386,7 @@ For someone entering this area, read in this order:
 {Formatted citations, organized by topic/method}
 ```
 
-Then write `GPD/literature/{slug}-CITATION-SOURCES.json` as a JSON array of `CitationSource`-compatible objects for the same references. Keep one stable `reference_id` per entry, preserve canonical citation fields, and keep the sidecar synchronized with the review's Full Reference List so downstream `gpd paper-build --citation-sources` can consume it directly.
+Then write `GPD/literature/{slug}-CITATION-SOURCES.json` as a JSON array of `CitationSource`-compatible objects for the same references. Keep one stable `reference_id` per entry, include `bibtex_key` only when it is already known and verified, preserve canonical citation fields, and keep the sidecar synchronized with the review's Full Reference List so downstream `gpd paper-build --citation-sources` can consume it directly and project the final `reference_id -> bibtex_key` bridge into `BIBLIOGRAPHY-AUDIT.json`.
 
 </step>
 

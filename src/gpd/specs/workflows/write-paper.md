@@ -413,7 +413,7 @@ ls GPD/literature/*-REVIEW.md 2>/dev/null
 2. Does at least one `GPD/literature/*-REVIEW.md` or phase `RESEARCH.md` exist?
 3. Are key prior works identified (the research digest's "Prior Work" or literature review)?
 4. If `GPD/literature/*-CITATION-SOURCES.json` exists for the current topic, treat it as the citation-source handoff from literature-review and pass it through `gpd paper-build --citation-sources` instead of reconstructing the list manually.
-5. `gpd paper-build` is the authoritative step that regenerates `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` for the emitted bibliography. Rerun it whenever the bibliography or citation set changes before strict review. The JSON audit is the review contract artifact; `${PAPER_DIR}/CITATION-AUDIT.md` is only the human-readable report.
+5. `gpd paper-build` is the authoritative step that regenerates `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` for the emitted bibliography and the derived `reference_id -> bibtex_key` bridge. Rerun it whenever the bibliography or citation set changes before strict review. The JSON audit is the review contract artifact; `${PAPER_DIR}/CITATION-AUDIT.md` is only the human-readable report.
    For the default bootstrap path, this means: rerun `paper-build` so `paper/BIBLIOGRAPHY-AUDIT.json` reflects the current bibliography before strict review.
 
 **No bibliography file, no literature review, and no citation-source sidecar** → WARNING (citations will need to be built from scratch).
@@ -860,18 +860,19 @@ Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
 
 - Read the audit report and `GPD/references-status.json`
 - If a citation-source sidecar exists, keep it aligned with the bibliography output so `gpd paper-build --citation-sources` can continue to consume the same stable reference IDs and regenerate the authoritative bibliography audit in lockstep
+- Prefer the `reference_id -> bibtex_key` mapping surfaced by `gpd paper-build` over reconstructing manuscript keys manually from prose or source ordering
 - Replace resolved `MISSING:` markers: for each entry in `resolved_markers`, find-and-replace `\cite{MISSING:X}` → `\cite{resolved_key}` in all .tex files and remove the associated `% MISSING CITATION:` comment
 - Fix hallucinated entries (remove from .bib, update \cite commands)
 - Apply metadata corrections to .bib entries
 - Add missing citations identified by the bibliographer
 - Re-run the audit if substantial changes were made
-- Re-run `gpd paper-build` after bibliography changes so `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` is regenerated before entering strict review or `pre_submission_review`.
+- Re-run `gpd paper-build` after bibliography changes so `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` and the derived reference bridge are regenerated before entering strict review or `pre_submission_review`.
   Default bootstrap wording: rerun `paper-build` so `paper/BIBLIOGRAPHY-AUDIT.json` is current before strict review or `pre_submission_review`.
 
 **If BIBLIOGRAPHY UPDATED:**
 
 - Corrections already applied to .bib by bibliographer
-- Re-run `gpd paper-build` so `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` reflects the current bibliography state for downstream strict review.
+- Re-run `gpd paper-build` so `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` reflects the current bibliography state and the derived reference bridge stays current for downstream strict review.
 - If the bibliography was seeded from `GPD/literature/*-CITATION-SOURCES.json`, keep that handoff artifact visible for reruns of `gpd paper-build --citation-sources`.
 - Review the changes summary, proceed to final review
   </step>

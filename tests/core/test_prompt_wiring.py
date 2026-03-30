@@ -962,6 +962,7 @@ def test_reference_workflows_require_anchor_registry_propagation() -> None:
     literature_workflow = (WORKFLOWS_DIR / "literature-review.md").read_text(encoding="utf-8")
     literature_command = (COMMANDS_DIR / "literature-review.md").read_text(encoding="utf-8")
     literature_agent = (AGENTS_DIR / "gpd-literature-reviewer.md").read_text(encoding="utf-8")
+    bibliographer_agent = (AGENTS_DIR / "gpd-bibliographer.md").read_text(encoding="utf-8")
     compare_workflow = (WORKFLOWS_DIR / "compare-results.md").read_text(encoding="utf-8")
     map_workflow = (WORKFLOWS_DIR / "map-research.md").read_text(encoding="utf-8")
     map_command = (COMMANDS_DIR / "map-research.md").read_text(encoding="utf-8")
@@ -971,12 +972,16 @@ def test_reference_workflows_require_anchor_registry_propagation() -> None:
     assert "project_contract_load_info" in literature_workflow
     assert "project_contract_validation" in literature_workflow
     assert "authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes" in literature_workflow
+    assert "include `bibtex_key` only when it is already known and verified" in literature_workflow
     assert "Active Anchor Registry" in literature_command
     assert "active_anchors" in literature_agent
     assert "GPD/literature/{slug}-CITATION-SOURCES.json" in literature_agent
     assert "compatible with the `CitationSource` shape" in literature_agent
     assert "gpd paper-build --citation-sources" in literature_agent
     assert "reference_id" in literature_agent
+    assert "include `bibtex_key` as an optional preferred key" in literature_agent
+    assert "Keep `bibtex_key` stable across reruns when present" in literature_agent
+    assert "preferred `bibtex_key`, treat it as the manuscript bridge candidate" in bibliographer_agent
     assert "project_contract_load_info" in compare_workflow
     assert "project_contract_validation" in compare_workflow
     assert "active_reference_context" in compare_workflow
@@ -2196,7 +2201,13 @@ def test_publication_workflows_refresh_bibliography_audit_after_bibliography_cha
     respond = (WORKFLOWS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
     peer_review = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
 
-    assert "`gpd paper-build` is the authoritative step that regenerates `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` for the emitted bibliography." in write_paper
+    assert (
+        "`gpd paper-build` is the authoritative step that regenerates `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` "
+        "for the emitted bibliography and the derived `reference_id -> bibtex_key` bridge."
+        in write_paper
+    )
+    assert "the derived `reference_id -> bibtex_key` bridge" in write_paper
+    assert "Prefer the `reference_id -> bibtex_key` mapping surfaced by `gpd paper-build` over reconstructing manuscript keys manually from prose or source ordering" in write_paper
     assert "Rerun it whenever the bibliography or citation set changes before strict review." in write_paper
     assert "For the default bootstrap path, this means: rerun `paper-build` so `paper/BIBLIOGRAPHY-AUDIT.json` reflects the current bibliography before strict review." in write_paper
     assert "refresh `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` before generating the response letter or proceeding to final review" in respond

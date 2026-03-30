@@ -457,6 +457,7 @@ def _write_literature_citation_source_file(tmp_path: Path) -> None:
                     "title": "Benchmark Ref 2024",
                     "authors": ["A. Author", "B. Benchmarker"],
                     "year": "2024",
+                    "bibtex_key": "benchmark2024",
                     "doi": "10.1000/benchmark.2024",
                     "arxiv_id": "2401.01234",
                     "url": "https://example.org/benchmark",
@@ -871,6 +872,7 @@ class TestInitPlanPhase:
         assert ctx["derived_citation_source_count"] == 1
         assert ctx["derived_citation_sources"][0]["reference_id"] == "ref-benchmark"
         assert ctx["derived_citation_sources"][0]["title"] == "Benchmark Ref 2024"
+        assert ctx["derived_citation_sources"][0]["bibtex_key"] == "benchmark2024"
         assert ctx["derived_citation_sources"][0]["doi"] == "10.1000/benchmark.2024"
         assert ctx["derived_citation_sources"][0]["arxiv_id"] == "2401.01234"
         assert "GPD/literature/benchmark-CITATION-SOURCES.json" not in ctx["reference_artifact_files"]

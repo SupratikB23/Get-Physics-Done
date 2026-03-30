@@ -20,6 +20,7 @@ from pybtex.database import BibliographyData
 
 from gpd.mcp.paper.artifact_manifest import build_artifact_manifest, write_artifact_manifest
 from gpd.mcp.paper.bibliography import (
+    BibliographyAudit,
     CitationSource,
     audit_bibliography,
     build_bibliography_with_audit,
@@ -248,6 +249,18 @@ def _merge_bibliography_data(*bibliographies: BibliographyData) -> BibliographyD
 
     merged.preamble_list[:] = merged_preamble
     return merged
+
+
+def _reference_bibtex_keys_from_audit(audit: BibliographyAudit | None) -> dict[str, str]:
+    """Return the final emitted BibTeX key for each referenced project anchor."""
+    if audit is None:
+        return {}
+
+    reference_bibtex_keys: dict[str, str] = {}
+    for entry in audit.entries:
+        if entry.reference_id:
+            reference_bibtex_keys[entry.reference_id] = entry.key
+    return reference_bibtex_keys
 
 
 def check_tex_file(resource_name: str, install_hint: str | None = None) -> tuple[bool, str]:
@@ -588,6 +601,7 @@ async def build_paper(
         bibliography_audit = audit_bibliography(bib_data, source_audit_entries=citation_audit_entries)
         bibliography_audit_path = output_dir / "BIBLIOGRAPHY-AUDIT.json"
         await asyncio.to_thread(write_bibliography_audit, bibliography_audit, bibliography_audit_path)
+    reference_bibtex_keys = _reference_bibtex_keys_from_audit(bibliography_audit)
 
     # 2. Write .bib file
     bib_content = ""
@@ -629,6 +643,7 @@ async def build_paper(
             pdf_path=None,
             bibliography_audit_path=bibliography_audit_path,
             bibliography_audit=bibliography_audit,
+            reference_bibtex_keys=reference_bibtex_keys,
             manifest_path=manifest_path,
             manifest=manifest,
             success=False,
@@ -663,6 +678,7 @@ async def build_paper(
         pdf_path=result.pdf_path,
         bibliography_audit_path=bibliography_audit_path,
         bibliography_audit=bibliography_audit,
+        reference_bibtex_keys=reference_bibtex_keys,
         manifest_path=manifest_path,
         manifest=manifest,
         success=final_success,

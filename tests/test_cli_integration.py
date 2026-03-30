@@ -14,6 +14,7 @@ import shlex
 import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -172,6 +173,40 @@ def _expose_runtime_launcher(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, de
     current_path = os.environ.get("PATH", "")
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{current_path}" if current_path else str(bin_dir))
     return launcher_path
+
+
+def test_paper_build_surfaces_reference_bibtex_bridge(tmp_path: Path) -> None:
+    paper_dir = tmp_path / "paper"
+    paper_dir.mkdir()
+    (paper_dir / "PAPER-CONFIG.json").write_text(
+        json.dumps(
+            {
+                "title": "Bridge Paper",
+                "authors": [{"name": "A. Researcher"}],
+                "abstract": "Abstract.",
+                "sections": [{"title": "Intro", "content": "Hello."}],
+                "figures": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result_payload = SimpleNamespace()
+    result_payload.manifest_path = paper_dir / "ARTIFACT-MANIFEST.json"
+    result_payload.bibliography_audit_path = paper_dir / "BIBLIOGRAPHY-AUDIT.json"
+    result_payload.bibliography_audit = SimpleNamespace(
+        entries=[SimpleNamespace(key="einstein1905", reference_id="lit-ref-einstein-1905")]
+    )
+    result_payload.pdf_path = paper_dir / "main.pdf"
+    result_payload.success = True
+    result_payload.errors = []
+
+    with patch("gpd.mcp.paper.compiler.build_paper", return_value=result_payload):
+        result = runner.invoke(app, ["--raw", "--cwd", str(tmp_path), "paper-build"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["reference_bibtex_bridge"] == [{"reference_id": "lit-ref-einstein-1905", "bibtex_key": "einstein1905"}]
 
 
 # ---------------------------------------------------------------------------
