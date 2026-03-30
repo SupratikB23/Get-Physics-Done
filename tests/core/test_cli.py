@@ -2551,6 +2551,54 @@ def test_result_upsert_projects_execution_visibility_after_save(
     ]
 
 
+@patch("gpd.core.observability.sync_execution_visibility_from_canonical_continuation", side_effect=RuntimeError("boom"))
+@patch("gpd.core.results.result_upsert", create=True)
+def test_result_upsert_continues_when_visibility_projection_fails(
+    mock_upsert,
+    _mock_sync_visibility,
+    tmp_path: Path,
+):
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {
+        "action": "updated",
+        "updated_fields": ["description"],
+        "result": {
+            "id": "R-02",
+            "equation": "a = b + c",
+            "description": "Canonical quantity",
+            "phase": "2",
+            "depends_on": ["R-01"],
+            "verified": False,
+        },
+    }
+    mock_upsert.return_value = mock_result
+    planning = tmp_path / "GPD"
+    planning.mkdir()
+    (planning / "state.json").write_text("{}", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "--raw",
+            "--cwd",
+            str(tmp_path),
+            "result",
+            "upsert",
+            "--id",
+            "R-02",
+            "--description",
+            "Canonical quantity",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["action"] == "updated"
+    assert payload["result"]["id"] == "R-02"
+    assert payload["result"]["description"] == "Canonical quantity"
+
+
 @patch("gpd.cli._resolve_derived_result_id")
 @patch("gpd.core.state.state_carry_forward_continuation_last_result_id")
 @patch("gpd.core.observability.sync_execution_visibility_from_canonical_continuation", create=True)

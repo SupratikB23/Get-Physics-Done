@@ -435,29 +435,6 @@ def _execution_identity_value(field_name: str, value: object) -> str | None:
     return _str_or_none(value)
 
 
-def _existing_current_execution_snapshot(layout: ProjectLayout) -> CurrentExecutionState | None:
-    head_raw = _read_json(layout.execution_lineage_head)
-    if head_raw is not None:
-        try:
-            head_snapshot = ExecutionLineageHead.model_validate(head_raw)
-        except Exception:
-            head_snapshot = None
-        else:
-            if isinstance(head_snapshot.execution, dict):
-                try:
-                    return CurrentExecutionState.model_validate(head_snapshot.execution)
-                except Exception:
-                    pass
-
-    raw = _read_current_execution_raw(layout)
-    if raw is None:
-        return None
-    try:
-        return CurrentExecutionState.model_validate(raw)
-    except Exception:
-        return None
-
-
 def _execution_lane_field_value(payload: object, field: str) -> str | None:
     if isinstance(payload, dict):
         return _execution_identity_value(field, payload.get(field))
