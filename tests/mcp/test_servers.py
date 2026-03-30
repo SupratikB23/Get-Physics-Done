@@ -325,6 +325,18 @@ class TestConventionsServer:
         assert result["valid"] is False
         assert result["assertions_found"] == 0
 
+    def test_assert_convention_validate_missing_required_key(self):
+        from gpd.mcp.servers.conventions_server import assert_convention_validate
+
+        content = "% ASSERT_CONVENTION: metric_signature=(+,-,-,-)"
+        lock = {
+            "metric_signature": "(+,-,-,-)",
+            "fourier_convention": "physics",
+        }
+        result = assert_convention_validate(content, lock)
+        assert result["valid"] is False
+        assert result["missing_required_keys"] == ["fourier_convention"]
+
     def test_subfield_defaults_qft(self):
         from gpd.mcp.servers.conventions_server import subfield_defaults
 

@@ -206,7 +206,9 @@ class TestPreCommitCheck:
 
         assert result.passed is True
         assert result.files_checked == 1
+        assert result.details[0].assert_convention_required is True
         assert result.details[0].assert_convention_valid is True
+        assert result.details[0].assertion_count == 1
 
     def test_derivation_markdown_missing_assertion_fails_when_lock_exists(self, tmp_path: Path) -> None:
         self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
@@ -219,7 +221,9 @@ class TestPreCommitCheck:
         result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-02.md"])
 
         assert result.passed is False
+        assert result.details[0].assert_convention_required is True
         assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 0
         assert any(
             "Missing ASSERT_CONVENTION header" in warning for warning in result.warnings
         )
@@ -235,8 +239,61 @@ class TestPreCommitCheck:
         result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-03.md"])
 
         assert result.passed is False
+        assert result.details[0].assert_convention_required is True
         assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
         assert any("ASSERT_CONVENTION mismatch" in warning for warning in result.warnings)
+
+    def test_derivation_markdown_missing_required_key_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(
+            tmp_path,
+            metric_signature="mostly-minus",
+            fourier_convention="physics",
+        )
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-04.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-minus -->\n\n# Derivation\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-04.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
+        assert any("fourier_convention" in warning for warning in result.warnings)
+
+    def test_derivation_latex_with_matching_assertion_passes(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-05.tex",
+            "% ASSERT_CONVENTION: metric_signature=mostly-minus\n\n\\section{Derivation}\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-05.tex"])
+
+        assert result.passed is True
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is True
+        assert result.details[0].assertion_count == 1
+
+    def test_derivation_python_missing_assertion_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-06.py",
+            "print('derivation helper')\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-06.py"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 0
+        assert any("Missing ASSERT_CONVENTION header" in warning for warning in result.warnings)
 
     def test_non_derivation_markdown_remains_unaffected(self, tmp_path: Path) -> None:
         self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
@@ -249,6 +306,68 @@ class TestPreCommitCheck:
         result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/summary.md"])
 
         assert result.passed is True
+        assert result.details[0].assert_convention_required is False
+        assert result.details[0].assert_convention_valid is None
+
+    def test_phase_verification_markdown_with_matching_assertion_passes(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/02-VERIFICATION.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-minus -->\n\n# Verification\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/02-VERIFICATION.md"])
+
+        assert result.passed is True
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is True
+        assert result.details[0].assertion_count == 1
+
+    def test_phase_verification_markdown_missing_assertion_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/02-VERIFICATION.md",
+            "# Verification\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/02-VERIFICATION.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 0
+        assert any("Missing ASSERT_CONVENTION header" in warning for warning in result.warnings)
+
+    def test_phase_verification_markdown_mismatch_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/02-VERIFICATION.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-plus -->\n\n# Verification\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/02-VERIFICATION.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
+        assert any("ASSERT_CONVENTION mismatch" in warning for warning in result.warnings)
+
+    def test_repo_level_verification_markdown_outside_phases_remains_unaffected(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "docs/VERIFICATION.md",
+            "# Verification Notes\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["docs/VERIFICATION.md"])
+
+        assert result.passed is True
+        assert result.details[0].assert_convention_required is False
         assert result.details[0].assert_convention_valid is None
 
 

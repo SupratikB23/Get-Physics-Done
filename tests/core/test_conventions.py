@@ -17,10 +17,12 @@ from gpd.core.conventions import (
     convention_diff,
     convention_list,
     convention_set,
+    check_assertions,
     is_bogus_value,
     normalize_key,
     normalize_value,
     parse_assert_conventions,
+    required_assertion_keys,
     sanitize_value,
     validate_assertions,
 )
@@ -296,6 +298,33 @@ def test_validate_assertions_no_assertions_is_no_op():
     content = "Just regular text with no assertions."
     mismatches = validate_assertions(content, lock, filename="test.md")
     assert mismatches == []
+
+
+def test_required_assertion_keys_only_returns_active_critical_fields():
+    lock = ConventionLock(
+        metric_signature="mostly-plus",
+        fourier_convention="physics",
+        gauge_choice="Lorenz",
+    )
+
+    assert required_assertion_keys(lock) == ["metric_signature", "fourier_convention"]
+
+
+def test_check_assertions_missing_required_key_fails():
+    lock = ConventionLock(metric_signature="mostly-plus", fourier_convention="physics")
+    content = "<!-- ASSERT_CONVENTION: metric=mostly-plus -->"
+
+    result = check_assertions(
+        content,
+        lock,
+        filename="test.md",
+        require_assertions=True,
+        required_keys=required_assertion_keys(lock),
+    )
+
+    assert result.passed is False
+    assert result.missing_required_assertions == []
+    assert result.missing_required_keys == ["fourier_convention"]
 
 
 # ─── Edge cases: empty/unicode/long values ────────────────────────────────

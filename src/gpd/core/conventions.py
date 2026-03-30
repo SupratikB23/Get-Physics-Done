@@ -50,6 +50,7 @@ __all__ = [
     "convention_check",
     "parse_assert_conventions",
     "check_assertions",
+    "required_assertion_keys",
     "validate_assertions",
 ]
 
@@ -130,6 +131,11 @@ _ASSERT_LINE_RE = re.compile(
     re.MULTILINE,
 )
 _KV_PAIR_RE = re.compile(r"^(\w+)\s*=\s*(.+)$")
+_CRITICAL_ASSERTION_KEYS: tuple[str, ...] = (
+    "metric_signature",
+    "fourier_convention",
+    "natural_units",
+)
 
 
 # --- Result Types ---
@@ -229,7 +235,9 @@ class AssertionCheckResult(BaseModel):
     lock_available: bool
     require_assertions: bool = False
     assertion_count: int
+    required_keys: list[str] = Field(default_factory=list)
     missing_required_assertions: list[str] = Field(default_factory=list)
+    missing_required_keys: list[str] = Field(default_factory=list)
     mismatches: list[AssertionMismatch] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     passed: bool
@@ -595,6 +603,15 @@ def parse_assert_conventions(content: str) -> list[tuple[str, str]]:
     return pairs
 
 
+def required_assertion_keys(lock: ConventionLock) -> list[str]:
+    """Return the active critical convention keys every derivation artifact should assert."""
+    required: list[str] = []
+    for key in _CRITICAL_ASSERTION_KEYS:
+        if not is_bogus_value(getattr(lock, key, None)):
+            required.append(key)
+    return required
+
+
 @instrument_gpd_function("conventions.validate_assertions")
 def validate_assertions(
     content: str,
@@ -654,6 +671,7 @@ def check_assertions(
     *,
     filename: str = "<unknown>",
     require_assertions: bool = False,
+    required_keys: list[str] | None = None,
 ) -> AssertionCheckResult:
     """Check ASSERT_CONVENTION directives against a lock with bootstrap-safe semantics.
 
@@ -662,6 +680,7 @@ def check_assertions(
     mismatch information for pre-commit gates and other structural checks.
     """
     assertions = parse_assert_conventions(content)
+    normalized_required_keys = [normalize_key(key) for key in (required_keys or [])]
     if lock is None:
         warnings = ["Convention lock unavailable; ASSERT_CONVENTION validation skipped"]
         if require_assertions and not assertions:
@@ -671,25 +690,39 @@ def check_assertions(
             lock_available=False,
             require_assertions=require_assertions,
             assertion_count=len(assertions),
+            required_keys=normalized_required_keys,
             missing_required_assertions=[],
+            missing_required_keys=[],
             mismatches=[],
             warnings=warnings,
             passed=True,
         )
 
     missing_required_assertions = ["ASSERT_CONVENTION"] if require_assertions and not assertions else []
+    asserted_keys = {key for key, _ in assertions}
+    missing_required_keys = [
+        key
+        for key in normalized_required_keys
+        if key not in asserted_keys and not is_bogus_value(getattr(lock, key, None))
+    ]
     mismatches = _collect_assertion_mismatches(assertions, lock, filename=filename)
     warnings: list[str] = []
     if missing_required_assertions:
         warnings.append("Missing ASSERT_CONVENTION coverage")
+    if missing_required_keys:
+        warnings.append(
+            "Missing required ASSERT_CONVENTION keys: " + ", ".join(missing_required_keys)
+        )
 
     return AssertionCheckResult(
         file=filename,
         lock_available=True,
         require_assertions=require_assertions,
         assertion_count=len(assertions),
+        required_keys=normalized_required_keys,
         missing_required_assertions=missing_required_assertions,
+        missing_required_keys=missing_required_keys,
         mismatches=mismatches,
         warnings=warnings,
-        passed=not missing_required_assertions and not mismatches,
+        passed=not missing_required_assertions and not missing_required_keys and not mismatches,
     )

@@ -46,7 +46,9 @@ class FileCheckDetail(BaseModel):
     storage_valid: bool | None = None
     storage_class: str | None = None
     frontmatter_valid: bool | None = None
+    assert_convention_required: bool = False
     assert_convention_valid: bool | None = None
+    assertion_count: int = 0
     has_nan: bool = False
     warnings: list[str] = Field(default_factory=list)
 
@@ -105,7 +107,7 @@ _ASSIGNMENT_NONFINITE_RE = re.compile(
     """,
     re.VERBOSE,
 )
-_DERIVATION_MARKDOWN_RE = re.compile(r"(?i)^derivation-(?!state\.md$).+\.md$")
+_DERIVATION_ASSERT_TARGET_RE = re.compile(r"(?i)^derivation-(?!state\.).+\.(?:md|py|tex)$")
 
 
 # ---------------------------------------------------------------------------
@@ -162,9 +164,24 @@ def _expand_check_inputs(cwd: Path, files: list[str]) -> list[str]:
     return expanded
 
 
-def _is_derivation_markdown_target(file_path: str) -> bool:
-    """Return whether a file is a derivation markdown artifact subject to ASSERT gating."""
-    return bool(_DERIVATION_MARKDOWN_RE.fullmatch(Path(file_path).name))
+def _is_derivation_assert_target(file_path: str) -> bool:
+    """Return whether a file is a derivation artifact subject to ASSERT gating."""
+    return bool(_DERIVATION_ASSERT_TARGET_RE.fullmatch(Path(file_path).name))
+
+
+def _is_phase_verification_target(file_path: str) -> bool:
+    """Return whether a file is a phase verification artifact subject to ASSERT gating."""
+    path = Path(file_path)
+    parts = {part.lower() for part in path.parts}
+    if "phases" not in parts:
+        return False
+    name = path.name.lower()
+    return name == "verification.md" or name.endswith("-verification.md")
+
+
+def _requires_assert_convention_check(file_path: str) -> bool:
+    """Return whether a file should be gated on ASSERT_CONVENTION coverage."""
+    return _is_derivation_assert_target(file_path) or _is_phase_verification_target(file_path)
 
 
 def _load_active_convention_lock(cwd: Path) -> tuple[object | None, bool]:
@@ -342,25 +359,42 @@ def _check_assert_conventions(
     file_path: str,
     convention_lock: object | None,
 ) -> None:
-    """Validate ASSERT_CONVENTION coverage for derivation markdown artifacts."""
-    if convention_lock is None:
+    """Validate ASSERT_CONVENTION coverage for convention-gated artifacts."""
+    from gpd.core.conventions import check_assertions, required_assertion_keys
+
+    detail.assert_convention_required = True
+    required_keys = required_assertion_keys(convention_lock) if convention_lock is not None else []
+    result = check_assertions(
+        content,
+        convention_lock,
+        filename=file_path,
+        require_assertions=True,
+        required_keys=required_keys,
+    )
+    detail.assertion_count = result.assertion_count
+
+    if not result.lock_available:
         detail.warnings.append(
             f"Skipping ASSERT_CONVENTION checks for {file_path}: no active convention lock"
         )
         return
 
-    from gpd.core.conventions import parse_assert_conventions, validate_assertions
-
-    assertions = parse_assert_conventions(content)
-    if not assertions:
+    if result.missing_required_assertions:
         detail.assert_convention_valid = False
-        detail.warnings.append(f"Missing ASSERT_CONVENTION header in derivation artifact: {file_path}")
+        detail.warnings.append(f"Missing ASSERT_CONVENTION header in convention-gated artifact: {file_path}")
         return
 
-    mismatches = validate_assertions(content, convention_lock, filename=file_path)
-    if mismatches:
+    if result.missing_required_keys:
         detail.assert_convention_valid = False
-        for mismatch in mismatches:
+        detail.warnings.append(
+            "Missing required ASSERT_CONVENTION keys in convention-gated artifact: "
+            f"{file_path} ({', '.join(result.missing_required_keys)})"
+        )
+        return
+
+    if result.mismatches:
+        detail.assert_convention_valid = False
+        for mismatch in result.mismatches:
             detail.warnings.append(
                 "ASSERT_CONVENTION mismatch in "
                 f"{mismatch.file}: {mismatch.key}={mismatch.file_value!r} "
@@ -404,17 +438,18 @@ def _check_single_file(
     suffix = full_path.suffix.lower()
     if suffix in (".md", ".markdown"):
         _check_markdown(content, detail)
-        if _is_derivation_markdown_target(file_path):
-            _check_assert_conventions(
-                content,
-                detail,
-                file_path=file_path,
-                convention_lock=convention_lock,
-            )
     elif suffix == ".json":
         _check_json(content, detail)
     elif _text_contains_nonfinite_value(content):
         _mark_nonfinite(detail)
+
+    if _requires_assert_convention_check(file_path):
+        _check_assert_conventions(
+            content,
+            detail,
+            file_path=file_path,
+            convention_lock=convention_lock,
+        )
 
     return detail
 
@@ -432,7 +467,7 @@ def cmd_pre_commit_check(cwd: Path, files: list[str]) -> PreCommitCheckResult:
     1. Storage-path policy for commit targets
     2. Frontmatter YAML validity (for .md files)
     3. NaN/Inf detection in serialized file content
-    4. ASSERT_CONVENTION coverage for derivation markdown artifacts with an active lock
+    4. ASSERT_CONVENTION coverage for derivation and phase verification artifacts with an active lock
 
     Behavior:
     - If *files* is empty, validates the currently staged files.
