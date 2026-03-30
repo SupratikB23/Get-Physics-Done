@@ -42,7 +42,7 @@ Execute the derive-equation workflow from @{GPD_INSTALL_DIR}/workflows/derive-eq
 Preserve all workflow gates (assumption statement, notation, step-by-step derivation, verification, documentation).
 
 The workflow will:
-1. Set up the derivation context (conventions, starting point, target)
+1. Set up the derivation context (conventions, starting point, target), including canonical result lookup via `gpd result search` and direct stored-result inspection via `gpd result show "{result_id}"` when the target already has a known registry entry
 2. Guide you through a step-by-step derivation with checkpoints
 3. Verify dimensional consistency at each step
 4. Check limiting cases of the final result

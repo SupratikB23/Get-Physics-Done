@@ -13,6 +13,8 @@ WORKFLOW_DOC = REPO_ROOT / "src/gpd/specs/workflows/derive-equation.md"
 def test_derive_equation_command_doc_promises_registry_writeback() -> None:
     text = COMMAND_DOC.read_text(encoding="utf-8")
 
+    assert "canonical result lookup via `gpd result search`" in text
+    assert 'direct stored-result inspection via `gpd result show "{result_id}"`' in text
     assert "Record the derived equation in the project's `intermediate_results` registry through the executable `gpd result persist-derived` bridge" in text
     assert "the workflow reuses or carries forward a stable `result_id` request on reruns" in text
     assert "actual canonical `result_id`" in text
@@ -26,6 +28,8 @@ def test_derive_equation_workflow_reuses_prior_results_and_persists_final_equati
 
     assert "inspect `intermediate_results` before re-deriving" in text
     assert "existing canonical equation/result entries related to the target" in text
+    assert "Use `gpd result search` to locate the canonical result first" in text
+    assert 'use `gpd result show "{result_id}"` for the direct stored-result view' in text
     assert "result_id: [stable registry ID, if persisted]" in text
     assert "**Step 6: Persist Canonical Result**" in text
     assert "Persist the final derived equation through the executable `gpd result persist-derived` bridge when project state is available." in text
