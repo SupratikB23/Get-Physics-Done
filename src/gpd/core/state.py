@@ -135,6 +135,7 @@ __all__ = [
     "state_replace_field",
     "state_set_project_contract",
     "state_set_continuation_bounded_segment",
+    "state_carry_forward_continuation_last_result_id",
     "state_clear_continuation_bounded_segment",
     "state_resolve_blocker",
     "state_snapshot",
@@ -671,6 +672,15 @@ def _state_has_canonical_result_id(state_obj: dict[str, object], result_id: str)
         if isinstance(item, IntermediateResult) and _optional_state_text(item.id) == result_id:
             return True
     return False
+
+
+def _continuation_bounded_segment_last_result_id(continuation: object) -> str | None:
+    """Return the canonical bounded-segment last-result anchor, if present."""
+    normalized = _normalize_continuation_payload(continuation)
+    bounded_segment = normalized.get("bounded_segment")
+    if not isinstance(bounded_segment, dict):
+        return None
+    return _optional_state_text(bounded_segment.get("last_result_id"))
 
 
 def _blank_session_payload() -> dict[str, str | None]:
@@ -3465,6 +3475,74 @@ def state_set_continuation_bounded_segment(
         return StateUpdateResult(updated=True)
 
 
+@instrument_gpd_function("state.carry_forward_continuation_last_result_id")
+def state_carry_forward_continuation_last_result_id(
+    cwd: Path,
+    last_result_id: str,
+    *,
+    state_obj: dict[str, object] | None = None,
+) -> StateUpdateResult:
+    """Carry a canonical result ID into continuation state without session-boundary metadata."""
+
+    requested_last_result_id = _optional_state_text(last_result_id)
+    if requested_last_result_id is None:
+        return StateUpdateResult(updated=False, reason="last_result_id must be a non-empty string when provided")
+
+    def _apply(loaded_state_obj: dict[str, object]) -> StateUpdateResult:
+        if not _state_has_canonical_result_id(state_obj, requested_last_result_id):
+            return StateUpdateResult(
+                updated=False,
+                reason=(
+                    f'last_result_id "{requested_last_result_id}" does not match any canonical result in '
+                    "intermediate_results"
+                ),
+            )
+
+        current_continuation = _normalize_continuation_payload(loaded_state_obj.get("continuation"))
+        current_handoff = current_continuation.get("handoff")
+        current_bounded_segment = current_continuation.get("bounded_segment")
+        if not isinstance(current_handoff, dict):
+            current_handoff = {}
+        if not isinstance(current_bounded_segment, dict):
+            return StateUpdateResult(updated=False, reason="Canonical continuation bounded_segment not found")
+
+        desired_continuation = normalize_continuation(
+            cwd,
+            {
+                **current_continuation,
+                "handoff": {
+                    **current_handoff,
+                    "last_result_id": requested_last_result_id,
+                },
+                "bounded_segment": {
+                    **current_bounded_segment,
+                    "last_result_id": requested_last_result_id,
+                },
+            },
+        ).model_dump(mode="python")
+
+        if current_continuation == desired_continuation:
+            return StateUpdateResult(
+                updated=False,
+                reason="Continuation last_result_id already matches requested value",
+            )
+
+        loaded_state_obj["continuation"] = desired_continuation
+        loaded_state_obj["session"] = _session_from_continuation_payload(desired_continuation)
+        return StateUpdateResult(updated=True)
+
+    if state_obj is not None:
+        return _apply(state_obj)
+
+    with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        loaded_state_obj = _load_state_snapshot_for_mutation(cwd)
+        result = _apply(loaded_state_obj)
+        if result.updated:
+            save_state_json_locked(cwd, loaded_state_obj)
+        return result
+
+
 @instrument_gpd_function("state.clear_continuation_bounded_segment")
 def state_clear_continuation_bounded_segment(cwd: Path) -> StateUpdateResult:
     """Clear the canonical continuation bounded_segment in state.json only."""
@@ -3866,6 +3944,15 @@ def state_record_session(
                 raise StateError(
                     f'last_result_id "{requested_last_result_id}" does not match any canonical result in intermediate_results'
                 )
+        current_bounded_segment = current_continuation.bounded_segment
+        bounded_segment_last_result_id = (
+            _optional_state_text(current_bounded_segment.last_result_id) if current_bounded_segment is not None else None
+        )
+        if (
+            bounded_segment_last_result_id is not None
+            and not _state_has_canonical_result_id(state_obj, bounded_segment_last_result_id)
+        ):
+            bounded_segment_last_result_id = None
         updated: list[str] = []
 
         updated.append("Last session")
@@ -3875,7 +3962,9 @@ def state_record_session(
             updated.append("Platform")
         desired_stopped_at = stopped_at if stopped_at is not None else existing_handoff.stopped_at
         desired_last_result_id = (
-            requested_last_result_id if last_result_id is not None else _optional_state_text(existing_handoff.last_result_id)
+            requested_last_result_id
+            if last_result_id is not None
+            else _optional_state_text(existing_handoff.last_result_id) or bounded_segment_last_result_id
         )
         if desired_stopped_at != existing_handoff.stopped_at:
             updated.append("Stopped at")

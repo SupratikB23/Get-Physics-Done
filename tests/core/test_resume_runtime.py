@@ -12,7 +12,11 @@ from gpd.core.context import init_resume
 from gpd.core.observability import CurrentExecutionState
 from gpd.core.recent_projects import record_recent_project
 from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
-from gpd.core.state import parse_state_to_json, state_record_session
+from gpd.core.state import (
+    parse_state_to_json,
+    state_carry_forward_continuation_last_result_id,
+    state_record_session,
+)
 
 
 def _write_current_execution(tmp_path: Path, payload: dict[str, object]) -> None:
@@ -136,6 +140,71 @@ def test_state_record_session_normalizes_project_local_absolute_resume_file(
     assert "**Resume file:** GPD/phases/03-analysis/.continue-here.md" in markdown
 
 
+def test_state_carry_forward_continuation_last_result_id_updates_canonical_continuation_without_session_boundary(
+    tmp_path: Path, state_project_factory
+) -> None:
+    cwd = state_project_factory(tmp_path)
+    state_path = cwd / "GPD" / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["intermediate_results"] = [
+        {
+            "id": "result-canonical",
+            "equation": "R = A + B",
+            "description": "Canonical bridge result",
+            "units": "arb",
+            "validity": "validated",
+            "phase": "03",
+            "depends_on": ["seed-result"],
+            "verified": True,
+            "verification_records": [],
+        }
+    ]
+    state["session"].update(
+        {
+            "last_result_id": "result-legacy",
+            "resume_file": "GPD/phases/03-analysis/.continue-here.md",
+            "stopped_at": "Phase 03",
+        }
+    )
+    state["continuation"] = {
+        "schema_version": 1,
+        "handoff": {
+            "resume_file": "GPD/phases/03-analysis/.continue-here.md",
+            "stopped_at": "Phase 03",
+            "last_result_id": "result-legacy",
+            "recorded_at": "2026-03-29T12:00:00+00:00",
+            "recorded_by": "state_record_session",
+        },
+        "bounded_segment": {
+            "resume_file": "GPD/phases/03-analysis/.continue-here.md",
+            "phase": "03",
+            "plan": "02",
+            "segment_id": "canonical-seg",
+            "segment_status": "paused",
+            "last_result_id": "result-legacy",
+            "updated_at": "2026-03-29T12:00:00+00:00",
+            "source_session_id": "sess-1",
+            "recorded_by": "legacy_current_execution",
+        },
+        "machine": {
+            "recorded_at": "2026-03-29T12:00:00+00:00",
+            "hostname": "builder-01",
+            "platform": "Linux 6.1 x86_64",
+        },
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    result = state_carry_forward_continuation_last_result_id(cwd, "result-canonical")
+
+    stored = json.loads(state_path.read_text(encoding="utf-8"))
+    assert result.updated is True
+    assert stored["continuation"]["handoff"]["last_result_id"] == "result-canonical"
+    assert stored["continuation"]["bounded_segment"]["last_result_id"] == "result-canonical"
+    assert stored["continuation"]["handoff"]["recorded_at"] == "2026-03-29T12:00:00+00:00"
+    assert stored["continuation"]["handoff"]["recorded_by"] == "state_record_session"
+    assert stored["session"]["last_result_id"] == "result-canonical"
+
+
 def test_state_record_session_rejects_unknown_last_result_id_without_persisting(
     tmp_path: Path, state_project_factory, monkeypatch
 ) -> None:
@@ -161,6 +230,78 @@ def test_state_record_session_rejects_unknown_last_result_id_without_persisting(
 
     assert state_path.read_text(encoding="utf-8") == before_state
     assert markdown_path.read_text(encoding="utf-8") == before_markdown
+
+
+def test_state_record_session_uses_bounded_segment_last_result_id_when_explicit_anchor_is_omitted(
+    tmp_path: Path, state_project_factory, monkeypatch
+) -> None:
+    cwd = state_project_factory(tmp_path)
+    monkeypatch.setattr(
+        state_module,
+        "_current_machine_identity",
+        lambda: {"hostname": "builder-01", "platform": "Linux 6.1 x86_64"},
+    )
+    state_path = cwd / "GPD" / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["intermediate_results"] = [
+        {
+            "id": "result-canonical",
+            "equation": "R = A + B",
+            "description": "Canonical bridge result",
+            "units": "arb",
+            "validity": "validated",
+            "phase": "03",
+            "depends_on": ["seed-result"],
+            "verified": True,
+            "verification_records": [],
+        }
+    ]
+    state["session"].update(
+        {
+            "last_result_id": "result-legacy",
+            "resume_file": "GPD/phases/03-analysis/.continue-here.md",
+            "stopped_at": "Phase 03",
+        }
+    )
+    state["continuation"] = {
+        "schema_version": 1,
+        "handoff": {
+            "resume_file": "GPD/phases/03-analysis/.continue-here.md",
+            "stopped_at": "Phase 03",
+            "last_result_id": "result-legacy",
+            "recorded_at": "2026-03-29T12:00:00+00:00",
+            "recorded_by": "state_record_session",
+        },
+        "bounded_segment": {
+            "resume_file": "GPD/phases/03-analysis/.continue-here.md",
+            "phase": "03",
+            "plan": "02",
+            "segment_id": "canonical-seg",
+            "segment_status": "paused",
+            "last_result_id": "result-canonical",
+            "updated_at": "2026-03-29T12:00:00+00:00",
+            "source_session_id": "sess-1",
+            "recorded_by": "legacy_current_execution",
+        },
+        "machine": {
+            "recorded_at": "2026-03-29T12:00:00+00:00",
+            "hostname": "builder-01",
+            "platform": "Linux 6.1 x86_64",
+        },
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    result = state_record_session(cwd, resume_file="next-step.md")
+
+    markdown = (cwd / "GPD" / "STATE.md").read_text(encoding="utf-8")
+    stored = json.loads(state_path.read_text(encoding="utf-8"))
+
+    assert result.recorded is True
+    assert "Last result ID" in set(result.updated)
+    assert stored["session"]["last_result_id"] == "result-canonical"
+    assert stored["continuation"]["handoff"]["last_result_id"] == "result-canonical"
+    assert stored["continuation"]["bounded_segment"]["last_result_id"] == "result-canonical"
+    assert "**Last result ID:** result-canonical" in markdown
 
 
 def test_init_resume_surfaces_machine_change_and_session_resume_candidate(
