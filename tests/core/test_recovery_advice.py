@@ -170,6 +170,107 @@ def test_build_recovery_advice_marks_auto_selected_recent_project_recovery(
     assert advice.actions[2].availability == "now"
 
 
+def test_build_recovery_advice_marks_auto_selected_recent_project_recovery_without_recent_rows(
+    tmp_path: Path,
+) -> None:
+    workspace = _project(tmp_path)
+    selected_project = _project(tmp_path, "selected")
+    resume_file = selected_project / "GPD" / "phases" / "02" / ".continue-here.md"
+    resume_file.parent.mkdir(parents=True, exist_ok=True)
+    resume_file.write_text("resume\n", encoding="utf-8")
+
+    advice = build_recovery_advice(
+        workspace,
+        recent_rows=[],
+        resume_payload={
+            "project_root": selected_project.as_posix(),
+            "project_root_source": "recent_project",
+            "project_root_auto_selected": True,
+            "project_reentry_mode": "auto-recent-project",
+            "resume_candidates": [
+                {
+                    "kind": "bounded_segment",
+                    "origin": "continuation.bounded_segment",
+                    "status": "paused",
+                    "resume_file": "GPD/phases/02/.continue-here.md",
+                }
+            ],
+            "active_resume_pointer": "GPD/phases/02/.continue-here.md",
+            "has_live_execution": False,
+        },
+    )
+
+    assert advice.mode == "current-workspace"
+    assert advice.status == "bounded-segment"
+    assert advice.decision_source == "auto-selected-recent-project"
+    assert advice.project_reentry_mode == "auto-recent-project"
+    assert advice.project_root == selected_project.as_posix()
+    assert advice.project_root_auto_selected is True
+    assert advice.primary_command == "gpd resume --recent"
+    assert advice.project_reentry_reason == "GPD found the only recoverable recent project on this machine and selected it automatically."
+    assert advice.active_resume_kind == "bounded_segment"
+    assert advice.active_resume_origin == "continuation.bounded_segment"
+    assert advice.active_resume_pointer == "GPD/phases/02/.continue-here.md"
+    assert advice.current_workspace_has_resume_file is True
+    assert advice.current_workspace_resumable is True
+    assert advice.recent_projects_count == 0
+    assert advice.resumable_projects_count == 0
+    assert advice.current_workspace_candidate_count == 1
+    assert advice.has_local_recovery_target is True
+
+
+def test_build_recovery_advice_uses_selected_recent_project_candidate_when_resume_surface_is_absent(
+    tmp_path: Path,
+) -> None:
+    workspace = _project(tmp_path)
+    selected_project = _project(tmp_path, "selected-candidate-only")
+
+    advice = build_recovery_advice(
+        workspace,
+        recent_rows=[],
+        resume_payload={
+            "project_root": selected_project.as_posix(),
+            "project_root_source": "recent_project",
+            "project_root_auto_selected": True,
+            "project_reentry_mode": "auto-recent-project",
+            "project_reentry_candidates": [
+                {
+                    "source": "recent_project",
+                    "project_root": selected_project.as_posix(),
+                    "available": True,
+                    "recoverable": True,
+                    "resumable": True,
+                    "confidence": "high",
+                    "reason": "recent project cache entry with confirmed bounded segment resume target",
+                    "resume_file": "GPD/phases/02/.continue-here.md",
+                    "resume_target_kind": "bounded_segment",
+                    "resume_target_recorded_at": "2026-03-27T11:55:00+00:00",
+                    "resume_file_available": True,
+                    "source_kind": "continuation.bounded_segment",
+                    "source_segment_id": "segment-1",
+                    "source_transition_id": "transition-1",
+                    "recovery_phase": "02",
+                    "recovery_plan": "01",
+                    "auto_selectable": True,
+                }
+            ],
+            "has_live_execution": False,
+        },
+    )
+
+    assert advice.decision_source == "auto-selected-recent-project"
+    assert advice.project_reentry_mode == "auto-recent-project"
+    assert advice.primary_command == "gpd resume --recent"
+    assert advice.active_resume_kind == "bounded_segment"
+    assert advice.active_resume_origin == "continuation.bounded_segment"
+    assert advice.current_workspace_has_resume_file is False
+    assert advice.current_workspace_resumable is False
+    assert advice.has_local_recovery_target is False
+    assert advice.recent_projects_count == 1
+    assert advice.resumable_projects_count == 1
+    assert advice.available_projects_count == 1
+
+
 def test_build_recovery_advice_marks_ambiguous_recent_projects_as_explicit_selection(
     tmp_path: Path,
 ) -> None:

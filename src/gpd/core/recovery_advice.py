@@ -21,6 +21,8 @@ from gpd.core.resume_surface import (
     resolve_resume_compat_surface,
     resume_candidate_kind,
     resume_candidate_origin,
+    resume_origin_for_bounded_segment,
+    resume_origin_for_handoff,
     resume_source_from_origin,
 )
 from gpd.core.surface_phrases import (
@@ -254,6 +256,48 @@ def _legacy_list_field(
         compat_keys=compat_fields,
         prefer_compat=True,
     )
+
+
+def _canonical_project_reentry_candidates(
+    payload: Mapping[str, object],
+    compat_surface: Mapping[str, object] | None,
+) -> list[Mapping[str, object]] | None:
+    candidates = _canonical_list_field(payload, compat_surface, "project_reentry_candidates")
+    if candidates is None:
+        return None
+    return [candidate for candidate in candidates if isinstance(candidate, Mapping)]
+
+
+def _selected_project_reentry_candidate(
+    payload: Mapping[str, object],
+    candidates: Sequence[Mapping[str, object]] | None,
+) -> Mapping[str, object] | None:
+    if not candidates:
+        return None
+    project_root = _text_field(payload, "project_root")
+    if project_root is None:
+        return None
+    project_root_source = _text_field(payload, "project_root_source")
+    if project_root_source is not None:
+        for candidate in candidates:
+            if _candidate_text(candidate, "project_root") == project_root and _candidate_text(candidate, "source") == project_root_source:
+                return candidate
+    return next((candidate for candidate in candidates if _candidate_text(candidate, "project_root") == project_root), None)
+
+
+def _selected_recent_project_resume_family(
+    candidate: Mapping[str, object] | None,
+) -> tuple[str | None, str | None]:
+    if candidate is None or _candidate_text(candidate, "source") != "recent_project":
+        return None, None
+
+    resume_target_kind = _candidate_text(candidate, "resume_target_kind")
+    source_kind = _candidate_text(candidate, "source_kind")
+    if resume_target_kind == "bounded_segment":
+        return "bounded_segment", source_kind or resume_origin_for_bounded_segment()
+    if resume_target_kind == "handoff":
+        return "continuity_handoff", source_kind or resume_origin_for_handoff()
+    return None, None
 
 
 def _candidate_kind(candidate: Mapping[str, object]) -> str | None:
@@ -583,10 +627,17 @@ def build_recovery_advice(
     payload = dict(resume_payload) if resume_payload is not None else init_resume(normalized_cwd)
     compat_resume_surface = _compat_resume_surface(payload)
     rows = list(recent_rows) if recent_rows is not None else list_recent_projects(data_root, last=recent_projects_last)
+    project_reentry_candidates = _canonical_project_reentry_candidates(payload, compat_resume_surface)
+    selected_project_reentry_candidate = _selected_project_reentry_candidate(payload, project_reentry_candidates)
+    recent_project_rows = (
+        [candidate for candidate in project_reentry_candidates if _row_value(candidate, "source") == "recent_project"]
+        if project_reentry_candidates is not None
+        else rows
+    )
 
-    recent_projects_count = len(rows)
-    resumable_projects_count = sum(1 for row in rows if bool(_row_value(row, "resumable", False)))
-    available_projects_count = sum(1 for row in rows if bool(_row_value(row, "available", False)))
+    recent_projects_count = len(recent_project_rows)
+    resumable_projects_count = sum(1 for row in recent_project_rows if bool(_row_value(row, "resumable", False)))
+    available_projects_count = sum(1 for row in recent_project_rows if bool(_row_value(row, "available", False)))
 
     segment_candidates_raw = _canonical_list_field(
         payload,
@@ -649,6 +700,13 @@ def build_recovery_advice(
         missing_continuity_handoff_file=missing_continuity_handoff_file,
         resume_candidates=segment_candidates,
     )
+    selected_recent_project_resume_kind, selected_recent_project_resume_origin = _selected_recent_project_resume_family(
+        selected_project_reentry_candidate
+    )
+    if active_resume_kind is None:
+        active_resume_kind = selected_recent_project_resume_kind
+    if active_resume_origin is None:
+        active_resume_origin = selected_recent_project_resume_origin
     workspace_root = _text_field(payload, "workspace_root")
     project_root = _text_field(payload, "project_root")
     project_root_source = _text_field(payload, "project_root_source")

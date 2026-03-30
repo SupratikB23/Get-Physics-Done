@@ -600,6 +600,10 @@ def test_build_runtime_hint_payload_prefers_selected_project_resume_state_for_au
     assert payload.recovery["current_project"]["resume_file_reason"] is None
     assert payload.recovery["current_project_summary"] == "last seen 2026-03-27T12:05:00+00:00; stopped at Phase 03; resume file ready"
     assert payload.recovery["current_project_summary"] == payload.recovery["current_project"]["summary"]
+    assert (
+        payload.recovery["project_reentry_summary"]
+        == "GPD auto-selected the only recoverable recent project on this machine. last seen 2026-03-27T12:05:00+00:00; stopped at Phase 03; resume file ready."
+    )
     assert payload.recovery["project_reentry"]["candidates"][0]["resume_target_kind"] == "handoff"
     assert payload.recovery["project_reentry"]["candidates"][0]["reason"] == "recent project cache entry with projected continuity handoff"
     assert payload.orientation["mode"] == "current-workspace"
