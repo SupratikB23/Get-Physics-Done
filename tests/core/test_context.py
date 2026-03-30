@@ -29,6 +29,7 @@ from gpd.core.context import (
     load_config,
 )
 from gpd.core.errors import ConfigError, ValidationError
+from gpd.core.resume_surface import canonicalize_resume_public_payload
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
 _RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
@@ -1020,6 +1021,43 @@ class TestInitQuick:
 
 
 class TestInitResume:
+    def test_canonicalize_resume_public_payload_keeps_runtime_fields_public(self) -> None:
+        payload = {
+            "current_execution": {"segment_id": "seg-1"},
+            "current_execution_resume_file": "GPD/phases/03-analysis/.continue-here.md",
+            "execution_resume_file": "GPD/phases/03-analysis/.continue-here.md",
+            "execution_resume_file_source": "current_execution",
+            "segment_candidates": [
+                {
+                    "source": "current_execution",
+                    "resume_file": "GPD/phases/03-analysis/.continue-here.md",
+                }
+            ],
+            "resume_mode": "bounded_segment",
+            "execution_resumable": True,
+            "execution_review_pending": False,
+            "has_live_execution": True,
+            "legacy_resume_surface": {
+                "session_resume_file": "GPD/phases/03-analysis/alternate.md",
+            },
+        }
+
+        canonical = canonicalize_resume_public_payload(payload)
+
+        assert "current_execution" not in canonical
+        assert "current_execution_resume_file" not in canonical
+        assert "execution_resume_file" not in canonical
+        assert "execution_resume_file_source" not in canonical
+        assert "segment_candidates" not in canonical
+        assert "resume_mode" not in canonical
+        assert "legacy_resume_surface" not in canonical
+        assert canonical["execution_resumable"] is True
+        assert canonical["execution_review_pending"] is False
+        assert canonical["has_live_execution"] is True
+        assert canonical["compat_resume_surface"]["current_execution"]["segment_id"] == "seg-1"
+        assert canonical["compat_resume_surface"]["execution_resumable"] is True
+        assert canonical["compat_resume_surface"]["session_resume_file"] == "GPD/phases/03-analysis/alternate.md"
+
     def test_no_interrupted_agent(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)
         ctx = init_resume(tmp_path)
@@ -1075,7 +1113,13 @@ class TestInitResume:
         ctx = init_resume(tmp_path)
 
         assert ctx["resume_surface_schema_version"] == 1
+        assert "current_execution" not in ctx
+        assert "current_execution_resume_file" not in ctx
+        assert "execution_resume_file" not in ctx
+        assert "execution_resume_file_source" not in ctx
         assert "resume_mode" not in ctx
+        assert ctx["execution_resumable"] is True
+        assert ctx["has_live_execution"] is True
         assert ctx["active_resume_kind"] == "bounded_segment"
         assert ctx["active_resume_origin"] == "derived_execution_head"
         assert ctx["active_resume_pointer"] == "GPD/phases/03-analysis/.continue-here.md"

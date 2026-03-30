@@ -12,6 +12,8 @@ from collections.abc import Mapping, Sequence
 
 __all__ = [
     "RESUME_COMPATIBILITY_ALIAS_KEYS",
+    "RESUME_COMPAT_SURFACE_FIELDS",
+    "RESUME_EXECUTION_RUNTIME_ALIAS_KEYS",
     "build_resume_compat_surface",
     "canonicalize_resume_public_payload",
 ]
@@ -28,6 +30,30 @@ RESUME_COMPATIBILITY_ALIAS_KEYS: tuple[str, ...] = (
     "resume_mode",
     "segment_candidates",
     "session_resume_file",
+)
+
+RESUME_COMPAT_SURFACE_FIELDS: tuple[str, ...] = (
+    *RESUME_COMPATIBILITY_ALIAS_KEYS,
+    "execution_resumable",
+    "execution_paused_at",
+    "execution_review_pending",
+    "execution_pre_fanout_review_pending",
+    "execution_skeptical_requestioning_required",
+    "execution_downstream_locked",
+    "execution_blocked",
+    "has_interrupted_agent",
+    "interrupted_agent_id",
+    "has_live_execution",
+)
+
+RESUME_EXECUTION_RUNTIME_ALIAS_KEYS: tuple[str, ...] = (
+    "current_execution",
+    "current_execution_resume_file",
+    "session_resume_file",
+    "recorded_session_resume_file",
+    "missing_session_resume_file",
+    "execution_resume_file",
+    "execution_resume_file_source",
 )
 
 _COMPAT_SURFACE_ALIASES: tuple[str, ...] = (
@@ -71,14 +97,16 @@ def build_resume_compat_surface(
 
 def canonicalize_resume_public_payload(
     payload: Mapping[str, object],
-    *,
-    compat_fields: Sequence[str] = RESUME_COMPATIBILITY_ALIAS_KEYS,
+    *extra_sources: Mapping[str, object] | None,
+    compat_fields: Sequence[str] = RESUME_COMPAT_SURFACE_FIELDS,
 ) -> dict[str, object]:
     """Group legacy resume aliases under ``compat_resume_surface`` only."""
     canonical = dict(payload)
-    compat = build_resume_compat_surface(canonical, fields=compat_fields)
+    compat = build_resume_compat_surface(canonical, *extra_sources, fields=compat_fields)
 
     for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+        canonical.pop(key, None)
+    for key in _COMPAT_SURFACE_ALIASES[1:]:
         canonical.pop(key, None)
 
     if compat is not None:

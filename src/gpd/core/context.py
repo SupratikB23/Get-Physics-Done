@@ -53,8 +53,8 @@ from gpd.core.project_reentry import resolve_project_reentry
 from gpd.core.protocol_bundles import render_protocol_bundle_context, select_protocol_bundles
 from gpd.core.reference_ingestion import ingest_reference_artifacts
 from gpd.core.resume_surface import (
+    RESUME_EXECUTION_RUNTIME_ALIAS_KEYS,
     canonicalize_resume_public_payload,
-    build_resume_compat_surface,
 )
 from gpd.core.state import (
     EM_DASH,
@@ -1123,46 +1123,12 @@ def _has_resume_candidate(
     return False
 
 
-_RESUME_COMPAT_SURFACE_FIELDS = (
-    "current_execution",
-    "current_execution_resume_file",
-    "session_resume_file",
-    "recorded_session_resume_file",
-    "missing_session_resume_file",
-    "execution_resume_file",
-    "execution_resume_file_source",
-    "execution_resumable",
-    "execution_paused_at",
-    "execution_review_pending",
-    "execution_pre_fanout_review_pending",
-    "execution_skeptical_requestioning_required",
-    "execution_downstream_locked",
-    "execution_blocked",
-    "active_execution_segment",
-    "segment_candidates",
-    "resume_mode",
-    "has_interrupted_agent",
-    "interrupted_agent_id",
-    "has_live_execution",
-)
-
-_EXECUTION_RUNTIME_RESUME_ALIAS_FIELDS = (
-    "current_execution",
-    "current_execution_resume_file",
-    "session_resume_file",
-    "recorded_session_resume_file",
-    "missing_session_resume_file",
-    "execution_resume_file",
-    "execution_resume_file_source",
-)
-
-
 def _public_execution_runtime_context(execution_context: Mapping[str, object]) -> dict[str, object]:
     """Filter execution runtime context down to the non-compat public fields."""
     return {
         key: value
         for key, value in execution_context.items()
-        if key != "resume_projection" and key not in _EXECUTION_RUNTIME_RESUME_ALIAS_FIELDS
+        if key != "resume_projection" and key not in RESUME_EXECUTION_RUNTIME_ALIAS_KEYS
     }
 
 
@@ -1302,7 +1268,6 @@ def _build_legacy_resume_state(
         "has_interrupted_agent": interrupted_agent_id is not None,
         "interrupted_agent_id": interrupted_agent_id,
     }
-    result["compat_resume_surface"] = build_resume_compat_surface(result, fields=_RESUME_COMPAT_SURFACE_FIELDS)
     return result
 
 
@@ -1453,7 +1418,6 @@ def _build_resume_read_state(
             "has_interrupted_agent": interrupted_agent_id is not None,
             "interrupted_agent_id": interrupted_agent_id,
         }
-        result["compat_resume_surface"] = build_resume_compat_surface(result, fields=_RESUME_COMPAT_SURFACE_FIELDS)
         return result
 
     try:
@@ -1485,7 +1449,6 @@ def _build_resume_read_state(
             "has_interrupted_agent": interrupted_agent_id is not None,
             "interrupted_agent_id": interrupted_agent_id,
         }
-        result["compat_resume_surface"] = build_resume_compat_surface(result, fields=_RESUME_COMPAT_SURFACE_FIELDS)
         return result
 
 
@@ -2036,13 +1999,11 @@ def init_resume(cwd: Path, *, data_root: Path | None = None) -> dict:
     result.update(_build_reference_runtime_context(effective_cwd))
     execution_public = _public_execution_runtime_context(execution_context)
     result.update(execution_public)
-    result["compat_resume_surface"] = build_resume_compat_surface(
+    return canonicalize_resume_public_payload(
         result,
         continuation_state,
         execution_context,
-        fields=_RESUME_COMPAT_SURFACE_FIELDS,
     )
-    return canonicalize_resume_public_payload(result, compat_fields=_RESUME_COMPAT_SURFACE_FIELDS)
 
 
 def init_verify_work(cwd: Path, phase: str | None) -> dict:
