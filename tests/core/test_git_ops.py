@@ -264,15 +264,15 @@ class TestPreCommitCheck:
         assert result.details[0].assertion_count == 1
         assert any("fourier_convention" in warning for warning in result.warnings)
 
-    def test_derivation_latex_with_matching_assertion_passes(self, tmp_path: Path) -> None:
+    def test_derivation_python_with_matching_assertion_passes(self, tmp_path: Path) -> None:
         self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
         self._write_markdown(
             tmp_path,
-            "GPD/phases/02-derivation/derivation-05.tex",
-            "% ASSERT_CONVENTION: metric_signature=mostly-minus\n\n\\section{Derivation}\n",
+            "GPD/phases/02-derivation/derivation-05.py",
+            "# ASSERT_CONVENTION: metric_signature=mostly-minus\n\nvalue = 1\n",
         )
 
-        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-05.tex"])
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-05.py"])
 
         assert result.passed is True
         assert result.details[0].assert_convention_required is True
@@ -300,7 +300,7 @@ class TestPreCommitCheck:
         self._write_markdown(
             tmp_path,
             "GPD/phases/02-derivation/summary.md",
-            "<!-- ASSERT_CONVENTION: metric_signature=mostly-plus -->\n\n# Notes\n",
+            "# Notes\n",
         )
 
         result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/summary.md"])
@@ -308,6 +308,22 @@ class TestPreCommitCheck:
         assert result.passed is True
         assert result.details[0].assert_convention_required is False
         assert result.details[0].assert_convention_valid is None
+
+    def test_non_derivation_markdown_with_assertion_mismatch_fails(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/summary.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-plus -->\n\n# Notes\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/summary.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is False
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
+        assert any("ASSERT_CONVENTION mismatch" in warning for warning in result.warnings)
 
     def test_phase_verification_markdown_with_matching_assertion_passes(self, tmp_path: Path) -> None:
         self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
@@ -369,6 +385,22 @@ class TestPreCommitCheck:
         assert result.passed is True
         assert result.details[0].assert_convention_required is False
         assert result.details[0].assert_convention_valid is None
+
+    def test_non_gated_python_with_assertion_mismatch_fails(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "analysis/check.py",
+            "# ASSERT_CONVENTION: metric_signature=mostly-plus\n\nprint('check')\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["analysis/check.py"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is False
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
+        assert any("ASSERT_CONVENTION mismatch" in warning for warning in result.warnings)
 
 
 # ---------------------------------------------------------------------------
