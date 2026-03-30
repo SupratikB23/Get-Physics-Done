@@ -3709,7 +3709,7 @@ def test_paper_build_prefers_config_dir_bibliography_before_output_and_reference
 
     result_payload = MagicMock()
     result_payload.manifest_path = output_dir / "ARTIFACT-MANIFEST.json"
-    result_payload.bibliography_audit_path = None
+    result_payload.bibliography_audit_path = output_dir / "BIBLIOGRAPHY-AUDIT.json"
     result_payload.pdf_path = output_dir / "main.pdf"
     result_payload.success = True
     result_payload.errors = []
@@ -3724,6 +3724,7 @@ def test_paper_build_prefers_config_dir_bibliography_before_output_and_reference
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["bibliography_source"] == "./paper/references.bib"
+    assert payload["bibliography_audit_path"] == "./output/BIBLIOGRAPHY-AUDIT.json"
     assert "configsource" in mock_build.await_args.kwargs["bib_data"].entries
 
 
