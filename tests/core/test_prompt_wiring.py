@@ -20,6 +20,7 @@ from tests.doc_surface_contracts import (
     assert_help_command_quick_start_extract_contract,
     assert_help_workflow_quick_start_taxonomy_contract,
     assert_help_workflow_runtime_reference_contract,
+    assert_resume_surface_canonical_first_contract,
     assert_recovery_ladder_contract,
 )
 
@@ -2049,6 +2050,14 @@ def test_pause_resume_and_help_wiring_keep_runtime_handoff_and_local_snapshot_bo
     )
     assert "gpd observe execution" in help_workflow
     assert "suggested read-only checks rather than runtime hotkeys" in help_workflow
+
+
+def test_resume_surface_docs_keep_canonical_first_and_compat_resume_surface_boundary() -> None:
+    help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8")
+    state_schema = (TEMPLATES_DIR / "state-json-schema.md").read_text(encoding="utf-8")
+
+    assert_resume_surface_canonical_first_contract(help_workflow)
+    assert_resume_surface_canonical_first_contract(state_schema)
 
 
 def test_stage6_surfaces_protocol_bundle_context_across_planning_execution_and_verification() -> None:

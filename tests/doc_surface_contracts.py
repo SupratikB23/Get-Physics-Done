@@ -28,6 +28,7 @@ __all__ = [
     "assert_help_start_tour_ordering_contract",
     "assert_help_workflow_quick_start_taxonomy_contract",
     "assert_help_workflow_runtime_reference_contract",
+    "assert_resume_surface_canonical_first_contract",
     "assert_install_summary_runtime_follow_up_contract",
     "assert_optional_paper_workflow_guidance_contract",
     "assert_post_start_settings_bridge_contract",
@@ -741,6 +742,38 @@ def assert_recovery_ladder_contract(
             "usable recovery target",
         ),
         label="pause/resume handoff semantics",
+    )
+
+
+def assert_resume_surface_canonical_first_contract(content: str) -> None:
+    _assert_contains_any(
+        content,
+        (
+            "gpd init resume",
+            "`gpd init resume`",
+        ),
+        label="machine-readable resume intake",
+    )
+    _assert_contains_any(
+        content,
+        (
+            "canonical-first",
+            "canonical continuation first",
+            "reads `state.json.continuation` first",
+            "resolves `state.json.continuation` first",
+        ),
+        label="canonical-first resume wording",
+    )
+    assert "compat_resume_surface" in content
+    _assert_contains_any(
+        content,
+        (
+            "compatibility-only",
+            "compatibility only",
+            "legacy aliases only",
+            "legacy aliases are compatibility-only",
+        ),
+        label="compatibility-only legacy-alias wording",
     )
 
 

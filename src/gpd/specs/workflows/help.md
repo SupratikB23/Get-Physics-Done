@@ -162,6 +162,8 @@ After that, choose the path that matches your current situation:
 2. `/gpd:new-project` - Convert that mapped context into a structured GPD project
 
 **Returning work**
+The machine-readable `gpd init resume` intake is canonical-first and keeps legacy aliases only under `compat_resume_surface`; the human-facing recovery ladder still starts with `gpd resume` from your normal terminal.
+
 1. `gpd resume` - Current-workspace read-only recovery snapshot from your normal terminal
 2. `gpd resume --recent` - Find the workspace first when you need to reopen a different one
 3. `/gpd:resume-work` - Continue in-runtime from the selected project state
@@ -489,12 +491,13 @@ Usage: `/gpd:progress --reconcile` (fix diverged STATE.md and state.json)
 **`/gpd:resume-work`**
 Resume research from previous session with full context restoration.
 
-- Restores canonical continuation state, recent progress, and recorded handoff context; `state.json.continuation` is the durable authority and the legacy resume fields remain compatibility mirrors in the raw intake
+- Restores canonical continuation state, recent progress, and recorded handoff context; `state.json.continuation` is the durable authority and the legacy resume fields remain compatibility mirrors in the raw intake. `gpd init resume` is canonical-first and keeps legacy aliases only under `compat_resume_surface`
 - Uses the recovery ladder (`gpd resume` -> `gpd resume --recent` when needed -> `/gpd:resume-work`) to pick up where you left off
 - Best first in-runtime command when returning to paused or interrupted work
 - This is the in-runtime continue path; for a current-workspace read-only recovery snapshot, use `gpd resume`
 - If you need to find the workspace first, use `gpd resume --recent`, then continue inside that workspace with `/gpd:resume-work`
 - The raw `session_*` fields and `segment_candidates` labels remain compatibility intake names only
+- The raw `gpd init resume` intake is canonical-first, and `compat_resume_surface` stays compatibility-only for legacy aliases
 
 Usage: `/gpd:resume-work`
 

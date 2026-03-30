@@ -464,9 +464,9 @@ Verifying, Complete, Blocked, Ready to plan, Milestone complete
 
 **Written by:** `gpd state record-session`, `/gpd:pause-work`
 
-`session` stores the markdown-compatible session timestamp, advisory machine identity, stop location, and handoff resume file as a compatibility mirror of canonical continuation. Keep `resume_file` project-relative when it points inside the repository; `gpd state record-session` normalizes project-local absolute paths back to that form before persisting them. Omitting `--resume-file` preserves the current handoff pointer, while explicit placeholders such as `—`, `None`, or `null` clear it. `gpd resume` is the public local read-only recovery surface, while `gpd init resume` remains the machine-readable backend. That backend may rank `session.resume_file` as a non-resumable `session_resume_file` candidate, uses it as `execution_resume_file` only when no usable live-execution pointer exists, and compares `hostname`/`platform` with the current machine to emit a non-blocking `machine_change_notice` that recommends rerunning the installer when runtime-local config may be stale.
+`session` stores the markdown-compatible session timestamp, advisory machine identity, stop location, and handoff resume file as a compatibility mirror of canonical continuation. Keep `resume_file` project-relative when it points inside the repository; `gpd state record-session` normalizes project-local absolute paths back to that form before persisting them. Omitting `--resume-file` preserves the current handoff pointer, while explicit placeholders such as `—`, `None`, or `null` clear it. `gpd resume` is the public local read-only recovery surface, while `gpd init resume` remains the machine-readable backend. It is canonical-first: it reads `state.json.continuation` first and places legacy aliases only under `compat_resume_surface`. That backend may rank `session.resume_file` as a non-resumable `session_resume_file` candidate, uses it as `execution_resume_file` only when no usable live-execution pointer exists, and compares `hostname`/`platform` with the current machine to emit a non-blocking `machine_change_notice` that recommends rerunning the installer when runtime-local config may be stale.
 
-`session` remains the markdown-compatible continuity mirror that STATE.md can render directly. The durable JSON-only `continuation` object below is authoritative for machine-readable recovery. State normalization re-derives `session` from canonical continuation. When older projects only have legacy `session` data, GPD may hydrate missing canonical handoff or machine fields from that legacy payload during explicit legacy migration or recovery paths so the project can move forward without losing continuity. Ordinary persistence does not let stale `session` data overwrite populated canonical continuation. `gpd init resume` treats this canonical object first and only falls back to the derived execution head compatibility mirror when the canonical continuation is missing or incomplete, including legacy projects without persisted bounded-segment state.
+`session` remains the markdown-compatible continuity mirror that STATE.md can render directly. The durable JSON-only `continuation` object below is authoritative for machine-readable recovery. State normalization re-derives `session` from canonical continuation. When older projects only have legacy `session` data, GPD may hydrate missing canonical handoff or machine fields from that legacy payload during explicit legacy migration or recovery paths so the project can move forward without losing continuity. Ordinary persistence does not let stale `session` data overwrite populated canonical continuation. `gpd init resume` treats this canonical object first and only falls back to the derived execution head compatibility mirror when the canonical continuation is missing or incomplete, including legacy projects without persisted bounded-segment state. Legacy aliases stay in `compat_resume_surface`; they are compatibility-only and do not outrank canonical continuation.
 
 ### `ContinuationObject`
 
@@ -511,6 +511,37 @@ Verifying, Complete, Blocked, Ready to plan, Milestone complete
 | `recorded_at` | `string \| null` | Timestamp when the machine identity was recorded |
 | `hostname` | `string \| null` | Advisory host identity from the last session |
 | `platform` | `string \| null` | Advisory platform string from the last session |
+
+### `CompatResumeSurface`
+
+```json
+{
+  "current_execution": null,
+  "current_execution_resume_file": null,
+  "session_resume_file": null,
+  "recorded_session_resume_file": null,
+  "missing_session_resume_file": null,
+  "execution_resume_file": null,
+  "execution_resume_file_source": null,
+  "execution_resumable": false,
+  "execution_paused_at": null,
+  "execution_review_pending": false,
+  "execution_pre_fanout_review_pending": false,
+  "execution_skeptical_requestioning_required": false,
+  "execution_downstream_locked": false,
+  "execution_blocked": false,
+  "active_execution_segment": null,
+  "segment_candidates": [],
+  "resume_mode": null,
+  "has_interrupted_agent": false,
+  "interrupted_agent_id": null,
+  "has_live_execution": false
+}
+```
+
+**Written by:** `gpd init resume`, `gpd resume` raw envelope
+
+`compat_resume_surface` is the compatibility-only nested raw-resume surface. The raw `gpd init resume` and `gpd resume` surfaces are canonical-first: they resolve the top-level resume fields before this block and keep legacy aliases grouped here. The alias names preserved here are compatibility-only and must not outrank canonical `state.json.continuation`: `current_execution`, `current_execution_resume_file`, `session_resume_file`, `recorded_session_resume_file`, `missing_session_resume_file`, `execution_resume_file`, `execution_resume_file_source`, `active_execution_segment`, `segment_candidates`, `resume_mode`, `has_interrupted_agent`, and `interrupted_agent_id`.
 
 ---
 
