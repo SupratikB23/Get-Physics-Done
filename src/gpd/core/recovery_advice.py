@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gpd.core.context import init_resume
 from gpd.core.recent_projects import list_recent_projects
+from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS, build_resume_compat_surface
 from gpd.core.surface_phrases import (
     recovery_continue_reason,
     recovery_fast_next_reason,
@@ -160,21 +161,17 @@ def _mapping_field(payload: Mapping[str, object], field: str) -> Mapping[str, ob
 
 
 def _compat_resume_surface(payload: Mapping[str, object]) -> Mapping[str, object] | None:
-    for key in (
-        "compat_resume_surface",
-        "legacy_resume_surface",
-        "resume_surface_compat",
-        "compat_resume",
-        "compat",
-    ):
-        value = payload.get(key)
+    for value in payload.values():
         if not isinstance(value, Mapping):
             continue
         nested_resume_surface = value.get("resume_surface")
         if isinstance(nested_resume_surface, Mapping):
-            return nested_resume_surface
-        return value
-    return None
+            if any(alias_key in nested_resume_surface for alias_key in RESUME_COMPATIBILITY_ALIAS_KEYS):
+                return nested_resume_surface
+        if any(alias_key in value for alias_key in RESUME_COMPATIBILITY_ALIAS_KEYS):
+            return value
+
+    return build_resume_compat_surface(payload)
 
 
 def _canonical_text_field(

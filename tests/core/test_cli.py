@@ -31,6 +31,7 @@ from gpd.core.health import (
     UnattendedReadinessCheck,
     UnattendedReadinessResult,
 )
+from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
 from tests.runtime_test_support import (
     FOREIGN_RUNTIME,
     PRIMARY_RUNTIME,
@@ -46,6 +47,15 @@ _COST_TEST_RUNTIME = "runtime-under-test"
 _COST_TEST_MODEL = "model-under-test"
 _CONFIG_FILE_RUNTIME = runtime_with_permissions_surface("config-file")
 _LAUNCH_WRAPPER_RUNTIME = runtime_with_permissions_surface("launch-wrapper")
+
+
+def _assert_no_top_level_resume_aliases(payload: dict[str, object]) -> None:
+    for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+        assert key not in payload
+
+
+def _assert_resume_compat_surface_inventory(compat_surface: dict[str, object]) -> None:
+    assert tuple(compat_surface) == RESUME_COMPATIBILITY_ALIAS_KEYS
 
 
 def _make_checkout(tmp_path: Path, version: str = "9.9.9") -> Path:
@@ -1644,6 +1654,7 @@ def test_resume_raw_adds_canonical_recovery_projection_fields(tmp_path: Path, mo
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
+    _assert_no_top_level_resume_aliases(payload)
     assert payload["active_resume_kind"] == "continuity_handoff"
     assert payload["active_resume_origin"] == "canonical_continuation"
     assert payload["active_resume_pointer"] == resume_file
@@ -1653,8 +1664,7 @@ def test_resume_raw_adds_canonical_recovery_projection_fields(tmp_path: Path, mo
         "A continuity handoff is available, but no resumable bounded segment is currently active."
     )
     assert payload.get("resume_mode_label", "none") == "none"
-    assert "execution_resume_file" not in payload
-    assert "execution_resume_file_source" not in payload
+    _assert_resume_compat_surface_inventory(payload["compat_resume_surface"])
     assert "legacy_resume_surface" not in payload
     assert "compatibility_resume_surface" not in payload
     assert payload["compat_resume_surface"]["execution_resume_file"] == "GPD/phases/01/.continue-here.md"

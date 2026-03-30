@@ -8,6 +8,7 @@ from gpd.core import state as state_module
 from gpd.core.context import init_resume
 from gpd.core.observability import CurrentExecutionState
 from gpd.core.recent_projects import record_recent_project
+from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
 from gpd.core.state import parse_state_to_json, state_record_session
 
 
@@ -22,6 +23,11 @@ def _write_current_execution(tmp_path: Path, payload: dict[str, object]) -> None
         resume_path.parent.mkdir(parents=True, exist_ok=True)
         resume_path.write_text("resume\n", encoding="utf-8")
     (observability / "current-execution.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _assert_no_resume_compat_aliases(payload: dict[str, object]) -> None:
+    for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+        assert key not in payload
 
 
 def _update_state_session(
@@ -145,7 +151,7 @@ def test_init_resume_surfaces_machine_change_and_session_resume_candidate(
     assert ctx["active_resume_kind"] == "continuity_handoff"
     assert ctx["active_resume_origin"] == "continuation.handoff"
     assert ctx["active_resume_pointer"] == "GPD/phases/03-analysis/.continue-here.md"
-    assert "resume_mode" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["compat_resume_surface"]["session_resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
     assert ctx["compat_resume_surface"]["execution_resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
     assert ctx["compat_resume_surface"]["execution_resume_file_source"] == "session_resume_file"
@@ -160,7 +166,6 @@ def test_init_resume_surfaces_machine_change_and_session_resume_candidate(
             "resume_pointer": "GPD/phases/03-analysis/.continue-here.md",
         }
     ]
-    assert "segment_candidates" not in ctx
     assert ctx["compat_resume_surface"]["segment_candidates"] == [
         {
             "source": "session_resume_file",
@@ -237,7 +242,6 @@ def test_init_resume_uses_canonical_continuation_when_legacy_session_conflicts(
             "resume_pointer": "GPD/phases/03-analysis/.continue-here.md",
         }
     ]
-    assert "segment_candidates" not in ctx
     assert ctx["compat_resume_surface"]["segment_candidates"] == [
         {
             "source": "session_resume_file",
@@ -319,7 +323,7 @@ def test_init_resume_keeps_current_execution_primary_and_includes_session_resume
     assert ctx["active_resume_kind"] == "bounded_segment"
     assert ctx["active_resume_origin"] == "compat.current_execution"
     assert ctx["active_resume_pointer"] == "GPD/phases/03-analysis/.continue-here.md"
-    assert "resume_mode" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["compat_resume_surface"]["execution_resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
     assert ctx["compat_resume_surface"]["execution_resume_file_source"] == "current_execution"
     assert ctx["compat_resume_surface"]["active_execution_segment"]["resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
@@ -374,7 +378,7 @@ def test_init_resume_keeps_current_execution_primary_across_machine_change(
     assert ctx["active_resume_kind"] == "bounded_segment"
     assert ctx["active_resume_origin"] == "compat.current_execution"
     assert ctx["active_resume_pointer"] == "GPD/phases/03-analysis/.continue-here.md"
-    assert "resume_mode" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["compat_resume_surface"]["segment_candidates"][0]["source"] == "current_execution"
     assert ctx["compat_resume_surface"]["segment_candidates"][1]["source"] == "session_resume_file"
     assert ctx["resume_candidates"][0]["kind"] == "bounded_segment"
@@ -440,10 +444,9 @@ def test_init_resume_reads_canonical_continuation_from_state_json(
             "resume_pointer": "GPD/phases/03-analysis/alternate-resume.md",
         }
     ]
-    assert "resume_mode" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["session_hostname"] == "builder-01"
     assert ctx["session_platform"] == "Linux 6.1 x86_64"
-    assert "segment_candidates" not in ctx
     assert ctx["compat_resume_surface"]["segment_candidates"] == [
         {
             "source": "session_resume_file",
@@ -528,7 +531,7 @@ def test_init_resume_prefers_canonical_bounded_segment_over_lineage_head_snapsho
     assert ctx["derived_execution_head"]["resume_file"] == "GPD/phases/03-analysis/lineage-head.md"
     assert ctx["derived_execution_head_resume_file"] == "GPD/phases/03-analysis/lineage-head.md"
     assert ctx["active_bounded_segment"]["resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
-    assert "resume_mode" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["compat_resume_surface"]["current_execution"]["resume_file"] == "GPD/phases/03-analysis/lineage-head.md"
     assert ctx["compat_resume_surface"]["current_execution_resume_file"] == "GPD/phases/03-analysis/lineage-head.md"
     assert ctx["compat_resume_surface"]["execution_resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
@@ -579,7 +582,7 @@ def test_init_resume_deduplicates_matching_session_handoff_and_ranks_interrupted
 
     ctx = init_resume(tmp_path)
 
-    assert "resume_mode" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["continuity_handoff_file"] == resume_file
     assert ctx["recorded_continuity_handoff_file"] == resume_file
     assert ctx["missing_continuity_handoff_file"] is None
@@ -682,7 +685,7 @@ def test_init_resume_ignores_nonportable_current_execution_resume_file_and_uses_
     assert ctx["active_resume_pointer"] == "GPD/phases/03-analysis/alternate-resume.md"
     assert ctx["derived_execution_head"]["segment_id"] == "seg-4"
     assert ctx["active_bounded_segment"] is None
-    assert "resume_mode" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["compat_resume_surface"].get("current_execution_resume_file") is None
     assert ctx["compat_resume_surface"]["execution_resume_file"] == "GPD/phases/03-analysis/alternate-resume.md"
     assert ctx["compat_resume_surface"]["execution_resume_file_source"] == "session_resume_file"
@@ -698,7 +701,6 @@ def test_init_resume_ignores_nonportable_current_execution_resume_file_and_uses_
             "resume_pointer": "GPD/phases/03-analysis/alternate-resume.md",
         }
     ]
-    assert "segment_candidates" not in ctx
     assert ctx["compat_resume_surface"]["segment_candidates"] == [
         {
             "source": "session_resume_file",
@@ -736,7 +738,7 @@ def test_init_resume_surfaces_missing_session_handoff_as_advisory_candidate(
     assert ctx["active_resume_kind"] is None
     assert ctx["active_resume_origin"] is None
     assert ctx["active_resume_pointer"] is None
-    assert "resume_mode" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["compat_resume_surface"].get("session_resume_file") is None
     assert ctx["compat_resume_surface"]["recorded_session_resume_file"] == "GPD/phases/03-analysis/alternate-resume.md"
     assert ctx["compat_resume_surface"]["missing_session_resume_file"] == "GPD/phases/03-analysis/alternate-resume.md"
@@ -753,7 +755,7 @@ def test_init_resume_surfaces_missing_session_handoff_as_advisory_candidate(
             "resume_pointer": "GPD/phases/03-analysis/alternate-resume.md",
         }
     ]
-    assert "segment_candidates" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["compat_resume_surface"]["segment_candidates"] == [
         {
             "source": "session_resume_file",
@@ -795,8 +797,7 @@ def test_init_resume_treats_missing_live_resume_file_as_advisory_only(
     assert ctx["active_bounded_segment"] is None
     assert ctx["derived_execution_head"]["segment_id"] == "seg-4"
     assert ctx["active_resume_kind"] is None
-    assert "resume_mode" not in ctx
-    assert "segment_candidates" not in ctx
+    _assert_no_resume_compat_aliases(ctx)
     assert ctx["compat_resume_surface"]["segment_candidates"] == []
     assert ctx["resume_candidates"] == []
 

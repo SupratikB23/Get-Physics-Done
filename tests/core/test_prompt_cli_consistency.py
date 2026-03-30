@@ -22,6 +22,7 @@ from tests.doc_surface_contracts import (
     assert_unattended_readiness_contract,
     assert_wolfram_plan_boundary_contract,
     assert_workflow_preset_surface_contract,
+    resume_compat_alias_fields,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -532,6 +533,7 @@ def test_help_prompt_session_management_keeps_pause_before_leave_and_resume_on_r
         "missing_continuity_handoff_file",
         "resume_candidates",
     )
+    assert not any(alias in resume_authority_fields() for alias in resume_compat_alias_fields())
     assert_recovery_ladder_contract(
         help_workflow,
         resume_work_fragments=("/gpd:resume-work",),

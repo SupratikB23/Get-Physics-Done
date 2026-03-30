@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
+from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
 from gpd.core.surface_phrases import post_start_settings_note, post_start_settings_recommendation
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +53,7 @@ __all__ = [
     "assert_unattended_readiness_contract",
     "assert_wolfram_plan_boundary_contract",
     "assert_workflow_preset_surface_contract",
+    "resume_compat_alias_fields",
 ]
 
 
@@ -149,6 +151,10 @@ def _resume_authority_contract() -> dict[str, object]:
     _contract_string(section, "compatibility_phrase", label="resume_authority")
     _contract_string(section, "top_level_boundary_phrase", label="resume_authority")
     return section
+
+
+def resume_compat_alias_fields() -> tuple[str, ...]:
+    return RESUME_COMPATIBILITY_ALIAS_KEYS
 
 
 def assert_unattended_readiness_contract(content: str) -> None:
@@ -847,15 +853,7 @@ def assert_resume_authority_contract(
             label="compatibility alias examples",
         )
     else:
-        for alias in (
-            "session_resume_file",
-            "missing_session_resume_file",
-            "current_execution",
-            "execution_resume_file",
-            "execution_resume_file_source",
-            "resume_mode",
-            "segment_candidates",
-        ):
+        for alias in resume_compat_alias_fields():
             assert alias not in content
     if require_generic_compatibility_note:
         _assert_contains_any(

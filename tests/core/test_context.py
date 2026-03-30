@@ -29,6 +29,7 @@ from gpd.core.context import (
     load_config,
 )
 from gpd.core.errors import ConfigError, ValidationError
+from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
 _RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
@@ -261,6 +262,11 @@ def _write_bundle_ready_contract_state(tmp_path: Path) -> None:
         },
     }
     (tmp_path / "GPD" / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+
+def _assert_no_resume_compat_aliases(payload: dict[str, object]) -> None:
+    for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+        assert key not in payload
 
 
 def _write_numerical_relativity_project(tmp_path: Path) -> None:
@@ -1276,17 +1282,7 @@ class TestInitResume:
         assert ctx["compat_resume_surface"]["active_execution_segment"]["segment_id"] == "seg-4"
         assert ctx["compat_resume_surface"]["segment_candidates"][0]["source"] == "current_execution"
         assert ctx["compat_resume_surface"]["resume_mode"] == "bounded_segment"
-        for key in (
-            "active_execution_segment",
-            "current_execution",
-            "current_execution_resume_file",
-            "execution_resume_file",
-            "execution_resume_file_source",
-            "missing_session_resume_file",
-            "recorded_session_resume_file",
-            "session_resume_file",
-        ):
-            assert key not in ctx
+        _assert_no_resume_compat_aliases(ctx)
         assert "segment_candidates" not in ctx
         assert ctx["resume_candidates"][0]["kind"] == "bounded_segment"
         assert ctx["resume_candidates"][0]["origin"] == "compat.current_execution"
@@ -1415,17 +1411,7 @@ class TestInitResume:
         assert ctx["compat_resume_surface"]["active_execution_segment"]["segment_id"] == "seg-4"
         assert ctx["compat_resume_surface"]["segment_candidates"] == []
         assert ctx["compat_resume_surface"].get("resume_mode") is None
-        for key in (
-            "active_execution_segment",
-            "current_execution",
-            "current_execution_resume_file",
-            "execution_resume_file",
-            "execution_resume_file_source",
-            "missing_session_resume_file",
-            "recorded_session_resume_file",
-            "session_resume_file",
-        ):
-            assert key not in ctx
+        _assert_no_resume_compat_aliases(ctx)
         assert "segment_candidates" not in ctx
         assert ctx["resume_candidates"] == []
         assert "active_execution_segment" not in ctx

@@ -24,6 +24,7 @@ from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.cli import app
 from gpd.core.constants import AGENT_ID_FILENAME, ENV_DATA_DIR
 from gpd.core.costs import UsageRecord, usage_ledger_path
+from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
 from gpd.core.state import default_state_dict, generate_state_markdown
 from tests.runtime_install_helpers import seed_complete_runtime_install
 
@@ -49,6 +50,15 @@ _SECONDARY_PERMISSIONS_DESCRIPTOR = next(
     for descriptor in _RUNTIME_DESCRIPTORS
     if descriptor.runtime_name != _ENV_OVERRIDE_DESCRIPTOR.runtime_name
 )
+
+
+def _assert_no_top_level_resume_aliases(payload: dict[str, object]) -> None:
+    for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+        assert key not in payload
+
+
+def _assert_resume_compat_surface_inventory(compat_surface: dict[str, object]) -> None:
+    assert tuple(compat_surface) == RESUME_COMPATIBILITY_ALIAS_KEYS
 
 
 @pytest.fixture()
@@ -351,15 +361,8 @@ class TestResume:
         assert parsed["resume_candidates"][0]["origin"] == "continuation.handoff"
         assert parsed["recovery_candidates"][0]["kind"] == "continuity_handoff"
         assert parsed["recovery_candidates"][0]["origin"] == "continuation.handoff"
-        for key in (
-            "resume_mode",
-            "execution_resume_file",
-            "execution_resume_file_source",
-            "segment_candidates",
-            "session_resume_file",
-        ):
-            assert key not in parsed
         compat = parsed["compat_resume_surface"]
+        _assert_resume_compat_surface_inventory(compat)
         assert compat["execution_resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
         assert compat["execution_resume_file_source"] == "session_resume_file"
         assert compat.get("resume_mode") is None
@@ -413,17 +416,8 @@ class TestResume:
         assert parsed["recovery_status_label"] == "Bounded segment"
         assert parsed["primary_recovery_target"]["kind"] == "bounded_segment"
         assert parsed["primary_recovery_target"]["origin"] == "continuation.bounded_segment"
-        for key in (
-            "resume_mode",
-            "execution_resume_file",
-            "execution_resume_file_source",
-            "segment_candidates",
-            "session_resume_file",
-            "current_execution",
-            "active_execution_segment",
-        ):
-            assert key not in parsed
         compat = parsed["compat_resume_surface"]
+        _assert_resume_compat_surface_inventory(compat)
         assert compat["execution_resume_file"] == canonical_resume_file
         assert compat["execution_resume_file_source"] == "current_execution"
         assert compat["resume_mode"] == "bounded_segment"
@@ -496,17 +490,8 @@ class TestResume:
         assert parsed["has_live_execution"] is True
         assert parsed["resume_candidates"][0]["resume_file"] == canonical_resume_file
         assert parsed["resume_candidates"][0]["origin"] == "continuation.bounded_segment"
-        for key in (
-            "current_execution",
-            "active_execution_segment",
-            "segment_candidates",
-            "resume_mode",
-            "execution_resume_file",
-            "execution_resume_file_source",
-            "session_resume_file",
-        ):
-            assert key not in parsed
         compat = parsed["compat_resume_surface"]
+        _assert_resume_compat_surface_inventory(compat)
         assert compat["current_execution"]["resume_file"] == overlay_resume_file
         assert compat["current_execution_resume_file"] == overlay_resume_file
         assert compat["active_execution_segment"]["resume_file"] == canonical_resume_file
@@ -954,11 +939,7 @@ class TestInitIncludeParsing:
         result = _invoke("--raw", "init", "resume")
         payload = json.loads(result.output)
 
-        assert "resume_mode" not in payload
-        assert "current_execution" not in payload
-        assert "segment_candidates" not in payload
-        assert "execution_resume_file" not in payload
-        assert "execution_resume_file_source" not in payload
+        _assert_no_top_level_resume_aliases(payload)
         assert payload["active_bounded_segment"]["resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
         assert payload["active_bounded_segment"]["segment_id"] == "seg-4"
         assert payload["derived_execution_head"]["resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
