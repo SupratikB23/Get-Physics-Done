@@ -221,7 +221,13 @@ The research digest provides a direct scaffolding for paper organization:
 
 **Step 3 -- Identify digest gaps:**
 
-If the digest is incomplete or missing sections, note which paper sections will need to be built from raw phase data instead:
+If the digest is incomplete or missing sections, note which paper sections will need to be built from raw phase data instead. Prefer the structured init payload first for the canonical state slices already exposed there:
+
+- `derived_convention_lock` and `derived_convention_lock_count`
+- `derived_intermediate_results` and `derived_intermediate_result_count`
+- `derived_approximations` and `derived_approximation_count`
+
+Use raw phase files only for details that are not already surfaced through init.
 
 ```bash
 # Fall back to raw sources if digest is insufficient
@@ -237,7 +243,7 @@ Display a clear warning explaining why and offering alternatives:
 ⚠ No RESEARCH-DIGEST.md found in GPD/milestones/.
 
 Research digests are generated during /gpd:complete-milestone. Without a digest,
-the paper will be built from raw phase data (summary artifacts, STATE.md, state.json).
+the paper will be built from raw phase data when needed, but the structured init payload should be used first for conventions, results, and approximations.
 This works but produces a less structured starting point — the digest provides
 a curated narrative arc, convention timeline, and figure registry.
 
@@ -258,7 +264,7 @@ for PHASE_NUM in $(echo "$FROM_PHASES" | tr ',' ' '); do
 done
 ```
 
-Proceed to establish_scope and catalog_artifacts, which will gather research context from raw phase data, summary artifacts, and state.json directly.
+Proceed to establish_scope and catalog_artifacts, which will gather research context from the init payload first, then summary artifacts, and only the remaining raw phase files directly.
 
 </step>
 
@@ -352,13 +358,13 @@ Read the convention declarations from each phase's summary artifact or derivatio
 2. Fourier convention — must be identical across all phases
 3. Unit system — must be identical (or conversions documented)
 
-Also check `convention_lock` in STATE.md or state.json. If a convention lock exists, verify all phases comply.
+Also check `derived_convention_lock` from the init payload first. If a convention lock exists, verify all phases comply. Fall back to `STATE.md` or `state.json` only if the structured field is unavailable.
 
 **Convention mismatch between phases** → CRITICAL gap (combining results with different conventions produces wrong answers).
 
 ### Check 3: Numerical value stability
 
-For each key result listed in the research digest (or `intermediate_results` in state.json):
+For each key result listed in the research digest (or `derived_intermediate_results` from the init payload):
 
 1. Locate the value in its source phase summary artifact
 2. Compare with any cross-references in other phases
