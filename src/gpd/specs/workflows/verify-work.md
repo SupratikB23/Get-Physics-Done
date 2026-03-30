@@ -58,7 +58,7 @@ if [ $? -ne 0 ]; then
 fi
 ```
 
-Parse JSON for: `planner_model`, `checker_model`, `verifier_model`, `commit_docs`, `autonomy`, `research_mode`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `has_verification`, `has_validation`, `project_contract`, `project_contract_validation`, `project_contract_load_info`, `project_contract_gate`, `contract_intake`, `effective_reference_intake`, `derived_active_references`, `derived_active_reference_count`, `citation_source_files`, `citation_source_count`, `citation_source_warnings`, `derived_citation_sources`, `derived_citation_source_count`, `active_references`, `active_reference_count`, `selected_protocol_bundle_ids`, `protocol_bundle_count`, `protocol_bundle_context`, `protocol_bundle_verifier_extensions`, `active_reference_context`, `literature_review_files`, `literature_review_count`, `research_map_reference_files`, `research_map_reference_count`, `reference_artifact_files`, `reference_artifacts_content`.
+Parse JSON for: `planner_model`, `checker_model`, `verifier_model`, `commit_docs`, `autonomy`, `research_mode`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `has_verification`, `has_validation`, `project_contract`, `project_contract_validation`, `project_contract_load_info`, `project_contract_gate`, `contract_intake`, `effective_reference_intake`, `derived_active_references`, `derived_active_reference_count`, `citation_source_files`, `citation_source_count`, `citation_source_warnings`, `derived_citation_sources`, `derived_citation_source_count`, `active_references`, `active_reference_count`, `convention_lock`, `convention_lock_count`, `derived_convention_lock`, `derived_convention_lock_count`, `selected_protocol_bundle_ids`, `protocol_bundle_count`, `protocol_bundle_context`, `protocol_bundle_verifier_extensions`, `active_reference_context`, `literature_review_files`, `literature_review_count`, `research_map_reference_files`, `research_map_reference_count`, `reference_artifact_files`, `reference_artifacts_content`.
 
 **Mode-aware behavior:**
 - `autonomy=supervised`: Pause after each verification round for user review. Present findings and wait for confirmation before writing the canonical `XX-VERIFICATION.md` artifact.
@@ -480,6 +480,8 @@ forbidden_proxies_rejected: 0
 ```
 
 Write to `${phase_dir}/${phase_number}-VERIFICATION.md`
+
+If the project has an active convention lock, include the machine-readable `ASSERT_CONVENTION` comment immediately after the YAML frontmatter using the canonical lock keys and exact lock values from init / `gpd convention list`. The canonical shape is documented in `@{GPD_INSTALL_DIR}/templates/verification-report.md`, and changed verification files fail `gpd pre-commit-check` when this header is missing or mismatched against the active lock.
 
 Proceed to `present_check`.
 </step>

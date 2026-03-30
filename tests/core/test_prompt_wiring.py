@@ -1642,6 +1642,7 @@ def test_verify_work_workflow_uses_body_only_subject_kind_fields() -> None:
     assert "{phase}" not in verify_work
     assert "GPD/phases/{phase_dir}" not in verify_work
     assert 'Write to `${phase_dir}/${phase_number}-VERIFICATION.md`' in verify_work
+    assert "changed verification files fail `gpd pre-commit-check` when this header is missing or mismatched against the active lock" in verify_work
     assert 'gpd validate verification-contract "${phase_dir}/${phase_number}-VERIFICATION.md"' in verify_work
     assert 'gpd commit "verify(${phase_number}): complete research validation - {passed} passed, {issues} issues" --files "${phase_dir}/${phase_number}-VERIFICATION.md"' in verify_work
     assert "Read all PLAN.md files in ${phase_dir}/ using the file_read tool." in verify_work

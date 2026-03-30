@@ -9,7 +9,8 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as PydanticValidationError
 
-from gpd.contracts import ComparisonVerdict, ContractResults, ResearchContract, normalize_contract_results_input
+from gpd.contracts import ComparisonVerdict, ContractResults, ConventionLock, ResearchContract, normalize_contract_results_input
+from gpd.core.conventions import check_assertions, convention_check
 from gpd.core.frontmatter import (
     FrontmatterParseError,
     _find_matching_plan_contract,
@@ -22,6 +23,7 @@ from gpd.core.paper_quality import (
     BinaryCheck,
     CitationsQualityInput,
     CompletenessQualityInput,
+    ConventionsQualityInput,
     CoverageMetric,
     FiguresQualityInput,
     PaperQualityInput,
@@ -43,6 +45,7 @@ _CONCLUSION_RE = re.compile(r"\\section\*?\{[^}]*conclusion[^}]*\}", re.IGNORECA
 _SUPPLEMENT_RE = re.compile(r"appendix|supplement", re.IGNORECASE)
 _CITE_RE = re.compile(r"\\cite\{([^}]*)\}")
 _BIB_ENTRY_RE = re.compile(r"@\w+\s*\{\s*([^,\s]+)\s*,")
+_DERIVATION_ARTIFACT_RE = re.compile(r"(?i)^derivation-(?!state\.md$).+\.md$")
 
 
 class _FigureTrackerEntry(BaseModel):
@@ -121,6 +124,17 @@ def _load_bibliography_audit(path: Path) -> BibliographyAudit | None:
         return None
 
 
+def _load_convention_lock(project_root: Path) -> ConventionLock | None:
+    payload = _load_json(project_root / "GPD" / "state.json")
+    lock_data = payload.get("convention_lock")
+    if not isinstance(lock_data, dict):
+        return None
+    try:
+        return ConventionLock.model_validate(lock_data)
+    except PydanticValidationError:
+        return None
+
+
 def _extract_meta(path: Path) -> dict[str, object]:
     content = _read_text(path)
     if content is None:
@@ -157,6 +171,45 @@ def _resolve_manuscript_dir(project_root: Path) -> Path:
         if candidate.exists():
             return candidate
     return project_root / "paper"
+
+
+def _derivation_artifacts(project_root: Path) -> list[Path]:
+    gpd_root = project_root / "GPD"
+    if not gpd_root.exists():
+        return []
+    return sorted(path for path in gpd_root.rglob("*.md") if _DERIVATION_ARTIFACT_RE.fullmatch(path.name))
+
+
+def _build_conventions_input(project_root: Path) -> ConventionsQualityInput:
+    lock = _load_convention_lock(project_root)
+    lock_check = convention_check(lock) if lock is not None else None
+    derivation_paths = _derivation_artifacts(project_root)
+
+    if not derivation_paths:
+        coverage = CoverageMetric(not_applicable=True)
+    elif lock is None or lock_check is None or lock_check.set_count == 0:
+        coverage = CoverageMetric(satisfied=0, total=len(derivation_paths))
+    else:
+        satisfied = 0
+        for path in derivation_paths:
+            content = _read_text(path)
+            if content is None:
+                continue
+            assertion_check = check_assertions(
+                content,
+                lock,
+                filename=str(path.relative_to(project_root)),
+                require_assertions=True,
+            )
+            if assertion_check.passed:
+                satisfied += 1
+        coverage = _coverage_metric(satisfied, len(derivation_paths))
+
+    return ConventionsQualityInput(
+        convention_lock_complete=BinaryCheck(passed=bool(lock_check and lock_check.complete)),
+        assert_convention_coverage=coverage,
+        notation_consistent=BinaryCheck(),
+    )
 
 
 def _available_citation_keys(manuscript_dir: Path, bibliography_audit: BibliographyAudit | None) -> set[str]:
@@ -594,6 +647,7 @@ def build_paper_quality_input(project_root: Path) -> PaperQualityInput:
         placeholders_cleared=BinaryCheck(passed=placeholder_count == 0),
         supplemental_cross_referenced=BinaryCheck(passed=bool(_SUPPLEMENT_RE.search(tex_content))),
     )
+    conventions = _build_conventions_input(root)
     verification = VerificationQualityInput(
         report_passed=BinaryCheck(passed=contract_coverage.latest_report_passed),
         contract_targets_verified=_coverage_metric(contract_coverage.satisfied_targets, contract_coverage.total_targets)
@@ -608,6 +662,7 @@ def build_paper_quality_input(project_root: Path) -> PaperQualityInput:
         figures=figures,
         citations=citations,
         completeness=completeness,
+        conventions=conventions,
         verification=verification,
         results=results,
         journal_extra_checks=journal_extra_checks,
