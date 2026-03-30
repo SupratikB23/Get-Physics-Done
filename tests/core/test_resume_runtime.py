@@ -152,6 +152,9 @@ def test_init_resume_auto_selects_unique_recoverable_recent_project(tmp_path: Pa
     project_parent = tmp_path / "project-root"
     project_parent.mkdir()
     project_root = state_project_factory(project_parent)
+    resume_path = project_root / "GPD" / "phases" / "03-analysis" / ".continue-here.md"
+    resume_path.parent.mkdir(parents=True, exist_ok=True)
+    resume_path.write_text("resume\n", encoding="utf-8")
     workspace = tmp_path / "outside"
     workspace.mkdir()
     record_recent_project(
@@ -159,6 +162,7 @@ def test_init_resume_auto_selects_unique_recoverable_recent_project(tmp_path: Pa
         session_data={
             "last_date": "2026-03-29T12:00:00+00:00",
             "stopped_at": "Phase 03",
+            "resume_file": "GPD/phases/03-analysis/.continue-here.md",
         },
         store_root=tmp_path / "data",
     )

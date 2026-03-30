@@ -45,7 +45,12 @@ from gpd.core.constants import (
     STATE_LINES_TARGET,
     ProjectLayout,
 )
-from gpd.core.continuation import ContinuationBoundedSegment, ContinuationState, normalize_continuation
+from gpd.core.continuation import (
+    ContinuationBoundedSegment,
+    ContinuationState,
+    normalize_continuation,
+    resolve_continuation,
+)
 from gpd.core.contract_validation import (
     _collect_list_shape_drift_errors,
     _has_authoritative_scalar_schema_findings,
@@ -59,13 +64,14 @@ from gpd.core.extras import Approximation
 from gpd.core.extras import Uncertainty as PropagatedUncertainty
 from gpd.core.observability import gpd_span, instrument_gpd_function
 from gpd.core.recent_projects import (
+    RecentProjectEntry,
+    RecentProjectIndex,
+)
+from gpd.core.recent_projects import (
     load_recent_projects_index as _recent_projects_load_index,
 )
 from gpd.core.recent_projects import (
     recent_projects_index_path as _recent_projects_index_path_impl,
-)
-from gpd.core.recent_projects import (
-    record_recent_project as _record_recent_project,
 )
 from gpd.core.results import IntermediateResult
 from gpd.core.utils import (
@@ -152,29 +158,107 @@ def _load_recent_projects_index():
     return _recent_projects_load_index()
 
 
-def _record_recent_project_session(
+def _sort_recent_project_rows(rows: list[RecentProjectEntry]) -> list[RecentProjectEntry]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            row.last_session_at or row.last_seen_at or "",
+            row.project_root,
+        ),
+        reverse=True,
+    )
+
+
+def _project_recent_project_entry(
     cwd: Path,
+    state_obj: dict[str, object],
     *,
-    last_session_at: str,
-    stopped_at: str | None,
-    resume_file: str | None,
-    hostname: str,
-    platform: str,
-) -> None:
-    """Upsert the current project into the machine-local recent-project index."""
+    existing: RecentProjectEntry | None,
+) -> RecentProjectEntry | None:
     try:
-        _record_recent_project(
-            cwd,
-            session_data={
-                "last_date": last_session_at,
-                "stopped_at": stopped_at,
-                "resume_file": resume_file,
-                "hostname": hostname,
-                "platform": platform,
-            },
-        )
+        projection = resolve_continuation(cwd, state=state_obj)
     except Exception:
-        logger.debug("Skipping recent-project index update for %s", cwd, exc_info=True)
+        logger.debug("Skipping recent-project projection for %s because continuation resolution failed", cwd, exc_info=True)
+        return None
+
+    session = state_obj.get("session") if isinstance(state_obj.get("session"), dict) else {}
+    continuation = projection.continuation
+    handoff = continuation.handoff
+    machine = continuation.machine
+
+    def _pick(*values: object) -> str | None:
+        for value in values:
+            text = _optional_state_text(value)
+            if text is not None:
+                return text
+        return None
+
+    last_session_at = _pick(
+        session.get("last_date") if isinstance(session, dict) else None,
+        handoff.recorded_at,
+        machine.recorded_at,
+        existing.last_session_at if existing is not None else None,
+    )
+    last_seen_at = last_session_at or (existing.last_seen_at if existing is not None else None)
+    stopped_at = _pick(
+        session.get("stopped_at") if isinstance(session, dict) else None,
+        handoff.stopped_at,
+        existing.stopped_at if existing is not None else None,
+    )
+    hostname = _pick(
+        session.get("hostname") if isinstance(session, dict) else None,
+        machine.hostname,
+        existing.hostname if existing is not None else None,
+    )
+    platform = _pick(
+        session.get("platform") if isinstance(session, dict) else None,
+        machine.platform,
+        existing.platform if existing is not None else None,
+    )
+    resume_file = None
+    if continuation.bounded_segment is not None and continuation.bounded_segment.resume_file is not None:
+        resume_file = continuation.bounded_segment.resume_file
+    elif continuation.handoff.resume_file is not None:
+        resume_file = continuation.handoff.resume_file
+
+    return RecentProjectEntry(
+        project_root=cwd.resolve(strict=False).as_posix(),
+        last_session_at=last_session_at,
+        last_seen_at=last_seen_at,
+        stopped_at=stopped_at,
+        resume_file=resume_file,
+        resume_file_available=None,
+        resume_file_reason=None,
+        hostname=hostname,
+        platform=platform,
+        resumable=bool(resume_file),
+        available=True,
+        availability_reason=None,
+    )
+
+
+def _refresh_recent_project_projection(cwd: Path, state_obj: dict[str, object]) -> None:
+    """Project authoritative state into the machine-local recent-project cache."""
+
+    try:
+        current = _load_recent_projects_index()
+        resolved_root = cwd.resolve(strict=False).as_posix()
+        existing = next((row for row in current.rows if row.project_root == resolved_root), None)
+        projected = _project_recent_project_entry(cwd, state_obj, existing=existing)
+        if projected is None:
+            return
+
+        rows = [projected if row.project_root == resolved_root else row for row in current.rows]
+        if existing is None:
+            rows.append(projected)
+
+        index = RecentProjectIndex(rows=_sort_recent_project_rows(rows))
+        index_path = _recent_projects_index_path()
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        with file_lock(index_path):
+            atomic_write(index_path, index.model_dump_json(indent=2) + "\n")
+    except Exception:
+        logger.debug("Skipping recent-project projection for %s", cwd, exc_info=True)
 
 
 # ─── Pydantic State Models ────────────────────────────────────────────────────
@@ -2285,6 +2369,7 @@ def _write_state_pair_locked(cwd: Path, *, state_obj: dict, md_content: str) -> 
                 pass
         raise
 
+    _refresh_recent_project_projection(cwd, normalized)
     return normalized
 
 
@@ -2332,6 +2417,7 @@ def sync_state_json_core(cwd: Path, md_content: str) -> dict:
                 pass
         raise
 
+    _refresh_recent_project_projection(cwd, merged)
     return merged
 
 
@@ -3439,14 +3525,6 @@ def state_record_session(
 
         if updated:
             _write_state_markdown_locked(cwd, content)
-            _record_recent_project_session(
-                cwd,
-                last_session_at=now,
-                stopped_at=session_values["stopped_at"],
-                resume_file=session_values["resume_file"],
-                hostname=machine["hostname"],
-                platform=machine["platform"],
-            )
             with gpd_span(
                 "session.continuity.recorded",
                 cwd=str(cwd),
@@ -3468,14 +3546,6 @@ def state_record_session(
             platform=machine["platform"] or EM_DASH,
         ):
             pass
-        _record_recent_project_session(
-            cwd,
-            last_session_at=now,
-            stopped_at=session_values["stopped_at"],
-            resume_file=session_values["resume_file"],
-            hostname=machine["hostname"],
-            platform=machine["platform"],
-        )
         return RecordSessionResult(recorded=False, reason="No session fields found in STATE.md")
 
 

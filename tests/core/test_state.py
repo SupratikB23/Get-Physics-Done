@@ -2290,6 +2290,64 @@ def test_state_record_session_updates_recent_project_index(
     assert row.available is True
 
 
+def test_save_state_json_projects_recent_project_resume_file_from_canonical_continuation(
+    tmp_path: Path, state_project_factory, monkeypatch
+) -> None:
+    monkeypatch.setenv("GPD_DATA_DIR", str(tmp_path / "gpd-data"))
+
+    cwd = state_project_factory(tmp_path)
+    resume_path = cwd / "GPD" / "phases" / "03-analysis" / ".continue-here.md"
+    resume_path.parent.mkdir(parents=True, exist_ok=True)
+    resume_path.write_text("resume\n", encoding="utf-8")
+
+    state = json.loads((cwd / "GPD" / "state.json").read_text(encoding="utf-8"))
+    state["session"].update(
+        {
+            "last_date": "2026-03-29T12:00:00+00:00",
+            "stopped_at": "Phase 4 P2",
+            "resume_file": "session.md",
+        }
+    )
+    state["continuation"]["handoff"].update(
+        {
+            "recorded_at": "2026-03-29T12:00:00+00:00",
+            "stopped_at": "Phase 4 P2",
+            "resume_file": "session.md",
+        }
+    )
+    state["continuation"]["bounded_segment"] = {
+        "resume_file": "GPD/phases/03-analysis/.continue-here.md",
+        "phase": "03",
+        "plan": "02",
+        "segment_id": "segment-03-02",
+        "segment_status": "paused",
+        "transition_id": "transition-03-02",
+        "last_result_id": "result-03-02",
+    }
+
+    save_state_json(cwd, state)
+
+    index = _load_recent_projects_index()
+    assert len(index.rows) == 1
+    assert index.rows[0].project_root == cwd.resolve(strict=False).as_posix()
+    assert index.rows[0].resume_file == "GPD/phases/03-analysis/.continue-here.md"
+    assert index.rows[0].resume_file_available is True
+    assert index.rows[0].resumable is True
+
+    cleared_state = json.loads((cwd / "GPD" / "state.json").read_text(encoding="utf-8"))
+    cleared_state["session"]["resume_file"] = None
+    cleared_state["continuation"]["handoff"]["resume_file"] = None
+    cleared_state["continuation"]["bounded_segment"] = None
+    save_state_json(cwd, cleared_state)
+
+    cleared_index = _load_recent_projects_index()
+    assert len(cleared_index.rows) == 1
+    assert cleared_index.rows[0].project_root == cwd.resolve(strict=False).as_posix()
+    assert cleared_index.rows[0].resume_file is None
+    assert cleared_index.rows[0].resume_file_available is None
+    assert cleared_index.rows[0].resumable is False
+
+
 def test_state_record_session_preserves_existing_recent_project_rows(
     tmp_path: Path, state_project_factory, monkeypatch
 ) -> None:
