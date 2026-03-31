@@ -334,16 +334,13 @@ VALID_REVIEW_REQUIRED_STATES: tuple[str, ...] = ("phase_executed",)
 
 
 def _review_contract_frontmatter_value(meta: dict[str, object], *, command_name: str) -> object:
-    """Return the single supported review-contract frontmatter payload."""
+    """Return the canonical review-contract frontmatter payload."""
 
-    dashed = meta.get("review-contract")
-    underscored = meta.get("review_contract")
-    if dashed is not None and underscored is not None:
+    if "review_contract" in meta:
         raise ValueError(
-            f"review-contract for {command_name} must use only one frontmatter key: "
-            "'review-contract' or 'review_contract'"
+            f"review-contract for {command_name} must use the canonical frontmatter key 'review-contract'"
         )
-    return dashed if dashed is not None else underscored
+    return meta.get("review-contract")
 
 
 def _parse_context_mode(raw: object, *, command_name: str) -> str:

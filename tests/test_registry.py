@@ -725,7 +725,7 @@ class TestParseCommandFile:
         with pytest.raises(ValueError, match=r"Invalid review-contract in .*write-paper\.md.*approval_gate"):
             _parse_command_file(f, source="commands")
 
-    def test_command_review_contract_accepts_review_contract_frontmatter_alias(self, tmp_path: Path) -> None:
+    def test_command_review_contract_rejects_review_contract_frontmatter_alias(self, tmp_path: Path) -> None:
         f = tmp_path / "write-paper.md"
         f.write_text(
             "---\n"
@@ -740,11 +740,11 @@ class TestParseCommandFile:
             encoding="utf-8",
         )
 
-        command = _parse_command_file(f, source="commands")
-
-        assert command.review_contract is not None
-        assert command.review_contract.review_mode == "publication"
-        assert command.review_contract.required_outputs == ["GPD/output.md"]
+        with pytest.raises(
+            ValueError,
+            match=r"Invalid review-contract in .*write-paper\.md.*must use the canonical frontmatter key 'review-contract'",
+        ):
+            _parse_command_file(f, source="commands")
 
     def test_command_review_contract_rejects_duplicate_frontmatter_aliases(self, tmp_path: Path) -> None:
         f = tmp_path / "write-paper.md"
@@ -762,7 +762,10 @@ class TestParseCommandFile:
             encoding="utf-8",
         )
 
-        with pytest.raises(ValueError, match=r"Invalid review-contract in .*write-paper\.md.*must use only one frontmatter key"):
+        with pytest.raises(
+            ValueError,
+            match=r"Invalid review-contract in .*write-paper\.md.*must use the canonical frontmatter key 'review-contract'",
+        ):
             _parse_command_file(f, source="commands")
 
 

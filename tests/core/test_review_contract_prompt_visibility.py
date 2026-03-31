@@ -85,6 +85,19 @@ def test_review_contract_renderer_rejects_unknown_keys_inside_wrapped_payload() 
         )
 
 
+def test_review_contract_renderer_rejects_conflicting_wrapper_aliases_when_secondary_is_malformed() -> None:
+    with pytest.raises(ValueError, match="review contract must use only one wrapper key"):
+        render_review_contract_prompt(
+            {
+                "review_contract": {
+                    "schema_version": 1,
+                    "review_mode": "review",
+                },
+                "review-contract": "oops",
+            }
+        )
+
+
 def test_review_contract_frontmatter_extractor_accepts_underscore_alias() -> None:
     frontmatter = (
         "name: gpd:test\n"

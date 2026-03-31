@@ -20,7 +20,10 @@ REVIEW_CONTRACT_FIELD_ORDER = (
     "max_review_rounds",
     "required_state",
 )
-REVIEW_CONTRACT_WRAPPER_KEYS = ("review_contract", "review-contract")
+REVIEW_CONTRACT_FRONTMATTER_KEY = "review-contract"
+REVIEW_CONTRACT_FRONTMATTER_ALIASES = ("review-contract", "review_contract")
+REVIEW_CONTRACT_PROMPT_WRAPPER_KEY = "review_contract"
+REVIEW_CONTRACT_WRAPPER_KEYS = (REVIEW_CONTRACT_PROMPT_WRAPPER_KEY, REVIEW_CONTRACT_FRONTMATTER_KEY)
 REVIEW_CONTRACT_KEYS = frozenset(REVIEW_CONTRACT_FIELD_ORDER)
 REVIEW_CONTRACT_DEFAULTS = {
     "required_outputs": [],
@@ -62,15 +65,15 @@ def extract_frontmatter_block(frontmatter: str, field_name: str) -> str:
 
 
 def extract_review_contract_frontmatter_block(frontmatter: str) -> str:
-    """Return the single review-contract frontmatter block for either supported alias."""
+    """Return the canonical review-contract frontmatter block."""
 
     matches = [
         block
-        for key in REVIEW_CONTRACT_WRAPPER_KEYS
+        for key in REVIEW_CONTRACT_FRONTMATTER_ALIASES
         if (block := extract_frontmatter_block(frontmatter, key))
     ]
     if len(matches) > 1:
-        raise ValueError("review contract frontmatter must use only one wrapper key")
+        raise ValueError("review contract frontmatter must use only one frontmatter key")
     return matches[0] if matches else ""
 
 
@@ -94,14 +97,13 @@ def _load_review_contract_payload(review_contract: object) -> tuple[dict[str, ob
     if not isinstance(loaded, dict):
         raise ValueError(f"review contract must parse to a mapping, got {type(loaded).__name__}")
 
-    wrapped_payloads = [
-        dict(candidate)
-        for key in REVIEW_CONTRACT_WRAPPER_KEYS
-        if isinstance((candidate := loaded.get(key)), Mapping)
-    ]
-    if len(wrapped_payloads) > 1:
+    wrapped_key_matches = [key for key in REVIEW_CONTRACT_WRAPPER_KEYS if key in loaded]
+    if len(wrapped_key_matches) > 1:
         raise ValueError("review contract must use only one wrapper key")
-    wrapped = wrapped_payloads[0] if wrapped_payloads else None
+
+    wrapped_key = wrapped_key_matches[0] if wrapped_key_matches else None
+    wrapped_candidate = loaded.get(wrapped_key) if wrapped_key is not None else None
+    wrapped = dict(wrapped_candidate) if isinstance(wrapped_candidate, Mapping) else None
 
     if wrapped is not None:
         unknown_top_level_keys = sorted(
@@ -155,7 +157,7 @@ def render_review_contract_prompt(review_contract: object) -> str:
     if not payload:
         return ""
     rendered = yaml.safe_dump(
-        {"review_contract": payload},
+        {REVIEW_CONTRACT_PROMPT_WRAPPER_KEY: payload},
         sort_keys=False,
         allow_unicode=False,
     ).rstrip()

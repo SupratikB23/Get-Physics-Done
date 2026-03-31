@@ -16,8 +16,8 @@ from gpd.contracts import (
     contract_from_data,
     contract_from_data_salvage,
     normalize_contract_results_input,
-    parse_project_contract_data_strict,
     parse_project_contract_data_salvage,
+    parse_project_contract_data_strict,
 )
 from gpd.core.contract_validation import validate_project_contract
 
@@ -225,6 +225,19 @@ def test_validate_project_contract_approved_mode_rejects_explicit_anchor_unknown
 
     assert result.valid is False
     assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
+
+
+def test_validate_project_contract_approved_mode_rejects_context_gaps_only_grounding() -> None:
+    contract = _load_contract_fixture()
+    contract["references"] = []
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["context_gaps"] = ["Need a benchmark anchor before approval."]
+    contract["scope"]["unresolved_questions"] = []
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is False
+    assert any("explicit missing-anchor notes preserve uncertainty" in error for error in result.errors)
 
 
 def test_validate_project_contract_approved_mode_rejects_ground_truth_unclear_aliases_without_grounding() -> None:

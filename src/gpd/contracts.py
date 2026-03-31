@@ -1006,7 +1006,6 @@ def _has_contract_grounding_context(contract: ResearchContract) -> bool:
             contract.context_intake.must_include_prior_outputs,
             contract.context_intake.user_asserted_anchors,
             contract.context_intake.known_good_baselines,
-            contract.context_intake.context_gaps,
             contract.context_intake.crucial_inputs,
             contract.approach_policy.formulations,
             contract.approach_policy.stop_and_rethink_conditions,
