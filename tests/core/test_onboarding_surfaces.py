@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 
 from gpd.adapters import get_adapter, iter_runtime_descriptors
+from gpd.core import public_surface_contract as public_surface_contract_module
 from gpd.core.onboarding_surfaces import (
     beginner_onboarding_hub_url,
     beginner_runtime_surface,
     beginner_runtime_surfaces,
     beginner_startup_ladder_text,
 )
-from gpd.core import public_surface_contract as public_surface_contract_module
 from gpd.core.public_surface_contract import (
     beginner_onboarding_caveats,
     beginner_preflight_requirements,

@@ -361,11 +361,15 @@ def test_pattern_lookup_tolerates_missing_default_library(tmp_path: Path) -> Non
     assert isinstance(result, dict)
 
 
-def test_protocol_store_defaults_invalid_tier_for_sorting(tmp_path: Path) -> None:
-    from gpd.mcp.servers.protocols_server import ProtocolStore
+def test_protocol_store_defaults_invalid_tier_for_sorting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gpd.mcp.servers.protocols_server import ProtocolStore, _load_protocol_domain_manifest
 
     protocols_dir = tmp_path / "protocols"
     protocols_dir.mkdir()
+    domain_manifest = protocols_dir / "protocol-domains.json"
     (protocols_dir / "bad-tier.md").write_text(
         "---\n"
         "tier: high\n"
@@ -386,19 +390,39 @@ def test_protocol_store_defaults_invalid_tier_for_sorting(tmp_path: Path) -> Non
         "- First step\n",
         encoding="utf-8",
     )
-
-    store = ProtocolStore(protocols_dir)
-    listed = store.list_all()
+    domain_manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "protocol_domains": {
+                    "bad-tier": "general",
+                    "good-tier": "general",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("gpd.mcp.servers.protocols_server.PROTOCOL_DOMAINS_MANIFEST", domain_manifest)
+    _load_protocol_domain_manifest.cache_clear()
+    try:
+        store = ProtocolStore(protocols_dir)
+        listed = store.list_all()
+    finally:
+        _load_protocol_domain_manifest.cache_clear()
 
     assert [protocol["name"] for protocol in listed] == ["good-tier", "bad-tier"]
     assert listed[1]["tier"] == 2
 
 
-def test_protocol_not_found_tolerates_invalid_tier_catalog(tmp_path: Path) -> None:
-    from gpd.mcp.servers.protocols_server import ProtocolStore, get_protocol
+def test_protocol_not_found_tolerates_invalid_tier_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gpd.mcp.servers.protocols_server import ProtocolStore, _load_protocol_domain_manifest, get_protocol
 
     protocols_dir = tmp_path / "protocols"
     protocols_dir.mkdir()
+    domain_manifest = protocols_dir / "protocol-domains.json"
     (protocols_dir / "bad-tier.md").write_text(
         "---\n"
         "tier: high\n"
@@ -407,7 +431,23 @@ def test_protocol_not_found_tolerates_invalid_tier_catalog(tmp_path: Path) -> No
         "- First step\n",
         encoding="utf-8",
     )
-    store = ProtocolStore(protocols_dir)
+    domain_manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "protocol_domains": {
+                    "bad-tier": "general",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("gpd.mcp.servers.protocols_server.PROTOCOL_DOMAINS_MANIFEST", domain_manifest)
+    _load_protocol_domain_manifest.cache_clear()
+    try:
+        store = ProtocolStore(protocols_dir)
+    finally:
+        _load_protocol_domain_manifest.cache_clear()
 
     with patch("gpd.mcp.servers.protocols_server._get_store", return_value=store):
         result = get_protocol("missing-protocol")

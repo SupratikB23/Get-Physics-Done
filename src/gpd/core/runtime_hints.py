@@ -535,9 +535,9 @@ def build_runtime_hint_payload(
     if include_recovery:
         orientation["workspace_root"] = workspace_hint.as_posix()
         orientation["project_root"] = _path_text(reentry.resolved_project_root)
-        orientation["project_root_source"] = reentry.source
-        orientation["project_root_auto_selected"] = bool(reentry.auto_selected)
-        orientation["project_reentry_mode"] = reentry.mode
+        orientation["project_root_source"] = _suggestion_text(reentry, "source")
+        orientation["project_root_auto_selected"] = bool(getattr(reentry, "auto_selected", False))
+        orientation["project_reentry_mode"] = _suggestion_text(reentry, "mode")
     cost_summary = build_cost_summary(project_root, data_root=data_root, last_sessions=cost_last_sessions) if include_cost else None
     cost = _cost_payload(cost_summary) if cost_summary is not None else {}
     cost_advisory = _cost_advisory(cost_summary) if cost_summary is not None else None

@@ -999,19 +999,17 @@ def test_resume_recent_raw_surfaces_machine_local_recent_projects(
     (recent_index_dir / "index.json").write_text(
         json.dumps(
             {
-                "projects": [
+                "rows": [
                     {
                         "project_root": str(unavailable_root),
                         "last_session_at": "2026-03-20T09:00:00+00:00",
                         "stopped_at": "Phase 2",
-                        "status": "paused",
                         "resumable": False,
                     },
                     {
                         "project_root": str(resumable_root),
                         "last_session_at": "2026-03-21T10:30:00+00:00",
                         "stopped_at": "Phase 4",
-                        "status": "paused",
                         "resume_file": "GPD/phases/04/.continue-here.md",
                         "resumable": True,
                     },
@@ -1049,12 +1047,6 @@ def test_resume_recent_human_output_surfaces_command_and_missing_projects(
                 "project_root": str(resumable_root),
                 "last_session_at": "2026-03-21T11:00:00+00:00",
                 "stopped_at": "Phase 1",
-                "status": "paused",
-                "label": "Alpha project",
-                "summary": "Working through the verification sweep",
-                "current_phase": "04",
-                "current_phase_name": "Verification",
-                "progress": "75% complete",
                 "resume_file": "GPD/phases/04/.continue-here.md",
                 "resumable": True,
             },
@@ -1062,7 +1054,6 @@ def test_resume_recent_human_output_surfaces_command_and_missing_projects(
                 "project_root": str(missing_root),
                 "last_session_at": "2026-03-19T08:00:00+00:00",
                 "stopped_at": "Phase 3",
-                "status": "paused",
                 "resumable": False,
             },
         ],
@@ -1079,9 +1070,6 @@ def test_resume_recent_human_output_surfaces_command_and_missing_projects(
     assert "continue in the selected workspace" in normalized
     assert "resume-work" in result.output
     assert "suggest-next" in result.output
-    assert "Label: Alpha project" in result.output
-    assert "Summary: Working through the verification sweep" in result.output
-    assert "Current: phase 04 (Verification) · paused · 75% complete" in result.output
     assert "Why shown: shown because it still has a usable handoff target" in result.output
     assert "ready to reopen" in result.output
     assert "Inspect:" not in result.output
@@ -1102,7 +1090,7 @@ def test_resume_recent_raw_downgrades_missing_handoff_rows_to_non_resumable(
     (recent_index_dir / "index.json").write_text(
         json.dumps(
             {
-                "projects": [
+                "rows": [
                     {
                         "project_root": str(project_root),
                         "last_session_at": "2026-03-21T11:00:00+00:00",

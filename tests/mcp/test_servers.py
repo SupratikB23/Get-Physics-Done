@@ -2630,6 +2630,7 @@ Not a checkpoint.
     def test_protocol_domain_manifest_covers_all_protocol_files(self):
         from gpd.mcp.servers.protocols_server import PROTOCOLS_DIR, _load_protocol_domain_manifest
 
+        _load_protocol_domain_manifest.cache_clear()
         domains = _load_protocol_domain_manifest()
         protocol_names = {path.stem for path in PROTOCOLS_DIR.glob("*.md")}
 

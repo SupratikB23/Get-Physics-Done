@@ -27,8 +27,8 @@ from gpd.contracts import (
     ResearchContract,
     collect_plan_contract_integrity_errors,
     contract_has_explicit_context_intake,
-    parse_project_contract_data_strict,
     parse_project_contract_data_salvage,
+    parse_project_contract_data_strict,
 )
 from gpd.core.observability import gpd_span
 from gpd.core.protocol_bundles import ResolvedProtocolBundle, get_protocol_bundle, render_protocol_bundle_context

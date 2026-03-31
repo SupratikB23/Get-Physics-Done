@@ -12,6 +12,9 @@ from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 
 from gpd.contracts import (
+    PROJECT_CONTRACT_COLLECTION_LIST_FIELDS,
+    PROJECT_CONTRACT_MAPPING_LIST_FIELDS,
+    PROJECT_CONTRACT_TOP_LEVEL_LIST_FIELDS,
     ContractAcceptanceTest,
     ContractApproachPolicy,
     ContractClaim,
@@ -23,9 +26,6 @@ from gpd.contracts import (
     ContractReference,
     ContractScope,
     ContractUncertaintyMarkers,
-    PROJECT_CONTRACT_COLLECTION_LIST_FIELDS,
-    PROJECT_CONTRACT_MAPPING_LIST_FIELDS,
-    PROJECT_CONTRACT_TOP_LEVEL_LIST_FIELDS,
     ResearchContract,
     collect_contract_integrity_errors,
     parse_project_contract_data_strict,
