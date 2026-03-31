@@ -21,6 +21,9 @@ __all__ = [
     "ContractResults",
     "SuggestedContractCheck",
     "ComparisonVerdict",
+    "PROJECT_CONTRACT_MAPPING_LIST_FIELDS",
+    "PROJECT_CONTRACT_TOP_LEVEL_LIST_FIELDS",
+    "PROJECT_CONTRACT_COLLECTION_LIST_FIELDS",
     "ContractScope",
     "ContractContextIntake",
     "ContractApproachPolicy",
@@ -37,8 +40,10 @@ __all__ = [
     "contract_has_explicit_context_intake",
     "ProjectContractParseResult",
     "parse_project_contract_data_strict",
+    "parse_project_contract_data_salvage",
     "collect_contract_integrity_errors",
     "contract_from_data",
+    "contract_from_data_salvage",
 ]
 
 def _normalize_optional_str(value: object) -> object:
@@ -90,37 +95,50 @@ def _normalize_string_list(value: object) -> object:
     return normalized
 
 
-_STRICT_PROJECT_CONTRACT_SCOPE_LIST_FIELDS = ("in_scope", "out_of_scope", "unresolved_questions")
-_STRICT_PROJECT_CONTRACT_CONTEXT_INTAKE_LIST_FIELDS = (
-    "must_read_refs",
-    "must_include_prior_outputs",
-    "user_asserted_anchors",
-    "known_good_baselines",
-    "context_gaps",
-    "crucial_inputs",
+PROJECT_CONTRACT_MAPPING_LIST_FIELDS: dict[str, tuple[str, ...]] = {
+    "scope": ("in_scope", "out_of_scope", "unresolved_questions"),
+    "context_intake": (
+        "must_read_refs",
+        "must_include_prior_outputs",
+        "user_asserted_anchors",
+        "known_good_baselines",
+        "context_gaps",
+        "crucial_inputs",
+    ),
+    "approach_policy": (
+        "formulations",
+        "allowed_estimator_families",
+        "forbidden_estimator_families",
+        "allowed_fit_families",
+        "forbidden_fit_families",
+        "stop_and_rethink_conditions",
+    ),
+    "uncertainty_markers": (
+        "weakest_anchors",
+        "unvalidated_assumptions",
+        "competing_explanations",
+        "disconfirming_observations",
+    ),
+}
+PROJECT_CONTRACT_TOP_LEVEL_LIST_FIELDS: tuple[str, ...] = (
+    "observables",
+    "claims",
+    "deliverables",
+    "acceptance_tests",
+    "references",
+    "forbidden_proxies",
+    "links",
 )
-_STRICT_PROJECT_CONTRACT_APPROACH_POLICY_LIST_FIELDS = (
-    "formulations",
-    "allowed_estimator_families",
-    "forbidden_estimator_families",
-    "allowed_fit_families",
-    "forbidden_fit_families",
-    "stop_and_rethink_conditions",
-)
-_STRICT_PROJECT_CONTRACT_CLAIM_LIST_FIELDS = ("observables", "deliverables", "acceptance_tests", "references")
-_STRICT_PROJECT_CONTRACT_DELIVERABLE_LIST_FIELDS = ("must_contain",)
-_STRICT_PROJECT_CONTRACT_ACCEPTANCE_TEST_LIST_FIELDS = ("evidence_required",)
-_STRICT_PROJECT_CONTRACT_REFERENCE_LIST_FIELDS = ("aliases", "applies_to", "carry_forward_to", "required_actions")
-_STRICT_PROJECT_CONTRACT_LINK_LIST_FIELDS = ("verified_by",)
-_STRICT_PROJECT_CONTRACT_UNCERTAINTY_MARKER_LIST_FIELDS = (
-    "weakest_anchors",
-    "unvalidated_assumptions",
-    "competing_explanations",
-    "disconfirming_observations",
-)
+PROJECT_CONTRACT_COLLECTION_LIST_FIELDS: dict[str, tuple[str, ...]] = {
+    "claims": ("observables", "deliverables", "acceptance_tests", "references"),
+    "deliverables": ("must_contain",),
+    "acceptance_tests": ("evidence_required",),
+    "references": ("aliases", "applies_to", "carry_forward_to", "required_actions"),
+    "links": ("verified_by",),
+}
 
 
-def _collect_strict_project_contract_list_member_errors(data: object) -> list[str]:
+def _collect_project_contract_list_member_errors(data: object) -> list[str]:
     """Reject blank or duplicate list members before model normalization."""
 
     if not isinstance(data, dict):
@@ -159,27 +177,10 @@ def _collect_strict_project_contract_list_member_errors(data: object) -> list[st
             if isinstance(item, dict):
                 _check_mapping_lists(item, path_prefix=f"{collection_name}.{index}", field_names=field_names)
 
-    _check_mapping_lists(data.get("scope"), path_prefix="scope", field_names=_STRICT_PROJECT_CONTRACT_SCOPE_LIST_FIELDS)
-    _check_mapping_lists(
-        data.get("context_intake"),
-        path_prefix="context_intake",
-        field_names=_STRICT_PROJECT_CONTRACT_CONTEXT_INTAKE_LIST_FIELDS,
-    )
-    _check_mapping_lists(
-        data.get("approach_policy"),
-        path_prefix="approach_policy",
-        field_names=_STRICT_PROJECT_CONTRACT_APPROACH_POLICY_LIST_FIELDS,
-    )
-    _check_collection_item_lists("claims", _STRICT_PROJECT_CONTRACT_CLAIM_LIST_FIELDS)
-    _check_collection_item_lists("deliverables", _STRICT_PROJECT_CONTRACT_DELIVERABLE_LIST_FIELDS)
-    _check_collection_item_lists("acceptance_tests", _STRICT_PROJECT_CONTRACT_ACCEPTANCE_TEST_LIST_FIELDS)
-    _check_collection_item_lists("references", _STRICT_PROJECT_CONTRACT_REFERENCE_LIST_FIELDS)
-    _check_collection_item_lists("links", _STRICT_PROJECT_CONTRACT_LINK_LIST_FIELDS)
-    _check_mapping_lists(
-        data.get("uncertainty_markers"),
-        path_prefix="uncertainty_markers",
-        field_names=_STRICT_PROJECT_CONTRACT_UNCERTAINTY_MARKER_LIST_FIELDS,
-    )
+    for section_name, field_names in PROJECT_CONTRACT_MAPPING_LIST_FIELDS.items():
+        _check_mapping_lists(data.get(section_name), path_prefix=section_name, field_names=field_names)
+    for collection_name, field_names in PROJECT_CONTRACT_COLLECTION_LIST_FIELDS.items():
+        _check_collection_item_lists(collection_name, field_names)
 
     return errors
 
@@ -1167,7 +1168,104 @@ class ProjectContractParseResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     contract: ResearchContract | None = None
-    errors: list[str] = Field(default_factory=list)
+    blocking_errors: list[str] = Field(default_factory=list)
+    recoverable_errors: list[str] = Field(default_factory=list)
+
+    @property
+    def errors(self) -> list[str]:
+        return [*self.blocking_errors, *self.recoverable_errors]
+
+    @property
+    def warnings(self) -> list[str]:
+        return list(self.recoverable_errors)
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
+def _project_contract_parse_result(
+    *,
+    contract: ResearchContract | None = None,
+    blocking_errors: list[str] | None = None,
+    recoverable_errors: list[str] | None = None,
+) -> ProjectContractParseResult:
+    return ProjectContractParseResult(
+        contract=contract,
+        blocking_errors=_dedupe_preserve_order(list(blocking_errors or [])),
+        recoverable_errors=_dedupe_preserve_order(list(recoverable_errors or [])),
+    )
+
+
+def _parse_project_contract_data(
+    data: object,
+    *,
+    strict: bool,
+) -> ProjectContractParseResult:
+    if not isinstance(data, dict):
+        return _project_contract_parse_result(blocking_errors=["project contract must be a JSON object"])
+
+    from gpd.core.contract_validation import _collect_list_shape_drift_errors, salvage_project_contract
+
+    contract, schema_findings = salvage_project_contract(data)
+    list_shape_drift_errors = _collect_list_shape_drift_errors(data)
+    if strict:
+        from gpd.core.contract_validation import _split_project_contract_schema_findings
+
+        schema_warnings, schema_errors = _split_project_contract_schema_findings(
+            schema_findings,
+            allow_singleton_defaults=False,
+        )
+        blocking_errors = [
+            *schema_errors,
+            *schema_warnings,
+            *list_shape_drift_errors,
+            *_collect_project_contract_list_member_errors(data),
+        ]
+        if contract is None:
+            if not blocking_errors and schema_findings:
+                blocking_errors = list(schema_findings)
+            if not blocking_errors:
+                blocking_errors = ["project contract could not be normalized"]
+            return _project_contract_parse_result(blocking_errors=blocking_errors)
+        integrity_errors = collect_contract_integrity_errors(contract)
+        blocking_errors.extend(integrity_errors)
+        if blocking_errors:
+            return _project_contract_parse_result(blocking_errors=blocking_errors)
+        return _project_contract_parse_result(contract=contract)
+
+    from gpd.core.contract_validation import _split_project_contract_schema_findings
+
+    schema_warnings, schema_errors = _split_project_contract_schema_findings(
+        schema_findings,
+        allow_singleton_defaults=True,
+    )
+    recoverable_errors = [*schema_warnings, *list_shape_drift_errors, *_collect_project_contract_list_member_errors(data)]
+    if contract is None:
+        blocking_errors = [*schema_errors]
+        if not blocking_errors and schema_findings:
+            blocking_errors = list(schema_findings)
+        if not blocking_errors:
+            blocking_errors = ["project contract could not be normalized"]
+        return _project_contract_parse_result(
+            blocking_errors=blocking_errors,
+            recoverable_errors=recoverable_errors,
+        )
+
+    integrity_errors = collect_contract_integrity_errors(contract)
+    if integrity_errors:
+        return _project_contract_parse_result(
+            blocking_errors=integrity_errors,
+            recoverable_errors=recoverable_errors,
+        )
+    return _project_contract_parse_result(contract=contract, recoverable_errors=recoverable_errors)
 
 
 def parse_project_contract_data_strict(data: object) -> ProjectContractParseResult:
@@ -1177,90 +1275,73 @@ def parse_project_contract_data_strict(data: object) -> ProjectContractParseResu
     salvage is undesirable. Inputs that would require schema normalization
     (singleton list drift, extra keys, defaulted singleton sections, coercive
     scalars) are rejected explicitly instead of being silently canonicalized.
-    Read/repair flows should continue to use ``contract_from_data()`` or the
-    lower-level salvage helpers.
+    Read/repair flows should continue to use ``contract_from_data_salvage()``
+    or the lower-level salvage helpers.
     """
 
-    if not isinstance(data, dict):
-        return ProjectContractParseResult(errors=["project contract must be a JSON object"])
+    return _parse_project_contract_data(data, strict=True)
 
-    from gpd.core.contract_validation import (
-        _collect_list_shape_drift_errors,
-        _split_project_contract_schema_findings,
-        salvage_project_contract,
-    )
 
-    list_shape_drift_errors = _collect_list_shape_drift_errors(data)
-    strict_list_member_errors = _collect_strict_project_contract_list_member_errors(data)
-    contract, schema_findings = salvage_project_contract(data)
-    schema_warnings, schema_errors = _split_project_contract_schema_findings(
-        schema_findings,
-        allow_singleton_defaults=False,
-    )
+def parse_project_contract_data_salvage(data: object) -> ProjectContractParseResult:
+    """Salvage a project-contract payload while still surfacing recoverable findings."""
 
-    errors: list[str] = []
-    for error in (*schema_errors, *schema_warnings, *list_shape_drift_errors, *strict_list_member_errors):
-        if error not in errors:
-            errors.append(error)
-
-    if contract is None:
-        if not errors and schema_findings:
-            for error in schema_findings:
-                if error not in errors:
-                    errors.append(error)
-        if not errors:
-            errors.append("project contract could not be normalized")
-        return ProjectContractParseResult(errors=errors)
-
-    integrity_errors = collect_contract_integrity_errors(contract)
-    for error in integrity_errors:
-        if error not in errors:
-            errors.append(error)
-    if errors:
-        return ProjectContractParseResult(errors=errors)
-    return ProjectContractParseResult(contract=contract)
+    return _parse_project_contract_data(data, strict=False)
 
 
 def contract_from_data(
     data: object,
     *,
-    allow_recoverable_warnings: bool = True,
+    allow_recoverable_warnings: bool = False,
     require_draft_validity: bool = False,
     project_root: Path | None = None,
 ) -> ResearchContract | None:
     """Return a validated :class:`ResearchContract` when *data* is a mapping.
 
-    Malformed mappings degrade to ``None`` so callers can treat this helper as a
-    safe salvage-aware probe instead of an exception boundary. Callers that need
-    strict authored-input rejection should use
-    :func:`parse_project_contract_data_strict` instead. Callers that preserve
+    This entrypoint is strict by default and fails closed on recoverable
+    schema drift. Callers that need repair-oriented salvage should use
+    :func:`contract_from_data_salvage` explicitly. Callers that preserve
     contracts back into state can additionally require draft-level scoping
     validity.
     """
 
     if not isinstance(data, dict):
         return None
-    from gpd.core.contract_validation import (
-        _collect_list_shape_drift_errors,
-        _split_project_contract_schema_findings,
-        salvage_project_contract,
-        validate_project_contract,
-    )
+    if allow_recoverable_warnings:
+        return contract_from_data_salvage(
+            data,
+            require_draft_validity=require_draft_validity,
+            project_root=project_root,
+        )
 
-    contract, schema_findings = salvage_project_contract(data)
-    list_shape_drift_errors = _collect_list_shape_drift_errors(data)
-    _schema_warnings, schema_errors = _split_project_contract_schema_findings(
-        schema_findings,
-        allow_singleton_defaults=False,
-    )
-    if schema_errors or contract is None:
-        return None
-    if not allow_recoverable_warnings and (_schema_warnings or list_shape_drift_errors):
-        return None
-    if collect_contract_integrity_errors(contract):
+    strict_result = parse_project_contract_data_strict(data)
+    if strict_result.contract is None or strict_result.errors:
         return None
     if require_draft_validity:
-        draft_validation = validate_project_contract(contract, mode="draft", project_root=project_root)
+        from gpd.core.contract_validation import validate_project_contract
+
+        draft_validation = validate_project_contract(strict_result.contract, mode="draft", project_root=project_root)
         if not draft_validation.valid:
             return None
-    return contract
+    return strict_result.contract
+
+
+def contract_from_data_salvage(
+    data: object,
+    *,
+    require_draft_validity: bool = False,
+    project_root: Path | None = None,
+) -> ResearchContract | None:
+    """Return a salvaged :class:`ResearchContract` for repair/migration callers."""
+
+    if not isinstance(data, dict):
+        return None
+    from gpd.core.contract_validation import validate_project_contract
+
+    salvage_result = parse_project_contract_data_salvage(data)
+    if salvage_result.contract is None or salvage_result.blocking_errors:
+        return None
+    if require_draft_validity:
+        draft_validation = validate_project_contract(salvage_result.contract, mode="draft", project_root=project_root)
+        if not draft_validation.valid:
+            return None
+    return salvage_result.contract

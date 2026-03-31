@@ -14,8 +14,10 @@ from gpd.contracts import (
     ProjectContractParseResult,
     ResearchContract,
     contract_from_data,
+    contract_from_data_salvage,
     normalize_contract_results_input,
     parse_project_contract_data_strict,
+    parse_project_contract_data_salvage,
 )
 from gpd.core.contract_validation import validate_project_contract
 
@@ -94,11 +96,33 @@ def test_contract_from_data_rejects_blank_scalar_to_list_drift() -> None:
     assert contract_from_data(contract) is None
 
 
-def test_contract_from_data_rejects_singleton_list_drift_when_recoverable_warnings_are_disabled() -> None:
+def test_contract_from_data_rejects_singleton_list_drift_by_default() -> None:
     contract = _load_contract_fixture()
     contract["context_intake"]["must_read_refs"] = "ref-benchmark"
 
-    assert contract_from_data(contract, allow_recoverable_warnings=False) is None
+    assert contract_from_data(contract) is None
+
+
+def test_contract_from_data_salvage_accepts_recoverable_list_drift() -> None:
+    contract = _load_contract_fixture()
+    contract["context_intake"]["must_read_refs"] = "ref-benchmark"
+
+    parsed = contract_from_data_salvage(contract)
+
+    assert parsed is not None
+    assert parsed.context_intake.must_read_refs == ["ref-benchmark"]
+
+
+def test_parse_project_contract_data_salvage_reports_recoverable_findings() -> None:
+    contract = _load_contract_fixture()
+    contract["scope"]["legacy_notes"] = "nested extra field"
+
+    result: ProjectContractParseResult = parse_project_contract_data_salvage(contract)
+
+    assert result.contract is not None
+    assert result.blocking_errors == []
+    assert "scope.legacy_notes: Extra inputs are not permitted" in result.recoverable_errors
+    assert result.errors == result.recoverable_errors
 
 
 def test_parse_project_contract_data_strict_rejects_singleton_list_drift() -> None:

@@ -23,6 +23,9 @@ from gpd.contracts import (
     ContractReference,
     ContractScope,
     ContractUncertaintyMarkers,
+    PROJECT_CONTRACT_COLLECTION_LIST_FIELDS,
+    PROJECT_CONTRACT_MAPPING_LIST_FIELDS,
+    PROJECT_CONTRACT_TOP_LEVEL_LIST_FIELDS,
     ResearchContract,
     collect_contract_integrity_errors,
     parse_project_contract_data_strict,
@@ -144,45 +147,6 @@ _AUTHORITATIVE_SCALAR_FINDING_PATTERNS = (
     re.compile(r"^schema_version: Input should be 1$"),
     re.compile(r"^.+\.must_surface must be a boolean$"),
 )
-_TOP_LEVEL_LIST_FIELDS = (
-    "observables",
-    "claims",
-    "deliverables",
-    "acceptance_tests",
-    "references",
-    "forbidden_proxies",
-    "links",
-)
-_SCOPE_LIST_FIELDS = ("in_scope", "out_of_scope", "unresolved_questions")
-_CONTEXT_INTAKE_LIST_FIELDS = (
-    "must_read_refs",
-    "must_include_prior_outputs",
-    "user_asserted_anchors",
-    "known_good_baselines",
-    "context_gaps",
-    "crucial_inputs",
-)
-_APPROACH_POLICY_LIST_FIELDS = (
-    "formulations",
-    "allowed_estimator_families",
-    "forbidden_estimator_families",
-    "allowed_fit_families",
-    "forbidden_fit_families",
-    "stop_and_rethink_conditions",
-)
-_CLAIM_LIST_FIELDS = ("observables", "deliverables", "acceptance_tests", "references")
-_DELIVERABLE_LIST_FIELDS = ("must_contain",)
-_ACCEPTANCE_TEST_LIST_FIELDS = ("evidence_required",)
-_REFERENCE_LIST_FIELDS = ("aliases", "applies_to", "carry_forward_to", "required_actions")
-_LINK_LIST_FIELDS = ("verified_by",)
-_UNCERTAINTY_MARKER_LIST_FIELDS = (
-    "weakest_anchors",
-    "unvalidated_assumptions",
-    "competing_explanations",
-    "disconfirming_observations",
-)
-
-
 class ProjectContractValidationResult(BaseModel):
     """Executable validation result for a project-scoping contract."""
 
@@ -559,28 +523,19 @@ def _collect_list_shape_drift_errors(contract: dict[str, object]) -> list[str]:
                 field_names=field_names,
             )
 
-    _check_mapping_lists(contract, path_prefix="", field_names=_TOP_LEVEL_LIST_FIELDS)
-    _check_mapping_lists(contract.get("scope"), path_prefix="scope", field_names=_SCOPE_LIST_FIELDS)
-    _check_mapping_lists(
-        contract.get("context_intake"),
-        path_prefix="context_intake",
-        field_names=_CONTEXT_INTAKE_LIST_FIELDS,
-    )
-    _check_mapping_lists(
-        contract.get("approach_policy"),
-        path_prefix="approach_policy",
-        field_names=_APPROACH_POLICY_LIST_FIELDS,
-    )
-    _check_mapping_lists(
-        contract.get("uncertainty_markers"),
-        path_prefix="uncertainty_markers",
-        field_names=_UNCERTAINTY_MARKER_LIST_FIELDS,
-    )
-    _check_collection_item_lists("claims", _CLAIM_LIST_FIELDS)
-    _check_collection_item_lists("deliverables", _DELIVERABLE_LIST_FIELDS)
-    _check_collection_item_lists("acceptance_tests", _ACCEPTANCE_TEST_LIST_FIELDS)
-    _check_collection_item_lists("references", _REFERENCE_LIST_FIELDS)
-    _check_collection_item_lists("links", _LINK_LIST_FIELDS)
+    for field_name in PROJECT_CONTRACT_TOP_LEVEL_LIST_FIELDS:
+        if field_name in contract:
+            raw_value = contract.get(field_name)
+            if isinstance(raw_value, list):
+                continue
+            if isinstance(raw_value, str) and not raw_value.strip():
+                continue
+            errors.append(f"{field_name} must be a list, not {type(raw_value).__name__}")
+
+    for section_name, field_names in PROJECT_CONTRACT_MAPPING_LIST_FIELDS.items():
+        _check_mapping_lists(contract.get(section_name), path_prefix=section_name, field_names=field_names)
+    for collection_name, field_names in PROJECT_CONTRACT_COLLECTION_LIST_FIELDS.items():
+        _check_collection_item_lists(collection_name, field_names)
 
     return _dedupe_findings(errors)
 
