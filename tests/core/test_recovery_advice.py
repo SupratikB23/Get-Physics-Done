@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from gpd.core.recovery_advice import build_recovery_advice, serialize_recovery_orientation
+from gpd.core.recent_projects import list_recent_projects, record_recent_project
 
 
 def _project(tmp_path: Path, name: str = "project") -> Path:
@@ -170,6 +171,56 @@ def test_build_recovery_advice_marks_auto_selected_recent_project_recovery(
     assert advice.actions[2].availability == "now"
 
 
+def test_build_recovery_advice_treats_auto_selected_recent_project_as_recent_projects_when_workspace_differs(
+    tmp_path: Path,
+) -> None:
+    workspace = _project(tmp_path)
+    selected_project = _project(tmp_path, "selected")
+    resume_file = selected_project / "GPD" / "phases" / "02" / ".continue-here.md"
+    resume_file.parent.mkdir(parents=True, exist_ok=True)
+    resume_file.write_text("resume\n", encoding="utf-8")
+
+    advice = build_recovery_advice(
+        workspace,
+        recent_rows=[
+            {
+                "project_root": selected_project.as_posix(),
+                "available": True,
+                "resumable": True,
+            }
+        ],
+        resume_payload={
+            "workspace_root": workspace.as_posix(),
+            "project_root": selected_project.as_posix(),
+            "project_root_source": "recent_project",
+            "project_root_auto_selected": True,
+            "project_reentry_mode": "auto-recent-project",
+            "segment_candidates": [
+                {
+                    "source": "current_execution",
+                    "resume_file": "GPD/phases/02/.continue-here.md",
+                    "status": "waiting",
+                }
+            ],
+            "execution_resumable": True,
+            "has_live_execution": True,
+        },
+    )
+
+    assert advice.mode == "recent-projects"
+    assert advice.decision_source == "auto-selected-recent-project"
+    assert advice.project_root == selected_project.as_posix()
+    assert advice.workspace_root == workspace.as_posix()
+    assert advice.project_root_auto_selected is True
+    assert advice.project_reentry_mode == "auto-recent-project"
+    assert advice.current_workspace_has_recovery is False
+    assert advice.current_workspace_has_resume_file is False
+    assert advice.current_workspace_resumable is False
+    assert advice.current_workspace_candidate_count == 0
+    assert advice.status == "bounded-segment"
+    assert [action.availability for action in advice.actions] == ["now", "after_selection", "after_selection"]
+
+
 def test_build_recovery_advice_marks_auto_selected_recent_project_recovery_without_recent_rows(
     tmp_path: Path,
 ) -> None:
@@ -217,6 +268,24 @@ def test_build_recovery_advice_marks_auto_selected_recent_project_recovery_witho
     assert advice.resumable_projects_count == 0
     assert advice.current_workspace_candidate_count == 1
     assert advice.has_local_recovery_target is True
+
+
+def test_list_recent_projects_treats_non_positive_limits_as_empty(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    store_root = tmp_path / "recent-project-cache"
+    record_recent_project(
+        project,
+        session_data={
+            "last_date": "2026-03-27T11:55:00+00:00",
+            "stopped_at": "Phase 02",
+            "resume_file": "GPD/phases/02/.continue-here.md",
+        },
+        store_root=store_root,
+    )
+
+    assert len(list_recent_projects(store_root)) == 1
+    assert list_recent_projects(store_root, last=0) == []
+    assert list_recent_projects(store_root, last=-4) == []
 
 
 def test_build_recovery_advice_uses_selected_recent_project_candidate_when_resume_surface_is_absent(

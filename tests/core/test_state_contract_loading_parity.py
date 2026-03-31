@@ -188,6 +188,23 @@ def test_state_and_context_restore_backup_project_contract_when_primary_state_is
     )
 
 
+def test_project_contract_loader_does_not_warn_about_backup_use_without_a_loaded_backup(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _setup_project(tmp_path)
+    layout = ProjectLayout(tmp_path)
+    layout.state_json.unlink(missing_ok=True)
+    layout.state_json_backup.unlink(missing_ok=True)
+
+    with caplog.at_level(logging.WARNING):
+        contract, load_info = _load_project_contract(tmp_path)
+
+    assert contract is None
+    assert load_info["status"] == "missing"
+    assert not any("Using project_contract from" in record.message for record in caplog.records)
+
+
 def test_project_contract_loader_recovers_intent_backed_state_and_persists_it(tmp_path: Path) -> None:
     _setup_project(tmp_path)
     save_state_json(tmp_path, default_state_dict())

@@ -135,6 +135,15 @@ def _normalize_command(value: str | None, *, fallback: str) -> str:
     return fallback
 
 
+def _normalized_path_text(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    return Path(stripped).expanduser().resolve(strict=False).as_posix()
+
+
 def _bool_field(payload: Mapping[str, object], field: str) -> bool:
     return bool(payload.get(field))
 
@@ -722,6 +731,11 @@ def build_recovery_advice(
     project_root_auto_selected = _bool_field(payload, "project_root_auto_selected")
     project_reentry_mode = _text_field(payload, "project_reentry_mode")
     project_reentry_requires_selection = _bool_field(payload, "project_reentry_requires_selection")
+    workspace_root_resolved = _normalized_path_text(workspace_root)
+    project_root_resolved = _normalized_path_text(project_root)
+    workspace_matches_project_root = workspace_root_resolved is None or workspace_root_resolved == (
+        project_root_resolved or normalized_cwd.as_posix()
+    )
     active_bounded_segment = _canonical_mapping_field(payload, compat_resume_surface, "active_bounded_segment")
     legacy_active_execution_segment = _legacy_mapping_field(payload, compat_resume_surface, "active_execution_segment")
     if active_bounded_segment is None and active_resume_kind == "bounded_segment" and legacy_active_execution_segment is not None:
@@ -811,6 +825,11 @@ def build_recovery_advice(
         or recorded_continuity_handoff_file is not None
         or active_resume_pointer is not None
     )
+    if not workspace_matches_project_root:
+        current_workspace_has_recovery = False
+        current_workspace_has_resume_file = False
+    current_workspace_resumable = execution_resumable if workspace_matches_project_root else False
+    current_workspace_candidate_count = len(segment_candidates) if workspace_matches_project_root else 0
     has_local_recovery_target = bool(
         execution_resumable
         or has_interrupted_agent
@@ -827,9 +846,7 @@ def build_recovery_advice(
         if recent_projects_count > 0
         else "no-recovery"
     )
-    auto_selected_recent_project = inferred_reentry_mode == "auto-recent-project" or (
-        project_root_auto_selected and current_workspace_has_recovery
-    )
+    auto_selected_recent_project = inferred_reentry_mode == "auto-recent-project" or project_root_auto_selected
     ambiguous_recent_projects = inferred_reentry_mode == "ambiguous-recent-projects"
     resolved_status = _status(
         execution_resumable=execution_resumable,
@@ -865,16 +882,25 @@ def build_recovery_advice(
         decision_source = "no-recovery"
         primary_command = None
 
+    mode = (
+        "idle"
+        if decision_source == "no-recovery"
+        else "current-workspace"
+        if current_workspace_has_recovery
+        else "recent-projects"
+        if auto_selected_recent_project or recent_projects_count > 0
+        else "idle"
+    )
+
     if decision_source == "no-recovery":
         resolved_continue_command = None
         resolved_fast_next_command = None
         continue_reason = "No recoverable workspace is currently available."
         fast_next_reason = "No next action is available until a workspace can be recovered."
-        mode = "idle"
     else:
         resolved_continue_command = _normalize_command(continue_command, fallback="runtime `resume-work`")
         resolved_fast_next_command = _normalize_command(fast_next_command, fallback="runtime `suggest-next`")
-        continue_reason = recovery_continue_reason(mode="current-workspace" if auto_selected_recent_project or current_workspace_has_recovery else "recent-projects")
+        continue_reason = recovery_continue_reason(mode=mode)
         fast_next_reason = recovery_fast_next_reason()
 
     project_reentry_reason = _recent_project_reentry_reason(
@@ -883,14 +909,8 @@ def build_recovery_advice(
         resumable_projects_count=resumable_projects_count,
         available_projects_count=available_projects_count,
     )
-    mode = "current-workspace" if (auto_selected_recent_project or current_workspace_has_recovery) else "recent-projects" if recent_projects_count > 0 and decision_source != "no-recovery" else "idle"
     primary_reason = recovery_primary_reason(
-        mode="current-workspace"
-        if decision_source == "current-workspace"
-        else "recent-projects"
-        if decision_source
-        in {"auto-selected-recent-project", "ambiguous-recent-projects", "forced-recent-projects", "recent-projects"}
-        else "idle",
+        mode=mode,
         forced_recent=force_recent,
         execution_resumable=execution_resumable,
         has_interrupted_agent=has_interrupted_agent,
@@ -920,10 +940,10 @@ def build_recovery_advice(
         project_reentry_mode=inferred_reentry_mode,
         project_reentry_requires_selection=project_reentry_requires_selection,
         project_reentry_reason=project_reentry_reason,
-        current_workspace_resumable=execution_resumable,
+        current_workspace_resumable=current_workspace_resumable,
         current_workspace_has_recovery=current_workspace_has_recovery,
         current_workspace_has_resume_file=current_workspace_has_resume_file,
-        current_workspace_candidate_count=len(segment_candidates),
+        current_workspace_candidate_count=current_workspace_candidate_count,
         active_resume_kind=active_resume_kind,
         active_resume_origin=active_resume_origin,
         active_resume_pointer=active_resume_pointer,

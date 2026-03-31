@@ -535,9 +535,15 @@ def record_recent_project(
 
 
 def list_recent_projects(store_root: Path | None = None, *, last: int | None = None) -> list[RecentProjectEntry]:
-    """Return recent-project rows sorted newest-first with availability annotations."""
+    """Return recent-project rows sorted newest-first with availability annotations.
+
+    ``last`` is a hard limit: ``None`` returns the full index, positive values
+    return that many rows, and zero or negative values return an empty list.
+    """
+    if last is not None and last <= 0:
+        return []
     current = load_recent_projects_index(store_root)
     rows = [_annotate_availability(entry) for entry in _dedupe_rows(_sort_rows(list(current.rows)))]
-    if last is not None and last > 0:
+    if last is not None:
         rows = rows[:last]
     return rows

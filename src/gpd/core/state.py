@@ -757,10 +757,6 @@ def _load_raw_project_contract_payload(cwd: Path) -> tuple[Path, object] | None:
     source_path = layout.state_json
 
     if raw_state is None:
-        logger.warning(
-            "Using project_contract from %s because the primary state.json was unavailable or unreadable",
-            layout.state_json_backup,
-        )
         backup_payload = _backup_project_contract("the primary state.json was unavailable or unreadable")
         if backup_payload is not None:
             return backup_payload
