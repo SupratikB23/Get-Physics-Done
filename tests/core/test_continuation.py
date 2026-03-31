@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-from pydantic import ValidationError
-
 from gpd.core.continuation import (
     ContinuationResumeSource,
     ContinuationSource,
@@ -376,6 +373,67 @@ def test_resolve_continuation_ignores_empty_canonical_state_and_falls_back_to_le
     assert projection.handoff_resume_file == "GPD/phases/03-analysis/handoff.md"
 
 
-def test_normalize_continuation_rejects_invalid_canonical_shape(tmp_path: Path) -> None:
-    with pytest.raises(ValidationError):
-        normalize_continuation(tmp_path, {"handoff": "not-an-object"})
+def test_resolve_continuation_preserves_partial_canonical_state_without_falling_back_to_session(
+    tmp_path: Path,
+) -> None:
+    _write_resume(tmp_path, "GPD/phases/03-analysis/canonical-handoff.md")
+    _write_resume(tmp_path, "GPD/phases/03-analysis/legacy-session.md")
+
+    projection = resolve_continuation(
+        tmp_path,
+        state={
+            "continuation": {
+                "schema_version": 1,
+                "handoff": {
+                    "resume_file": "GPD/phases/03-analysis/canonical-handoff.md",
+                    "stopped_at": "Canonical stop",
+                },
+                "bounded_segment": "not-an-object",
+                "machine": {"hostname": "builder-01", "platform": "Linux 6.1 x86_64"},
+            },
+            "session": {
+                "resume_file": "GPD/phases/03-analysis/legacy-session.md",
+                "stopped_at": "Legacy stop",
+            },
+        },
+    )
+
+    assert projection.source == ContinuationSource.CANONICAL
+    assert projection.continuation.handoff.resume_file == "GPD/phases/03-analysis/canonical-handoff.md"
+    assert projection.continuation.handoff.stopped_at == "Canonical stop"
+    assert projection.continuation.bounded_segment is None
+    assert projection.active_resume_file == "GPD/phases/03-analysis/canonical-handoff.md"
+    assert projection.handoff_resume_file == "GPD/phases/03-analysis/canonical-handoff.md"
+    assert projection.recorded_handoff_resume_file == "GPD/phases/03-analysis/canonical-handoff.md"
+
+
+def test_normalize_continuation_salvages_partial_child_objects(tmp_path: Path) -> None:
+    _write_resume(tmp_path, "GPD/phases/03-analysis/canonical-handoff.md")
+
+    continuation = normalize_continuation(
+        tmp_path,
+        {
+            "schema_version": 1,
+            "handoff": {
+                "resume_file": "GPD/phases/03-analysis/canonical-handoff.md",
+                "stopped_at": "Canonical stop",
+                "recorded_by": "state_record_session",
+            },
+            "bounded_segment": {
+                "resume_file": "GPD/phases/03-analysis/canonical-handoff.md",
+                "segment_status": "paused",
+                "segment_id": "seg-1",
+                "unexpected_flag": "ignored",
+            },
+            "machine": {"hostname": "builder-01", "platform": "Linux 6.1 x86_64"},
+        },
+    )
+
+    assert continuation.handoff.resume_file == "GPD/phases/03-analysis/canonical-handoff.md"
+    assert continuation.handoff.stopped_at == "Canonical stop"
+    assert continuation.machine.hostname == "builder-01"
+    assert continuation.machine.platform == "Linux 6.1 x86_64"
+    assert continuation.bounded_segment is not None
+    assert continuation.bounded_segment.resume_file == "GPD/phases/03-analysis/canonical-handoff.md"
+    assert continuation.bounded_segment.segment_status == "paused"
+    assert continuation.bounded_segment.segment_id == "seg-1"

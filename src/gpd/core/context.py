@@ -984,7 +984,7 @@ def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:
     from gpd.core.observability import get_current_execution
 
     snapshot = get_current_execution(cwd)
-    state, _state_issues, _state_source = _peek_state_json(cwd)
+    state, state_issues, _state_source = _peek_state_json(cwd)
     position = state.get("position") if isinstance(state, dict) else {}
     session = state.get("session") if isinstance(state, dict) else {}
     machine = _current_machine_identity()
@@ -1006,6 +1006,7 @@ def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:
         cwd,
         state=state,
         current_execution=current_execution_payload,
+        state_issues=state_issues,
     )
     execution_resume_file_source = None
     if resume_projection.active_resume_source == ContinuationResumeSource.BOUNDED_SEGMENT:
@@ -1121,16 +1122,14 @@ def _resolve_resume_projection(
     *,
     state: dict[str, object] | None,
     current_execution: dict[str, object] | None,
+    state_issues: list[str] | None = None,
 ):
-    try:
-        return resolve_continuation(cwd, state=state, current_execution=current_execution)
-    except PydanticValidationError as exc:
-        logger.warning(
-            "Canonical continuation resolution failed; falling back to legacy session continuity: %s",
-            exc,
-        )
-        legacy_state = {"session": state.get("session")} if isinstance(state, dict) else {}
-        return resolve_continuation(cwd, state=legacy_state, current_execution=current_execution)
+    return resolve_continuation(
+        cwd,
+        state=state,
+        current_execution=current_execution,
+        state_issues=state_issues,
+    )
 
 
 def _resume_mode_for_kind(active_resume_kind: str | None) -> str | None:

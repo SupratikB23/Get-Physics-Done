@@ -537,6 +537,38 @@ def test_normalize_state_schema_reports_coercive_project_contract_scalars():
     )
 
 
+def test_normalize_state_schema_salvages_partial_continuation_and_reports_unknown_keys() -> None:
+    state = default_state_dict()
+    state["continuation"] = {
+        "schema_version": 1,
+        "handoff": {
+            "resume_file": "GPD/phases/03-analysis/canonical-handoff.md",
+            "stopped_at": "Canonical stop",
+            "recorded_by": "state_record_session",
+        },
+        "bounded_segment": {
+            "resume_file": "GPD/phases/03-analysis/canonical-handoff.md",
+            "segment_status": "paused",
+            "segment_id": "seg-1",
+            "unexpected_flag": "ignored",
+        },
+        "machine": {"hostname": "builder-01", "platform": "Linux 6.1 x86_64"},
+        "legacy_surface": {"resume_file": "legacy.md"},
+    }
+
+    normalized, issues = _normalize_state_schema(state)
+
+    assert normalized["continuation"]["handoff"]["resume_file"] == "GPD/phases/03-analysis/canonical-handoff.md"
+    assert normalized["continuation"]["handoff"]["stopped_at"] == "Canonical stop"
+    assert normalized["continuation"]["machine"]["hostname"] == "builder-01"
+    assert normalized["continuation"]["machine"]["platform"] == "Linux 6.1 x86_64"
+    assert normalized["continuation"]["bounded_segment"] is not None
+    assert normalized["continuation"]["bounded_segment"]["segment_status"] == "paused"
+    assert normalized["continuation"]["bounded_segment"]["segment_id"] == "seg-1"
+    assert any('schema normalization: dropped unknown "continuation.bounded_segment.unexpected_flag"' in issue for issue in issues)
+    assert any('schema normalization: dropped unknown "continuation.legacy_surface"' in issue for issue in issues)
+
+
 def test_normalize_state_schema_drops_project_contract_that_fails_draft_scoping_validation():
     normalized, issues = _normalize_state_schema({"project_contract": _draft_invalid_project_contract()})
 

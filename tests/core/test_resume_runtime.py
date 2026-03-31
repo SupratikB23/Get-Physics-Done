@@ -802,6 +802,47 @@ def test_init_resume_reads_canonical_continuation_from_state_json(
     ]
 
 
+def test_init_resume_does_not_fall_back_to_legacy_session_when_canonical_continuation_is_corrupt(
+    tmp_path: Path, state_project_factory, monkeypatch
+) -> None:
+    cwd = state_project_factory(tmp_path)
+    state_path = cwd / "GPD" / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["session"] = {
+        "last_date": "2026-03-29T12:00:00+00:00",
+        "hostname": "builder-01",
+        "platform": "Linux 6.1 x86_64",
+        "stopped_at": "Legacy session stop",
+        "resume_file": "GPD/phases/03-analysis/legacy-session.md",
+    }
+    state["continuation"] = {
+        "schema_version": 1,
+        "bounded_segment": "not-an-object",
+        "machine": {
+            "recorded_at": "2026-03-29T12:00:00+00:00",
+            "hostname": "builder-01",
+            "platform": "Linux 6.1 x86_64",
+        },
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    legacy_resume = cwd / "GPD" / "phases" / "03-analysis" / "legacy-session.md"
+    legacy_resume.parent.mkdir(parents=True, exist_ok=True)
+    legacy_resume.write_text("resume\n", encoding="utf-8")
+    monkeypatch.setattr(
+        context_module,
+        "_current_machine_identity",
+        lambda: {"hostname": "builder-01", "platform": "Linux 6.1 x86_64"},
+    )
+
+    ctx = init_resume(cwd)
+
+    assert ctx["active_resume_pointer"] is None
+    assert ctx["continuity_handoff_file"] is None
+    assert ctx["recorded_continuity_handoff_file"] is None
+    assert ctx["resume_candidates"] == []
+    assert ctx["compat_resume_surface"]["execution_resume_file"] is None
+
+
 def test_init_resume_propagates_unexpected_continuation_projection_errors(
     tmp_path: Path, state_project_factory, monkeypatch
 ) -> None:

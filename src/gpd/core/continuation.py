@@ -14,11 +14,12 @@ state. File existence remains a read-time concern surfaced by the projection.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ValidationError as PydanticValidationError
 
 from gpd.core.utils import phase_normalize
 
@@ -33,6 +34,7 @@ __all__ = [
     "RESUMABLE_SEGMENT_STATUSES",
     "canonical_bounded_segment_from_execution_snapshot",
     "normalize_continuation",
+    "normalize_continuation_with_issues",
     "normalize_continuation_reference",
     "resolve_continuation",
     "synthesize_legacy_continuation",
@@ -75,6 +77,99 @@ def _as_mapping(value: Mapping[str, object] | BaseModel | None) -> dict[str, obj
     if isinstance(value, Mapping):
         return dict(value)
     return None
+
+
+def _first_validation_issue(exc: PydanticValidationError) -> str:
+    first = exc.errors()[0] if exc.errors() else {}
+    location = ".".join(str(part) for part in first.get("loc", ()))
+    message = str(first.get("msg", "validation failed"))
+    return f"{location}: {message}" if location else message
+
+
+def _normalize_continuation_model(
+    model_cls: type[BaseModel],
+    raw: object,
+    *,
+    label: str,
+) -> tuple[BaseModel, list[str]]:
+    """Normalize one continuation child model while surfacing drift."""
+
+    if raw is None:
+        return model_cls(), []
+    if isinstance(raw, model_cls):
+        return raw, []
+    if not isinstance(raw, Mapping):
+        return model_cls(), [f'schema normalization: dropped malformed "{label}" because expected object, got {type(raw).__name__}']
+
+    issues: list[str] = []
+    normalized_fields: dict[str, object] = {}
+    allowed_fields = set(model_cls.model_fields)
+    for key, value in raw.items():
+        if key not in allowed_fields:
+            issues.append(f'schema normalization: dropped unknown "{label}.{key}"')
+            continue
+        try:
+            field_model = model_cls.model_validate({key: value})
+        except PydanticValidationError as exc:
+            issues.append(f'schema normalization: dropped malformed "{label}.{key}": {_first_validation_issue(exc)}')
+            continue
+        normalized_fields[key] = field_model.model_dump(mode="python")[key]
+
+    try:
+        model = model_cls.model_validate(normalized_fields)
+    except PydanticValidationError as exc:
+        issues.append(f'schema normalization: dropped malformed "{label}": {_first_validation_issue(exc)}')
+        model = model_cls()
+    return model, issues
+
+
+def _normalize_continuation_payload_with_issues(
+    continuation: object,
+) -> tuple[ContinuationState, list[str], bool]:
+    """Return a normalized continuation payload plus salvage issues."""
+
+    if isinstance(continuation, ContinuationState):
+        return continuation, [], False
+    if not isinstance(continuation, Mapping):
+        issue = f'schema normalization: dropped malformed "continuation" because expected object, got {type(continuation).__name__}'
+        return ContinuationState(), [issue], True
+
+    raw = dict(continuation)
+    issues: list[str] = []
+    allowed_top_level = {"schema_version", "handoff", "bounded_segment", "machine"}
+    for key in raw:
+        if key not in allowed_top_level:
+            issues.append(f'schema normalization: dropped unknown "continuation.{key}"')
+
+    schema_version = raw.get("schema_version", 1)
+    if type(schema_version) is int and schema_version == 1:
+        normalized_schema_version = 1
+    else:
+        issues.append(
+            f'schema normalization: dropped malformed "continuation.schema_version" because expected integer 1, got {type(schema_version).__name__}'
+        )
+        normalized_schema_version = 1
+
+    handoff, handoff_issues = _normalize_continuation_model(ContinuationHandoff, raw.get("handoff"), label="continuation.handoff")
+    machine, machine_issues = _normalize_continuation_model(ContinuationMachine, raw.get("machine"), label="continuation.machine")
+    bounded_segment, bounded_segment_issues = _normalize_continuation_model(
+        ContinuationBoundedSegment,
+        raw.get("bounded_segment"),
+        label="continuation.bounded_segment",
+    )
+    issues.extend([*handoff_issues, *machine_issues, *bounded_segment_issues])
+
+    normalized = ContinuationState(
+        schema_version=normalized_schema_version,
+        handoff=handoff if isinstance(handoff, ContinuationHandoff) else ContinuationHandoff(),
+        bounded_segment=(
+            bounded_segment
+            if isinstance(bounded_segment, ContinuationBoundedSegment) and not bounded_segment.is_empty
+            else None
+        ),
+        machine=machine if isinstance(machine, ContinuationMachine) else ContinuationMachine(),
+    )
+    return normalized, issues, bool(issues)
 
 
 class ContinuationSource(StrEnum):
@@ -306,26 +401,40 @@ def normalize_continuation_reference(
     return candidate.as_posix()
 
 
-def normalize_continuation(
-    project_root: Path | str,
-    continuation: ContinuationState | Mapping[str, object],
-) -> ContinuationState:
-    """Validate and normalize a canonical continuation payload."""
+def normalize_continuation_with_issues(
+    project_root: Path | str | None,
+    continuation: ContinuationState | Mapping[str, object] | object,
+) -> tuple[ContinuationState, list[str]]:
+    """Validate and normalize a canonical continuation payload with drift issues."""
 
-    model = continuation if isinstance(continuation, ContinuationState) else ContinuationState.model_validate(continuation)
-    normalized_handoff = model.handoff.model_copy(
-        update={
-            "resume_file": normalize_continuation_reference(project_root, model.handoff.resume_file),
-        }
-    )
-    normalized_segment = model.bounded_segment
-    if normalized_segment is not None:
+    normalized, issues, _ = _normalize_continuation_payload_with_issues(continuation)
+    normalized_handoff = normalized.handoff
+    if project_root is not None:
+        normalized_handoff = normalized_handoff.model_copy(
+            update={
+                "resume_file": normalize_continuation_reference(project_root, normalized_handoff.resume_file),
+            }
+        )
+    normalized_segment = normalized.bounded_segment
+    if normalized_segment is not None and project_root is not None:
         normalized_segment = normalized_segment.model_copy(
             update={
                 "resume_file": normalize_continuation_reference(project_root, normalized_segment.resume_file),
             }
         )
-    return model.model_copy(update={"handoff": normalized_handoff, "bounded_segment": normalized_segment})
+    if normalized_segment is not None and normalized_segment.is_empty:
+        normalized_segment = None
+    return normalized.model_copy(update={"handoff": normalized_handoff, "bounded_segment": normalized_segment}), issues
+
+
+def normalize_continuation(
+    project_root: Path | str,
+    continuation: ContinuationState | Mapping[str, object] | object,
+) -> ContinuationState:
+    """Validate and normalize a canonical continuation payload."""
+
+    model, _issues = normalize_continuation_with_issues(project_root, continuation)
+    return model
 
 
 def synthesize_legacy_continuation(
@@ -462,6 +571,7 @@ def resolve_continuation(
     *,
     state: Mapping[str, object] | BaseModel | None = None,
     current_execution: Mapping[str, object] | BaseModel | None = None,
+    state_issues: Sequence[str] | None = None,
 ) -> ContinuationProjection:
     """Resolve canonical continuation and project active pointers for callers.
 
@@ -474,12 +584,18 @@ def resolve_continuation(
     state_payload = _as_mapping(state) or {}
     raw_continuation = state_payload.get("continuation")
     if raw_continuation is not None:
-        continuation = normalize_continuation(project_root, raw_continuation)
+        continuation, continuation_issues = normalize_continuation_with_issues(project_root, raw_continuation)
+        has_continuation_drift = bool(continuation_issues) or any(
+            isinstance(issue, str) and "continuation" in issue and issue.startswith("schema normalization:")
+            for issue in (state_issues or [])
+        )
         if not continuation.is_empty:
             if continuation.bounded_segment is None:
                 overlay_segment = canonical_bounded_segment_from_execution_snapshot(project_root, current_execution)
                 if overlay_segment is not None:
                     continuation = continuation.model_copy(update={"bounded_segment": overlay_segment})
+            return _project_continuation(project_root, source=ContinuationSource.CANONICAL, continuation=continuation)
+        if has_continuation_drift:
             return _project_continuation(project_root, source=ContinuationSource.CANONICAL, continuation=continuation)
 
     legacy = synthesize_legacy_continuation(

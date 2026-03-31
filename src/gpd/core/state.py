@@ -49,6 +49,7 @@ from gpd.core.continuation import (
     ContinuationState,
     normalize_continuation,
     normalize_continuation_reference,
+    normalize_continuation_with_issues,
     resolve_continuation,
 )
 from gpd.core.contract_validation import (
@@ -954,14 +955,12 @@ def _finalize_project_contract_gate(
 
 
 def _normalize_continuation_payload(continuation: object) -> dict[str, object]:
-    if isinstance(continuation, ContinuationState):
-        return continuation.model_dump(mode="python")
-    if not isinstance(continuation, dict):
-        return _blank_continuation_payload()
-    try:
-        return ContinuationState.model_validate(continuation).model_dump(mode="python")
-    except PydanticValidationError:
-        return _blank_continuation_payload()
+    return _normalize_continuation_payload_with_issues(continuation)[0]
+
+
+def _normalize_continuation_payload_with_issues(continuation: object) -> tuple[dict[str, object], list[str]]:
+    normalized, issues = normalize_continuation_with_issues(None, continuation)
+    return normalized.model_dump(mode="python"), issues
 
 
 def _load_state_snapshot_for_mutation(cwd: Path) -> dict:
@@ -1068,7 +1067,7 @@ def _continuation_from_session_payload(
     return continuation
 
 
-def _mirror_continuation_state(raw: dict[str, object]) -> dict[str, object]:
+def _mirror_continuation_state(raw: dict[str, object], *, allow_session_seed: bool = True) -> dict[str, object]:
     """Project canonical continuation into the legacy ``session`` mirror.
 
     Legacy ``session`` payloads are only allowed to hydrate continuation when a
@@ -1085,7 +1084,7 @@ def _mirror_continuation_state(raw: dict[str, object]) -> dict[str, object]:
         session_payload = {**_blank_session_payload(), **session_payload}
 
     continuation_payload = _normalize_continuation_payload(mirrored.get("continuation"))
-    if _session_payload_has_values(session_payload):
+    if allow_session_seed and _session_payload_has_values(session_payload):
         continuation_payload = _continuation_from_session_payload(
             session_payload,
             base_continuation=continuation_payload,
@@ -1665,10 +1664,15 @@ def _normalize_state_schema(
                 )
                 del normalized[key]
             elif isinstance(default_val, dict) and not isinstance(normalized[key], dict):
-                integrity_issues.append(
-                    f'schema normalization: dropped "{key}" because expected object, got {type(normalized[key]).__name__}'
-                )
-                del normalized[key]
+                if key == "continuation":
+                    integrity_issues.append(
+                        f'schema normalization: continuation requires salvage because expected object, got {type(normalized[key]).__name__}'
+                    )
+                else:
+                    integrity_issues.append(
+                        f'schema normalization: dropped "{key}" because expected object, got {type(normalized[key]).__name__}'
+                    )
+                    del normalized[key]
 
     normalized = _salvage_state_sections(
         normalized,
@@ -1678,7 +1682,8 @@ def _normalize_state_schema(
 
     try:
         validated = ResearchState.model_validate(normalized).model_dump()
-        return _mirror_continuation_state(validated), integrity_issues
+        continuation_had_issues = any("continuation" in issue and issue.startswith("schema normalization:") for issue in integrity_issues)
+        return _mirror_continuation_state(validated, allow_session_seed=not continuation_had_issues), integrity_issues
     except PydanticValidationError as exc:
         bad_keys: set[str] = set()
         for err in exc.errors():
@@ -1695,7 +1700,8 @@ def _normalize_state_schema(
                 normalized.pop(bad_key, None)
             try:
                 validated = ResearchState.model_validate(normalized).model_dump()
-                return _mirror_continuation_state(validated), integrity_issues
+                continuation_had_issues = any("continuation" in issue and issue.startswith("schema normalization:") for issue in integrity_issues)
+                return _mirror_continuation_state(validated, allow_session_seed=not continuation_had_issues), integrity_issues
             except PydanticValidationError:
                 pass
 
@@ -1705,7 +1711,8 @@ def _normalize_state_schema(
         for key, value in normalized.items():
             if key not in result:
                 result[key] = value
-        return _mirror_continuation_state(result), integrity_issues
+        continuation_had_issues = any("continuation" in issue and issue.startswith("schema normalization:") for issue in integrity_issues)
+        return _mirror_continuation_state(result, allow_session_seed=not continuation_had_issues), integrity_issues
 
 
 def _normalize_state_schema_with_backup_project_contract(
@@ -1748,6 +1755,8 @@ def _normalize_state_schema_with_backup_project_contract(
             issue
             for issue in integrity_issues
             if issue.startswith('schema normalization: dropped "continuation" because expected object, got ')
+            or issue.startswith("schema normalization: continuation requires salvage because expected object, got ")
+            or issue.startswith('schema normalization: dropped malformed "continuation" because expected object, got ')
             or issue == 'schema normalization: removed invalid top-level sections "continuation"'
         ]
         primary_session_issues = [
@@ -1778,7 +1787,8 @@ def _normalize_state_schema_with_backup_project_contract(
             integrity_issues = [issue for issue in integrity_issues if issue not in primary_session_issues]
             recovered_session_from_backup = True
 
-    normalized = _mirror_continuation_state(normalized)
+    continuation_had_issues = any("continuation" in issue and issue.startswith("schema normalization:") for issue in integrity_issues)
+    normalized = _mirror_continuation_state(normalized, allow_session_seed=not continuation_had_issues)
     return (
         normalized,
         integrity_issues,
@@ -1951,6 +1961,14 @@ def _salvage_state_sections(
             normalized.get("intermediate_results"),
             integrity_issues,
         )
+    if normalized.get("continuation") is not None:
+        continuation_payload, continuation_issues = _normalize_continuation_payload_with_issues(
+            normalized.get("continuation")
+        )
+        normalized["continuation"] = continuation_payload
+        for issue in continuation_issues:
+            if issue not in integrity_issues:
+                integrity_issues.append(issue)
     return normalized
 
 
