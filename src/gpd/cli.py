@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import glob
 import json
 import os
 import posixpath
@@ -68,6 +69,7 @@ from gpd.core.resume_surface import (
     resume_candidate_kind,
     resume_candidate_kind_from_source,
 )
+from gpd.core.root_resolution import resolve_project_root
 from gpd.core.surface_phrases import (
     cost_inspect_action,
     local_cli_bridge_note,
@@ -100,9 +102,6 @@ err_console = Console(stderr=True)
 # Global state threaded through typer context
 _raw: bool = False
 _cwd: Path = Path(".")
-
-_DEFAULT_PROJECT_REENTRY_COMMANDS = frozenset({"gpd:progress", "gpd:resume-work"})
-
 
 def _emit_raw_json(data: object, *, err: bool = False) -> None:
     """Emit literal JSON without Rich syntax styling."""
@@ -187,13 +186,18 @@ def _status_command_cwd(cwd: Path | None = None) -> Path:
 
 def _state_command_cwd(cwd: Path | None = None) -> Path:
     """Resolve the effective cwd for state and project-contract commands."""
-    from gpd.core.root_resolution import resolve_project_root
-
     workspace_cwd = (cwd or _get_cwd()).expanduser().resolve(strict=False)
     resolved = resolve_project_root(workspace_cwd, require_layout=True)
     if resolved is not None:
         return resolved
     return _status_command_cwd(cwd)
+
+
+def _project_scoped_cwd(cwd: Path | None = None) -> Path:
+    """Resolve the nearest verified project root for project-scoped preflights."""
+    workspace_cwd = (cwd or _get_cwd()).expanduser().resolve(strict=False)
+    resolved = resolve_project_root(workspace_cwd, require_layout=True)
+    return resolved if resolved is not None else workspace_cwd
 
 
 def _split_global_cli_options(argv: list[str]) -> tuple[list[str], list[str]]:
@@ -1078,8 +1082,11 @@ def _resume_runtime_commands(*, cwd: Path | None = None) -> tuple[str | None, st
     """Return runtime-specific resume/suggest commands when they can be resolved."""
     try:
         from gpd.adapters import get_adapter
+        from gpd.hooks.runtime_detect import detect_active_runtime_with_gpd_install
 
-        runtime_name = detect_runtime_for_gpd_use(cwd=cwd or _get_cwd())
+        runtime_name = detect_active_runtime_with_gpd_install(cwd=cwd or _get_cwd())
+        if not runtime_name:
+            return None, None
         adapter = get_adapter(runtime_name)
         resume_work_command = str(adapter.format_command("resume-work")).strip()
         suggest_next_command = str(adapter.format_command("suggest-next")).strip()
@@ -5682,6 +5689,64 @@ def _active_runtime_command_prefix(*, cwd: Path | None = None) -> str | None:
         return None
 
 
+def _command_required_file_patterns(command: object) -> list[str]:
+    """Return normalized ``requires.files`` patterns from command metadata."""
+    requires = getattr(command, "requires", None)
+    if not isinstance(requires, Mapping):
+        return []
+    raw_patterns = requires.get("files")
+    if isinstance(raw_patterns, str):
+        candidates = [raw_patterns]
+    elif isinstance(raw_patterns, list):
+        candidates = [item for item in raw_patterns if isinstance(item, str)]
+    else:
+        return []
+    return [pattern.strip() for pattern in candidates if pattern.strip()]
+
+
+def _command_required_files_present(
+    project_root: Path,
+    command: object,
+) -> tuple[bool, list[str], list[str]]:
+    """Return whether command-required files exist under *project_root*.
+
+    Literal file requirements are conjunctive: every declared path must exist.
+    Globbed requirements are alternative surfaces: if one or more glob patterns
+    are declared, at least one of them must match.
+    """
+    patterns = _command_required_file_patterns(command)
+    if not patterns:
+        return True, [], []
+
+    matched_literals: list[str] = []
+    matched_globs: list[str] = []
+    missing_literals: list[str] = []
+    missing_globs: list[str] = []
+    for pattern in patterns:
+        if glob.has_magic(pattern):
+            try:
+                if any(project_root.glob(pattern)):
+                    matched_globs.append(pattern)
+                else:
+                    missing_globs.append(pattern)
+            except ValueError:
+                missing_globs.append(pattern)
+            continue
+
+        candidate = Path(pattern)
+        resolved = candidate if candidate.is_absolute() else project_root / candidate
+        if resolved.exists():
+            matched_literals.append(pattern)
+        else:
+            missing_literals.append(pattern)
+
+    glob_passed = not missing_globs or bool(matched_globs)
+    passed = not missing_literals and glob_passed
+    matched = [*matched_literals, *matched_globs]
+    missing = [*missing_literals, *missing_globs]
+    return passed, matched, missing
+
+
 def _validated_runtime_surface(*, cwd: Path | None = None) -> str:
     """Return the machine-readable surface label for the active runtime command prefix."""
     prefix = _active_runtime_command_prefix(cwd=cwd)
@@ -5741,9 +5806,6 @@ def _command_supports_project_reentry(command: object) -> bool:
     explicit = getattr(command, "project_reentry_capable", None)
     if isinstance(explicit, bool):
         return explicit
-    command_name = getattr(command, "name", None)
-    if isinstance(command_name, str):
-        return command_name in _DEFAULT_PROJECT_REENTRY_COMMANDS
     return False
 
 
@@ -5765,7 +5827,7 @@ def _build_command_context_preflight(
 
     cwd = _get_cwd()
     command, public_command_name = _resolve_registry_command(command_name)
-    context_cwd = _status_command_cwd(cwd) if _command_supports_project_reentry(command) else cwd
+    context_cwd = _status_command_cwd(cwd) if _command_supports_project_reentry(command) else _project_scoped_cwd(cwd)
     layout = ProjectLayout(context_cwd)
     project_exists = layout.project_md.exists()
     dispatch_note = _runtime_surface_dispatch_note(cwd=cwd)
@@ -5816,6 +5878,7 @@ def _build_command_context_preflight(
         )
 
     if command.context_mode == "project-required":
+        required_file_patterns = _command_required_file_patterns(command)
         if _command_supports_project_reentry(command):
             reentry = _status_command_reentry(cwd)
             selected_root = reentry.resolved_project_root or context_cwd
@@ -5879,7 +5942,25 @@ def _build_command_context_preflight(
                 ),
                 blocking=False,
             )
-            recoverable = (state_exists or roadmap_exists or project_exists) and not reentry.requires_user_selection
+            required_files_present = True
+            matched_patterns: list[str] = []
+            missing_patterns: list[str] = []
+            if required_file_patterns:
+                required_files_present, matched_patterns, missing_patterns = _command_required_files_present(
+                    selected_root,
+                    command,
+                )
+                add_check(
+                    "required_files",
+                    required_files_present,
+                    (
+                        "matching required files present: " + ", ".join(matched_patterns)
+                        if required_files_present
+                        else "missing required files or unmatched patterns: " + ", ".join(missing_patterns)
+                    ),
+                    blocking=False,
+                )
+            recoverable = (state_exists or roadmap_exists or project_exists) and required_files_present and not reentry.requires_user_selection
             guidance = (
                 ""
                 if recoverable
@@ -5887,10 +5968,12 @@ def _build_command_context_preflight(
                     "This command found multiple recoverable recent GPD projects and will not switch silently. "
                     "Use `gpd resume --recent` to pick the right project explicitly, then reopen it in the runtime."
                     if reentry.requires_user_selection
-                    else
-                    "This command requires a recoverable GPD workspace. "
-                    "Open the right project, use `gpd resume --recent` to rediscover it, or "
-                    f"initialize a new project with `{init_command}` in the runtime surface or `gpd init new-project` in the local CLI."
+                    else (
+                        "This command requires a recoverable GPD workspace."
+                        if not (state_exists or roadmap_exists or project_exists)
+                        else "This command requires one of the declared required files: "
+                        + ", ".join(required_file_patterns)
+                    )
                 )
             )
             return CommandContextPreflightResult(
@@ -5913,18 +5996,37 @@ def _build_command_context_preflight(
                 else f"missing {_format_display_path(layout.project_md)}"
             ),
         )
+        required_file_patterns = _command_required_file_patterns(command)
+        if required_file_patterns:
+            required_files_present, matched_patterns, missing_patterns = _command_required_files_present(
+                context_cwd,
+                command,
+            )
+            add_check(
+                "required_files",
+                required_files_present,
+                (
+                    "matching required files present: " + ", ".join(matched_patterns)
+                    if required_files_present
+                    else "missing required files or unmatched patterns: " + ", ".join(missing_patterns)
+                ),
+            )
+        else:
+            required_files_present = True
+        passed = project_exists and required_files_present
         guidance = (
             ""
-            if project_exists
+            if passed
             else (
-                "This command requires an initialized GPD project. "
-                f"Use `{init_command}` in the runtime surface or `gpd init new-project` in the local CLI."
+                "This command requires an initialized GPD project."
+                if not project_exists
+                else "This command requires one of the declared required files: " + ", ".join(required_file_patterns)
             )
         )
         return CommandContextPreflightResult(
             command=public_command_name,
             context_mode=command.context_mode,
-            passed=project_exists,
+            passed=passed,
             project_exists=project_exists,
             explicit_inputs=[],
             guidance=guidance,
@@ -5985,7 +6087,8 @@ def _build_review_preflight(
     from gpd.core.state import state_validate
 
     cwd = _get_cwd()
-    layout = ProjectLayout(cwd)
+    project_cwd = _project_scoped_cwd(cwd)
+    layout = ProjectLayout(project_cwd)
     command, public_command_name = _resolve_registry_command(command_name)
     contract = command.review_contract
     if contract is None:
@@ -5994,8 +6097,8 @@ def _build_review_preflight(
     checks: list[ReviewPreflightCheck] = []
     phase_subject = subject
     if phase_subject is None and "phase_artifacts" in contract.preflight_checks:
-        phase_subject = _current_review_phase_subject(cwd)
-    phase_info = find_phase(cwd, phase_subject) if phase_subject and "phase_artifacts" in contract.preflight_checks else None
+        phase_subject = _current_review_phase_subject(project_cwd)
+    phase_info = find_phase(project_cwd, phase_subject) if phase_subject and "phase_artifacts" in contract.preflight_checks else None
 
     def add_check(name: str, passed: bool, detail: str, *, blocking: bool | None = None) -> None:
         checks.append(
@@ -6030,7 +6133,7 @@ def _build_review_preflight(
             ),
         )
         if strict:
-            validation = state_validate(cwd, integrity_mode="review")
+            validation = state_validate(project_cwd, integrity_mode="review")
             detail = f"integrity_status={validation.integrity_status}"
             if validation.issues:
                 detail = f"{detail}; {'; '.join(validation.issues)}"
@@ -6093,14 +6196,14 @@ def _build_review_preflight(
     if "manuscript" in contract.preflight_checks:
         if command.name in {"gpd:peer-review", "gpd:arxiv-submission"}:
             manuscript, manuscript_detail = _resolve_review_preflight_manuscript(
-                cwd,
+                project_cwd,
                 subject,
                 allow_markdown=command.name != "gpd:arxiv-submission",
             )
         elif command.name in {"gpd:write-paper", "gpd:respond-to-referees"}:
-            manuscript, manuscript_detail = _resolve_review_preflight_manuscript(cwd, None, allow_markdown=True)
+            manuscript, manuscript_detail = _resolve_review_preflight_manuscript(project_cwd, None, allow_markdown=True)
         else:
-            manuscript, manuscript_detail = _find_manuscript_main(cwd), ""
+            manuscript, manuscript_detail = _find_manuscript_main(project_cwd), ""
         if command.name == "gpd:write-paper" and manuscript is None:
             manuscript_passed = True
             manuscript_detail = (
@@ -6127,7 +6230,7 @@ def _build_review_preflight(
         if subject and command.name == "gpd:respond-to-referees" and subject != "paste":
             report_path = Path(subject)
             if not report_path.is_absolute():
-                report_path = cwd / report_path
+                report_path = project_cwd / report_path
             add_check(
                 "referee_report_source",
                 report_path.exists(),
@@ -6136,7 +6239,7 @@ def _build_review_preflight(
                     if report_path.exists()
                     else f"missing {_format_display_path(report_path)}"
                 ),
-        )
+            )
         if strict and manuscript is not None and command.name in {
             "gpd:peer-review",
             "gpd:write-paper",
@@ -6194,7 +6297,7 @@ def _build_review_preflight(
                     ),
                     blocking=True,
                 )
-                publication_blockers = _current_publication_blockers(cwd)
+                publication_blockers = _current_publication_blockers(project_cwd)
                 add_check(
                     "publication_blockers",
                     not publication_blockers,
@@ -6256,7 +6359,7 @@ def _build_review_preflight(
                             review_ledger_valid = _manuscript_matches_review_artifact_path(
                                 review_ledger.manuscript_path,
                                 manuscript,
-                                cwd=cwd,
+                                cwd=project_cwd,
                             )
                             add_check(
                                 "review_ledger_valid",
@@ -6299,10 +6402,14 @@ def _build_review_preflight(
                                     strict=True,
                                     require_explicit_inputs=True,
                                     review_ledger=review_ledger,
-                                    project_root=cwd,
+                                    project_root=project_cwd,
                                 )
                                 decision_reasons.extend(report.reasons)
-                            if not _manuscript_matches_review_artifact_path(decision.manuscript_path, manuscript, cwd=cwd):
+                            if not _manuscript_matches_review_artifact_path(
+                                decision.manuscript_path,
+                                manuscript,
+                                cwd=project_cwd,
+                            ):
                                 decision_reasons.append(
                                     "referee decision manuscript_path does not match the active submission manuscript"
                                 )
