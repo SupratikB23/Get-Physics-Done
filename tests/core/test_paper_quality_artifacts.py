@@ -90,7 +90,7 @@ The benchmark was recovered within tolerance.
         ),
     )
     _write(
-        tmp_path / "GPD" / "paper" / "FIGURE_TRACKER.md",
+        tmp_path / "paper" / "FIGURE_TRACKER.md",
         """---
 figure_registry:
   - id: fig-benchmark
@@ -484,7 +484,7 @@ Done.
 
 def test_build_paper_quality_input_requires_decisive_verdicts_for_decisive_artifact_coverage(tmp_path: Path) -> None:
     _write(
-        tmp_path / "GPD" / "paper" / "FIGURE_TRACKER.md",
+        tmp_path / "paper" / "FIGURE_TRACKER.md",
         """---
 figure_registry:
   - id: fig-benchmark
@@ -597,6 +597,27 @@ Done.
         tmp_path / "manuscript" / "refs.bib",
         "@article{bench2026,\n  title={Benchmark},\n  author={Doe, Jane},\n  year={2026}\n}\n",
     )
+    _write(
+        tmp_path / "manuscript" / "FIGURE_TRACKER.md",
+        """---
+figure_registry:
+  - id: fig-benchmark
+    label: "Fig. 1"
+    kind: figure
+    role: benchmark
+    path: figures/benchmark.pdf
+    contract_ids: [claim-benchmark]
+    decisive: true
+    has_units: true
+    has_uncertainty: true
+    referenced_in_text: true
+    caption_self_contained: true
+    colorblind_safe: true
+---
+
+# Figure Tracker
+""",
+    )
 
     result = build_paper_quality_input(tmp_path)
 
@@ -604,6 +625,7 @@ Done.
     assert result.journal == "jhep"
     assert result.citations.citation_keys_resolve.satisfied == 1
     assert result.citations.citation_keys_resolve.total == 1
+    assert result.figures.decisive_artifact_roles_clear.satisfied == 1
 
 
 def test_build_paper_quality_input_surfaces_current_manuscript_reference_status(tmp_path: Path) -> None:
@@ -720,7 +742,7 @@ The benchmark remains under active tension.
         + "\n",
     )
     _write(
-        tmp_path / "GPD" / "paper" / "FIGURE_TRACKER.md",
+        tmp_path / "paper" / "FIGURE_TRACKER.md",
         """---
 figure_registry:
   - id: fig-benchmark

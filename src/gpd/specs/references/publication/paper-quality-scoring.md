@@ -21,7 +21,7 @@ This is **not** the final referee-decision policy. A manuscript can score well o
 
 | Check | Points | How to verify |
 |-------|--------|---------------|
-| Decisive figures/tables labeled with units | 3 | Read `GPD/paper/FIGURE_TRACKER.md` `figure_registry` and verify `has_units: true` for decisive artifacts |
+| Decisive figures/tables labeled with units | 3 | Read the manuscript-root `FIGURE_TRACKER.md` `figure_registry` and verify `has_units: true` for decisive artifacts |
 | Decisive figures/tables carry uncertainty bands or error bars | 4 | Use the tracker `has_uncertainty` field for decisive artifacts |
 | Decisive figures/tables referenced in text and role is clear | 4 | Use the tracker `referenced_in_text` field and verify the `role` is not `other` |
 | Captions are self-contained (understandable without reading text) | 3 | Read each caption in isolation |

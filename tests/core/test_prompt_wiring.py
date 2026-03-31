@@ -2214,12 +2214,16 @@ def test_stage8_surfaces_decisive_comparisons_paper_quality_artifacts_and_profil
     assert "figure_registry" in figure_tracker
     assert "role: smoking_gun|benchmark|comparison|sanity_check|publication_polish|other" in figure_tracker
     assert "canonical schema source of truth" in figure_tracker
+    assert "`${PAPER_DIR}/FIGURE_TRACKER.md`" in figure_tracker
     assert "validate paper-quality --from-project ." in write_paper
     assert "Before reading or updating `${PAPER_DIR}/FIGURE_TRACKER.md`, load" in write_paper
     assert '"review_cadence": "adaptive"' in new_project
     assert "Adaptive review cadence" in new_project
     assert "prior decisive `contract_results`, decisive `comparison_verdicts`, or an explicit approach lock" in execute_phase
+    assert "paper/FIGURE_TRACKER.md" in execute_phase
+    assert "GPD/paper/FIGURE_TRACKER.md" not in execute_phase
     assert "figure_registry" in scoring
+    assert "manuscript-root `FIGURE_TRACKER.md`" in scoring
     assert "Review (Recommended)" in settings
     assert "all required contract-aware checks" in profiles
     assert "current registry: 5.1-5.19" in quick_reference

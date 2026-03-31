@@ -1057,15 +1057,15 @@ Read the figure tracker template:
 cat {GPD_INSTALL_DIR}/templates/paper/figure-tracker.md
 ```
 
-**If `GPD/paper/FIGURE_TRACKER.md` already exists:** Append new figures to the existing registry. Do not overwrite existing entries.
+**If `paper/FIGURE_TRACKER.md` already exists:** Append new figures to the existing registry. Do not overwrite existing entries.
 
 **If it does not exist:** Create it from the template:
 
 ```bash
-mkdir -p GPD/paper
+mkdir -p paper
 ```
 
-Write `GPD/paper/FIGURE_TRACKER.md` with:
+Write `paper/FIGURE_TRACKER.md` with:
 
 - One entry per discovered figure/plot
 - `Source phase` set to the current phase number
@@ -1077,12 +1077,12 @@ Write `GPD/paper/FIGURE_TRACKER.md` with:
 Commit:
 
 ```bash
-PRE_CHECK=$(gpd pre-commit-check --files GPD/paper/FIGURE_TRACKER.md 2>&1) || true
+PRE_CHECK=$(gpd pre-commit-check --files paper/FIGURE_TRACKER.md 2>&1) || true
 echo "$PRE_CHECK"
 
 gpd commit \
   "docs(phase-${phase_number}): update figure tracker" \
-  --files GPD/paper/FIGURE_TRACKER.md
+  --files paper/FIGURE_TRACKER.md
 ```
 
 **If no figures found:** Skip silently (not all phases produce visual outputs).

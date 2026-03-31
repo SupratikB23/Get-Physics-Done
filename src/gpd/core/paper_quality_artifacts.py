@@ -304,8 +304,8 @@ def _manuscript_reference_status(
     return status_entries
 
 
-def _load_figure_registry(project_root: Path) -> list[_FigureTrackerEntry]:
-    tracker_path = project_root / "GPD" / "paper" / "FIGURE_TRACKER.md"
+def _load_figure_registry(manuscript_dir: Path) -> list[_FigureTrackerEntry]:
+    tracker_path = manuscript_dir / "FIGURE_TRACKER.md"
     meta = _extract_meta(tracker_path)
     raw = meta.get("figure_registry")
     if not isinstance(raw, list):
@@ -661,7 +661,7 @@ def build_paper_quality_input(project_root: Path) -> PaperQualityInput:
     )
     journal = _resolve_paper_journal(artifact_manifest, paper_config)
 
-    figure_registry = _load_figure_registry(root)
+    figure_registry = _load_figure_registry(paper_dir)
     verdicts, verdicts_parse_ok = _collect_comparison_verdicts(root)
     contract_coverage = _collect_contract_coverage(root)
     figures, results = _build_figures_input(

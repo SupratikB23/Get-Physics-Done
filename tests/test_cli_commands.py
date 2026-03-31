@@ -2901,7 +2901,7 @@ class TestReviewValidationCommands:
             ),
             encoding="utf-8",
         )
-        tracker_dir = gpd_project / "GPD" / "paper"
+        tracker_dir = gpd_project / "paper"
         tracker_dir.mkdir(parents=True, exist_ok=True)
         (tracker_dir / "FIGURE_TRACKER.md").write_text(
             "---\n"
