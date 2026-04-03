@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import ValidationError as PydanticValidationError
+
 from gpd.core.constants import (
     LITERATURE_DIR_NAME,
     PHASES_DIR_NAME,
@@ -54,6 +56,7 @@ __all__ = [
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 CORE_CONVENTIONS = ("metric_signature", "natural_units", "coordinate_system")
+_REVIEW_LEDGER_FILENAME_RE = re.compile(r"^REVIEW-LEDGER(?P<round_suffix>-R(?P<round>\d+))?\.json$")
 _REFEREE_DECISION_FILENAME_RE = re.compile(r"^REFEREE-DECISION(?P<round_suffix>-R(?P<round>\d+))?\.json$")
 
 
@@ -413,38 +416,85 @@ def _latest_referee_decision_recommendation(cwd: Path) -> str | None:
 
 
 def _latest_referee_decision_allows_submission(cwd: Path) -> bool:
-    review_dir = _planning_dir(cwd) / "review"
-    if not review_dir.is_dir():
-        return False
+    return _publication_review_package_allows_submission(cwd)
 
+
+def _latest_publication_review_package(review_dir: Path) -> tuple[Path, Path] | None:
+    ledger_by_round: dict[int, Path] = {}
     decision_by_round: dict[int, Path] = {}
+
+    for path in sorted(review_dir.glob("REVIEW-LEDGER*.json")):
+        details = _review_artifact_round(path, pattern=_REVIEW_LEDGER_FILENAME_RE)
+        if details is not None:
+            ledger_by_round[details[0]] = path
     for path in sorted(review_dir.glob("REFEREE-DECISION*.json")):
         details = _review_artifact_round(path, pattern=_REFEREE_DECISION_FILENAME_RE)
         if details is not None:
             decision_by_round[details[0]] = path
 
-    if not decision_by_round:
+    if not ledger_by_round or not decision_by_round:
+        return None
+
+    latest_round = max({*ledger_by_round.keys(), *decision_by_round.keys()})
+    ledger_path = ledger_by_round.get(latest_round)
+    decision_path = decision_by_round.get(latest_round)
+    if ledger_path is None or decision_path is None:
+        return None
+    return ledger_path, decision_path
+
+
+def _publication_review_package_allows_submission(cwd: Path) -> bool:
+    review_dir = _planning_dir(cwd) / "review"
+    if not review_dir.is_dir():
         return False
 
-    latest_round = max(decision_by_round)
+    latest_package = _latest_publication_review_package(review_dir)
+    if latest_package is None:
+        return False
+
+    ledger_path, decision_path = latest_package
     try:
-        payload = json.loads(decision_by_round[latest_round].read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
+        from gpd.core.referee_policy import evaluate_referee_decision
+        from gpd.mcp.paper.review_artifacts import read_referee_decision, read_review_ledger
 
-    recommendation = payload.get("final_recommendation")
-    if not isinstance(recommendation, str):
+        review_ledger = read_review_ledger(ledger_path)
+        decision = read_referee_decision(decision_path)
+        report = evaluate_referee_decision(
+            decision,
+            strict=True,
+            require_explicit_inputs=True,
+            review_ledger=review_ledger,
+            project_root=cwd,
+        )
+    except (OSError, json.JSONDecodeError, PydanticValidationError):
         return False
-    normalized = recommendation.strip().lower()
-    if normalized not in {"accept", "minor_revision"}:
+    except ValueError:
         return False
+    if not report.valid:
+        return False
+    if decision.final_recommendation not in {"accept", "minor_revision"}:
+        return False
+    return not decision.blocking_issue_ids
 
-    blocking_issue_ids = payload.get("blocking_issue_ids")
-    if blocking_issue_ids is None:
+
+def _manuscript_submission_proof_review_is_fresh(
+    cwd: Path,
+    manuscript_entrypoint: Path | None,
+) -> bool:
+    if manuscript_entrypoint is None:
         return True
-    if not isinstance(blocking_issue_ids, list):
-        return False
-    return not any(isinstance(issue_id, str) and issue_id.strip() for issue_id in blocking_issue_ids)
+
+    from gpd.core.proof_review import (
+        manuscript_has_theorem_bearing_review_anchor,
+        resolve_manuscript_proof_review_status,
+    )
+
+    theorem_bearing = manuscript_has_theorem_bearing_review_anchor(cwd, manuscript_entrypoint)
+    if not theorem_bearing:
+        return True
+
+    proof_review_status = resolve_manuscript_proof_review_status(cwd, manuscript_entrypoint)
+    return proof_review_status.can_rely_on_prior_review and proof_review_status.state == "fresh"
 
 
 def _has_referee_report(cwd: Path) -> bool:
@@ -807,7 +857,10 @@ def suggest_next(cwd: Path, *, limit: int = 5) -> SuggestResult:
     has_latex_manuscript = manuscript_entrypoint is not None and manuscript_entrypoint.suffix == ".tex"
     has_lit_review = _has_literature_review(cwd)
     has_referee = _has_referee_report(cwd)
-    submission_ready_review = _latest_referee_decision_allows_submission(cwd)
+    submission_ready_review = _latest_referee_decision_allows_submission(cwd) and _manuscript_submission_proof_review_is_fresh(
+        cwd,
+        manuscript_entrypoint,
+    )
 
     ctx_kwargs["has_paper"] = has_paper_flag
     ctx_kwargs["has_literature_review"] = has_lit_review

@@ -11,6 +11,8 @@ import pytest
 from gpd.adapters import get_adapter, list_runtimes
 from gpd.adapters.runtime_catalog import get_runtime_descriptor
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME
+from gpd.core.proof_review import resolve_manuscript_proof_review_status
+from gpd.core.reproducibility import compute_sha256
 from gpd.core.suggest import (
     Recommendation,
     SuggestContext,
@@ -121,6 +123,205 @@ def _create_todos(tmp_path: Path, count: int) -> None:
     pending.mkdir(parents=True, exist_ok=True)
     for i in range(count):
         (pending / f"todo-{i}.md").write_text(f"Todo {i}\n")
+
+
+def _write_submission_review_package(
+    tmp_path: Path,
+    *,
+    theorem_bearing: bool,
+    review_report: bool = False,
+) -> Path:
+    root = _setup_project(tmp_path)
+    manuscript = root / "paper" / "main.tex"
+    manuscript.parent.mkdir(parents=True, exist_ok=True)
+    if theorem_bearing:
+        manuscript.write_text(
+            "\\documentclass{article}\n\\begin{document}\n\\begin{theorem}For every r_0 > 0, the orbit intersects the target annulus.\\end{theorem}\n\\end{document}\n",
+            encoding="utf-8",
+        )
+    else:
+        manuscript.write_text(
+            "\\documentclass{article}\n\\begin{document}\nSubmission draft.\n\\end{document}\n",
+            encoding="utf-8",
+        )
+
+    review_dir = root / "GPD" / "review"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    manuscript_sha256 = compute_sha256(manuscript)
+    claim_kind = "theorem" if theorem_bearing else "other"
+    theorem_assumptions = ["chi > 0"] if theorem_bearing else []
+    theorem_parameters = ["r_0"] if theorem_bearing else []
+    claims_reviewed = ["CLM-001"] if theorem_bearing else []
+    proof_audits = [
+        {
+            "claim_id": "CLM-001",
+            "theorem_assumptions_checked": theorem_assumptions,
+            "theorem_parameters_checked": theorem_parameters,
+            "proof_locations": ["paper/main.tex:3"] if theorem_bearing else [],
+            "uncovered_assumptions": [],
+            "uncovered_parameters": [],
+            "coverage_gaps": [],
+            "alignment_status": "aligned" if theorem_bearing else "not_applicable",
+            "notes": "Complete coverage." if theorem_bearing else "Not theorem-bearing.",
+        }
+    ] if theorem_bearing else []
+
+    (review_dir / "CLAIMS.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "manuscript_path": "paper/main.tex",
+                "manuscript_sha256": manuscript_sha256,
+                "claims": [
+                    {
+                        "claim_id": "CLM-001",
+                        "claim_type": "main_result",
+                        "claim_kind": claim_kind,
+                        "text": (
+                            "For every r_0 > 0, the orbit intersects the target annulus."
+                            if theorem_bearing
+                            else "The manuscript states a non-theorem result."
+                        ),
+                        "artifact_path": "paper/main.tex",
+                        "section": "Main Result",
+                        "equation_refs": [],
+                        "figure_refs": [],
+                        "supporting_artifacts": [],
+                        "theorem_assumptions": theorem_assumptions,
+                        "theorem_parameters": theorem_parameters,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    stage_artifacts = []
+    for stage_id in ("reader", "literature", "math", "physics", "interestingness"):
+        stage_artifact = review_dir / f"STAGE-{stage_id}.json"
+        stage_artifacts.append(f"GPD/review/{stage_artifact.name}")
+        stage_artifact.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "round": 1,
+                    "stage_id": stage_id,
+                    "stage_kind": stage_id,
+                    "manuscript_path": "paper/main.tex",
+                    "manuscript_sha256": manuscript_sha256,
+                    "claims_reviewed": claims_reviewed if stage_id == "math" else [],
+                    "summary": f"{stage_id} review",
+                    "strengths": ["checked manuscript"],
+                    "findings": [],
+                    "proof_audits": proof_audits if stage_id == "math" else [],
+                    "confidence": "high",
+                    "recommendation_ceiling": "minor_revision",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    (review_dir / "REVIEW-LEDGER.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "round": 1,
+                "manuscript_path": "paper/main.tex",
+                "issues": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (review_dir / "REFEREE-DECISION.json").write_text(
+        json.dumps(
+            {
+                "manuscript_path": "paper/main.tex",
+                "target_journal": "jhep",
+                "final_recommendation": "accept",
+                "final_confidence": "high",
+                "stage_artifacts": stage_artifacts,
+                "central_claims_supported": True,
+                "claim_scope_proportionate_to_evidence": True,
+                "physical_assumptions_justified": True,
+                "proof_audit_coverage_complete": True,
+                "theorem_proof_alignment_adequate": True,
+                "unsupported_claims_are_central": False,
+                "reframing_possible_without_new_results": True,
+                "mathematical_correctness": "adequate",
+                "novelty": "adequate",
+                "significance": "adequate",
+                "venue_fit": "adequate",
+                "literature_positioning": "adequate",
+                "unresolved_major_issues": 0,
+                "unresolved_minor_issues": 0,
+                "blocking_issue_ids": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    if theorem_bearing and review_report:
+        (review_dir / "PROOF-REDTEAM.md").write_text(
+            (
+                "---\n"
+                "status: passed\n"
+                "reviewer: gpd-check-proof\n"
+                "claim_ids:\n"
+                "  - CLM-001\n"
+                "proof_artifact_paths:\n"
+                "  - paper/main.tex\n"
+                "manuscript_path: paper/main.tex\n"
+                f"manuscript_sha256: {manuscript_sha256}\n"
+                "round: 1\n"
+                "---\n\n"
+                "# Proof Redteam\n"
+                "## Proof Inventory\n"
+                "- Exact claim / theorem text: For every r_0 > 0, the orbit intersects the target annulus.\n"
+                "- Claim / theorem target: Annulus intersection for every target radius.\n"
+                "- Named parameters:\n"
+                "  - `r_0`: target radius\n"
+                "- Hypotheses:\n"
+                "  - `H1`: chi > 0\n"
+                "- Quantifier / domain obligations:\n"
+                "  - for every r_0 > 0\n"
+                "- Conclusion clauses:\n"
+                "  - annulus intersection holds\n"
+                "## Coverage Ledger\n"
+                "### Named-Parameter Coverage\n"
+                "| Parameter | Role / Domain | Proof Location | Status | Notes |\n"
+                "| --- | --- | --- | --- | --- |\n"
+                "| `r_0` | target radius | paper/main.tex:3 | covered | Carried through the argument. |\n"
+                "### Hypothesis Coverage\n"
+                "| Hypothesis | Proof Location | Status | Notes |\n"
+                "| --- | --- | --- | --- |\n"
+                "| `H1` | paper/main.tex:3 | covered | Used in the positivity step. |\n"
+                "### Quantifier / Domain Coverage\n"
+                "| Obligation | Proof Location | Status | Notes |\n"
+                "| --- | --- | --- | --- |\n"
+                "| `for every r_0 > 0` | paper/main.tex:3 | covered | No specialization introduced. |\n"
+                "### Conclusion-Clause Coverage\n"
+                "| Clause | Proof Location | Status | Notes |\n"
+                "| --- | --- | --- | --- |\n"
+                "| annulus intersection holds | paper/main.tex:3 | covered | Final sentence states it. |\n"
+                "## Adversarial Probe\n"
+                "- Probe type: dropped-parameter test\n"
+                "- Result: The proof still references r_0, so the theorem remains global in the target radius.\n"
+                "## Verdict\n"
+                "- Scope status: `matched`\n"
+                "- Quantifier status: `matched`\n"
+                "- Counterexample status: `none_found`\n"
+                "- Blocking gaps:\n"
+                "  - None.\n"
+                "## Required Follow-Up\n"
+                "- None.\n"
+            ),
+            encoding="utf-8",
+        )
+        resolve_manuscript_proof_review_status(root, manuscript, persist_manifest=True)
+
+    if review_report:
+        (root / "GPD" / "REFEREE-REPORT.md").write_text("Accepted after revision.\n", encoding="utf-8")
+    return root
 
 
 # ─── No Project ────────────────────────────────────────────────────────────────
@@ -557,15 +758,9 @@ def test_markdown_referee_report_suggests_response_without_arxiv_submission(tmp_
 
 
 def test_author_response_and_accepted_decision_clear_referee_response_suggestion(tmp_path: Path) -> None:
-    root = _setup_project(tmp_path)
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
     _create_roadmap(root)
-    (root / "paper").mkdir()
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n", encoding="utf-8")
-    (root / "GPD" / "REFEREE-REPORT.md").write_text("Accepted after revision.\n", encoding="utf-8")
     (root / "GPD" / "AUTHOR-RESPONSE.md").write_text("Responses incorporated.\n", encoding="utf-8")
-    review_dir = root / "GPD" / "review"
-    review_dir.mkdir(parents=True, exist_ok=True)
-    (review_dir / "REFEREE-DECISION.json").write_text('{"final_recommendation":"accept"}\n', encoding="utf-8")
 
     result = suggest_next(root)
     actions = [s.action for s in result.suggestions]
@@ -576,15 +771,34 @@ def test_author_response_and_accepted_decision_clear_referee_response_suggestion
 
 
 def test_blocking_accepted_decision_does_not_suggest_arxiv_submission(tmp_path: Path) -> None:
-    root = _setup_project(tmp_path)
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
     _create_roadmap(root)
-    (root / "paper").mkdir()
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n", encoding="utf-8")
     (root / "GPD" / "AUTHOR-RESPONSE.md").write_text("Responses incorporated.\n", encoding="utf-8")
-    review_dir = root / "GPD" / "review"
-    review_dir.mkdir(parents=True, exist_ok=True)
-    (review_dir / "REFEREE-DECISION.json").write_text(
-        '{"final_recommendation":"accept","blocking_issue_ids":["REF-001"]}\n',
+    (root / "GPD" / "review" / "REFEREE-DECISION.json").write_text(
+        json.dumps(
+            {
+                "manuscript_path": "paper/main.tex",
+                "target_journal": "jhep",
+                "final_recommendation": "accept",
+                "final_confidence": "high",
+                "stage_artifacts": [f"GPD/review/STAGE-{stage}.json" for stage in ("reader", "literature", "math", "physics", "interestingness")],
+                "central_claims_supported": True,
+                "claim_scope_proportionate_to_evidence": True,
+                "physical_assumptions_justified": True,
+                "proof_audit_coverage_complete": True,
+                "theorem_proof_alignment_adequate": False,
+                "unsupported_claims_are_central": False,
+                "reframing_possible_without_new_results": True,
+                "mathematical_correctness": "adequate",
+                "novelty": "adequate",
+                "significance": "adequate",
+                "venue_fit": "adequate",
+                "literature_positioning": "adequate",
+                "unresolved_major_issues": 0,
+                "unresolved_minor_issues": 0,
+                "blocking_issue_ids": ["REF-001"],
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -596,23 +810,82 @@ def test_blocking_accepted_decision_does_not_suggest_arxiv_submission(tmp_path: 
 
 
 def test_accepted_review_decision_overrides_referee_response_with_submission(tmp_path: Path) -> None:
-    root = _setup_project(tmp_path)
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
     _create_roadmap(root)
-    (root / "paper").mkdir()
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n", encoding="utf-8")
-    (root / "GPD" / "REFEREE-REPORT.md").write_text("Accepted.\n", encoding="utf-8")
-    review_dir = root / "GPD" / "review"
-    review_dir.mkdir(parents=True, exist_ok=True)
-    (review_dir / "REFEREE-DECISION.json").write_text(
-        '{"final_recommendation":"accept","blocking_issue_ids":[]}\n',
-        encoding="utf-8",
-    )
 
     result = suggest_next(root)
     actions = [s.action for s in result.suggestions]
 
     assert "respond-to-referees" not in actions
     assert "peer-review" not in actions
+    assert "arxiv-submission" in actions
+
+
+def test_accepted_review_decision_without_review_ledger_does_not_suggest_arxiv_submission(tmp_path: Path) -> None:
+    root = _setup_project(tmp_path)
+    _create_roadmap(root)
+    (root / "paper").mkdir()
+    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n", encoding="utf-8")
+    review_dir = root / "GPD" / "review"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "REFEREE-DECISION.json").write_text(
+        json.dumps(
+            {
+                "manuscript_path": "paper/main.tex",
+                "target_journal": "jhep",
+                "final_recommendation": "accept",
+                "final_confidence": "high",
+                "stage_artifacts": [],
+                "central_claims_supported": True,
+                "claim_scope_proportionate_to_evidence": True,
+                "physical_assumptions_justified": True,
+                "proof_audit_coverage_complete": True,
+                "theorem_proof_alignment_adequate": False,
+                "unsupported_claims_are_central": False,
+                "reframing_possible_without_new_results": True,
+                "mathematical_correctness": "adequate",
+                "novelty": "adequate",
+                "significance": "adequate",
+                "venue_fit": "adequate",
+                "literature_positioning": "adequate",
+                "unresolved_major_issues": 0,
+                "unresolved_minor_issues": 0,
+                "blocking_issue_ids": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
+
+
+def test_theorem_bearing_stale_manuscript_proof_review_blocks_arxiv_submission(tmp_path: Path) -> None:
+    root = _write_submission_review_package(tmp_path, theorem_bearing=True, review_report=True)
+    _create_roadmap(root)
+    (root / "GPD" / "AUTHOR-RESPONSE.md").write_text("Responses incorporated.\n", encoding="utf-8")
+    manuscript = root / "paper" / "main.tex"
+    manuscript.write_text(
+        "\\documentclass{article}\n\\begin{document}\nRevised theorem statement.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
+    assert "peer-review" in actions
+
+
+def test_theorem_bearing_fresh_manuscript_proof_review_allows_arxiv_submission(tmp_path: Path) -> None:
+    root = _write_submission_review_package(tmp_path, theorem_bearing=True, review_report=True)
+    _create_roadmap(root)
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
     assert "arxiv-submission" in actions
 
 
