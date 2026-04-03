@@ -11,7 +11,7 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from gpd.hooks.runtime_detect import TodoCandidate, update_command_for_runtime
 from gpd.hooks.statusline import (
@@ -1067,6 +1067,64 @@ class TestMain:
         mock_task.assert_called_once_with("", str(project))
         mock_execution.assert_called_once_with(str(project))
         mock_update.assert_called_once_with(str(project))
+        assert "[project/src/notes]" in captured.getvalue()
+
+    def test_main_uses_workspace_local_runtime_lookup_and_runtime_session_id_keys(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        project = tmp_path / "project"
+        nested = project / "src" / "notes"
+        nested.mkdir(parents=True)
+        _mark_complete_install(nested / ".codex", runtime="codex")
+
+        payload = {
+            "workspace": {"cwd": str(nested), "project_dir": str(project)},
+            "runtime_session_id": "sess-runtime",
+        }
+        hook_payload = SimpleNamespace(
+            project_dir_keys=("project_dir",),
+            runtime_session_id_keys=("runtime_session_id",),
+            model_keys=(),
+            context_remaining_keys=(),
+        )
+
+        captured = io.StringIO()
+        with (
+            patch("sys.stdin", io.StringIO(json.dumps(payload))),
+            patch("sys.stdout", captured),
+            patch(
+                "gpd.hooks.statusline._resolve_payload_roots",
+                return_value=SimpleNamespace(workspace_dir=str(nested), project_root=str(project)),
+            ),
+            patch(
+                "gpd.hooks.install_context.resolve_hook_lookup_context",
+                return_value=SimpleNamespace(
+                    lookup_cwd=nested,
+                    resolved_home=tmp_path / "home",
+                    active_runtime="codex",
+                    preferred_runtime="codex",
+                ),
+            ),
+            patch("gpd.hooks.statusline._hook_payload_policy", return_value=hook_payload) as mock_policy,
+            patch("gpd.hooks.statusline._read_runtime_hints", return_value=_runtime_hints_payload(_visibility_state())) as mock_hints,
+            patch("gpd.hooks.statusline._read_execution_state", return_value={}) as mock_execution,
+            patch("gpd.hooks.statusline._read_position", return_value="") as mock_position,
+            patch("gpd.hooks.statusline._read_current_task", return_value="") as mock_task,
+            patch("gpd.hooks.statusline._check_update", return_value="") as mock_update,
+            patch("gpd.hooks.statusline._read_workspace_label", return_value="[project/src/notes]") as mock_label,
+            patch("gpd.hooks.statusline._read_model_label", return_value="model") as mock_model,
+        ):
+            main()
+
+        assert mock_policy.call_args_list == [call(str(project)), call(str(nested))]
+        mock_hints.assert_called_once_with(str(nested))
+        mock_execution.assert_called_once_with(str(nested))
+        mock_position.assert_called_once_with(str(nested))
+        mock_task.assert_called_once_with("sess-runtime", str(nested))
+        mock_update.assert_called_once_with(str(nested))
+        mock_label.assert_called_once()
+        mock_model.assert_called_once()
         assert "[project/src/notes]" in captured.getvalue()
 
     def test_main_uses_project_root_for_project_state_helpers_when_workspace_is_nested_mapping(self, tmp_path: Path) -> None:

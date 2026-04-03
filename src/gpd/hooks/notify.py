@@ -16,6 +16,7 @@ from gpd.hooks.payload_policy import resolve_hook_payload_policy, resolve_hook_s
 from gpd.hooks.payload_roots import project_root_from_payload as _shared_project_root_from_payload
 from gpd.hooks.payload_roots import resolve_payload_roots as _resolve_payload_roots
 from gpd.hooks.payload_roots import workspace_dir_from_payload as _shared_workspace_dir_from_payload
+from gpd.hooks.runtime_lookup import resolve_runtime_lookup_dir
 from gpd.hooks.update_resolution import latest_update_cache as _shared_latest_update_cache
 from gpd.hooks.update_resolution import update_command_for_candidate as _shared_update_command_for_candidate
 
@@ -95,7 +96,7 @@ def _record_usage_telemetry(data: dict[str, object], *, workspace_dir: str, proj
     from gpd.core.costs import record_usage_from_runtime_payload
 
     try:
-        runtime = _payload_runtime(project_root)
+        runtime = _payload_runtime(workspace_dir)
         if not _runtime_supports_usage_telemetry(runtime):
             _debug("usage telemetry skipped: runtime capability unknown or unsupported")
             return
@@ -301,11 +302,16 @@ def main() -> None:
         roots = _resolve_payload_roots(data, policy_getter=_root_resolution_policy)
         workspace_dir = roots.workspace_dir
         project_root = roots.project_root
-        hook_payload = _hook_payload_policy(project_root)
         workspace_value = data.get("workspace")
-        explicit_project_dir = _first_string(workspace_value, *hook_payload.project_dir_keys) or _first_string(
+        preflight_payload = _hook_payload_policy(project_root)
+        explicit_project_dir = _first_string(workspace_value, *preflight_payload.project_dir_keys) or _first_string(
             data,
-            *hook_payload.project_dir_keys,
+            *preflight_payload.project_dir_keys,
+        )
+        runtime_lookup_dir = resolve_runtime_lookup_dir(
+            workspace_dir=workspace_dir,
+            project_root=project_root,
+            explicit_project_dir=bool(explicit_project_dir),
         )
         if not explicit_project_dir:
             try:
@@ -316,14 +322,16 @@ def main() -> None:
                 relative_workspace = None
             if relative_workspace is not None and len(relative_workspace.parts) == 1:
                 project_root = workspace_dir
+                runtime_lookup_dir = workspace_dir
+        hook_payload = _hook_payload_policy(runtime_lookup_dir)
         allowed_event_types = hook_payload.notify_event_types
         event_type = data.get("type")
         if allowed_event_types and event_type not in allowed_event_types:
             return
         _record_usage_telemetry(data, workspace_dir=workspace_dir, project_root=project_root)
-        _trigger_update_check(project_root)
-        _check_and_notify_update(project_root)
-        _emit_execution_notification(project_root)
+        _trigger_update_check(runtime_lookup_dir)
+        _check_and_notify_update(runtime_lookup_dir)
+        _emit_execution_notification(runtime_lookup_dir)
     except Exception as exc:
         _debug(f"notify handler failed: {exc}")
 

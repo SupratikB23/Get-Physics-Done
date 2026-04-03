@@ -19,6 +19,7 @@ from gpd.hooks.payload_policy import resolve_hook_payload_policy
 from gpd.hooks.payload_roots import project_root_from_payload as _shared_project_root_from_payload
 from gpd.hooks.payload_roots import resolve_payload_roots as _resolve_payload_roots
 from gpd.hooks.payload_roots import workspace_dir_from_payload as _shared_workspace_dir_from_payload
+from gpd.hooks.runtime_lookup import resolve_runtime_lookup_dir
 from gpd.hooks.update_resolution import latest_update_cache as _shared_latest_update_cache
 from gpd.hooks.update_resolution import update_command_for_candidate as _shared_update_command_for_candidate
 
@@ -325,6 +326,23 @@ def _read_context_remaining(data: dict[str, object], hook_payload) -> float | in
     return None
 
 
+def _read_session_id(data: dict[str, object], hook_payload) -> str:
+    """Read the runtime session id using the adapter-owned contract, with legacy fallback."""
+    for container in (
+        data,
+        data.get("workspace"),
+        data.get("model"),
+        data.get("usage"),
+        data.get("token_usage"),
+    ):
+        session_id = _first_string(container, *hook_payload.runtime_session_id_keys)
+        if session_id:
+            return session_id
+
+    legacy_session_id = data.get("session_id")
+    return legacy_session_id if isinstance(legacy_session_id, str) and legacy_session_id else ""
+
+
 def _read_execution_state(workspace_dir: str | None = None) -> dict[str, object]:
     """Return the current normalized execution snapshot for the workspace."""
     from gpd.core.observability import get_current_execution
@@ -529,11 +547,16 @@ def main() -> None:
         roots = _resolve_payload_roots(data, policy_getter=_root_resolution_policy)
         workspace_dir = roots.workspace_dir
         project_root = roots.project_root
-        hook_payload = _hook_payload_policy(project_root)
         workspace_value = data.get("workspace")
-        explicit_project_dir = _first_string(workspace_value, *hook_payload.project_dir_keys) or _first_string(
+        preflight_payload = _hook_payload_policy(project_root)
+        explicit_project_dir = _first_string(workspace_value, *preflight_payload.project_dir_keys) or _first_string(
             data,
-            *hook_payload.project_dir_keys,
+            *preflight_payload.project_dir_keys,
+        )
+        runtime_lookup_dir = resolve_runtime_lookup_dir(
+            workspace_dir=workspace_dir,
+            project_root=project_root,
+            explicit_project_dir=bool(explicit_project_dir),
         )
         if not explicit_project_dir:
             try:
@@ -544,25 +567,27 @@ def main() -> None:
                 relative_workspace = None
             if relative_workspace is not None and len(relative_workspace.parts) == 1:
                 project_root = workspace_dir
+                runtime_lookup_dir = workspace_dir
 
-        session_value = data.get("session_id")
-        session_id = session_value if isinstance(session_value, str) else ""
+        hook_payload = _hook_payload_policy(runtime_lookup_dir)
+
+        session_id = _read_session_id(data, hook_payload)
         remaining = _read_context_remaining(data, hook_payload)
-        runtime_hints = _read_runtime_hints(project_root)
+        runtime_hints = _read_runtime_hints(runtime_lookup_dir)
         visibility = _mapping(runtime_hints.get("execution"))
-        execution = _mapping(visibility.get("current_execution")) or _read_execution_state(project_root)
+        execution = _mapping(visibility.get("current_execution")) or _read_execution_state(runtime_lookup_dir)
 
         ctx = _context_bar(remaining) if isinstance(remaining, (int, float)) and math.isfinite(remaining) else ""
-        position = _read_position(project_root)
+        position = _read_position(runtime_lookup_dir)
         execution_badge = _execution_badge(execution, visibility or None)
         execution_task = _object_string(visibility, "current_task") or _first_string(execution, "current_task")
-        task = execution_task or _read_current_task(session_id, project_root)
+        task = execution_task or _read_current_task(session_id, runtime_lookup_dir)
         if execution_task:
             task = execution_task
         elif execution_badge:
             task = ""
         artifact_label = _execution_artifact_label(execution)
-        gpd_update = _check_update(project_root)
+        gpd_update = _check_update(runtime_lookup_dir)
         model_label = _read_model_label(data, hook_payload)
         workspace_label = _read_workspace_label(
             data,

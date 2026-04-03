@@ -8,7 +8,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 
@@ -520,6 +520,29 @@ def test_notify_skips_closed_contract_payload_without_event_type(tmp_path: Path)
     mock_exec.assert_not_called()
 
 
+def test_record_usage_telemetry_uses_workspace_dir_for_runtime_selection(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    nested = project / "src" / "notes"
+    nested.mkdir(parents=True)
+    payload = {"type": "agent-turn-complete"}
+    observed_cwd: list[str | None] = []
+
+    def _fake_payload_runtime(cwd: str | None = None) -> str | None:
+        observed_cwd.append(cwd)
+        return _TELEMETRY_RUNTIME
+
+    with (
+        patch("gpd.hooks.notify._payload_runtime", side_effect=_fake_payload_runtime),
+        patch("gpd.hooks.notify._runtime_supports_usage_telemetry", return_value=True),
+        patch("gpd.core.costs.record_usage_from_runtime_payload") as mock_record,
+    ):
+        notify_module._record_usage_telemetry(payload, workspace_dir=str(nested), project_root=str(project))
+
+    assert observed_cwd == [str(nested)]
+    mock_record.assert_called_once()
+    assert mock_record.call_args.kwargs["runtime"] == _TELEMETRY_RUNTIME
+
+
 def test_notify_unknown_runtime_falls_back_to_runtime_neutral_update_command(tmp_path: Path) -> None:
     gpd_cache = tmp_path / "GPD" / "cache"
     gpd_cache.mkdir(parents=True)
@@ -734,6 +757,50 @@ def test_main_resolves_alias_only_workspace_payload_before_ambient_runtime_polic
     mock_trigger.assert_called_once_with(resolved_project)
     mock_notify.assert_called_once_with(resolved_project)
     mock_execution.assert_called_once_with(resolved_project)
+
+
+def test_main_uses_workspace_local_runtime_lookup_when_available(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    nested = project / "src" / "notes"
+    nested.mkdir(parents=True)
+    _mark_complete_install(nested / ".codex", runtime="codex")
+    payload = {
+        "type": "agent-turn-complete",
+        "workspace": {"current_dir": str(nested), "project_dir": str(project)},
+    }
+    hook_payload = SimpleNamespace(
+        project_dir_keys=("project_dir",),
+        notify_event_types=("agent-turn-complete",),
+    )
+
+    with (
+        patch("sys.stdin", io.StringIO(json.dumps(payload))),
+        patch(
+            "gpd.hooks.notify._resolve_payload_roots",
+            return_value=SimpleNamespace(workspace_dir=str(nested), project_root=str(project)),
+        ),
+        patch(
+            "gpd.hooks.install_context.resolve_hook_lookup_context",
+            return_value=SimpleNamespace(
+                lookup_cwd=nested,
+                resolved_home=tmp_path / "home",
+                active_runtime="codex",
+                preferred_runtime="codex",
+            ),
+        ),
+        patch("gpd.hooks.notify._hook_payload_policy", return_value=hook_payload) as mock_policy,
+        patch("gpd.hooks.notify._record_usage_telemetry") as mock_usage,
+        patch("gpd.hooks.notify._trigger_update_check") as mock_trigger,
+        patch("gpd.hooks.notify._check_and_notify_update") as mock_notify,
+        patch("gpd.hooks.notify._emit_execution_notification") as mock_execution,
+    ):
+        main()
+
+    assert mock_policy.call_args_list == [call(str(project)), call(str(nested))]
+    mock_usage.assert_called_once_with(payload, workspace_dir=str(nested), project_root=str(project))
+    mock_trigger.assert_called_once_with(str(nested))
+    mock_notify.assert_called_once_with(str(nested))
+    mock_execution.assert_called_once_with(str(nested))
 
 
 def test_main_prefers_project_dir_root_over_nested_workspace_cwd(tmp_path: Path) -> None:
