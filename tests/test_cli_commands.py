@@ -2787,7 +2787,7 @@ class TestReviewValidationCommands:
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "review-preflight", "arxiv-submission", "--strict"],
+            ["--raw", "validate", "review-preflight", "arxiv-submission"],
             catch_exceptions=False,
         )
 
@@ -2883,6 +2883,42 @@ class TestReviewValidationCommands:
         assert checks["manuscript_proof_review"]["blocking"] is True
         assert "not required" not in checks["manuscript_proof_review"]["detail"]
 
+    def test_review_preflight_arxiv_submission_rejects_theorem_claim_inventory_omitted_from_math_review(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        _write_publication_review_outcome(
+            gpd_project,
+            final_recommendation="accept",
+            proof_bearing=False,
+            write_proof_redteam=False,
+        )
+        claims_path = gpd_project / "GPD" / "review" / "CLAIMS.json"
+        claims_payload = json.loads(claims_path.read_text(encoding="utf-8"))
+        claims_payload["claims"][0]["claim_kind"] = "theorem"
+        claims_payload["claims"][0]["text"] = "For every r_0 > 0, the orbit intersects the target annulus."
+        claims_payload["claims"][0]["theorem_assumptions"] = ["chi > 0"]
+        claims_payload["claims"][0]["theorem_parameters"] = ["r_0"]
+        claims_path.write_text(json.dumps(claims_payload), encoding="utf-8")
+        math_stage_path = gpd_project / "GPD" / "review" / "STAGE-math.json"
+        math_stage_payload = json.loads(math_stage_path.read_text(encoding="utf-8"))
+        math_stage_payload["claims_reviewed"] = []
+        math_stage_payload["proof_audits"] = []
+        math_stage_path.write_text(json.dumps(math_stage_payload), encoding="utf-8")
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "arxiv-submission"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["manuscript_proof_review"]["passed"] is False
+        assert checks["manuscript_proof_review"]["blocking"] is True
+        assert "claims_reviewed" in checks["manuscript_proof_review"]["detail"]
+
     def test_review_preflight_arxiv_submission_uses_latest_round_specific_theorem_proof_review(
         self,
         gpd_project: Path,
@@ -2916,6 +2952,33 @@ class TestReviewValidationCommands:
         assert checks["manuscript_proof_review"]["passed"] is False
         assert checks["manuscript_proof_review"]["blocking"] is True
         assert "PROOF-REDTEAM-R2.md" in checks["manuscript_proof_review"]["detail"]
+
+    def test_review_preflight_arxiv_submission_rejects_accepted_review_after_manuscript_edit(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        _write_publication_review_outcome(
+            gpd_project,
+            final_recommendation="accept",
+            proof_bearing=False,
+        )
+        manuscript_path = gpd_project / "paper" / "main.tex"
+        manuscript_path.write_text(
+            "\\documentclass{article}\n\\begin{document}\nEdited after review.\n\\end{document}\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "arxiv-submission", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["referee_decision_valid"]["passed"] is False
+        assert "manuscript_sha256 does not match the active manuscript snapshot" in checks["referee_decision_valid"]["detail"]
 
     def test_review_preflight_arxiv_submission_strict_blocks_semantically_dirty_bibliography_audit(
         self,

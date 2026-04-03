@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import posixpath
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,8 +32,18 @@ from gpd.core.constants import (
     TODOS_DIR_NAME,
     VERIFICATION_SUFFIX,
 )
-from gpd.core.manuscript_artifacts import resolve_current_manuscript_entrypoint
+from gpd.core.manuscript_artifacts import (
+    locate_publication_artifact,
+    resolve_current_manuscript_artifacts,
+    resolve_current_manuscript_entrypoint,
+)
 from gpd.core.phases import _milestone_completion_snapshot
+from gpd.core.proof_review import (
+    manuscript_has_theorem_bearing_claim_inventory,
+    manuscript_has_theorem_bearing_review_anchor,
+    resolve_manuscript_proof_review_status,
+)
+from gpd.core.reproducibility import compute_sha256
 from gpd.core.utils import (
     is_phase_complete as _is_phase_complete,
 )
@@ -43,6 +54,8 @@ from gpd.core.utils import (
 from gpd.core.utils import (
     phase_unpad as _phase_unpad,
 )
+from gpd.mcp.paper.bibliography import BibliographyAudit
+from gpd.mcp.paper.models import ArtifactManifest
 
 logger = logging.getLogger(__name__)
 
@@ -382,6 +395,31 @@ def _review_artifact_round(path: Path, *, pattern: re.Pattern[str]) -> tuple[int
     return round_number, match.group("round_suffix") or ""
 
 
+def _normalize_review_path_label(value: str) -> str:
+    normalized = value.strip().replace("\\", "/")
+    if not normalized:
+        return ""
+    return posixpath.normpath(normalized)
+
+
+def _manuscript_matches_review_artifact_path(artifact_path: str, manuscript: Path, *, cwd: Path) -> bool:
+    normalized_artifact_path = _normalize_review_path_label(artifact_path)
+    if not normalized_artifact_path:
+        return False
+
+    resolved_manuscript = manuscript.expanduser().resolve(strict=False)
+    resolved_cwd = cwd.expanduser().resolve(strict=False)
+    candidates = {
+        _normalize_review_path_label(resolved_manuscript.as_posix()),
+        _normalize_review_path_label(manuscript.as_posix()),
+    }
+    try:
+        candidates.add(_normalize_review_path_label(resolved_manuscript.relative_to(resolved_cwd).as_posix()))
+    except ValueError:
+        pass
+    return normalized_artifact_path in candidates
+
+
 def _has_author_response(cwd: Path) -> bool:
     responses_dir = _planning_dir(cwd)
     if not responses_dir.is_dir():
@@ -415,8 +453,8 @@ def _latest_referee_decision_recommendation(cwd: Path) -> str | None:
     return normalized or None
 
 
-def _latest_referee_decision_allows_submission(cwd: Path) -> bool:
-    return _publication_review_package_allows_submission(cwd)
+def _latest_referee_decision_allows_submission(cwd: Path, manuscript_entrypoint: Path | None) -> bool:
+    return _publication_review_package_allows_submission(cwd, manuscript_entrypoint)
 
 
 def _latest_publication_review_package(review_dir: Path) -> tuple[Path, Path] | None:
@@ -443,7 +481,35 @@ def _latest_publication_review_package(review_dir: Path) -> tuple[Path, Path] | 
     return ledger_path, decision_path
 
 
-def _publication_review_package_allows_submission(cwd: Path) -> bool:
+def _manuscript_has_submission_support_artifacts(cwd: Path, manuscript_entrypoint: Path | None) -> bool:
+    if manuscript_entrypoint is None or manuscript_entrypoint.suffix != ".tex":
+        return False
+
+    artifacts = resolve_current_manuscript_artifacts(cwd, allow_markdown=True)
+    if artifacts.manuscript_entrypoint is None:
+        return False
+    if artifacts.manuscript_entrypoint.resolve(strict=False) != manuscript_entrypoint.resolve(strict=False):
+        return False
+    if artifacts.artifact_manifest is None or artifacts.bibliography_audit is None:
+        return False
+
+    try:
+        ArtifactManifest.model_validate(json.loads(artifacts.artifact_manifest.read_text(encoding="utf-8")))
+        BibliographyAudit.model_validate(json.loads(artifacts.bibliography_audit.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError, PydanticValidationError):
+        return False
+
+    compiled_manuscript = locate_publication_artifact(
+        manuscript_entrypoint,
+        manuscript_entrypoint.with_suffix(".pdf").name,
+    )
+    return compiled_manuscript is not None and compiled_manuscript.exists()
+
+
+def _publication_review_package_allows_submission(cwd: Path, manuscript_entrypoint: Path | None) -> bool:
+    if manuscript_entrypoint is None or manuscript_entrypoint.suffix != ".tex":
+        return False
+
     review_dir = _planning_dir(cwd) / "review"
     if not review_dir.is_dir():
         return False
@@ -459,12 +525,22 @@ def _publication_review_package_allows_submission(cwd: Path) -> bool:
 
         review_ledger = read_review_ledger(ledger_path)
         decision = read_referee_decision(decision_path)
+        if not _manuscript_matches_review_artifact_path(review_ledger.manuscript_path, manuscript_entrypoint, cwd=cwd):
+            return False
+        manuscript_matches_decision = _manuscript_matches_review_artifact_path(
+            decision.manuscript_path,
+            manuscript_entrypoint,
+            cwd=cwd,
+        )
+        if not manuscript_matches_decision:
+            return False
         report = evaluate_referee_decision(
             decision,
             strict=True,
             require_explicit_inputs=True,
             review_ledger=review_ledger,
             project_root=cwd,
+            expected_manuscript_sha256=compute_sha256(manuscript_entrypoint),
         )
     except (OSError, json.JSONDecodeError, PydanticValidationError):
         return False
@@ -474,7 +550,7 @@ def _publication_review_package_allows_submission(cwd: Path) -> bool:
         return False
     if decision.final_recommendation not in {"accept", "minor_revision"}:
         return False
-    return not decision.blocking_issue_ids
+    return not decision.blocking_issue_ids and _manuscript_has_submission_support_artifacts(cwd, manuscript_entrypoint)
 
 
 def _manuscript_submission_proof_review_is_fresh(
@@ -484,12 +560,10 @@ def _manuscript_submission_proof_review_is_fresh(
     if manuscript_entrypoint is None:
         return True
 
-    from gpd.core.proof_review import (
-        manuscript_has_theorem_bearing_review_anchor,
-        resolve_manuscript_proof_review_status,
+    theorem_bearing = (
+        manuscript_has_theorem_bearing_review_anchor(cwd, manuscript_entrypoint)
+        or manuscript_has_theorem_bearing_claim_inventory(cwd, manuscript_entrypoint)
     )
-
-    theorem_bearing = manuscript_has_theorem_bearing_review_anchor(cwd, manuscript_entrypoint)
     if not theorem_bearing:
         return True
 
@@ -857,7 +931,7 @@ def suggest_next(cwd: Path, *, limit: int = 5) -> SuggestResult:
     has_latex_manuscript = manuscript_entrypoint is not None and manuscript_entrypoint.suffix == ".tex"
     has_lit_review = _has_literature_review(cwd)
     has_referee = _has_referee_report(cwd)
-    submission_ready_review = _latest_referee_decision_allows_submission(cwd) and _manuscript_submission_proof_review_is_fresh(
+    submission_ready_review = _latest_referee_decision_allows_submission(cwd, manuscript_entrypoint) and _manuscript_submission_proof_review_is_fresh(
         cwd,
         manuscript_entrypoint,
     )

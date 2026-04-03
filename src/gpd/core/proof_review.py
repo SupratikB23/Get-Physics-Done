@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from gpd.mcp.paper.review_artifacts import read_claim_index, read_stage_review_r
 __all__ = [
     "MANUSCRIPT_PROOF_REVIEW_MANIFEST_NAME",
     "ProofReviewStatus",
+    "manuscript_has_theorem_bearing_claim_inventory",
     "manuscript_has_theorem_bearing_review_anchor",
     "manuscript_proof_review_manifest_path",
     "phase_proof_review_manifest_path",
@@ -56,6 +58,7 @@ _MANUSCRIPT_PROOF_AFFECTING_EXTENSIONS = frozenset(
         ".txt",
     }
 )
+_STAGE_MATH_FILENAME_RE = re.compile(r"^STAGE-math(?P<round_suffix>-R(?P<round>\d+))?\.json$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +129,47 @@ def manuscript_has_theorem_bearing_review_anchor(
         return False
     anchor = _latest_matching_math_review_anchor(project_root, entrypoint)
     return bool(anchor and anchor.proof_bearing)
+
+
+def manuscript_has_theorem_bearing_claim_inventory(
+    project_root: Path,
+    manuscript_entrypoint: Path | None = None,
+) -> bool:
+    """Return whether the latest matching staged claim inventory is theorem-bearing."""
+
+    entrypoint = manuscript_entrypoint or resolve_current_manuscript_entrypoint(project_root, allow_markdown=True)
+    if entrypoint is None:
+        return False
+
+    review_dir = project_root / "GPD" / "review"
+    if not review_dir.exists():
+        return False
+
+    resolved_manuscript = _resolve_review_manuscript_path(project_root, entrypoint.as_posix())
+    matches: list[tuple[int, int, bool]] = []
+    for path in sorted(review_dir.glob("CLAIMS*.json")):
+        match = _claim_round_details(path)
+        if match is None:
+            continue
+        round_number, _round_suffix = match
+        try:
+            claim_index = read_claim_index(path)
+        except (OSError, json.JSONDecodeError, PydanticValidationError):
+            continue
+        if _resolve_review_manuscript_path(project_root, claim_index.manuscript_path) != resolved_manuscript:
+            continue
+        matches.append(
+            (
+                round_number,
+                path.stat().st_mtime_ns,
+                any(claim.theorem_bearing for claim in claim_index.claims),
+            )
+        )
+
+    if not matches:
+        return False
+    _, _, theorem_bearing = max(matches)
+    return theorem_bearing
 
 
 def _resolve_review_artifacts(project_root: Path, artifact_paths: tuple[str, ...]) -> tuple[Path, ...]:
@@ -499,47 +543,82 @@ def _latest_matching_math_review_anchor(project_root: Path, manuscript_entrypoin
 
     matches: list[tuple[int, int, _MathReviewAnchor]] = []
     resolved_manuscript = _resolve_review_manuscript_path(project_root, manuscript_entrypoint.as_posix())
+    expected_manuscript_path = _relative_path(project_root, manuscript_entrypoint)
     for path in sorted(review_dir.glob("STAGE-math*.json")):
-        try:
-            report = read_stage_review_report(path)
-        except (OSError, json.JSONDecodeError, PydanticValidationError):
+        round_details = _math_review_round_details(path)
+        if round_details is None:
             continue
-        if _resolve_review_manuscript_path(project_root, report.manuscript_path) != resolved_manuscript:
-            continue
-        round_number = int(report.round)
-        round_suffix = "" if round_number <= 1 else f"-R{round_number}"
+        round_number, round_suffix = round_details
         claim_index_path = review_dir / f"CLAIMS{round_suffix}.json"
         theorem_claim_ids: list[str] = []
         proof_artifact_paths: list[str] = []
         validation_errors: list[str] = []
         claim_index = None
+        claim_index_matches_current = False
         try:
             claim_index = read_claim_index(claim_index_path)
         except (OSError, json.JSONDecodeError, PydanticValidationError) as exc:
             validation_errors.append(f"{claim_index_path.name} could not be loaded: {exc}")
+        else:
+            claim_index_matches_current = (
+                _resolve_review_manuscript_path(project_root, claim_index.manuscript_path) == resolved_manuscript
+            )
+            if claim_index_matches_current:
+                theorem_claim_ids = sorted(claim.claim_id for claim in claim_index.claims if claim.theorem_bearing)
+                proof_artifact_paths = sorted(
+                    {
+                        claim.artifact_path
+                        for claim in claim_index.claims
+                        if claim.claim_id in theorem_claim_ids and claim.artifact_path.strip()
+                    }
+                )
+                if expected_manuscript_path is not None and expected_manuscript_path not in proof_artifact_paths:
+                    proof_artifact_paths.append(expected_manuscript_path)
+
+        try:
+            report = read_stage_review_report(path)
+        except (OSError, json.JSONDecodeError, PydanticValidationError) as exc:
+            if not claim_index_matches_current:
+                continue
+            validation_errors.append(f"{path.name} could not be loaded: {exc}")
+            matches.append(
+                (
+                    round_number,
+                    path.stat().st_mtime_ns,
+                    _MathReviewAnchor(
+                        stage_artifact=path,
+                        claim_index_artifact=claim_index_path,
+                        round_number=round_number,
+                        round_suffix=round_suffix,
+                        proof_bearing=bool(theorem_claim_ids),
+                        theorem_claim_ids=tuple(theorem_claim_ids),
+                        proof_artifact_paths=tuple(path_text for path_text in proof_artifact_paths if path_text),
+                        validation_errors=tuple(validation_errors),
+                    ),
+                )
+            )
+            continue
+        report_matches_current = _resolve_review_manuscript_path(project_root, report.manuscript_path) == resolved_manuscript
+        if not report_matches_current and not claim_index_matches_current:
+            continue
         if claim_index is not None:
             validation_errors.extend(
                 validate_stage_review_artifact_alignment(
                     report,
                     artifact_path=path,
                     claim_index=claim_index,
-                    expected_manuscript_path=_relative_path(project_root, manuscript_entrypoint),
+                    expected_manuscript_path=expected_manuscript_path,
                 )
             )
-            theorem_claim_ids = sorted(
-                claim.claim_id
-                for claim in claim_index.claims
-                if claim.claim_id in set(report.claims_reviewed) and claim.theorem_bearing
-            )
-            proof_artifact_paths = sorted(
-                {
-                    claim.artifact_path
-                    for claim in claim_index.claims
-                    if claim.claim_id in theorem_claim_ids and claim.artifact_path.strip()
-                }
-            )
-            if _relative_path(project_root, manuscript_entrypoint) not in proof_artifact_paths:
-                proof_artifact_paths.append(_relative_path(project_root, manuscript_entrypoint))
+            if theorem_claim_ids:
+                missing_reviewed_claims = sorted(
+                    claim_id for claim_id in theorem_claim_ids if claim_id not in set(report.claims_reviewed)
+                )
+                if missing_reviewed_claims:
+                    validation_errors.append(
+                        f"{path.name} theorem-bearing claims must appear in claims_reviewed: "
+                        + ", ".join(missing_reviewed_claims)
+                    )
         proof_bearing = bool(report.proof_audits) or bool(theorem_claim_ids)
         matches.append(
             (
@@ -562,6 +641,26 @@ def _latest_matching_math_review_anchor(project_root: Path, manuscript_entrypoin
         return None
     _, _, latest = max(matches)
     return latest
+
+
+def _math_review_round_details(path: Path) -> tuple[int, str] | None:
+    match = _STAGE_MATH_FILENAME_RE.fullmatch(path.name)
+    if match is None:
+        return None
+    round_text = match.group("round")
+    round_number = int(round_text) if round_text else 1
+    return round_number, match.group("round_suffix") or ""
+
+
+def _claim_round_details(path: Path) -> tuple[int, str] | None:
+    if path.name == "CLAIMS.json":
+        return 1, ""
+    if path.name.startswith("CLAIMS-R") and path.name.endswith(".json"):
+        round_text = path.name[len("CLAIMS-R") : -len(".json")]
+        if round_text.isdigit():
+            round_number = int(round_text)
+            return round_number, f"-R{round_number}"
+    return None
 
 
 def _read_proof_redteam_status(

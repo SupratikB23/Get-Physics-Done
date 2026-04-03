@@ -358,6 +358,27 @@ def test_manuscript_proof_review_rejects_invalid_latest_round_anchor_without_fal
     assert "STAGE-math-R2.json" in status.detail
 
 
+def test_manuscript_proof_review_rejects_unreadable_latest_stage_math_without_falling_back(tmp_path: Path) -> None:
+    manuscript_path = _write_proof_bearing_manuscript_review_artifacts(
+        tmp_path,
+        proof_redteam_status="passed",
+        round_number=1,
+    )
+    _write_proof_bearing_manuscript_review_artifacts(
+        tmp_path,
+        proof_redteam_status="passed",
+        round_number=2,
+    )
+    (tmp_path / "GPD" / "review" / "STAGE-math-R2.json").write_text("{not json", encoding="utf-8")
+
+    status = resolve_manuscript_proof_review_status(tmp_path, manuscript_path)
+
+    assert status.state == "invalid_required_artifact"
+    assert status.can_rely_on_prior_review is False
+    assert status.anchor_artifact == tmp_path / "GPD" / "review" / "STAGE-math-R2.json"
+    assert "STAGE-math-R2.json" in status.detail
+
+
 def test_manuscript_proof_review_turns_stale_after_bibliography_edit(tmp_path: Path) -> None:
     manuscript_path = _write_proof_bearing_manuscript_review_artifacts(tmp_path, proof_redteam_status="passed")
     bibliography_path = tmp_path / "paper" / "references.bib"

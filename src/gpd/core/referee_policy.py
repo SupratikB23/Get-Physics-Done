@@ -197,6 +197,7 @@ def validate_stage_review_artifact_alignment(
     artifact_path: Path,
     claim_index: ClaimIndex | None,
     expected_manuscript_path: str | None = None,
+    expected_manuscript_sha256: str | None = None,
     require_claim_index_error: bool = True,
 ) -> list[str]:
     """Return semantic alignment errors for a stage-review artifact."""
@@ -222,6 +223,8 @@ def validate_stage_review_artifact_alignment(
 
     if expected_manuscript_path and _normalize_path_label(stage_report.manuscript_path) != _normalize_path_label(expected_manuscript_path):
         errors.append(f"{artifact_path.name} manuscript_path does not match the referee decision manuscript_path")
+    if expected_manuscript_sha256 and stage_report.manuscript_sha256 != expected_manuscript_sha256:
+        errors.append(f"{artifact_path.name} manuscript_sha256 does not match the active manuscript snapshot")
 
     if claim_index is None:
         if not require_claim_index_error:
@@ -297,16 +300,21 @@ def validate_stage_review_artifact_alignment(
             for claim in claim_index.claims
             if claim.theorem_bearing
         }
-        reviewed_theorem_claim_ids = sorted(
-            claim_id for claim_id in stage_report.claims_reviewed if claim_id in theorem_bearing_claim_ids
+        unreviewed_theorem_claim_ids = sorted(
+            claim_id for claim_id in theorem_bearing_claim_ids if claim_id not in set(stage_report.claims_reviewed)
         )
+        if unreviewed_theorem_claim_ids:
+            errors.append(
+                f"{artifact_path.name} theorem-bearing claims must appear in claims_reviewed: "
+                + ", ".join(unreviewed_theorem_claim_ids)
+            )
+
         missing_proof_audits = sorted(
-            claim_id for claim_id in reviewed_theorem_claim_ids if claim_id not in set(proof_audit_claim_ids)
+            claim_id for claim_id in theorem_bearing_claim_ids if claim_id not in set(proof_audit_claim_ids)
         )
         if missing_proof_audits:
             errors.append(
-                f"{artifact_path.name} reviewed theorem-bearing claims must have proof_audits: "
-                + ", ".join(missing_proof_audits)
+                f"{artifact_path.name} theorem-bearing claims must have proof_audits: " + ", ".join(missing_proof_audits)
             )
 
         not_applicable_theorem_audits = sorted(
@@ -492,6 +500,7 @@ def _strict_stage_artifact_consistency_errors(
     *,
     project_root: Path | None,
     expected_manuscript_path: str | None,
+    expected_manuscript_sha256: str | None = None,
 ) -> list[str]:
     if project_root is None:
         return []
@@ -509,6 +518,7 @@ def _strict_stage_artifact_consistency_errors(
             validate_stage_review_artifact_file(
                 artifact_path,
                 expected_manuscript_path=expected_manuscript_path,
+                expected_manuscript_sha256=expected_manuscript_sha256,
             )
         )
 
@@ -555,7 +565,7 @@ def _strict_proof_redteam_errors(
     theorem_claim_ids = sorted(
         claim.claim_id
         for claim in claim_index.claims
-        if claim.claim_id in set(stage_report.claims_reviewed) and claim.theorem_bearing
+        if claim.theorem_bearing
     )
     if not theorem_claim_ids:
         return []
@@ -624,6 +634,7 @@ def validate_stage_review_artifact_file(
     artifact_path: Path,
     *,
     expected_manuscript_path: str | None = None,
+    expected_manuscript_sha256: str | None = None,
 ) -> list[str]:
     """Return semantic validation errors for a stage-review file."""
 
@@ -658,6 +669,7 @@ def validate_stage_review_artifact_file(
             artifact_path=artifact_path,
             claim_index=claim_index,
             expected_manuscript_path=expected_manuscript_path,
+            expected_manuscript_sha256=expected_manuscript_sha256,
             require_claim_index_error=not claim_index_errors,
         )
     )
@@ -671,6 +683,7 @@ def evaluate_referee_decision(
     require_explicit_inputs: bool = False,
     review_ledger: ReviewLedger | None = None,
     project_root: Path | None = None,
+    expected_manuscript_sha256: str | None = None,
 ) -> RefereeDecisionReport:
     """Evaluate whether a final recommendation is consistent with hard referee gates."""
 
@@ -699,6 +712,7 @@ def evaluate_referee_decision(
             data.stage_artifacts,
             project_root=project_root,
             expected_manuscript_path=data.manuscript_path.strip() or None,
+            expected_manuscript_sha256=expected_manuscript_sha256,
         )
         if strict_stage_consistency_errors:
             consistency_errors.extend(strict_stage_consistency_errors)

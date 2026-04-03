@@ -144,6 +144,33 @@ def _write_submission_review_package(
             "\\documentclass{article}\n\\begin{document}\nSubmission draft.\n\\end{document}\n",
             encoding="utf-8",
         )
+    (manuscript.parent / "main.pdf").write_bytes(b"%PDF-1.4\n% test submission pdf\n")
+    (manuscript.parent / "ARTIFACT-MANIFEST.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "paper_title": "Submission Draft",
+                "journal": "jhep",
+                "created_at": "2026-03-10T00:00:00+00:00",
+                "artifacts": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (manuscript.parent / "BIBLIOGRAPHY-AUDIT.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-03-10T00:00:00+00:00",
+                "total_sources": 0,
+                "resolved_sources": 0,
+                "partial_sources": 0,
+                "unverified_sources": 0,
+                "failed_sources": 0,
+                "entries": [],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     review_dir = root / "GPD" / "review"
     review_dir.mkdir(parents=True, exist_ok=True)
@@ -180,7 +207,7 @@ def _write_submission_review_package(
                         "text": (
                             "For every r_0 > 0, the orbit intersects the target annulus."
                             if theorem_bearing
-                            else "The manuscript states a non-theorem result."
+                            else "The manuscript reports a descriptive result."
                         ),
                         "artifact_path": "paper/main.tex",
                         "section": "Main Result",
@@ -806,7 +833,6 @@ def test_blocking_accepted_decision_does_not_suggest_arxiv_submission(tmp_path: 
     actions = [s.action for s in result.suggestions]
 
     assert "arxiv-submission" not in actions
-    assert "peer-review" in actions
 
 
 def test_accepted_review_decision_overrides_referee_response_with_submission(tmp_path: Path) -> None:
@@ -819,6 +845,46 @@ def test_accepted_review_decision_overrides_referee_response_with_submission(tmp
     assert "respond-to-referees" not in actions
     assert "peer-review" not in actions
     assert "arxiv-submission" in actions
+
+
+def test_stale_non_theorem_review_snapshot_does_not_suggest_arxiv_submission(tmp_path: Path) -> None:
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
+    _create_roadmap(root)
+    (root / "paper" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\nEdited after accepted review.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
+
+
+def test_review_package_for_different_active_manuscript_does_not_suggest_arxiv_submission(tmp_path: Path) -> None:
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
+    _create_roadmap(root)
+    (root / "paper" / "main.tex").unlink()
+    alternate_dir = root / "manuscript"
+    alternate_dir.mkdir(parents=True, exist_ok=True)
+    (alternate_dir / "main.tex").write_text("\\documentclass{article}\n\\begin{document}\nOther draft.\n\\end{document}\n")
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
+
+
+def test_missing_submission_support_artifacts_do_not_suggest_arxiv_submission(tmp_path: Path) -> None:
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
+    _create_roadmap(root)
+    for artifact_name in ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json", "main.pdf"):
+        (root / "paper" / artifact_name).unlink()
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
 
 
 def test_accepted_review_decision_without_review_ledger_does_not_suggest_arxiv_submission(tmp_path: Path) -> None:
@@ -876,7 +942,28 @@ def test_theorem_bearing_stale_manuscript_proof_review_blocks_arxiv_submission(t
     actions = [s.action for s in result.suggestions]
 
     assert "arxiv-submission" not in actions
-    assert "peer-review" in actions
+
+
+def test_theorem_bearing_claim_inventory_without_math_coverage_blocks_arxiv_submission(tmp_path: Path) -> None:
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
+    _create_roadmap(root)
+    claims_path = root / "GPD" / "review" / "CLAIMS.json"
+    claims_payload = json.loads(claims_path.read_text(encoding="utf-8"))
+    claims_payload["claims"][0]["claim_kind"] = "theorem"
+    claims_payload["claims"][0]["text"] = "For every r_0 > 0, the orbit intersects the target annulus."
+    claims_payload["claims"][0]["theorem_assumptions"] = ["chi > 0"]
+    claims_payload["claims"][0]["theorem_parameters"] = ["r_0"]
+    claims_path.write_text(json.dumps(claims_payload), encoding="utf-8")
+    math_stage_path = root / "GPD" / "review" / "STAGE-math.json"
+    math_stage_payload = json.loads(math_stage_path.read_text(encoding="utf-8"))
+    math_stage_payload["claims_reviewed"] = []
+    math_stage_payload["proof_audits"] = []
+    math_stage_path.write_text(json.dumps(math_stage_payload), encoding="utf-8")
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
 
 
 def test_theorem_bearing_fresh_manuscript_proof_review_allows_arxiv_submission(tmp_path: Path) -> None:

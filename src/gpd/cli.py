@@ -65,6 +65,7 @@ from gpd.core.project_reentry import (
     resolve_project_reentry,
 )
 from gpd.core.proof_review import (
+    manuscript_has_theorem_bearing_claim_inventory,
     manuscript_has_theorem_bearing_review_anchor,
     resolve_manuscript_proof_review_status,
     resolve_phase_proof_review_status,
@@ -5112,40 +5113,6 @@ def _normalize_review_path_label(value: str) -> str:
     return posixpath.normpath(normalized)
 
 
-def _manuscript_has_theorem_bearing_claim_inventory(project_cwd: Path, manuscript: Path) -> bool:
-    """Return whether the latest matching Stage 1 claim inventory is theorem-bearing."""
-
-    review_dir = project_cwd / "GPD" / "review"
-    if not review_dir.is_dir():
-        return False
-
-    try:
-        manuscript_label = manuscript.relative_to(project_cwd).as_posix()
-    except ValueError:
-        manuscript_label = manuscript.as_posix()
-    normalized_manuscript_label = _normalize_review_path_label(manuscript_label)
-
-    from gpd.mcp.paper.review_artifacts import read_claim_index
-
-    matches: list[tuple[int, bool]] = []
-    for path in sorted(review_dir.glob("CLAIMS*.json")):
-        details = _review_artifact_round(path, pattern=_CLAIMS_FILENAME_RE)
-        if details is None:
-            continue
-        try:
-            claim_index = read_claim_index(path)
-        except (OSError, json.JSONDecodeError, PydanticValidationError):
-            continue
-        if _normalize_review_path_label(claim_index.manuscript_path) != normalized_manuscript_label:
-            continue
-        matches.append((details[0], any(claim.theorem_bearing for claim in claim_index.claims)))
-
-    if not matches:
-        return False
-    _, theorem_bearing = max(matches, key=lambda item: item[0])
-    return theorem_bearing
-
-
 def _manuscript_matches_review_artifact_path(artifact_path: str, manuscript: Path, *, cwd: Path) -> bool:
     normalized_artifact_path = _normalize_review_path_label(artifact_path)
     if not normalized_artifact_path:
@@ -5258,7 +5225,7 @@ def _review_contract_condition_is_active(
     }:
         return manuscript is not None and (
             manuscript_has_theorem_bearing_review_anchor(project_cwd, manuscript)
-            or _manuscript_has_theorem_bearing_claim_inventory(project_cwd, manuscript)
+            or manuscript_has_theorem_bearing_claim_inventory(project_cwd, manuscript)
         )
     return False
 
@@ -6659,6 +6626,7 @@ def _build_review_preflight(
                             {"referee_decision_valid", "publication_review_outcome"}
                         ):
                             from gpd.core.referee_policy import evaluate_referee_decision
+                            from gpd.core.reproducibility import compute_sha256
                             from gpd.mcp.paper.models import ReviewRecommendation
                             from gpd.mcp.paper.review_artifacts import read_referee_decision
 
@@ -6684,6 +6652,11 @@ def _build_review_preflight(
                                     )
                             else:
                                 decision_reasons: list[str] = []
+                                manuscript_matches_decision = _manuscript_matches_review_artifact_path(
+                                    decision.manuscript_path,
+                                    manuscript,
+                                    cwd=project_cwd,
+                                )
                                 if review_ledger is None:
                                     decision_reasons.append(
                                         "referee decision cannot be validated without the matching review ledger"
@@ -6695,13 +6668,12 @@ def _build_review_preflight(
                                         require_explicit_inputs=True,
                                         review_ledger=review_ledger,
                                         project_root=project_cwd,
+                                        expected_manuscript_sha256=(
+                                            compute_sha256(manuscript) if manuscript_matches_decision else None
+                                        ),
                                     )
                                     decision_reasons.extend(report.reasons)
-                                if not _manuscript_matches_review_artifact_path(
-                                    decision.manuscript_path,
-                                    manuscript,
-                                    cwd=project_cwd,
-                                ):
+                                if not manuscript_matches_decision:
                                     decision_reasons.append(
                                         "referee decision manuscript_path does not match the active submission manuscript"
                                     )
