@@ -4792,7 +4792,9 @@ def _permissions_status_payload(
     )
 
 
-permissions_app = typer.Typer(help="Runtime permission readiness and sync")
+permissions_app = typer.Typer(
+    help="Runtime permission readiness and sync. Use `gpd:settings` for guided runtime changes."
+)
 app.add_typer(permissions_app, name="permissions")
 
 
@@ -4810,7 +4812,7 @@ def permissions_status(
     "sync",
     help=(
         "Advanced: persist runtime-owned permission settings for the requested autonomy. "
-        "Use the runtime settings command for guided changes."
+        "Use `gpd:settings` for guided runtime changes."
     ),
 )
 def permissions_sync(
