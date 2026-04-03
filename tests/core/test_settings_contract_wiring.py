@@ -73,3 +73,14 @@ def test_settings_workflow_preset_contract_keeps_runtime_default_tier_model_path
     assert "Use runtime defaults" in settings_workflow
     assert "Configure explicit tier models" in settings_workflow
     assert 'Treat blank / `runtime default` / `none` as "no override for this tier"' in settings_workflow
+
+
+def test_set_tier_models_workflow_keeps_runtime_examples_generic() -> None:
+    set_tier_models = (WORKFLOWS_DIR / "set-tier-models.md").read_text(encoding="utf-8")
+
+    assert "Claude Code" not in set_tier_models
+    assert "Codex" not in set_tier_models
+    assert "Gemini CLI" not in set_tier_models
+    assert "OpenCode" not in set_tier_models
+    assert "gpt-5.4" not in set_tier_models
+    assert "runtime-native examples are intentionally not hard-coded here" in set_tier_models

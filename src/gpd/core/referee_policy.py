@@ -9,7 +9,7 @@ from collections import Counter
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from pydantic import ValidationError as PydanticValidationError
 
 from gpd.mcp.paper.models import (
@@ -55,13 +55,13 @@ class RefereeDecisionInput(BaseModel):
     final_recommendation: ReviewRecommendation
     final_confidence: ReviewConfidence = ReviewConfidence.medium
     stage_artifacts: list[str] = Field(default_factory=list)
-    central_claims_supported: bool = True
-    claim_scope_proportionate_to_evidence: bool = True
-    physical_assumptions_justified: bool = True
-    proof_audit_coverage_complete: bool = False
-    theorem_proof_alignment_adequate: bool = False
-    unsupported_claims_are_central: bool = False
-    reframing_possible_without_new_results: bool = True
+    central_claims_supported: StrictBool = True
+    claim_scope_proportionate_to_evidence: StrictBool = True
+    physical_assumptions_justified: StrictBool = True
+    proof_audit_coverage_complete: StrictBool = False
+    theorem_proof_alignment_adequate: StrictBool = False
+    unsupported_claims_are_central: StrictBool = False
+    reframing_possible_without_new_results: StrictBool = True
     mathematical_correctness: ReviewAdequacy = ReviewAdequacy.adequate
     novelty: ReviewAdequacy = ReviewAdequacy.adequate
     significance: ReviewAdequacy = ReviewAdequacy.adequate

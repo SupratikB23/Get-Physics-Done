@@ -345,7 +345,7 @@ class TestInstall:
 
         content = (target / "command" / "gpd-help.md").read_text(encoding="utf-8")
         assert "slash-command" not in content
-        assert "canonical in-runtime command names" in content
+        assert "Show available GPD commands and usage guide" in content
         assert "/gpd-" in content
 
     def test_local_install_uses_relative_gpd_paths(
@@ -379,6 +379,46 @@ class TestInstall:
         (target / "opencode.json").unlink()
 
         assert adapter.missing_install_artifacts(target) == ("opencode.json",)
+
+    def test_install_completeness_requires_manifest_backed_command_surface(
+        self,
+        adapter: OpenCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".opencode"
+        target.mkdir()
+        adapter.install(gpd_root, target)
+
+        command_dir = target / "command"
+        command_dir.rename(tmp_path / "command-missing")
+
+        missing = adapter.missing_install_artifacts(target)
+
+        assert adapter.has_complete_install(target) is False
+        assert "command/gpd-*.md" in missing
+        assert any(item.startswith("command/") for item in missing)
+
+    def test_install_completeness_requires_manifest_metadata_for_generated_commands(
+        self,
+        adapter: OpenCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".opencode"
+        target.mkdir()
+        adapter.install(gpd_root, target)
+
+        manifest_path = target / MANIFEST_NAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest.pop("opencode_generated_command_files", None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        missing = adapter.missing_install_artifacts(target)
+
+        assert adapter.has_complete_install(target) is False
+        assert "command/gpd-*.md" in missing
+        assert all(not item.startswith("command/gpd-") or item == "command/gpd-*.md" for item in missing)
 
     def test_install_fails_closed_for_malformed_opencode_json(
         self,

@@ -5059,6 +5059,49 @@ def test_resolve_review_preflight_manuscript_reports_inconsistent_project_state(
     assert "does not resolve to a readable manuscript entrypoint" in detail
 
 
+def test_resolve_review_preflight_manuscript_rejects_unsupported_explicit_target_before_project_scan(
+    tmp_path: Path,
+) -> None:
+    paper_dir = tmp_path / "paper"
+    paper_dir.mkdir()
+    (paper_dir / "ARTIFACT-MANIFEST.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "paper_title": "Curvature Flow Bounds",
+                "journal": "prl",
+                "created_at": "2026-04-02T00:00:00+00:00",
+                "artifacts": [
+                    {
+                        "artifact_id": "tex-paper",
+                        "category": "tex",
+                        "path": "curvature_flow_bounds.tex",
+                        "sha256": "0" * 64,
+                        "produced_by": "test",
+                        "sources": [],
+                        "metadata": {},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    submission_dir = tmp_path / "submission"
+    submission_dir.mkdir()
+    explicit_target = submission_dir / "curvature_flow_bounds.tex"
+    explicit_target.write_text("\\documentclass{article}\\begin{document}Hello\\end{document}", encoding="utf-8")
+
+    resolved, detail = cli_module._resolve_review_preflight_manuscript(
+        tmp_path,
+        "submission/curvature_flow_bounds.tex",
+        allow_markdown=False,
+        restrict_to_supported_roots=True,
+    )
+
+    assert resolved is None
+    assert "must stay under `paper/`, `manuscript/`, or `draft/`" in detail
+
+
 def test_paper_build_without_bibliography_does_not_import_pybtex(tmp_path: Path, monkeypatch) -> None:
     import gpd.mcp.paper.compiler  # noqa: F401
 

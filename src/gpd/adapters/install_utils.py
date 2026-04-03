@@ -1228,6 +1228,7 @@ def _copy_dir_contents(
                     install_scope=install_scope,
                     explicit_target=explicit_target,
                 )
+            content = materialize_first_round_review_schema_headings(content)
             content = _inject_review_contract_prompt_from_frontmatter(content)
             dest.write_text(content, encoding="utf-8")
         else:

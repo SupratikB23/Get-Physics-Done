@@ -147,6 +147,63 @@ def _write_active_manuscript_entrypoint(
     return entrypoint
 
 
+def _write_reproducibility_manifest(project_root: Path, *, manuscript_pdf: Path) -> None:
+    (project_root / "paper" / "reproducibility-manifest.json").write_text(
+        json.dumps(
+            {
+                "paper_title": "Curvature Flow Bounds",
+                "date": "2026-03-10",
+                "contact": "research@example.com",
+                "environment": {
+                    "python_version": "3.12.1",
+                    "package_manager": "uv",
+                    "required_packages": [{"package": "numpy", "version": "1.26.4"}],
+                    "lock_file": "pyproject.toml",
+                },
+                "execution_steps": [
+                    {
+                        "name": "run-analysis",
+                        "command": "python scripts/run_analysis.py",
+                        "outputs": ["results/out.json"],
+                        "stochastic": False,
+                    }
+                ],
+                "expected_results": [
+                    {
+                        "quantity": "x",
+                        "expected_value": "1",
+                        "tolerance": "0.1",
+                        "script": "scripts/run_analysis.py",
+                    }
+                ],
+                "output_files": [
+                    {
+                        "path": manuscript_pdf.name,
+                        "checksum_sha256": compute_sha256(manuscript_pdf),
+                    }
+                ],
+                "resource_requirements": [
+                    {
+                        "step": "run-analysis",
+                        "cpu_cores": 1,
+                        "memory_gb": 1.0,
+                    }
+                ],
+                "minimum_viable": "1 core",
+                "recommended": "2 cores",
+                "random_seeds": [],
+                "seeding_strategy": "",
+                "known_platform_differences": [],
+                "verification_steps": ["pipeline rerun", "numerical comparison", "artifact inspection"],
+                "manifest_created": "2026-03-10T00:00:00+00:00",
+                "last_verified": "2026-03-10T00:00:00+00:00",
+                "last_verified_platform": "macOS-15-arm64",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def _create_roadmap_with_phases(tmp_path: Path, phases: list[tuple[str, str]]) -> None:
     lines = ["# Roadmap", ""]
     for number, name in phases:
@@ -175,6 +232,16 @@ def _write_submission_review_package(
     review_report: bool = False,
 ) -> Path:
     root = _setup_project(tmp_path)
+    _create_state(
+        root,
+        {
+            "convention_lock": {
+                "metric_signature": "(-,+,+,+)",
+                "natural_units": "c=1",
+                "coordinate_system": "global chart",
+            }
+        },
+    )
     package = write_proof_review_package(
         root,
         theorem_bearing=theorem_bearing,
@@ -183,6 +250,7 @@ def _write_submission_review_package(
     resolve_manuscript_proof_review_status(root, package.manuscript_path, persist_manifest=True)
     if review_report:
         (root / "GPD" / "REFEREE-REPORT.md").write_text("Accepted after revision.\n", encoding="utf-8")
+    _write_reproducibility_manifest(root, manuscript_pdf=package.manuscript_pdf_path)
     return root
 
 
@@ -574,6 +642,47 @@ def test_paper_exists_suggests_peer_review_before_submission(tmp_path: Path) -> 
     assert result.context.has_paper is True
 
 
+def test_ambiguous_manuscript_state_blocks_write_paper_and_arxiv_submission(tmp_path: Path) -> None:
+    root = _setup_project(tmp_path)
+    _create_roadmap(root)
+    _create_phase(root, "01-setup", plans=1, summaries=1, verification=True)
+    write_proof_review_package(root, theorem_bearing=False, review_report=True)
+    _write_active_manuscript_entrypoint(root, root_name="manuscript")
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "write-paper" not in actions
+    assert "arxiv-submission" not in actions
+    assert result.context.has_paper is False
+
+
+def test_inconsistent_manuscript_state_blocks_write_paper_and_arxiv_submission(tmp_path: Path) -> None:
+    root = _setup_project(tmp_path)
+    _create_roadmap(root)
+    _create_phase(root, "01-setup", plans=1, summaries=1, verification=True)
+    write_proof_review_package(root, theorem_bearing=False, review_report=True)
+    paper_dir = root / "paper"
+    (paper_dir / "PAPER-CONFIG.json").write_text(
+        json.dumps(
+            {
+                "title": "Alternate Title",
+                "authors": [{"name": "A. Researcher"}],
+                "abstract": "Abstract.",
+                "sections": [{"heading": "Intro", "content": "Hello."}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "write-paper" not in actions
+    assert "arxiv-submission" not in actions
+    assert result.context.has_paper is False
+
+
 def test_referee_report_in_planning_root_suggests_response(tmp_path: Path) -> None:
     """Referee report in GPD suggests responding to referees."""
     root = _setup_project(tmp_path)
@@ -721,6 +830,42 @@ def test_missing_submission_support_artifacts_do_not_suggest_arxiv_submission(tm
     actions = [s.action for s in result.suggestions]
 
     assert "arxiv-submission" not in actions
+
+
+def test_missing_reproducibility_manifest_blocks_arxiv_submission(tmp_path: Path) -> None:
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
+    _create_roadmap(root)
+    (root / "paper" / "reproducibility-manifest.json").unlink()
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
+
+
+def test_publication_blockers_block_arxiv_submission_suggestion(tmp_path: Path) -> None:
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
+    _create_roadmap(root)
+    _create_state(root, {"blockers": ["Venue fit still unresolved"]})
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
+
+
+def test_missing_conventions_block_arxiv_submission_suggestion(tmp_path: Path) -> None:
+    root = _setup_project(tmp_path)
+    write_proof_review_package(root, theorem_bearing=False, review_report=True)
+    _create_roadmap(root)
+    _create_state(root, {"convention_lock": {"metric_signature": "(-,+,+,+)"}})
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
+    assert "set-conventions" in actions
+    assert "natural_units" in result.context.missing_conventions
 
 
 def test_accepted_review_decision_without_review_ledger_does_not_suggest_arxiv_submission(tmp_path: Path) -> None:

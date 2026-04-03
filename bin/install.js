@@ -162,6 +162,7 @@ const RUNTIME_CATALOG_ENTRY_KEYS = {
     "native_include_support",
     "agent_prompt_uses_dollar_templates",
     "installer_help_example_scope",
+    "validated_command_surface",
   ],
 };
 const RUNTIME_CATALOG_ALLOWED_KEYS = new Set([
@@ -497,6 +498,21 @@ function validateRuntimeCatalogEntry(entry, index) {
           return scope;
         })()
       : null,
+    validated_command_surface: Object.prototype.hasOwnProperty.call(payload, "validated_command_surface")
+      ? (() => {
+          const surface = requireStrictString(payload.validated_command_surface, `${label}.validated_command_surface`);
+          if (
+            surface !== "public_runtime_command_surface" &&
+            surface !== "public_runtime_slash_command" &&
+            surface !== "public_runtime_dollar_command"
+          ) {
+            throw new Error(
+              `${label}.validated_command_surface must be one of: public_runtime_command_surface, public_runtime_dollar_command, public_runtime_slash_command`
+            );
+          }
+          return surface;
+        })()
+      : "public_runtime_command_surface",
   };
 }
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from gpd.core.proof_review import (
     manuscript_has_theorem_bearing_language,
     manuscript_proof_review_manifest_path,
@@ -128,6 +130,12 @@ def test_manuscript_proof_review_rejects_incomplete_proof_redteam_body(tmp_path:
             "manuscript_path: paper/curvature_flow_bounds.tex\n"
             f"manuscript_sha256: {package.manuscript_sha256}\n"
             "round: 1\n"
+            "missing_parameter_symbols: []\n"
+            "missing_hypothesis_ids: []\n"
+            "coverage_gaps: []\n"
+            "scope_status: matched\n"
+            "quantifier_status: matched\n"
+            "counterexample_status: none_found\n"
             "---\n\n"
             "# Proof Redteam\n"
         ),
@@ -139,6 +147,247 @@ def test_manuscript_proof_review_rejects_incomplete_proof_redteam_body(tmp_path:
     assert status.state == "invalid_required_artifact"
     assert status.can_rely_on_prior_review is False
     assert "missing required sections" in status.detail
+
+
+def test_manuscript_proof_review_rejects_passed_artifact_missing_structured_audit_fields(
+    tmp_path: Path,
+) -> None:
+    package = write_proof_review_package(tmp_path, theorem_bearing=True, review_report=True, proof_redteam_status="passed")
+    proof_redteam_path = tmp_path / "GPD" / "review" / "PROOF-REDTEAM.md"
+    proof_redteam_path.write_text(
+        (
+            "---\n"
+            "status: passed\n"
+            "reviewer: gpd-check-proof\n"
+            "claim_ids:\n"
+            "  - CLM-001\n"
+            "proof_artifact_paths:\n"
+            "  - paper/curvature_flow_bounds.tex\n"
+            "manuscript_path: paper/curvature_flow_bounds.tex\n"
+            f"manuscript_sha256: {package.manuscript_sha256}\n"
+            "round: 1\n"
+            "---\n\n"
+            "# Proof Redteam\n"
+            "## Proof Inventory\n"
+            "- Exact claim / theorem text: For every r_0 > 0, the orbit intersects the target annulus.\n"
+            "- Claim / theorem target: Annulus intersection for every target radius.\n"
+            "- Named parameters:\n"
+            "  - `r_0`: target radius\n"
+            "- Hypotheses:\n"
+            "  - `H1`: chi > 0\n"
+            "- Quantifier / domain obligations:\n"
+            "  - for every r_0 > 0\n"
+            "- Conclusion clauses:\n"
+            "  - annulus intersection holds\n"
+            "## Coverage Ledger\n"
+            "### Named-Parameter Coverage\n"
+            "| Parameter | Role / Domain | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `r_0` | target radius | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "### Hypothesis Coverage\n"
+            "| Hypothesis | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `H1` | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "### Quantifier / Domain Coverage\n"
+            "| Obligation | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `for every r_0 > 0` | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "### Conclusion-Clause Coverage\n"
+            "| Clause | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| annulus intersection holds | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "## Adversarial Probe\n"
+            "- Probe type: dropped-parameter test\n"
+            "- Result: The body looks complete, but the structured audit fields are missing.\n"
+            "## Verdict\n"
+            "- Scope status: `matched`\n"
+            "- Quantifier status: `matched`\n"
+            "- Counterexample status: `none_found`\n"
+            "- Blocking gaps:\n"
+            "  - None.\n"
+            "## Required Follow-Up\n"
+            "- None.\n"
+        ),
+        encoding="utf-8",
+    )
+
+    status = resolve_manuscript_proof_review_status(tmp_path, package.manuscript_path)
+
+    assert status.state == "invalid_required_artifact"
+    assert status.can_rely_on_prior_review is False
+    assert "missing_parameter_symbols" in status.detail
+
+
+def test_manuscript_proof_review_trusts_structured_audit_over_prose_hints(tmp_path: Path) -> None:
+    package = write_proof_review_package(tmp_path, theorem_bearing=True, review_report=True, proof_redteam_status="passed")
+    proof_redteam_path = tmp_path / "GPD" / "review" / "PROOF-REDTEAM.md"
+    proof_redteam_path.write_text(
+        (
+            "---\n"
+            "status: passed\n"
+            "reviewer: gpd-check-proof\n"
+            "claim_ids:\n"
+            "  - CLM-001\n"
+            "proof_artifact_paths:\n"
+            "  - paper/curvature_flow_bounds.tex\n"
+            "manuscript_path: paper/curvature_flow_bounds.tex\n"
+            f"manuscript_sha256: {package.manuscript_sha256}\n"
+            "round: 1\n"
+            "missing_parameter_symbols: []\n"
+            "missing_hypothesis_ids: []\n"
+            "coverage_gaps: []\n"
+            "scope_status: matched\n"
+            "quantifier_status: matched\n"
+            "counterexample_status: none_found\n"
+            "---\n\n"
+            "# Proof Redteam\n"
+            "## Proof Inventory\n"
+            "- Exact claim / theorem text: For every r_0 > 0, the orbit intersects the target annulus.\n"
+            "- Claim / theorem target: Annulus intersection for every target radius.\n"
+            "- Named parameters:\n"
+            "  - `r_0`: target radius\n"
+            "- Hypotheses:\n"
+            "  - `H1`: chi > 0\n"
+            "- Quantifier / domain obligations:\n"
+            "  - for every r_0 > 0\n"
+            "- Conclusion clauses:\n"
+            "  - annulus intersection holds\n"
+            "## Coverage Ledger\n"
+            "### Named-Parameter Coverage\n"
+            "| Parameter | Role / Domain | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `r_0` | target radius | paper/curvature_flow_bounds.tex:1 | covered | Prose mentions a missing r_0-like case, but the structured audit is clean. |\n"
+            "### Hypothesis Coverage\n"
+            "| Hypothesis | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `H1` | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "### Quantifier / Domain Coverage\n"
+            "| Obligation | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `for every r_0 > 0` | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "### Conclusion-Clause Coverage\n"
+            "| Clause | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| annulus intersection holds | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "## Adversarial Probe\n"
+            "- Probe type: dropped-parameter test\n"
+            "- Result: The prose mentions a missing r_0-like special case, but the structured audit still records full coverage.\n"
+            "## Verdict\n"
+            "- Scope status: `matched`\n"
+            "- Quantifier status: `matched`\n"
+            "- Counterexample status: `none_found`\n"
+            "- Blocking gaps:\n"
+            "  - None.\n"
+            "## Required Follow-Up\n"
+            "- None.\n"
+        ),
+        encoding="utf-8",
+    )
+
+    status = resolve_manuscript_proof_review_status(tmp_path, package.manuscript_path)
+
+    assert status.state == "fresh"
+    assert status.can_rely_on_prior_review is True
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value", "expected_fragment"),
+    [
+        ("missing_parameter_symbols", ["r_0"], "missing_parameter_symbols"),
+        ("missing_hypothesis_ids", ["H1"], "missing_hypothesis_ids"),
+        ("coverage_gaps", ["Proof only establishes the centered case."], "coverage_gaps"),
+        ("scope_status", "narrower_than_claim", "scope_status"),
+        ("quantifier_status", "narrowed", "quantifier_status"),
+        ("counterexample_status", "not_attempted", "counterexample_status"),
+        ("counterexample_status", "counterexample_found", "counterexample_status"),
+    ],
+)
+def test_manuscript_proof_review_rejects_passed_artifact_with_structured_gap(
+    tmp_path: Path,
+    field_name: str,
+    field_value: object,
+    expected_fragment: str,
+) -> None:
+    package = write_proof_review_package(tmp_path, theorem_bearing=True, review_report=True, proof_redteam_status="passed")
+    proof_redteam_path = tmp_path / "GPD" / "review" / "PROOF-REDTEAM.md"
+
+    structured_fields = {
+        "missing_parameter_symbols": [],
+        "missing_hypothesis_ids": [],
+        "coverage_gaps": [],
+        "scope_status": "matched",
+        "quantifier_status": "matched",
+        "counterexample_status": "none_found",
+    }
+    structured_fields[field_name] = field_value
+    proof_redteam_path.write_text(
+        (
+            "---\n"
+            "status: passed\n"
+            "reviewer: gpd-check-proof\n"
+            "claim_ids:\n"
+            "  - CLM-001\n"
+            "proof_artifact_paths:\n"
+            "  - paper/curvature_flow_bounds.tex\n"
+            "manuscript_path: paper/curvature_flow_bounds.tex\n"
+            f"manuscript_sha256: {package.manuscript_sha256}\n"
+            "round: 1\n"
+            f"missing_parameter_symbols: {structured_fields['missing_parameter_symbols']}\n"
+            f"missing_hypothesis_ids: {structured_fields['missing_hypothesis_ids']}\n"
+            f"coverage_gaps: {structured_fields['coverage_gaps']}\n"
+            f"scope_status: {structured_fields['scope_status']}\n"
+            f"quantifier_status: {structured_fields['quantifier_status']}\n"
+            f"counterexample_status: {structured_fields['counterexample_status']}\n"
+            "---\n\n"
+            "# Proof Redteam\n"
+            "## Proof Inventory\n"
+            "- Exact claim / theorem text: For every r_0 > 0, the orbit intersects the target annulus.\n"
+            "- Claim / theorem target: Annulus intersection for every target radius.\n"
+            "- Named parameters:\n"
+            "  - `r_0`: target radius\n"
+            "- Hypotheses:\n"
+            "  - `H1`: chi > 0\n"
+            "- Quantifier / domain obligations:\n"
+            "  - for every r_0 > 0\n"
+            "- Conclusion clauses:\n"
+            "  - annulus intersection holds\n"
+            "## Coverage Ledger\n"
+            "### Named-Parameter Coverage\n"
+            "| Parameter | Role / Domain | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `r_0` | target radius | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "### Hypothesis Coverage\n"
+            "| Hypothesis | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `H1` | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "### Quantifier / Domain Coverage\n"
+            "| Obligation | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| `for every r_0 > 0` | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "### Conclusion-Clause Coverage\n"
+            "| Clause | Proof Location | Status | Notes |\n"
+            "| --- | --- | --- | --- |\n"
+            "| annulus intersection holds | paper/curvature_flow_bounds.tex:1 | covered |  |\n"
+            "## Adversarial Probe\n"
+            "- Probe type: dropped-parameter test\n"
+            f"- Result: This artifact includes {expected_fragment}, which must block a passed status.\n"
+            "## Verdict\n"
+            "- Scope status: `matched`\n"
+            "- Quantifier status: `matched`\n"
+            "- Counterexample status: `none_found`\n"
+            "- Blocking gaps:\n"
+            "  - None.\n"
+            "## Required Follow-Up\n"
+            "- None.\n"
+        ),
+        encoding="utf-8",
+    )
+
+    status = resolve_manuscript_proof_review_status(tmp_path, package.manuscript_path)
+
+    assert status.state == "invalid_required_artifact"
+    assert status.can_rely_on_prior_review is False
+    assert expected_fragment in status.detail
 
 
 def test_manuscript_proof_review_anchors_to_passed_proof_redteam_artifact(tmp_path: Path) -> None:

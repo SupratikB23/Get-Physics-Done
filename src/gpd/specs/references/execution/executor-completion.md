@@ -314,6 +314,17 @@ gpd_return:
 Append this YAML block after the markdown completion format. It enables machine-readable parsing by the orchestrator.
 ```
 
+If the workflow expects a spawned-agent handoff, the same `gpd_return` object may also carry these top-level keys:
+
+```yaml
+gpd_return:
+  state_updates: [...]
+  contract_updates: [...]
+  decisions: [...]
+  blockers: [...]
+  continuation_update: {...}
+```
+
 Include ALL checkpoints (previous + new if continuation agent).
 
 ## Final Commit

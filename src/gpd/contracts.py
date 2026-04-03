@@ -102,6 +102,12 @@ def _normalize_required_str(value: object) -> object:
     return value
 
 
+def _normalize_strict_bool(value: object) -> object:
+    if type(value) is bool:
+        return value
+    raise ValueError("must be a boolean")
+
+
 def _normalize_optional_sha256(value: object) -> object:
     normalized = _normalize_optional_str(value)
     if normalized is None:
@@ -522,6 +528,11 @@ class ContractProofParameter(BaseModel):
     def _normalize_notes(cls, value: object) -> object:
         return _normalize_optional_str(value)
 
+    @field_validator("required_in_proof", mode="before")
+    @classmethod
+    def _normalize_required_in_proof(cls, value: object) -> object:
+        return _normalize_strict_bool(value)
+
 
 class ContractProofHypothesis(BaseModel):
     """A named hypothesis or regime restriction for a proof-bearing claim."""
@@ -551,6 +562,11 @@ class ContractProofHypothesis(BaseModel):
             _normalize_required_str(value),
             ("assumption", "precondition", "regime", "definition", "lemma", "other"),
         )
+
+    @field_validator("required_in_proof", mode="before")
+    @classmethod
+    def _normalize_required_in_proof(cls, value: object) -> object:
+        return _normalize_strict_bool(value)
 
 
 class ContractProofConclusionClause(BaseModel):
@@ -652,6 +668,11 @@ class ContractProofAudit(BaseModel):
             _normalize_required_str(value),
             ("none_found", "counterexample_found", "not_attempted", "narrowed_claim"),
         )
+
+    @field_validator("stale", mode="before")
+    @classmethod
+    def _normalize_stale(cls, value: object) -> object:
+        return _normalize_strict_bool(value)
 
     @field_validator("reviewer")
     @classmethod
@@ -1288,6 +1309,11 @@ class ContractReference(BaseModel):
     @classmethod
     def _normalize_required_actions(cls, value: object) -> object:
         return _normalize_literal_choice_list(value, ("read", "use", "compare", "cite", "avoid"))
+
+    @field_validator("must_surface", mode="before")
+    @classmethod
+    def _normalize_must_surface(cls, value: object) -> object:
+        return _normalize_strict_bool(value)
 
 
 class ContractForbiddenProxy(BaseModel):

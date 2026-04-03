@@ -27,7 +27,7 @@ from gpd.adapters.install_utils import (
 from gpd.adapters.opencode import OpenCodeAdapter
 from gpd.adapters.runtime_catalog import get_shared_install_metadata, resolve_global_config_dir
 from gpd.adapters.tool_names import build_canonical_alias_map
-from gpd.registry import get_command, load_agents_from_dir
+from gpd.registry import load_agents_from_dir
 
 REPO_GPD_ROOT = Path(__file__).resolve().parents[2] / "src" / "gpd"
 RUNTIME_ALIAS_MAP = build_canonical_alias_map(adapter.tool_name_map for adapter in iter_adapters())
@@ -262,6 +262,22 @@ def test_update_surface_materializes_workflow_paths_in_compiled_artifacts(
             f'PATCH_META="{target.as_posix()}/{_SHARED_INSTALL.patches_dir_name}/backup-meta.json"' in content
         )
         assert "TARGET_DIR_ARG=$(" not in content
+
+
+@pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+def test_shared_installed_markdown_materializes_first_round_review_placeholders(
+    tmp_path: Path,
+    runtime: str,
+) -> None:
+    target = _install_real_repo_for_runtime(tmp_path, runtime)
+
+    shared_markdown = sorted((target / "get-physics-done").rglob("*.md"))
+    assert shared_markdown
+
+    for markdown_path in shared_markdown:
+        content = markdown_path.read_text(encoding="utf-8")
+        assert "{round_suffix}" not in content, markdown_path
+        assert "{-RN}" not in content, markdown_path
 
 # ---------------------------------------------------------------------------
 # Claude Code: install → read back → compare
@@ -1047,10 +1063,12 @@ def test_real_installed_contract_and_review_surfaces_keep_required_schema_bodies
         _read_runtime_agent_prompt(target, runtime, "gpd-review-literature"),
         runtime=runtime,
     )
+    review_reader_raw = _read_runtime_agent_prompt(target, runtime, "gpd-review-reader")
     review_reader = _canonicalize_runtime_markdown(
-        _read_runtime_agent_prompt(target, runtime, "gpd-review-reader"),
+        review_reader_raw,
         runtime=runtime,
     )
+    paper_writer_raw = _read_runtime_agent_prompt(target, runtime, "gpd-paper-writer")
     review_math = _canonicalize_runtime_markdown(
         _read_runtime_agent_prompt(target, runtime, "gpd-review-math"),
         runtime=runtime,
@@ -1092,8 +1110,6 @@ def test_real_installed_contract_and_review_surfaces_keep_required_schema_bodies
     assert "check_subject_kind: [claim | deliverable | acceptance_test | reference | forbidden_proxy | suggested_contract_check]" not in verify_work
     assert "# state.json Schema" in sync_state
     write_paper_section = _review_contract_section(write_paper)
-    registry_write_paper_section = _review_contract_section(get_command("write-paper").content)
-    assert write_paper_section == registry_write_paper_section
     assert "review_contract:" in write_paper_section
     assert "review-contract:" not in write_paper_section
     assert write_paper.index("## Review Contract") < write_paper.index("Reproducibility Manifest Template")
@@ -1101,8 +1117,6 @@ def test_real_installed_contract_and_review_surfaces_keep_required_schema_bodies
     for command_name in ("write-paper", "respond-to-referees", "verify-work", "arxiv-submission", "peer-review"):
         installed_content = _read_runtime_command_prompt(tmp_path, target, runtime, command_name)
         installed_section = _review_contract_section(installed_content)
-        registry_section = _review_contract_section(get_command(command_name).content)
-        assert installed_section == registry_section
         assert installed_content.count("## Review Contract") == 1
         assert installed_section.count("## Review Contract") == 1
     peer_review_section = _review_contract_section(
@@ -1114,6 +1128,18 @@ def test_real_installed_contract_and_review_surfaces_keep_required_schema_bodies
     assert '"stage_id": "reader | literature | math | physics | interestingness"' in review_literature
     assert '"stage_kind": "reader | literature | math | physics | interestingness"' in review_literature
     assert "Peer Review Panel Protocol" in review_reader
+    assert "GPD/review/CLAIMS.json" in review_reader_raw
+    assert "GPD/review/STAGE-reader.json" in review_reader_raw
+    assert "GPD/review/CLAIMS{round_suffix}.json" not in review_reader_raw
+    assert "GPD/review/STAGE-reader{round_suffix}.json" not in review_reader_raw
+    assert "REVIEW-LEDGER.json" in paper_writer_raw
+    assert "REFEREE-DECISION.json" in paper_writer_raw
+    assert "REFEREE-REPORT.md" in paper_writer_raw
+    assert "AUTHOR-RESPONSE.md" in paper_writer_raw
+    assert "REVIEW-LEDGER{-RN}.json" not in paper_writer_raw
+    assert "REFEREE-DECISION{-RN}.json" not in paper_writer_raw
+    assert "REFEREE-REPORT{-RN}.md" not in paper_writer_raw
+    assert "AUTHOR-RESPONSE{-RN}.md" not in paper_writer_raw
     for review_stage, stage_path, stage_kind in (
         (review_math, "STAGE-math.json", "math"),
         (review_physics, "STAGE-physics.json", "physics"),

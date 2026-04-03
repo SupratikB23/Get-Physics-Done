@@ -15,6 +15,8 @@ from gpd.core.review_contract_prompt import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMANDS_DIR = REPO_ROOT / "src/gpd/commands"
+AGENTS_DIR = REPO_ROOT / "src/gpd/agents"
+WORKFLOWS_DIR = REPO_ROOT / "src/gpd/specs/workflows"
 REFERENCES_DIR = REPO_ROOT / "src/gpd/specs/references"
 TEMPLATES_DIR = REPO_ROOT / "src/gpd/specs/templates"
 
@@ -486,8 +488,12 @@ def test_respond_to_referees_review_contract_uses_round_suffixed_output_paths() 
         "GPD/review/REFEREE_RESPONSE{round_suffix}.md",
         "GPD/AUTHOR-RESPONSE{round_suffix}.md",
     ]
-    assert "GPD/review/REFEREE_RESPONSE{round_suffix}.md" in _read_command("respond-to-referees")
-    assert "GPD/AUTHOR-RESPONSE{round_suffix}.md" in _read_command("respond-to-referees")
+    respond_command = _read_command("respond-to-referees")
+    respond_workflow = (WORKFLOWS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
+    assert "GPD/review/REFEREE_RESPONSE{round_suffix}.md" in respond_command
+    assert "GPD/AUTHOR-RESPONSE{round_suffix}.md" in respond_command
+    assert "templates/paper/author-response.md" in respond_workflow
+    assert "needs-calculation" in respond_workflow
 
 
 def test_write_paper_review_contract_uses_round_suffixed_referee_outputs() -> None:
@@ -499,8 +505,26 @@ def test_write_paper_review_contract_uses_round_suffixed_referee_outputs() -> No
         "GPD/REFEREE-REPORT{round_suffix}.md",
         "GPD/REFEREE-REPORT{round_suffix}.tex",
     ]
-    assert "GPD/REFEREE-REPORT{round_suffix}.md" in _read_command("write-paper")
-    assert "GPD/REFEREE-REPORT{round_suffix}.tex" in _read_command("write-paper")
+    write_command = _read_command("write-paper")
+    write_workflow = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
+    assert "GPD/REFEREE-REPORT{round_suffix}.md" in write_command
+    assert "GPD/REFEREE-REPORT{round_suffix}.tex" in write_command
+    assert "templates/paper/author-response.md" in write_workflow
+    assert "needs-calculation" in write_workflow
+
+
+def test_author_response_template_is_canonical_and_mentions_new_calculation_tracking() -> None:
+    author_response = (TEMPLATES_DIR / "paper" / "author-response.md").read_text(encoding="utf-8")
+    referee_response = (TEMPLATES_DIR / "paper" / "referee-response.md").read_text(encoding="utf-8")
+    writer = (AGENTS_DIR / "gpd-paper-writer.md").read_text(encoding="utf-8")
+
+    assert "issues_needing_calculation" in author_response
+    assert "needs-calculation" in author_response
+    assert "Source phase for new work" in author_response
+    assert "templates/paper/author-response.md" in referee_response
+    assert "needs-calculation" in referee_response
+    assert "templates/paper/author-response.md" in writer
+    assert "needs-calculation" in writer
 
 
 def test_write_paper_review_contract_surfaces_manuscript_root_review_dependencies() -> None:

@@ -35,7 +35,7 @@ from gpd.core.constants import (
 from gpd.core.manuscript_artifacts import (
     locate_publication_artifact,
     resolve_current_manuscript_artifacts,
-    resolve_current_manuscript_entrypoint,
+    resolve_current_manuscript_resolution,
 )
 from gpd.core.phases import _milestone_completion_snapshot
 from gpd.core.proof_review import (
@@ -494,8 +494,22 @@ def _manuscript_has_submission_support_artifacts(cwd: Path, manuscript_entrypoin
 
     try:
         ArtifactManifest.model_validate(json.loads(artifacts.artifact_manifest.read_text(encoding="utf-8")))
-        BibliographyAudit.model_validate(json.loads(artifacts.bibliography_audit.read_text(encoding="utf-8")))
+        bibliography_audit = BibliographyAudit.model_validate(
+            json.loads(artifacts.bibliography_audit.read_text(encoding="utf-8"))
+        )
     except (OSError, json.JSONDecodeError, PydanticValidationError):
+        return False
+    if not (
+        bibliography_audit.resolved_sources == bibliography_audit.total_sources
+        and bibliography_audit.partial_sources == 0
+        and bibliography_audit.unverified_sources == 0
+        and bibliography_audit.failed_sources == 0
+    ):
+        return False
+
+    if artifacts.reproducibility_manifest is None:
+        return False
+    if not _reproducibility_manifest_is_ready(artifacts.reproducibility_manifest):
         return False
 
     compiled_manuscript = locate_publication_artifact(
@@ -503,6 +517,29 @@ def _manuscript_has_submission_support_artifacts(cwd: Path, manuscript_entrypoin
         manuscript_entrypoint.with_suffix(".pdf").name,
     )
     return compiled_manuscript is not None and compiled_manuscript.exists()
+
+
+def _reproducibility_manifest_is_ready(reproducibility_manifest: Path) -> bool:
+    try:
+        payload = json.loads(reproducibility_manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    from gpd.core.reproducibility import validate_reproducibility_manifest
+
+    validation = validate_reproducibility_manifest(payload)
+    return validation.valid and validation.ready_for_review and not validation.warnings
+
+
+def _current_publication_blockers(cwd: Path) -> list[str]:
+    state = _load_state_json_safe(cwd) or {}
+    raw_blockers = state.get("blockers") or []
+    blockers: list[str] = []
+    for item in _filter_unresolved(raw_blockers):
+        text = _item_text(item, ("text", "description")).strip()
+        if text:
+            blockers.append(text)
+    return blockers
 
 
 def _publication_review_package_allows_submission(cwd: Path, manuscript_entrypoint: Path | None) -> bool:
@@ -550,6 +587,28 @@ def _publication_review_package_allows_submission(cwd: Path, manuscript_entrypoi
     if decision.final_recommendation not in {"accept", "minor_revision"}:
         return False
     return not decision.blocking_issue_ids and _manuscript_has_submission_support_artifacts(cwd, manuscript_entrypoint)
+
+
+def _conventions_are_ready(cwd: Path) -> bool:
+    state = _load_state_json_safe(cwd) or {}
+    convention_lock = state.get("convention_lock")
+    if not isinstance(convention_lock, dict):
+        return False
+    from gpd.core.conventions import is_bogus_value
+
+    return all(convention_lock.get(key) and not is_bogus_value(convention_lock.get(key)) for key in CORE_CONVENTIONS)
+
+
+def _publication_submission_is_strictly_ready(cwd: Path, manuscript_entrypoint: Path | None) -> bool:
+    if manuscript_entrypoint is None:
+        return False
+    if _current_publication_blockers(cwd):
+        return False
+    if not _conventions_are_ready(cwd):
+        return False
+    if not _publication_review_package_allows_submission(cwd, manuscript_entrypoint):
+        return False
+    return _manuscript_submission_proof_review_is_fresh(cwd, manuscript_entrypoint)
 
 
 def _manuscript_submission_proof_review_is_fresh(
@@ -676,7 +735,9 @@ def suggest_next(cwd: Path, *, limit: int = 5) -> SuggestResult:
     # ── 0. Check project existence ──────────────────────────────────────
     project_exists = _path_exists(cwd, f"{PLANNING_DIR_NAME}/{PROJECT_FILENAME}")
     roadmap_exists = _path_exists(cwd, f"{PLANNING_DIR_NAME}/{ROADMAP_FILENAME}")
-    manuscript_entrypoint = resolve_current_manuscript_entrypoint(cwd, allow_markdown=True)
+    manuscript_resolution = resolve_current_manuscript_resolution(cwd, allow_markdown=True)
+    manuscript_entrypoint = manuscript_resolution.manuscript_entrypoint if manuscript_resolution.status == "resolved" else None
+    manuscript_state_is_blocked = manuscript_resolution.status in {"ambiguous", "invalid"}
 
     if not project_exists and manuscript_entrypoint is None:
         only = Recommendation(
@@ -926,17 +987,14 @@ def suggest_next(cwd: Path, *, limit: int = 5) -> SuggestResult:
     has_latex_manuscript = manuscript_entrypoint is not None and manuscript_entrypoint.suffix == ".tex"
     has_lit_review = _has_literature_review(cwd)
     has_referee = _has_referee_report(cwd)
-    submission_ready_review = _latest_referee_decision_allows_submission(cwd, manuscript_entrypoint) and _manuscript_submission_proof_review_is_fresh(
-        cwd,
-        manuscript_entrypoint,
-    )
+    submission_ready_review = _publication_submission_is_strictly_ready(cwd, manuscript_entrypoint)
 
     ctx_kwargs["has_paper"] = has_paper_flag
     ctx_kwargs["has_literature_review"] = has_lit_review
     ctx_kwargs["has_referee_report"] = has_referee
 
     # 13a. All phases complete + verified → suggest paper writing
-    if all_complete and phase_analysis and not has_paper_flag:
+    if all_complete and phase_analysis and not has_paper_flag and not manuscript_state_is_blocked:
         all_verified = all(p.has_verification for p in phase_analysis)
         if all_verified:
             suggestions.append(
@@ -990,7 +1048,6 @@ def suggest_next(cwd: Path, *, limit: int = 5) -> SuggestResult:
                     reason="Paper draft exists — run standalone peer review before submission packaging",
                 )
             )
-
     # ── 14. No phases at all → need to plan ─────────────────────────────
     if not phase_analysis and roadmap_exists:
         suggestions.append(

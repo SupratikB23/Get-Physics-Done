@@ -69,6 +69,12 @@ _THEOREM_STYLE_MANUSCRIPT_RE = re.compile(
     r"|(^\s*(?:theorem|lemma|corollary|proposition|claim|proof)\b[\s.:])",
     re.IGNORECASE | re.MULTILINE,
 )
+_PROOF_REDTEAM_REQUIRED_STATUS_VALUES = frozenset({"passed", "gaps_found", "human_needed"})
+_PROOF_REDTEAM_REQUIRED_SCOPE_STATUS_VALUES = frozenset({"matched", "narrower_than_claim", "mismatched", "unclear"})
+_PROOF_REDTEAM_REQUIRED_QUANTIFIER_STATUS_VALUES = frozenset({"matched", "narrowed", "mismatched", "unclear"})
+_PROOF_REDTEAM_REQUIRED_COUNTEREXAMPLE_STATUS_VALUES = frozenset(
+    {"none_found", "counterexample_found", "not_attempted", "narrowed_claim"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +87,16 @@ class _MathReviewAnchor:
     theorem_claim_ids: tuple[str, ...]
     proof_artifact_paths: tuple[str, ...]
     validation_errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _ProofRedteamStructuredAudit:
+    missing_parameter_symbols: tuple[str, ...]
+    missing_hypothesis_ids: tuple[str, ...]
+    coverage_gaps: tuple[str, ...]
+    scope_status: str
+    quantifier_status: str
+    counterexample_status: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -737,6 +753,9 @@ def _read_proof_redteam_status(
     raw_status = meta.get("status")
     if not isinstance(raw_status, str) or not raw_status.strip():
         return None, "top-level frontmatter `status` is missing"
+    status = raw_status.strip().lower()
+    if status not in _PROOF_REDTEAM_REQUIRED_STATUS_VALUES:
+        return None, "top-level frontmatter `status` must be one of: passed, gaps_found, human_needed"
 
     reviewer = meta.get("reviewer")
     if reviewer != "gpd-check-proof":
@@ -795,6 +814,10 @@ def _read_proof_redteam_status(
         if round_number != expected_round:
             return None, "top-level frontmatter `round` does not match the active review round"
 
+    structured_audit, structured_audit_error = _read_proof_redteam_structured_audit(meta)
+    if structured_audit_error is not None:
+        return None, structured_audit_error
+
     required_sections = (
         "# Proof Redteam",
         "## Proof Inventory",
@@ -831,24 +854,98 @@ def _read_proof_redteam_status(
     if "Scope status:" not in verdict_body or "Quantifier status:" not in verdict_body or "Counterexample status:" not in verdict_body:
         return None, "proof-redteam Verdict must include scope, quantifier, and counterexample status lines"
 
-    status = raw_status.strip().lower()
-    verdict_lower = verdict_body.lower()
     if status == "passed":
-        fail_closed_markers = (
-            "| missing |",
-            "| uncovered |",
-            "scope status: `narrower_than_claim`",
-            "scope status: `mismatched`",
-            "quantifier status: `narrowed`",
-            "quantifier status: `mismatched`",
-            "counterexample status: `counterexample_found`",
-            "counterexample status: `narrowed_claim`",
-            "counterexample status: `not_attempted`",
-        )
-        if any(marker in verdict_lower or marker in body.lower() for marker in fail_closed_markers):
-            return None, "proof-redteam `status: passed` is inconsistent with uncovered coverage or a failed adversarial verdict"
+        structured_failures: list[str] = []
+        if structured_audit.missing_parameter_symbols:
+            structured_failures.append(
+                "missing_parameter_symbols=" + ", ".join(structured_audit.missing_parameter_symbols)
+            )
+        if structured_audit.missing_hypothesis_ids:
+            structured_failures.append("missing_hypothesis_ids=" + ", ".join(structured_audit.missing_hypothesis_ids))
+        if structured_audit.coverage_gaps:
+            structured_failures.append("coverage_gaps=" + ", ".join(structured_audit.coverage_gaps[:3]))
+        if structured_audit.scope_status != "matched":
+            structured_failures.append(f"scope_status={structured_audit.scope_status}")
+        if structured_audit.quantifier_status != "matched":
+            structured_failures.append(f"quantifier_status={structured_audit.quantifier_status}")
+        if structured_audit.counterexample_status != "none_found":
+            structured_failures.append(f"counterexample_status={structured_audit.counterexample_status}")
+        if structured_failures:
+            return None, (
+                "proof-redteam `status: passed` is inconsistent with structured audit fields: "
+                + "; ".join(structured_failures)
+            )
 
     return status, None
+
+
+def _read_proof_redteam_structured_audit(meta: dict[str, object]) -> tuple[_ProofRedteamStructuredAudit | None, str | None]:
+    missing_parameter_symbols, error = _read_proof_redteam_string_list(meta, "missing_parameter_symbols")
+    if error is not None:
+        return None, error
+    missing_hypothesis_ids, error = _read_proof_redteam_string_list(meta, "missing_hypothesis_ids")
+    if error is not None:
+        return None, error
+    coverage_gaps, error = _read_proof_redteam_string_list(meta, "coverage_gaps")
+    if error is not None:
+        return None, error
+    scope_status, error = _read_proof_redteam_status_value(meta, "scope_status", _PROOF_REDTEAM_REQUIRED_SCOPE_STATUS_VALUES)
+    if error is not None:
+        return None, error
+    quantifier_status, error = _read_proof_redteam_status_value(
+        meta,
+        "quantifier_status",
+        _PROOF_REDTEAM_REQUIRED_QUANTIFIER_STATUS_VALUES,
+    )
+    if error is not None:
+        return None, error
+    counterexample_status, error = _read_proof_redteam_status_value(
+        meta,
+        "counterexample_status",
+        _PROOF_REDTEAM_REQUIRED_COUNTEREXAMPLE_STATUS_VALUES,
+    )
+    if error is not None:
+        return None, error
+    return (
+        _ProofRedteamStructuredAudit(
+            missing_parameter_symbols=missing_parameter_symbols,
+            missing_hypothesis_ids=missing_hypothesis_ids,
+            coverage_gaps=coverage_gaps,
+            scope_status=scope_status,
+            quantifier_status=quantifier_status,
+            counterexample_status=counterexample_status,
+        ),
+        None,
+    )
+
+
+def _read_proof_redteam_string_list(meta: dict[str, object], field_name: str) -> tuple[tuple[str, ...], str | None]:
+    if field_name not in meta:
+        return (), f"top-level frontmatter `{field_name}` is missing"
+    value = meta.get(field_name)
+    if not isinstance(value, list):
+        return (), f"top-level frontmatter `{field_name}` must be a list of strings"
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        return (), f"top-level frontmatter `{field_name}` must be a list of strings"
+    return tuple(dict.fromkeys(item.strip() for item in value)), None
+
+
+def _read_proof_redteam_status_value(
+    meta: dict[str, object],
+    field_name: str,
+    allowed_values: frozenset[str],
+) -> tuple[str, str | None]:
+    if field_name not in meta:
+        return "", f"top-level frontmatter `{field_name}` is missing"
+    value = meta.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        allowed = ", ".join(sorted(allowed_values))
+        return "", f"top-level frontmatter `{field_name}` must be one of: {allowed}"
+    normalized = value.strip().lower()
+    if normalized not in allowed_values:
+        allowed = ", ".join(sorted(allowed_values))
+        return "", f"top-level frontmatter `{field_name}` must be one of: {allowed}"
+    return normalized, None
 
 
 def _section_body(body: str, heading: str) -> str:

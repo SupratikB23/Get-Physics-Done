@@ -182,10 +182,43 @@ def test_state_and_context_restore_backup_project_contract_when_primary_state_is
     assert ctx["project_contract"]["scope"]["question"] == "Recovered from backup-only state"
     assert ctx["project_contract_load_info"]["source_path"].endswith(STATE_JSON_BACKUP_FILENAME)
     assert ctx["project_contract_load_info"]["status"] == "loaded"
+    assert ctx["project_contract_gate"]["authoritative"] is True
     assert any(
         "the primary state.json was unavailable or unreadable" in record.message
         for record in caplog.records
     )
+
+
+def test_state_and_context_keep_fallback_project_contract_visible_but_non_authoritative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup_project(tmp_path)
+
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["context_intake"]["must_read_refs"] = ["ref-benchmark"]
+
+    from gpd.core.state import ensure_state_schema
+
+    normalized_state = ensure_state_schema({"project_contract": contract})
+    monkeypatch.setattr(
+        "gpd.core.state.peek_state_json",
+        lambda cwd, **kwargs: (normalized_state, [], "state.json"),
+    )
+    monkeypatch.setattr("gpd.core.state._load_raw_project_contract_payload", lambda cwd: None)
+
+    loaded = state_load(tmp_path)
+    ctx = init_progress(tmp_path)
+
+    assert loaded.project_contract_load_info["provenance"] == "fallback"
+    assert loaded.project_contract_gate["raw_project_contract_classified"] is False
+    assert loaded.project_contract_gate["authoritative"] is False
+    assert loaded.project_contract_gate["repair_required"] is True
+    assert ctx["project_contract"] is not None
+    assert ctx["project_contract_load_info"]["provenance"] == "fallback"
+    assert ctx["project_contract_gate"]["raw_project_contract_classified"] is False
+    assert ctx["project_contract_gate"]["authoritative"] is False
+    assert ctx["project_contract_gate"]["repair_required"] is True
 
 
 def test_project_contract_loader_does_not_warn_about_backup_use_without_a_loaded_backup(
@@ -355,6 +388,36 @@ def test_state_contract_remains_visible_in_runtime_context_with_approval_blocker
     assert loaded.project_contract_gate["approval_blocked"] is True
     assert loaded.project_contract_gate["authoritative"] is False
     assert "Approval status: blocked" in ctx["active_reference_context"]
+
+
+def test_state_and_context_keep_salvaged_project_contract_visible_but_non_authoritative(
+    tmp_path: Path,
+) -> None:
+    _setup_project(tmp_path)
+    save_state_json(tmp_path, default_state_dict())
+
+    layout = ProjectLayout(tmp_path)
+    raw_state = json.loads(layout.state_json.read_text(encoding="utf-8"))
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["context_intake"]["must_read_refs"] = "ref-benchmark"
+    raw_state["project_contract"] = contract
+    layout.state_json.write_text(json.dumps(raw_state, indent=2) + "\n", encoding="utf-8")
+
+    loaded = state_load(tmp_path)
+    ctx = init_progress(tmp_path)
+
+    assert loaded.state["project_contract"] is not None
+    assert loaded.state["project_contract"]["context_intake"]["must_read_refs"] == ["ref-benchmark"]
+    assert ctx["project_contract"] is not None
+    assert ctx["project_contract"]["context_intake"]["must_read_refs"] == ["ref-benchmark"]
+    assert ctx["project_contract_load_info"]["status"] == "loaded_with_schema_normalization"
+    assert loaded.project_contract_gate["status"] == "loaded_with_schema_normalization"
+    assert loaded.project_contract_gate["visible"] is True
+    assert loaded.project_contract_gate["load_blocked"] is False
+    assert loaded.project_contract_gate["approval_blocked"] is False
+    assert loaded.project_contract_gate["repair_required"] is True
+    assert loaded.project_contract_gate["authoritative"] is False
+    assert ctx["project_contract_gate"] == loaded.project_contract_gate
 
 
 def test_state_and_context_canonicalize_reference_aliases_before_final_contract_gate(tmp_path: Path) -> None:

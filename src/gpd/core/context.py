@@ -902,7 +902,17 @@ def _build_reference_runtime_context(
         project_contract_load_info,
     )
     project_text = _safe_read_file(cwd / PLANNING_DIR_NAME / PROJECT_FILENAME)
-    selected_protocol_bundles = select_protocol_bundles(project_text, visible_contract)
+    authoritative_contract = visible_contract if project_contract_gate.get("authoritative") else None
+    authoritative_active_references = _merge_active_references(
+        _serialize_active_references(authoritative_contract),
+        derived_references,
+    )
+    authoritative_effective_reference_intake = _merge_reference_intake(
+        authoritative_contract,
+        artifact_ingestion.intake.to_dict(),
+        authoritative_active_references,
+    )
+    selected_protocol_bundles = select_protocol_bundles(project_text, authoritative_contract)
 
     bundle_verifier_extensions: list[dict[str, object]] = []
     for bundle in selected_protocol_bundles:
@@ -921,7 +931,7 @@ def _build_reference_runtime_context(
         "project_contract_load_info": project_contract_load_info,
         "project_contract_gate": project_contract_gate,
         "contract_intake": visible_contract.context_intake.model_dump(mode="json") if visible_contract is not None else None,
-        "effective_reference_intake": effective_reference_intake,
+        "effective_reference_intake": authoritative_effective_reference_intake,
         "derived_active_references": derived_references,
         "derived_active_reference_count": len(derived_references),
         "citation_source_files": list(artifact_ingestion.citation_source_files),
@@ -932,15 +942,15 @@ def _build_reference_runtime_context(
         "derived_manuscript_reference_status": derived_manuscript_reference_status,
         "derived_manuscript_reference_status_count": len(derived_manuscript_reference_status),
         "derived_manuscript_proof_review_status": manuscript_proof_review_status.to_context_dict(cwd),
-        "active_references": active_references,
-        "active_reference_count": len(active_references),
+        "active_references": authoritative_active_references,
+        "active_reference_count": len(authoritative_active_references),
         "selected_protocol_bundle_ids": [bundle.bundle_id for bundle in selected_protocol_bundles],
         "protocol_bundle_count": len(selected_protocol_bundles),
         "protocol_bundle_verifier_extensions": bundle_verifier_extensions,
         "protocol_bundle_context": render_protocol_bundle_context(selected_protocol_bundles),
         "active_reference_context": _render_active_reference_context(
-            active_references,
-            effective_reference_intake,
+            authoritative_active_references,
+            authoritative_effective_reference_intake,
             artifact_payload["literature_review_files"],
             artifact_payload["research_map_reference_files"],
             project_contract_validation,

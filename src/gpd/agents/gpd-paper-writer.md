@@ -1714,6 +1714,8 @@ The phase transition occurs at $g_c = \text{[PENDING]}$, which we determine by..
 
 When a REFEREE-REPORT.md (or REFEREE-REPORT-R{N}.md) exists in `GPD/`, you may be asked to produce an AUTHOR-RESPONSE file. This closes the feedback loop with the gpd-referee agent's multi-round review protocol.
 
+Use `@{GPD_INSTALL_DIR}/templates/paper/author-response.md` as the canonical internal response contract. It defines the fields that later review rounds and the referee workflow expect to see before any revision is considered complete.
+
 **Cross-agent coordination:** The gpd-referee writes REFEREE-REPORT.md (round 1) and REFEREE-REPORT-R{N}.md (rounds 2-3). You write AUTHOR-RESPONSE.md (round 1) and AUTHOR-RESPONSE-R{N}.md (rounds 2-3). The cycle is:
 
 1. Referee writes `REFEREE-REPORT.md` → you write `AUTHOR-RESPONSE.md` + revise manuscript
@@ -1762,6 +1764,7 @@ If present, also read the matching `GPD/review/REVIEW-LEDGER{-RN}.json` and `GPD
 | **fixed** | The issue is addressed by a manuscript change | Exact location of change (section, equation, figure), brief description of what changed, diff-style summary |
 | **rebutted** | The referee's concern is addressed by argument, not change | Evidence or derivation showing the original was correct, reference to existing content that already addresses it |
 | **acknowledged** | The issue is valid but requires work beyond this revision | Plan for addressing it (which phase, what computation), timeline, whether it blocks publication |
+| **needs-calculation** | The issue is valid and requires a new calculation before the response can be finalized | The planned calculation, source phase, and whether the current response is provisional |
 
 **Step 3: Write the AUTHOR-RESPONSE file.**
 
@@ -1784,6 +1787,7 @@ date: YYYY-MM-DDTHH:MM:SSZ
 issues_fixed: {count}
 issues_rebutted: {count}
 issues_acknowledged: {count}
+issues_needing_calculation: {count}
 ---
 
 # Author Response — Round {N}
@@ -1797,43 +1801,49 @@ issues_acknowledged: {count}
 ### REF-001: {brief description from referee report}
 
 **Classification:** fixed
-
+**Assessment:** The referee is correct.
 **Response:** We thank the referee for identifying this issue. The sign error
 in Eq. (7) has been corrected. The corrected equation reads...
-
 **Changes:**
 - Section III, Eq. (7): sign of the second term corrected from + to -
 - Section IV, Fig. 3: replotted with corrected values
 - Appendix A: derivation updated to reflect corrected sign
+**New calculations required:** no
+**Source phase for new work:** N/A
+**Status:** Response drafted
 
 ---
 
 ### REF-002: {brief description}
 
 **Classification:** rebutted
-
+**Assessment:** The referee has misunderstood the regime of validity.
 **Response:** We respectfully disagree with this concern. The approximation
 is valid in our regime because...
-
 **Evidence:**
 - The expansion parameter is epsilon = 0.1, making neglected O(epsilon^3) ~ 10^{-3}
 - Appendix B already contains the convergence analysis the referee requests (page 12)
 - Our result agrees with Ref. [Smith 2020] who used an exact method in this regime
+**New calculations required:** no
+**Source phase for new work:** N/A
+**Status:** Response drafted
 
 ---
 
 ### REF-003: {brief description}
 
-**Classification:** acknowledged
-
+**Classification:** needs-calculation
+**Assessment:** The referee is correct, and the calculation is not yet complete.
 **Response:** The referee raises a valid point. Computing the next-order
 correction would strengthen our result. We plan to address this in a
 follow-up calculation.
-
 **Plan:**
 - Phase: would require a new phase (next-order perturbation theory)
 - Scope: estimated 1-2 additional weeks of computation
 - Impact on current results: our leading-order result remains valid within stated uncertainties
+**New calculations required:** yes
+**Source phase for new work:** Follow-up phase required
+**Status:** In progress
 
 ---
 ```

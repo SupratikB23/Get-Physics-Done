@@ -745,6 +745,8 @@ const catalog = require("./src/gpd/adapters/runtime_catalog.json");
 assert.doesNotThrow(() => validateRuntimeCatalog(catalog));
 assert.equal(catalog.find((runtime) => runtime.runtime_name === "claude-code").installer_help_example_scope, "global");
 assert.equal(catalog.find((runtime) => runtime.runtime_name === "codex").installer_help_example_scope, "local");
+assert.equal(catalog.find((runtime) => runtime.runtime_name === "claude-code").validated_command_surface, "public_runtime_slash_command");
+assert.equal(catalog.find((runtime) => runtime.runtime_name === "codex").validated_command_surface, "public_runtime_dollar_command");
 
 const unknownKeyCatalog = JSON.parse(JSON.stringify(catalog));
 unknownKeyCatalog[0].legacy_note = "unexpected";
@@ -772,6 +774,13 @@ badHelpScopeCatalog[0].installer_help_example_scope = "sideways";
 assert.throws(
   () => validateRuntimeCatalog(badHelpScopeCatalog),
   /runtime catalog entry 0\.installer_help_example_scope must be one of: global, local/
+);
+
+const badSurfaceCatalog = JSON.parse(JSON.stringify(catalog));
+badSurfaceCatalog[0].validated_command_surface = "hex-command";
+assert.throws(
+  () => validateRuntimeCatalog(badSurfaceCatalog),
+  /runtime catalog entry 0\.validated_command_surface must be one of: public_runtime_command_surface, public_runtime_dollar_command, public_runtime_slash_command/
 );
 """
     )

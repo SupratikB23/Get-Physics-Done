@@ -22,6 +22,8 @@ from gpd.contracts import (
     parse_project_contract_data_strict,
 )
 from gpd.core.contract_validation import validate_project_contract
+from gpd.core.referee_policy import RefereeDecisionInput
+from gpd.mcp.paper.models import ReviewFinding, ReviewIssue, ReviewIssueSeverity, ReviewRecommendation, ReviewStageKind
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "src" / "gpd" / "specs" / "templates"
@@ -360,9 +362,6 @@ def test_validate_project_contract_approved_mode_accepts_prior_output_grounding(
         ("paper", "arXiv:2401.12345"),
         ("paper", "Table 2"),
         ("paper", "Fig. 3"),
-        ("dataset", "https://huggingface.co/datasets/org/sample"),
-        ("spec", "https://docs.example.org/specs/solver-v2"),
-        ("prior_artifact", "https://github.com/org/repo/blob/main/artifacts/report.json"),
     ],
 )
 def test_validate_project_contract_approved_mode_accepts_concrete_reference_locator_grounding(
@@ -392,6 +391,43 @@ def test_validate_project_contract_approved_mode_accepts_concrete_reference_loca
 
     assert result.valid is True
     assert result.mode == "approved"
+
+
+@pytest.mark.parametrize(
+    ("reference_kind", "locator"),
+    [
+        ("dataset", "https://huggingface.co/datasets/org/sample"),
+        ("spec", "https://docs.example.org/specs/solver-v2"),
+        ("prior_artifact", "https://github.com/org/repo/blob/main/artifacts/report.json"),
+    ],
+)
+def test_validate_project_contract_approved_mode_rejects_external_nonpaper_urls(
+    reference_kind: str,
+    locator: str,
+) -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    contract["references"] = [
+        {
+            "id": "ref-anchor",
+            "kind": reference_kind,
+            "locator": locator,
+            "aliases": [],
+            "role": "benchmark",
+            "why_it_matters": "External nonpaper URLs should not satisfy approved grounding on their own.",
+            "applies_to": ["claim-benchmark"],
+            "carry_forward_to": [],
+            "must_surface": True,
+            "required_actions": ["read"],
+        }
+    ]
+    contract["scope"]["unresolved_questions"] = []
+    contract["context_intake"]["context_gaps"] = ["Need a concrete must-surface anchor before approval."]
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is False
+    assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
 
 
 def test_validate_project_contract_approved_mode_accepts_project_local_prior_artifact_locator(tmp_path: Path) -> None:
@@ -487,7 +523,10 @@ def test_validate_project_contract_approved_mode_accepts_concrete_must_surface_r
     assert result.mode == "approved"
 
 
-@pytest.mark.parametrize("locator", ["Benchmark paper", "reference article", "/tmp/nonexistent.txt", "report.pdf"])
+@pytest.mark.parametrize(
+    "locator",
+    ["Benchmark paper", "reference article", "/tmp/nonexistent.txt", "report.pdf", "https://example.com/paper"],
+)
 def test_validate_project_contract_approved_mode_rejects_vague_reference_locator_grounding(
     locator: str,
 ) -> None:
@@ -523,7 +562,7 @@ def test_validate_project_contract_approved_mode_rejects_vague_reference_locator
         ("known_good_baselines", ["Baseline notebook A"]),
     ],
 )
-def test_validate_project_contract_approved_mode_accepts_substantive_text_grounding(
+def test_validate_project_contract_approved_mode_rejects_generic_text_grounding(
     field_name: str, value: list[str]
 ) -> None:
     contract = _load_contract_fixture()
@@ -537,8 +576,9 @@ def test_validate_project_contract_approved_mode_accepts_substantive_text_ground
 
     result = validate_project_contract(contract, mode="approved")
 
-    assert result.valid is True
+    assert result.valid is False
     assert result.mode == "approved"
+    assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
 
 
 @pytest.mark.parametrize(
@@ -546,6 +586,7 @@ def test_validate_project_contract_approved_mode_accepts_substantive_text_ground
     [
         ("user_asserted_anchors", ["arXiv:2401.12345"]),
         ("known_good_baselines", ["doi:10.1234/example"]),
+        ("known_good_baselines", ["https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.123.4567"]),
     ],
 )
 def test_validate_project_contract_approved_mode_accepts_short_concrete_locator_grounding(
@@ -564,6 +605,66 @@ def test_validate_project_contract_approved_mode_accepts_short_concrete_locator_
 
     assert result.valid is True
     assert result.mode == "approved"
+
+
+def test_referee_decision_input_rejects_string_booleans() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        RefereeDecisionInput(
+            manuscript_path="paper/curvature_flow_bounds.tex",
+            target_journal="prl",
+            final_recommendation=ReviewRecommendation.major_revision,
+            central_claims_supported="yes",
+            claim_scope_proportionate_to_evidence="no",
+            physical_assumptions_justified="yes",
+            proof_audit_coverage_complete="yes",
+            theorem_proof_alignment_adequate="no",
+            unsupported_claims_are_central="yes",
+            reframing_possible_without_new_results="no",
+        )
+
+    message = str(exc_info.value)
+    assert "central_claims_supported" in message
+    assert "proof_audit_coverage_complete" in message
+    assert "theorem_proof_alignment_adequate" in message
+
+
+def test_review_finding_rejects_string_blocking_flag() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        ReviewFinding(
+            issue_id="REF-001",
+            claim_ids=[],
+            severity=ReviewIssueSeverity.major,
+            summary="Needs follow-up.",
+            blocking="yes",
+        )
+
+    assert "blocking" in str(exc_info.value)
+
+
+def test_review_issue_rejects_string_blocking_flag() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        ReviewIssue(
+            issue_id="REF-001",
+            opened_by_stage=ReviewStageKind.math,
+            severity=ReviewIssueSeverity.major,
+            blocking="no",
+            summary="Needs follow-up.",
+        )
+
+    assert "blocking" in str(exc_info.value)
+
+
+def test_validate_project_contract_approved_mode_rejects_repeated_generic_paper_phrase() -> None:
+    contract = _load_contract_fixture()
+    contract["references"] = []
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["known_good_baselines"] = ["paper paper paper"]
+    contract["scope"]["unresolved_questions"] = []
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is False
+    assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
 
 
 @pytest.mark.parametrize("locator", ["TBD", "unknown"])
@@ -1260,6 +1361,65 @@ def test_contract_results_strict_mode_rejects_scalar_proof_audit_string_lists() 
         match=re.escape("claims.claim-main.proof_audit.covered_parameter_symbols must be a list, not str"),
     ):
         ContractResults.model_validate(normalize_contract_results_input(payload, strict=True))
+
+
+def test_research_contract_rejects_string_required_in_proof_booleans() -> None:
+    contract = _load_contract_fixture()
+    contract["claims"][0]["parameters"] = [
+        {"symbol": "r_0", "domain_or_type": "nonnegative real", "required_in_proof": "yes"}
+    ]
+    contract["claims"][0]["hypotheses"] = [
+        {"id": "hyp-r0", "text": "r_0 >= 0", "required_in_proof": "no"}
+    ]
+
+    with pytest.raises(ValidationError) as excinfo:
+        ResearchContract.model_validate(contract)
+
+    message = str(excinfo.value)
+    assert "claims.0.parameters.0.required_in_proof" in message
+    assert "claims.0.hypotheses.0.required_in_proof" in message
+    assert "must be a boolean" in message
+
+
+def test_contract_results_strict_mode_rejects_string_stale_proof_audit_boolean() -> None:
+    payload = {
+        "claims": {
+            "claim-main": {
+                "status": "passed",
+                "proof_audit": {
+                    "completeness": "complete",
+                    "reviewed_at": "2026-04-02T12:00:00Z",
+                    "reviewer": "gpd-check-proof",
+                    "proof_artifact_path": "derivations/theorem-proof.tex",
+                    "proof_artifact_sha256": "0" * 64,
+                    "audit_artifact_path": "01-01-PROOF-REDTEAM.md",
+                    "audit_artifact_sha256": "1" * 64,
+                    "claim_statement_sha256": "2" * 64,
+                    "covered_hypothesis_ids": [],
+                    "missing_hypothesis_ids": [],
+                    "covered_parameter_symbols": [],
+                    "missing_parameter_symbols": [],
+                    "uncovered_quantifiers": [],
+                    "uncovered_conclusion_clause_ids": [],
+                    "quantifier_status": "matched",
+                    "scope_status": "matched",
+                    "counterexample_status": "none_found",
+                    "stale": "yes",
+                },
+            }
+        },
+        "uncertainty_markers": {
+            "weakest_anchors": ["anchor-main"],
+            "disconfirming_observations": ["observation-main"],
+        },
+    }
+
+    with pytest.raises(ValidationError) as excinfo:
+        ContractResults.model_validate(normalize_contract_results_input(payload, strict=True))
+
+    message = str(excinfo.value)
+    assert "claims.claim-main.proof_audit.stale" in message
+    assert "must be a boolean" in message
 
 
 def test_parse_contract_results_data_strict_matches_contract_results_model_validation() -> None:

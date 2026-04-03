@@ -367,12 +367,16 @@ def test_update_workflow_uses_runtime_placeholders_for_cache_paths() -> None:
 def test_referee_response_round_suffix_convention_is_consistent() -> None:
     peer_review = _read("src/gpd/specs/workflows/peer-review.md")
     respond = _read("src/gpd/specs/workflows/respond-to-referees.md")
+    author_response = _read("src/gpd/specs/templates/paper/author-response.md")
     template = _read("src/gpd/specs/templates/paper/referee-response.md")
 
     assert 'ROUND_SUFFIX="-R2"' in peer_review
     assert 'ROUND_SUFFIX="-R3"' in peer_review
     assert "REFEREE_RESPONSE-R2.md" in respond
     assert "AUTHOR-RESPONSE-R2.md" in respond
+    assert "issues_needing_calculation" in author_response
+    assert "needs-calculation" in author_response
+    assert "templates/paper/author-response.md" in template
     assert "REFEREE_RESPONSE-R2.md" in template
     assert "REFEREE_RESPONSE_R2.md" not in respond
     assert "REFEREE_RESPONSE_R2.md" not in template

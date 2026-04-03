@@ -1018,13 +1018,14 @@ When revising a paper in response to referee reports:
      subagent_type="gpd-paper-writer",
      model="{writer_model}",
      readonly=false,
-     prompt="First, read {GPD_AGENTS_DIR}/gpd-paper-writer.md for your role and instructions.\n\nRead your <author_response> protocol. Produce an AUTHOR-RESPONSE file.\n\n" +
+     prompt="First, read {GPD_AGENTS_DIR}/gpd-paper-writer.md for your role and instructions.\n\nRead the canonical <author_response> protocol at {GPD_INSTALL_DIR}/templates/paper/author-response.md. Produce an AUTHOR-RESPONSE file.\n\n" +
        "Referee report: GPD/REFEREE-REPORT{round_suffix}.md\n" +
        "Review ledger (if present): GPD/review/REVIEW-LEDGER{round_suffix}.json\n" +
        "Decision artifact (if present): GPD/review/REFEREE-DECISION{round_suffix}.json\n" +
        "Manuscript tree: all .tex files under ${PAPER_DIR} recursively, rooted at the manifest-resolved manuscript directory\n" +
        "Round: {N}\n\n" +
-       "For each REF-xxx issue, classify as fixed/rebutted/acknowledged. Use the JSON artifacts to identify blocking issues and decision-floor reasons, but keep REF-xxx IDs from the report.\n" +
+       "For each REF-xxx issue, classify as fixed/rebutted/acknowledged/needs-calculation. Use the JSON artifacts to identify blocking issues and decision-floor reasons, but keep REF-xxx IDs from the report.\n" +
+       "If an issue needs new work, keep `New calculations required` and `Source phase for new work` explicit in the author-response tracker.\n" +
        "Write to GPD/AUTHOR-RESPONSE{round_suffix}.md",
      description="Author response: round {N}"
    )
@@ -1032,7 +1033,7 @@ When revising a paper in response to referee reports:
 
    **If the author-response agent fails to spawn or returns an error:** Check if `GPD/AUTHOR-RESPONSE{round_suffix}.md` was written (agents write files first). If it exists, proceed to section revision. If not, offer: 1) Retry the agent, 2) Draft the author response in the main context using the referee report and manuscript, 3) Skip structured response and proceed directly to section revisions.
 
-   The `GPD/AUTHOR-RESPONSE{round_suffix}.md` tracker uses REF-xxx issue IDs matching the referee report, with classifications (fixed/rebutted/acknowledged) and specific change locations. When present, `REVIEW-LEDGER{round_suffix}.json` and `REFEREE-DECISION{round_suffix}.json` provide the blocking-issue and recommendation-floor context that the response must resolve. See the gpd-paper-writer's `<author_response>` section for the full format.
+   The `GPD/AUTHOR-RESPONSE{round_suffix}.md` tracker uses REF-xxx issue IDs matching the referee report, with classifications (fixed/rebutted/acknowledged/needs-calculation), specific change locations, and source-phase tracking for any new work. When present, `REVIEW-LEDGER{round_suffix}.json` and `REFEREE-DECISION{round_suffix}.json` provide the blocking-issue and recommendation-floor context that the response must resolve. See the canonical `templates/paper/author-response.md` contract and the gpd-paper-writer's `<author_response>` section for the full format.
 
    Also create `GPD/review/REFEREE_RESPONSE{round_suffix}.md` (the human-readable response letter source) using the `templates/paper/referee-response.md` template for the actual journal submission cover letter.
 

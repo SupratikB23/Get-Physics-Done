@@ -1162,7 +1162,7 @@ def build_cost_summary(
             )
     if active_runtime and runtime_model_selection == "runtime defaults":
         guidance.append(
-            f"Current model posture: profile `{model_profile or 'unknown'}` with {active_runtime} runtime defaults. Use the runtime `settings` command only if you want explicit tier-model overrides."
+            f"Current model posture: profile `{model_profile or 'unknown'}` with {active_runtime} runtime defaults. Use `gpd:set-tier-models` to pin explicit tier-1, tier-2, and tier-3 model IDs."
         )
 
     return CostSummary(

@@ -8,6 +8,8 @@ template_version: 1
 
 Template for `GPD/review/REFEREE_RESPONSE{round_suffix}.md` — tracks referee comments, responses, and manuscript changes for peer review.
 
+This journal-facing template mirrors the canonical internal author-response contract at `templates/paper/author-response.md`. Keep the same issue IDs, classifications, status labels, and new-calculation tracking aligned between the two files.
+
 ---
 
 ## File Template
@@ -41,7 +43,7 @@ Template for `GPD/review/REFEREE_RESPONSE{round_suffix}.md` — tracks referee c
 
 ### REF-001 (Referee 1, Comment 1.1): [Brief summary of the comment]
 
-**Category:** [Physics concern / Clarity / Missing reference / Technical error / Presentation / Additional calculation requested]
+**Classification:** [fixed / rebutted / acknowledged / needs-calculation]
 **Priority:** [Must address / Should address / Optional]
 **Blocking issue:** [Yes / No / Unknown]
 **Decision-artifact context:** [What REVIEW-LEDGER{round_suffix} / REFEREE-DECISION{round_suffix} says about this issue, or "N/A"]

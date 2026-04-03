@@ -168,15 +168,21 @@ def _write_manuscript_proof_review_artifacts_with_proof_path(
             "---\n"
                 "status: passed\n"
                 "reviewer: gpd-check-proof\n"
-                "claim_ids:\n"
-                "  - CLM-001\n"
-                "proof_artifact_paths:\n"
-                f"{proof_redteam_artifact_paths}"
-                "manuscript_path: paper/curvature_flow_bounds.tex\n"
-                f"manuscript_sha256: {manuscript_sha256}\n"
-                "round: 1\n"
-                "---\n\n"
-                "# Proof Redteam\n"
+            "claim_ids:\n"
+            "  - CLM-001\n"
+            "proof_artifact_paths:\n"
+            f"{proof_redteam_artifact_paths}"
+            "manuscript_path: paper/curvature_flow_bounds.tex\n"
+            f"manuscript_sha256: {manuscript_sha256}\n"
+            "round: 1\n"
+            "missing_parameter_symbols: []\n"
+            "missing_hypothesis_ids: []\n"
+            "coverage_gaps: []\n"
+            "scope_status: matched\n"
+            "quantifier_status: matched\n"
+            "counterexample_status: none_found\n"
+            "---\n\n"
+            "# Proof Redteam\n"
             "## Proof Inventory\n"
             "- Exact claim / theorem text: For every r_0 > 0, the orbit intersects the target annulus.\n"
             "- Claim / theorem target: Annulus intersection for every target radius.\n"
@@ -191,7 +197,7 @@ def _write_manuscript_proof_review_artifacts_with_proof_path(
                 "## Coverage Ledger\n"
             "### Named-Parameter Coverage\n"
                 "| Parameter | Role / Domain | Proof Location | Status | Notes |\n"
-                "| --- | --- | --- | --- | --- |\n"
+                "| --- | --- | --- | --- |\n"
                 f"| `r_0` | target radius | {proof_artifact_path}:1 | covered | Carried through the argument. |\n"
                 "### Hypothesis Coverage\n"
                 "| Hypothesis | Proof Location | Status | Notes |\n"
@@ -509,7 +515,7 @@ def _write_numerical_relativity_contract_state(tmp_path: Path) -> None:
             {
                 "id": "ref-benchmark",
                 "kind": "paper",
-                "locator": "Trusted numerical-relativity waveform catalog",
+                "locator": "https://doi.org/10.1234/numerical-relativity-benchmark",
                 "role": "benchmark",
                 "why_it_matters": "Provides decisive waveform and remnant anchors",
                 "applies_to": ["claim-waveform"],
@@ -517,6 +523,9 @@ def _write_numerical_relativity_contract_state(tmp_path: Path) -> None:
                 "required_actions": ["read", "compare", "cite"],
             }
         ],
+        "context_intake": {
+            "must_read_refs": ["ref-benchmark"],
+        },
         "forbidden_proxies": [
             {
                 "id": "fp-proxy",
@@ -1178,6 +1187,43 @@ class TestInitPlanPhase:
 
         assert ctx["project_contract"]["context_intake"]["must_read_refs"] == ["ref-benchmark"]
         assert ctx["contract_intake"]["must_read_refs"] == ["ref-benchmark"]
+
+    def test_non_authoritative_project_contract_does_not_select_protocol_bundles(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _setup_project(tmp_path)
+
+        from gpd.contracts import ResearchContract
+
+        contract_payload = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+        contract_payload["scope"]["question"] = "numerical relativity benchmark study"
+        contract_payload["scope"]["in_scope"] = ["numerical relativity", "benchmark alignment"]
+        contract = ResearchContract.model_validate(contract_payload)
+
+        monkeypatch.setattr(
+            "gpd.core.context._load_project_contract",
+            lambda cwd: (
+                contract,
+                {
+                    "status": "loaded",
+                    "source_path": "GPD/state.json",
+                    "provenance": "fallback",
+                    "raw_project_contract_classified": False,
+                    "errors": [],
+                    "warnings": [],
+                },
+            ),
+        )
+
+        ctx = init_progress(tmp_path)
+
+        assert ctx["project_contract"] is not None
+        assert ctx["project_contract_gate"]["authoritative"] is False
+        assert ctx["project_contract_gate"]["repair_required"] is True
+        assert ctx["selected_protocol_bundle_ids"] == []
+        assert ctx["active_reference_count"] == 0
 
     def test_ambiguous_reference_tokens_remain_unresolved(self) -> None:
         active_references = [
@@ -2292,7 +2338,10 @@ class TestInitProgress:
         assert ctx["project_contract"] is not None
         assert ctx["project_contract"]["claims"][0]["id"] == "claim-benchmark"
         assert "notes" not in ctx["project_contract"]["claims"][0]
-        assert "Recover known limiting behavior" in ctx["active_reference_context"]
+        assert ctx["project_contract_gate"]["authoritative"] is False
+        assert ctx["project_contract_gate"]["repair_required"] is True
+        assert "Recover known limiting behavior" not in ctx["active_reference_context"]
+        assert "None confirmed in `state.json.project_contract.references` yet." in ctx["active_reference_context"]
 
     def test_progress_matches_state_loader_for_recoverably_normalized_project_contract(
         self, tmp_path: Path
@@ -2362,7 +2411,11 @@ class TestInitProgress:
         assert load_info["status"] == "blocked_schema"
         assert ctx["project_contract"] is None
         assert ctx["project_contract_load_info"]["status"] == "blocked_schema"
-        assert ctx["project_contract_gate"] == {
+        assert {
+            key: value
+            for key, value in ctx["project_contract_gate"].items()
+            if key not in {"provenance", "raw_project_contract_classified"}
+        } == {
             "status": "blocked_schema",
             "visible": False,
             "blocked": True,
@@ -2373,6 +2426,10 @@ class TestInitProgress:
             "source_path": ctx["project_contract_load_info"]["source_path"],
         }
         assert ctx["project_contract_load_info"]["source_path"].endswith("state.json")
+        assert load_info["provenance"] == "raw"
+        assert load_info["raw_project_contract_classified"] is True
+        assert ctx["project_contract_gate"]["provenance"] == "raw"
+        assert ctx["project_contract_gate"]["raw_project_contract_classified"] is True
 
     def test_load_project_contract_accepts_list_shape_drift_from_raw_state_as_loaded(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)

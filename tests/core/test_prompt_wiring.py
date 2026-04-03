@@ -396,9 +396,20 @@ def test_referee_workflow_mentions_optional_pdf_compile_and_missing_tex_prompt()
 
 def test_executor_prompt_defaults_to_return_only_shared_state_updates() -> None:
     executor = (AGENTS_DIR / "gpd-executor.md").read_text(encoding="utf-8")
+    executor_completion = (REFERENCES_DIR / "execution" / "executor-completion.md").read_text(encoding="utf-8")
 
     assert "return shared-state updates to the orchestrator instead of writing `STATE.md` directly" in executor
     assert "Your job: Execute the research plan completely, checkpoint each step, create SUMMARY.md, update STATE.md." not in executor
+    assert "state_updates" in executor
+    assert "contract_updates" in executor
+    assert "decisions" in executor
+    assert "blockers" in executor
+    assert "continuation_update" in executor
+    assert "state_updates:" in executor_completion
+    assert "contract_updates:" in executor_completion
+    assert "decisions:" in executor_completion
+    assert "blockers:" in executor_completion
+    assert "continuation_update:" in executor_completion
 
 
 def test_referee_prompt_no_longer_claims_read_only_artifact_policy() -> None:
@@ -701,6 +712,7 @@ def test_respond_to_referees_references_staged_review_artifacts() -> None:
     assert "argument-hint: \"[path to referee report or 'paste']\"" in command_text
     assert "GPD/review/REVIEW-LEDGER{round_suffix}.json" in command_text
     assert "GPD/review/REFEREE-DECISION{round_suffix}.json" in command_text
+    assert "explicit argument is the referee-report source path" in command_text
     assert "Use the literal `paste` sentinel" in workflow_text
     assert "REVIEW-LEDGER*.json" in workflow_text
     assert "REFEREE-DECISION*.json" in workflow_text
@@ -731,11 +743,15 @@ def test_review_workflows_keep_round_suffix_artifacts_visible_and_anchor_respons
     assert "${PAPER_DIR}/response-letter.tex" in respond
     assert "GPD/review/REFEREE_RESPONSE{round_suffix}.md" in respond
     assert "GPD/AUTHOR-RESPONSE{round_suffix}.md" in respond
+    assert "templates/paper/author-response.md" in respond
+    assert "needs-calculation" in respond
 
     assert "CLAIMS{round_suffix}.json" in write_paper
     assert "REVIEW-LEDGER{round_suffix}.json" in write_paper
     assert "REFEREE-DECISION{round_suffix}.json" in write_paper
     assert "GPD/REFEREE-REPORT{round_suffix}.md" in write_paper
+    assert "templates/paper/author-response.md" in write_paper
+    assert "needs-calculation" in write_paper
 
 
 def test_publication_commands_accept_documented_manuscript_layouts() -> None:
@@ -1162,9 +1178,8 @@ def test_revision_and_audit_workflows_verify_artifacts_before_trusting_success_t
     respond = (WORKFLOWS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
     audit = (WORKFLOWS_DIR / "audit-milestone.md").read_text(encoding="utf-8")
 
-    assert "response_to: REFEREE-REPORT{round_suffix}.md" in respond
-    assert "## Point-by-Point Responses" in respond
-    assert "**Classification:** fixed" in respond
+    assert "templates/paper/author-response.md" in respond
+    assert "needs-calculation" in respond
     assert "Use `**Evidence:**` blocks for rebuttals" in respond
     assert "verify the promised artifacts before trusting the handoff text" in respond
     assert "If the agent claimed success but the files did not change, treat that section as failed" in respond

@@ -712,6 +712,8 @@ def _project_contract_load_payload(
     *,
     status: str,
     source_path: str,
+    provenance: str = "raw",
+    raw_project_contract_classified: bool = False,
     errors: list[str] | None = None,
     warnings: list[str] | None = None,
 ) -> dict[str, object]:
@@ -720,6 +722,8 @@ def _project_contract_load_payload(
     return {
         "status": status,
         "source_path": source_path,
+        "provenance": provenance,
+        "raw_project_contract_classified": raw_project_contract_classified,
         "errors": list(errors or []),
         "warnings": list(warnings or []),
     }
@@ -781,17 +785,25 @@ def _classify_project_contract_payload(
     cwd: Path,
     source_path: Path,
     raw_contract: object,
+    provenance: str = "raw",
 ) -> tuple[ResearchContract | None, dict[str, object]]:
     """Classify a raw project-contract payload into visibility diagnostics."""
 
     source_label = _project_contract_source_path(cwd, source_path)
     if raw_contract is None:
-        return None, _project_contract_load_payload(status="missing", source_path=source_label)
+        return None, _project_contract_load_payload(
+            status="missing",
+            source_path=source_label,
+            provenance=provenance,
+            raw_project_contract_classified=provenance == "raw",
+        )
     if not isinstance(raw_contract, dict):
         logger.warning("Skipping project_contract from %s because it is not a JSON object", source_path)
         return None, _project_contract_load_payload(
             status="blocked_type",
             source_path=source_label,
+            provenance=provenance,
+            raw_project_contract_classified=provenance == "raw",
             errors=["project contract must be a JSON object"],
         )
 
@@ -811,6 +823,8 @@ def _classify_project_contract_payload(
         return None, _project_contract_load_payload(
             status="blocked_schema",
             source_path=source_label,
+            provenance=provenance,
+            raw_project_contract_classified=provenance == "raw",
             errors=schema_errors or ["blocking schema normalization would be required"],
             warnings=schema_warnings,
         )
@@ -825,6 +839,8 @@ def _classify_project_contract_payload(
         return normalized_contract, _project_contract_load_payload(
             status="blocked_integrity",
             source_path=source_label,
+            provenance=provenance,
+            raw_project_contract_classified=provenance == "raw",
             errors=integrity_errors,
             warnings=schema_warnings,
         )
@@ -839,8 +855,12 @@ def _classify_project_contract_payload(
     load_info = _project_contract_load_payload(
         status="loaded",
         source_path=source_label,
+        provenance=provenance,
+        raw_project_contract_classified=provenance == "raw",
         warnings=schema_warnings,
     )
+    if schema_warnings:
+        load_info["status"] = "loaded_with_schema_normalization"
     approval_validation = validate_project_contract(normalized_contract, mode="approved", project_root=cwd)
     if not approval_validation.valid:
         logger.warning(
@@ -863,6 +883,7 @@ def _load_project_contract_for_runtime_context(cwd: Path) -> tuple[ResearchContr
             cwd=cwd,
             source_path=source_path,
             raw_contract=raw_contract,
+            provenance="raw",
         )
 
     state, _state_issues, state_source = peek_state_json(cwd)
@@ -881,6 +902,7 @@ def _load_project_contract_for_runtime_context(cwd: Path) -> tuple[ResearchContr
         cwd=cwd,
         source_path=source_path,
         raw_contract=state.get("project_contract"),
+        provenance="fallback",
     )
 
 
@@ -894,10 +916,12 @@ def _project_contract_gate_payload(
 
     load_status = str((load_info or {}).get("status") or ("loaded" if contract is not None else "missing"))
     approval_valid = validation.get("valid") if isinstance(validation, dict) else None
+    normalized_load = bool((load_info or {}).get("warnings"))
     load_blocked = load_status.startswith("blocked")
     approval_blocked = approval_valid is False
+    raw_project_contract_classified = bool((load_info or {}).get("raw_project_contract_classified"))
     visible = contract is not None
-    authoritative = visible and not load_blocked and approval_valid is True
+    authoritative = visible and raw_project_contract_classified and not load_blocked and approval_valid is True and not normalized_load
     blocked = load_blocked or approval_blocked
     return {
         "status": load_status,
@@ -906,7 +930,9 @@ def _project_contract_gate_payload(
         "load_blocked": load_blocked,
         "approval_blocked": approval_blocked,
         "authoritative": authoritative,
-        "repair_required": blocked,
+        "repair_required": blocked or normalized_load or not raw_project_contract_classified,
+        "raw_project_contract_classified": raw_project_contract_classified,
+        "provenance": (load_info or {}).get("provenance"),
         "source_path": (load_info or {}).get("source_path"),
     }
 
@@ -921,6 +947,8 @@ def _finalize_project_contract_gate(
     finalized_load_info = {
         "status": load_info.get("status"),
         "source_path": load_info.get("source_path"),
+        "provenance": load_info.get("provenance"),
+        "raw_project_contract_classified": bool(load_info.get("raw_project_contract_classified")),
         "errors": list(load_info.get("errors") or []),
         "warnings": list(load_info.get("warnings") or []),
     }
@@ -936,11 +964,14 @@ def _finalize_project_contract_gate(
             mode="json"
         )
         if finalized_load_info["status"] != "blocked_integrity":
-            finalized_load_info["status"] = (
-                "loaded"
-                if validation_payload.get("valid") is True
-                else "loaded_with_approval_blockers"
-            )
+            if validation_payload.get("valid") is True:
+                finalized_load_info["status"] = (
+                    "loaded_with_schema_normalization"
+                    if finalized_load_info["warnings"]
+                    else "loaded"
+                )
+            else:
+                finalized_load_info["status"] = "loaded_with_approval_blockers"
 
     gate_payload = _project_contract_gate_payload(
         contract,
@@ -3053,18 +3084,22 @@ def _project_contract_runtime_payload_for_state(
             cwd=cwd,
             source_path=source_path,
             raw_contract=raw_contract,
+            provenance="raw",
         )
         if contract is None and isinstance(state_obj, dict) and state_obj.get("project_contract") is not None:
             contract, load_info = _classify_project_contract_payload(
                 cwd=cwd,
                 source_path=source_path,
                 raw_contract=state_obj.get("project_contract"),
+                provenance="fallback",
             )
     else:
         contract = preloaded_contract
         load_info = {
             "status": preloaded_load_info.get("status"),
             "source_path": preloaded_load_info.get("source_path"),
+            "provenance": preloaded_load_info.get("provenance"),
+            "raw_project_contract_classified": bool(preloaded_load_info.get("raw_project_contract_classified")),
             "errors": list(preloaded_load_info.get("errors") or []),
             "warnings": list(preloaded_load_info.get("warnings") or []),
         }
@@ -3096,11 +3131,16 @@ def _project_contract_runtime_payload_for_state(
             effective_reference_intake=effective_reference_intake,
         )
         existing_warnings = list(load_info.get("warnings") or [])
+        existing_provenance = str(load_info.get("provenance") or "raw")
+        raw_project_contract_classified = bool(load_info.get("raw_project_contract_classified"))
         contract, load_info = _classify_project_contract_payload(
             cwd=cwd,
             source_path=source_path,
             raw_contract=contract.model_dump(mode="python"),
+            provenance=existing_provenance if existing_provenance else "raw",
         )
+        load_info["raw_project_contract_classified"] = raw_project_contract_classified
+        load_info["provenance"] = existing_provenance
         if existing_warnings:
             load_info = {
                 **load_info,

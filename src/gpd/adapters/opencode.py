@@ -1071,6 +1071,34 @@ class OpenCodeAdapter(RuntimeAdapter):
         """Return OpenCode-owned files required for a complete install."""
         return ("opencode.json",)
 
+    def missing_install_artifacts(self, target_dir: Path) -> tuple[str, ...]:
+        """Return missing OpenCode install artifacts, including the command surface."""
+        missing = list(super().missing_install_artifacts(target_dir))
+        command_dir = target_dir / "command"
+        tracked_command_files = _load_manifest_opencode_generated_command_files(target_dir)
+
+        if not tracked_command_files:
+            missing.append("command/gpd-*.md")
+            return tuple(dict.fromkeys(missing))
+
+        missing_command_files: list[str] = []
+        for name in tracked_command_files:
+            command_path = command_dir / name
+            try:
+                if not command_path.is_file():
+                    missing_command_files.append(f"command/{name}")
+            except OSError:
+                missing_command_files.append(f"command/{name}")
+
+        if not command_dir.is_dir():
+            missing_command_files.append("command/gpd-*.md")
+
+        if missing_command_files and "command/gpd-*.md" not in missing_command_files:
+            missing_command_files.append("command/gpd-*.md")
+
+        missing.extend(missing_command_files)
+        return tuple(dict.fromkeys(missing))
+
     def _install_commands(self, gpd_root: Path, target_dir: Path, path_prefix: str, failures: list[str]) -> int:
         commands_src = gpd_root / "commands"
         command_dir = target_dir / "command"

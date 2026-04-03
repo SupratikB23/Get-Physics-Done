@@ -180,6 +180,7 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
             "validate_state",
             "run_health_check",
             "get_config",
+            "emit_phase_event",
         ],
         "registry_prefix": "gpd_state",
         "health_check": {

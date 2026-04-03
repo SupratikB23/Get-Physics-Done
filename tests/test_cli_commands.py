@@ -2873,7 +2873,7 @@ class TestReviewValidationCommands:
         assert checks["command_context"]["passed"] is False
         assert checks["referee_report_source"]["passed"] is True
         assert checks["manuscript"]["passed"] is False
-        assert "declared required files" in checks["command_context"]["detail"]
+        assert "no manuscript entrypoint found under paper/, manuscript/, or draft/" in checks["command_context"]["detail"]
 
     def test_review_preflight_peer_review_resolves_ancestor_project_root_for_nested_workspace(
         self,

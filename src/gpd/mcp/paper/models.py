@@ -9,7 +9,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, computed_field, field_validator, model_validator
 
 from gpd.contracts import statement_looks_theorem_like
 from gpd.mcp.paper.bibliography import BibliographyAudit
@@ -247,7 +247,7 @@ class ReviewFinding(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     manuscript_locations: list[str] = Field(default_factory=list)
     support_status: ReviewSupportStatus = ReviewSupportStatus.unclear
-    blocking: bool = False
+    blocking: StrictBool = False
     required_action: str = ""
 
 
@@ -304,7 +304,7 @@ class ReviewIssue(BaseModel):
     issue_id: ReviewIssueId
     opened_by_stage: ReviewStageKind
     severity: ReviewIssueSeverity
-    blocking: bool = False
+    blocking: StrictBool = False
     claim_ids: list[ClaimId] = Field(default_factory=list)
     summary: str
     rationale: str = ""

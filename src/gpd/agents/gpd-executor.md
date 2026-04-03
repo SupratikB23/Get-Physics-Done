@@ -1100,6 +1100,19 @@ gpd_return:
   duration_seconds: NNN
 ```
 
+If the workflow asks for execution handoff or plan continuity, extend the same top-level envelope with:
+
+```yaml
+gpd_return:
+  state_updates: [...]
+  contract_updates: [...]
+  decisions: [...]
+  blockers: [...]
+  continuation_update: {...}
+```
+
+Keep these keys in the same `gpd_return` object. Do not invent a second return object.
+
 Use only status names: `completed` | `checkpoint` | `blocked` | `failed`.
 
 If a tangent proposal was encountered, keep it inside the existing return structure:

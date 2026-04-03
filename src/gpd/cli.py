@@ -4962,14 +4962,16 @@ def _resolve_review_preflight_manuscript(
 
         if not target.exists():
             return None, f"missing explicit manuscript target {_format_display_path(target)}"
-        project_resolution = resolve_current_manuscript_resolution(cwd, allow_markdown=allow_markdown)
-        if project_resolution.status in {"ambiguous", "invalid"}:
-            return None, f"ambiguous or inconsistent manuscript roots: {project_resolution.detail}"
-        if restrict_to_supported_roots and not _supported_explicit_manuscript_target(target):
+        target_is_supported_root = _supported_explicit_manuscript_target(target)
+        if restrict_to_supported_roots and not target_is_supported_root:
             return (
                 None,
                 "explicit manuscript target must stay under `paper/`, `manuscript/`, or `draft/` inside the current project",
             )
+        if target_is_supported_root:
+            project_resolution = resolve_current_manuscript_resolution(cwd, allow_markdown=allow_markdown)
+            if project_resolution.status in {"ambiguous", "invalid"}:
+                return None, f"ambiguous or inconsistent manuscript roots: {project_resolution.detail}"
 
         if target.is_file():
             if target.suffix == ".tex" or (allow_markdown and target.suffix == ".md"):
@@ -6501,17 +6503,7 @@ def _build_review_preflight(
         add_check(
             "manuscript",
             manuscript_passed,
-            manuscript_detail
-            if command.name in {"gpd:peer-review", "gpd:arxiv-submission"}
-            else (
-                manuscript_detail
-                if command.name == "gpd:write-paper" and subject is None and resolution.status == "missing"
-                else (
-                    f"{_format_display_path(manuscript)} present"
-                    if manuscript is not None
-                    else "no manuscript entrypoint found under paper/, manuscript/, or draft/"
-                )
-            ),
+            manuscript_detail if manuscript is None or command.name in {"gpd:peer-review", "gpd:arxiv-submission"} else f"{_format_display_path(manuscript)} present",
         )
         if subject and command.name == "gpd:respond-to-referees" and subject != "paste":
             report_path = Path(subject)

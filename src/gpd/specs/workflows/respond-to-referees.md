@@ -202,12 +202,13 @@ Confirm parsing is correct, or paste corrections.
 Read the template:
 
 ```bash
+cat {GPD_INSTALL_DIR}/templates/paper/author-response.md
 cat {GPD_INSTALL_DIR}/templates/paper/referee-response.md
 ```
 
 Create both response artifacts for the current round:
 
-- `GPD/AUTHOR-RESPONSE{round_suffix}.md` — structured internal tracker keyed by `REF-*` issues, change locations, and staged review outcomes
+- `GPD/AUTHOR-RESPONSE{round_suffix}.md` — structured internal tracker keyed by `REF-*` issues, change locations, staged review outcomes, and new-calculation status
 - `GPD/review/REFEREE_RESPONSE{round_suffix}.md` — journal-facing response letter built from the template
 
 Populate `GPD/review/REFEREE_RESPONSE{round_suffix}.md` with:
@@ -215,43 +216,19 @@ Populate `GPD/review/REFEREE_RESPONSE{round_suffix}.md` with:
 - Paper metadata (journal, manuscript ID, dates)
 - Decision summary from editor
 - Decision summary from `REFEREE-DECISION*.json` when available
-- Each referee comment with full quote, category, priority
+- Each referee comment with full quote, category, priority, and the mirrored classification/status fields from the canonical author-response contract
 - Explicit list of blocking items from `REVIEW-LEDGER*.json` when available
 - Empty response and changes-made fields (to be filled in subsequent steps)
 - Progress tracking table
 
-Before writing `GPD/AUTHOR-RESPONSE{round_suffix}.md`, use this exact scaffold so the file matches the canonical author-response schema expected by later review rounds:
-
-```markdown
----
-response_to: REFEREE-REPORT{round_suffix}.md
-round: {N}
-date: YYYY-MM-DDTHH:MM:SSZ
-issues_fixed: {count}
-issues_rebutted: {count}
-issues_acknowledged: {count}
----
-
-# Author Response — Round {N}
-
-## Summary
-
-{1-2 paragraph overview: what changed, what was rebutted, what remains.}
-
-## Point-by-Point Responses
-
-### REF-001: {brief description from referee report}
-
-**Classification:** fixed
-**Response:** {issue-by-issue narrative response}
-**Changes:** {exact manuscript locations changed}
-```
+Before writing `GPD/AUTHOR-RESPONSE{round_suffix}.md`, load the canonical template at `@{GPD_INSTALL_DIR}/templates/paper/author-response.md` and keep the internal tracker aligned with it.
 
 Populate `GPD/AUTHOR-RESPONSE{round_suffix}.md` with:
 
 - One section per `REF-*` issue
 - Classification (`fixed`, `rebutted`, `acknowledged`, `needs-calculation`)
-- Exact manuscript change locations or planned follow-up work
+- Assessment plus exact manuscript change locations or planned follow-up work
+- `New calculations required` and `Source phase for new work` whenever the comment needs additional research
 - Any blocking / recommendation-floor context imported from `REVIEW-LEDGER*.json` or `REFEREE-DECISION*.json`
 - Use `**Evidence:**` blocks for rebuttals and `**Plan:**` blocks for acknowledged or `needs-calculation` responses when those sections are needed
 

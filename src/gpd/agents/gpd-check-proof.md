@@ -56,6 +56,14 @@ Required frontmatter:
   - `manuscript_path: path/to/manuscript.tex` and it must exactly match the active manuscript snapshot under review
   - `manuscript_sha256: <lowercase 64-hex digest>` and it must exactly match that active manuscript snapshot
   - `round: <review round number>` and it must exactly match the active review round
+- Required structured audit fields:
+  - `missing_parameter_symbols: []`
+  - `missing_hypothesis_ids: []`
+  - `coverage_gaps: []`
+  - `scope_status: matched | narrower_than_claim | mismatched | unclear`
+  - `quantifier_status: matched | narrowed | mismatched | unclear`
+  - `counterexample_status: none_found | counterexample_found | not_attempted | narrowed_claim`
+- These structured audit fields are authoritative. The body can explain the reasoning, but prose must not override the frontmatter audit signal.
 
 Required body sections:
 

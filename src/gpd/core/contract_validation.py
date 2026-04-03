@@ -90,46 +90,12 @@ _REFERENCE_LOCATOR_PLACEHOLDER_PATTERNS = (
     re.compile(r"\bplaceholder\b"),
     re.compile(r"\bto be determined\b"),
 )
-_CONCRETE_TEXT_ANCHOR_PATTERNS = (
-    re.compile(r"\bbenchmark\b"),
-    re.compile(r"\bbaseline\b"),
-    re.compile(r"\breference\b"),
-    re.compile(r"\bpaper\b"),
-    re.compile(r"\bdataset\b"),
-    re.compile(r"\bnotebook\b"),
-    re.compile(r"\bfigure\b"),
-    re.compile(r"\btable\b"),
-    re.compile(r"\bcurve\b"),
-    re.compile(r"\bplot\b"),
-    re.compile(r"\bresult\b"),
-    re.compile(r"\boutput\b"),
-    re.compile(r"\bderivation\b"),
-    re.compile(r"\banalysis\b"),
-    re.compile(r"\bliterature\b"),
-    re.compile(r"\bpublished\b"),
-    re.compile(r"\barxiv\b"),
-    re.compile(r"\bdoi\b"),
-    re.compile(r"\bcritical\b"),
-    re.compile(r"\blimit\b"),
-    re.compile(r"\blimiting\b"),
-    re.compile(r"\basymptotic\b"),
-    re.compile(r"\bobservable\b"),
-    re.compile(r"\bcomparison\b"),
-    re.compile(r"\banchor\b"),
+_STRUCTURED_TEXT_LOCATOR_PATTERNS = (
+    re.compile(r"\b(?:journal|proceedings?|conference|volume|vol\.|issue|pp?\.|phys\.|rev\.|letters?|nature|science)\b"),
 )
 _REFERENCE_LOCATOR_CONCRETE_PATTERNS = (
     re.compile(r"\b(?:doi\s*[:/]|https?://(?:doi\.org/|arxiv\.org/abs/)|arxiv\s*:)\S+"),
     re.compile(r"\b(?:fig(?:ure)?|table|eq(?:uation)?|section|sec\.?|chapter|ch\.?|appendix)\.?\s*\d+[a-z]?\b"),
-    re.compile(r"\b(?:19|20)\d{2}\b"),
-)
-_CONCRETE_TEXT_ATTACHMENT_PATTERNS = (
-    re.compile(r"\bfrom\b"),
-    re.compile(r"\bvia\b"),
-    re.compile(r"\busing\b"),
-    re.compile(r"\bagainst\b"),
-    re.compile(r"\bin\b"),
-    re.compile(r"\bon\b"),
-    re.compile(r"\bof\b"),
 )
 _PROJECT_ARTIFACT_PATH_PATTERNS = (
     re.compile(r"[\\/]+"),
@@ -612,13 +578,39 @@ def _is_concrete_external_http_locator(
 ) -> bool:
     """Return whether *value* is a concrete external URL for the requested kind."""
 
-    if reference_kind not in {"dataset", "spec", "prior_artifact"}:
+    if reference_kind != "paper":
         return False
 
     parsed = urlparse(value.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return False
-    return (parsed.path not in {"", "/"}) or bool(parsed.query or parsed.fragment)
+    netloc = parsed.netloc.casefold()
+    path = parsed.path.strip()
+    if netloc.endswith("doi.org") and path not in {"", "/"}:
+        return True
+    if netloc.endswith("arxiv.org") and path.startswith("/abs/") and len(path) > len("/abs/"):
+        return True
+    if path in {"", "/"}:
+        return False
+    lowered = value.casefold()
+    if not re.search(r"\b10\.\d{4,9}/\S+", lowered):
+        return False
+    return any(
+        marker in lowered
+        for marker in (
+            "/abstract/",
+            "/article/",
+            "/articles/",
+            "/doi/",
+            "/full/",
+            "/fulltext/",
+            "/pdf/",
+            "journals.",
+            "journal.",
+            "proceedings",
+            "conference",
+        )
+    )
 
 
 def _is_project_artifact_path(value: str, *, project_root: Path | None = None) -> bool:
@@ -637,7 +629,7 @@ def _is_concrete_text_grounding(
     *,
     project_root: Path | None = None,
 ) -> bool:
-    """Return whether *value* names a substantive text anchor rather than filler."""
+    """Return whether *value* names locator-grade grounding rather than filler."""
 
     lowered = value.casefold().strip()
     if not lowered:
@@ -657,15 +649,12 @@ def _is_concrete_text_grounding(
         return True
     if any(
         _is_concrete_external_http_locator(value, reference_kind=reference_kind)
-        for reference_kind in ("dataset", "spec", "prior_artifact")
+        for reference_kind in ("paper",)
     ):
         return True
     if _is_project_artifact_path(value, project_root=project_root):
         return True
-    words = [word for word in re.split(r"\s+", lowered) if word]
-    if len(words) < 3:
-        return False
-    return any(pattern.search(lowered) for pattern in _CONCRETE_TEXT_ANCHOR_PATTERNS)
+    return any(pattern.search(lowered) for pattern in _STRUCTURED_TEXT_LOCATOR_PATTERNS)
 
 
 def _is_concrete_reference_locator(
