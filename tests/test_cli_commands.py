@@ -1773,42 +1773,47 @@ class TestReviewValidationCommands:
         assert payload["context_mode"] == "projectless"
         assert payload["passed"] is True
 
-    def test_command_context_surfaces_runtime_command_dispatch_note(self, codex_command_prefix: str) -> None:
+    @pytest.mark.parametrize("command_name", ["gpd:settings", "gpd:set-tier-models"])
+    def test_command_context_surfaces_runtime_command_dispatch_note(
+        self, codex_command_prefix: str, command_name: str
+    ) -> None:
         result = runner.invoke(
             app,
-            ["--raw", "validate", "command-context", "gpd:settings"],
+            ["--raw", "validate", "command-context", command_name],
             catch_exceptions=False,
         )
 
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        assert payload["command"] == "gpd:settings"
+        assert payload["command"] == command_name
         assert payload["validated_surface"] == "public_runtime_dollar_command"
         assert payload["local_cli_equivalence_guaranteed"] is False
         assert f"public `{codex_command_prefix}*` runtime command surface" in payload["dispatch_note"]
         assert "same-name local `gpd` subcommand" in payload["dispatch_note"]
 
+    @pytest.mark.parametrize("command_name", ["gpd:settings", "gpd:set-tier-models"])
     def test_command_context_surfaces_slash_runtime_dispatch_note(
-        self, claude_code_command_prefix: str, monkeypatch: pytest.MonkeyPatch
+        self, claude_code_command_prefix: str, monkeypatch: pytest.MonkeyPatch, command_name: str
     ) -> None:
         monkeypatch.setattr("gpd.cli.detect_runtime_for_gpd_use", lambda cwd=None: _SLASH_COMMAND_DESCRIPTOR.runtime_name)
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "command-context", "gpd:settings"],
+            ["--raw", "validate", "command-context", command_name],
             catch_exceptions=False,
         )
 
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        assert payload["command"] == "gpd:settings"
+        assert payload["command"] == command_name
         assert payload["validated_surface"] == "public_runtime_slash_command"
         assert payload["local_cli_equivalence_guaranteed"] is False
         assert f"public `{claude_code_command_prefix}*` runtime command surface" in payload["dispatch_note"]
         assert "same-name local `gpd` subcommand" in payload["dispatch_note"]
 
+    @pytest.mark.parametrize("command_name", ["gpd:settings", "gpd:set-tier-models"])
     def test_command_context_falls_back_when_runtime_resolution_fails(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, command_name: str
     ) -> None:
         def _raise_runtime_error(cwd=None) -> str:
             raise RuntimeError("runtime resolution failed")
@@ -1817,13 +1822,13 @@ class TestReviewValidationCommands:
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "command-context", "gpd:settings"],
+            ["--raw", "validate", "command-context", command_name],
             catch_exceptions=False,
         )
 
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        assert payload["command"] == "gpd:settings"
+        assert payload["command"] == command_name
         assert payload["validated_surface"] == "public_runtime_command_surface"
         assert payload["local_cli_equivalence_guaranteed"] is False
         assert "the active runtime command surface" in payload["dispatch_note"]

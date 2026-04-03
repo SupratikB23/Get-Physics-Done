@@ -477,21 +477,30 @@ class TestGeminiRoundtrip:
         installed = _install_real_repo_for_runtime(tmp_path, "gemini")
         bridge_marker = "-m gpd.runtime_cli --runtime gemini"
         command = _read_runtime_command_prompt(tmp_path, installed, "gemini", "set-profile")
+        tier_command = _read_runtime_command_prompt(tmp_path, installed, "gemini", "set-tier-models")
         workflow = (installed / "get-physics-done" / "workflows" / "set-profile.md").read_text(encoding="utf-8")
+        tier_workflow = (installed / "get-physics-done" / "workflows" / "set-tier-models.md").read_text(encoding="utf-8")
         execute_phase = (installed / "get-physics-done" / "workflows" / "execute-phase.md").read_text(encoding="utf-8")
         agent = (installed / "agents" / "gpd-planner.md").read_text(encoding="utf-8")
 
         assert bridge_marker in command
+        assert bridge_marker in tier_command
         assert bridge_marker in workflow
+        assert bridge_marker in tier_workflow
         assert bridge_marker in execute_phase
         assert bridge_marker in agent
         assert "config ensure-section" in command
+        assert "config ensure-section" in tier_command
         assert "config ensure-section" in workflow
+        assert "config ensure-section" in tier_workflow
         assert "init progress --include state,config" in command
+        assert "init progress --include state,config" in tier_command
         assert 'if !' in execute_phase and "verify plan \"$plan\"" in execute_phase
         assert 'INIT=$(' in agent and "init plan-phase \"<PHASE>\"" in agent
         assert "gpd config ensure-section" not in command
+        assert "gpd config ensure-section" not in tier_command
         assert 'INIT=$(gpd init progress --include state,config)' not in command
+        assert 'INIT=$(gpd init progress --include state,config)' not in tier_command
         assert 'if ! gpd verify plan "$plan"; then' not in execute_phase
         assert 'INIT=$(gpd init plan-phase "<PHASE>")' not in agent
 
@@ -619,21 +628,50 @@ class TestCodexRoundtrip:
         target = _install_real_repo_for_runtime(tmp_path, "codex")
         bridge_marker = "-m gpd.runtime_cli --runtime codex"
         command = _read_runtime_command_prompt(tmp_path, target, "codex", "set-profile")
+        tier_command = _read_runtime_command_prompt(tmp_path, target, "codex", "set-tier-models")
         workflow = (target / "get-physics-done" / "workflows" / "set-profile.md").read_text(encoding="utf-8")
+        tier_workflow = (target / "get-physics-done" / "workflows" / "set-tier-models.md").read_text(encoding="utf-8")
         execute_phase = (target / "get-physics-done" / "workflows" / "execute-phase.md").read_text(encoding="utf-8")
         agent = (target / "agents" / "gpd-planner.md").read_text(encoding="utf-8")
 
         assert bridge_marker in command
+        assert bridge_marker in tier_command
         assert bridge_marker in workflow
+        assert bridge_marker in tier_workflow
         assert bridge_marker in execute_phase
         assert bridge_marker in agent
         assert "config ensure-section" in command
+        assert "config ensure-section" in tier_command
         assert "config ensure-section" in workflow
+        assert "config ensure-section" in tier_workflow
         assert "verify plan \"$plan\"" in execute_phase
         assert 'INIT=$(' in agent and "init plan-phase \"${PHASE}\"" in agent
         assert "```bash\ngpd config ensure-section\n" not in workflow
+        assert "```bash\ngpd config ensure-section\n" not in tier_workflow
         assert 'if ! gpd verify plan "$plan"; then' not in execute_phase
         assert 'INIT=$(gpd init plan-phase "${PHASE}")' not in agent
+
+
+@pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+def test_real_installed_set_tier_models_prompt_keeps_direct_tier_override_contract(
+    tmp_path: Path, runtime: str
+) -> None:
+    target = _install_real_repo_for_runtime(tmp_path, runtime)
+    content = _canonicalize_runtime_markdown(
+        _read_runtime_command_prompt(tmp_path, target, runtime, "set-tier-models"),
+        runtime=runtime,
+    )
+
+    assert "/gpd:set-tier-models" in content
+    assert "tier-1" in content
+    assert "tier-2" in content
+    assert "tier-3" in content
+    assert "/gpd:set-profile" in content
+    assert "/gpd:settings" in content
+    assert "model_overrides.<runtime>" in content
+    assert "strongest reasoning" in content
+    assert "balanced default" in content
+    assert "fastest / most economical" in content
 
     def test_help_like_skills_keep_canonical_local_cli_language(self, tmp_path: Path) -> None:
         """Codex skills keep canonical local CLI names in prose even when shell steps bridge."""
