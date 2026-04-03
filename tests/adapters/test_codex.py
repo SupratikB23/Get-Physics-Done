@@ -1004,6 +1004,28 @@ class TestRuntimePermissions:
 
         assert manifest["files"]["skills/gpd-help/SKILL.md"] == file_hash(skill_md)
 
+    def test_install_manifest_ignores_foreign_gpd_skill_dirs(
+        self,
+        adapter: CodexAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".codex"
+        target.mkdir()
+        skills = tmp_path / "skills"
+        skills.mkdir()
+        foreign_skill = skills / "gpd-user-keep"
+        foreign_skill.mkdir()
+        (foreign_skill / "SKILL.md").write_text("keep", encoding="utf-8")
+
+        result = adapter.install(gpd_root, target, skills_dir=skills)
+
+        manifest = json.loads((target / "gpd-file-manifest.json").read_text(encoding="utf-8"))
+        assert "skills/gpd-user-keep/SKILL.md" not in manifest["files"]
+        assert manifest["codex_generated_skill_dirs"]
+        assert result["skills"] == len(manifest["codex_generated_skill_dirs"])
+        assert (foreign_skill / "SKILL.md").exists()
+
     def test_install_returns_counts(self, adapter: CodexAdapter, gpd_root: Path, tmp_path: Path) -> None:
         target = tmp_path / ".codex"
         target.mkdir()

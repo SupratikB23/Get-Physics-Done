@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from gpd.adapters.install_utils import build_runtime_cli_bridge_command
+from gpd.adapters.install_utils import MANIFEST_NAME, build_runtime_cli_bridge_command
 from gpd.adapters.opencode import (
     OpenCodeAdapter,
     configure_opencode_permissions,
@@ -185,11 +185,31 @@ class TestCopyFlattenedCommands:
         dest.mkdir()
         (dest / "gpd-old-command.md").write_text("stale", encoding="utf-8")
         (dest / "custom-command.md").write_text("keep", encoding="utf-8")
+        (tmp_path / MANIFEST_NAME).write_text(
+            json.dumps({"opencode_generated_command_files": ["gpd-old-command.md"]}),
+            encoding="utf-8",
+        )
 
-        copy_flattened_commands(gpd_root / "commands", dest, "gpd", "/prefix/")
+        copy_flattened_commands(gpd_root / "commands", dest, "gpd", "/prefix/", workflow_target_dir=tmp_path)
 
         assert not (dest / "gpd-old-command.md").exists()
         assert (dest / "custom-command.md").exists()
+
+    def test_preserves_user_owned_gpd_files_when_reinstalling(self, gpd_root: Path, tmp_path: Path) -> None:
+        target = tmp_path / ".opencode"
+        dest = target / "command"
+        dest.mkdir(parents=True)
+        (dest / "gpd-old-command.md").write_text("stale", encoding="utf-8")
+        (dest / "gpd-user-keep.md").write_text("keep", encoding="utf-8")
+        (target / MANIFEST_NAME).write_text(
+            json.dumps({"opencode_generated_command_files": ["gpd-old-command.md"]}),
+            encoding="utf-8",
+        )
+
+        copy_flattened_commands(gpd_root / "commands", dest, "gpd", "/prefix/", workflow_target_dir=target)
+
+        assert not (dest / "gpd-old-command.md").exists()
+        assert (dest / "gpd-user-keep.md").exists()
 
     def test_nonexistent_src_returns_zero(self, tmp_path: Path) -> None:
         dest = tmp_path / "command"
@@ -290,6 +310,26 @@ class TestConfigureOpenCodePermissions:
         config = json.loads((tmp_path / "opencode.json").read_text(encoding="utf-8"))
         assert config["permission"]["*"] == "ask"
         assert any("get-physics-done" in key for key in config["permission"]["external_directory"])
+
+
+class TestUninstallOwnership:
+    def test_uninstall_preserves_user_owned_gpd_command_files(
+        self,
+        adapter: OpenCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".opencode"
+        target.mkdir()
+
+        adapter.install(gpd_root, target)
+        (target / "command" / "gpd-user-keep.md").write_text("keep", encoding="utf-8")
+
+        from gpd.adapters.opencode import uninstall_opencode
+
+        uninstall_opencode(target, config_dir=target, allow_empty_config_removal=True)
+
+        assert (target / "command" / "gpd-user-keep.md").exists()
 
 class TestInstall:
     def test_help_command_does_not_describe_opencode_commands_as_slash_commands(

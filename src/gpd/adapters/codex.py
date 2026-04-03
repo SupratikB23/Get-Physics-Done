@@ -682,8 +682,7 @@ class CodexAdapter(RuntimeAdapter):
             logger.info("Installed command skills")
         else:
             failures.append("command skills")
-        skill_count = sum(1 for d in self._skills_dir.iterdir() if d.is_dir() and d.name.startswith("gpd-"))
-        return skill_count
+        return len(self._generated_skill_dirs)
 
     def _install_content(self, gpd_root: Path, target_dir: Path, path_prefix: str, failures: list[str]) -> None:
         """Install shared specs content with Codex runtime-aware shell rewrites."""
@@ -783,7 +782,7 @@ class CodexAdapter(RuntimeAdapter):
         return {
             "target": str(target_dir),
             "skills_dir": str(self._skills_dir),
-            "skills": sum(1 for d in self._skills_dir.iterdir() if d.is_dir() and d.name.startswith("gpd-")),
+            "skills": len(getattr(self, "_generated_skill_dirs", ())),
             "mcpServers": mcp_count,
             "agentRoles": agent_role_count,
         }
@@ -1054,6 +1053,7 @@ class CodexAdapter(RuntimeAdapter):
             version,
             runtime=self.runtime_name,
             skills_dir=str(self._skills_dir),
+            managed_skill_dir_names=getattr(self, "_generated_skill_dirs", ()),
             metadata={
                 _MANIFEST_CODEX_SKILLS_DIR_KEY: str(self._skills_dir),
                 _MANIFEST_CODEX_GENERATED_SKILL_DIRS_KEY: list(getattr(self, "_generated_skill_dirs", ())),

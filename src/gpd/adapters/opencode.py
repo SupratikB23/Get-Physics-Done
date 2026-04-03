@@ -99,6 +99,7 @@ _INLINE_GPD_COMMAND_RE = re.compile(r"`(?P<command>gpd(?=\s)[^`]*?)`")
 _OPENCODE_PERMISSION_DECISIONS = frozenset({"allow", "ask", "deny"})
 _OPENCODE_YOLO_PERMISSION = "allow"
 _OPENCODE_HELP_WORDING_RE = re.compile(r"\bslash-command\b")
+_MANIFEST_OPENCODE_GENERATED_COMMAND_FILES_KEY = "opencode_generated_command_files"
 
 # ---------------------------------------------------------------------------
 # XDG config directory resolution
@@ -376,6 +377,7 @@ def copy_flattened_commands(
     bridge_command: str | None = None,
     *,
     explicit_target: bool = False,
+    managed_command_files: set[str] | None = None,
 ) -> int:
     """Copy commands to a flat structure for OpenCode.
 
@@ -387,13 +389,15 @@ def copy_flattened_commands(
     if not src_dir.exists():
         return 0
 
-    # Remove old gpd-*.md files before copying new ones
-    if dest_dir.exists():
-        for f in dest_dir.iterdir():
-            if f.name.startswith(f"{prefix}-") and f.name.endswith(".md"):
-                f.unlink()
-    else:
-        dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    manifest_root = workflow_target_dir or dest_dir.parent
+    tracked_command_files = set(_load_manifest_opencode_generated_command_files(manifest_root))
+    # Remove only previously generated command files before copying new ones.
+    if tracked_command_files:
+        for name in tracked_command_files:
+            command_path = dest_dir / name
+            if command_path.is_file():
+                command_path.unlink()
 
     count = 0
     for entry in sorted(src_dir.iterdir()):
@@ -408,6 +412,7 @@ def copy_flattened_commands(
                 install_scope,
                 bridge_command,
                 explicit_target=explicit_target,
+                managed_command_files=managed_command_files,
             )
         elif entry.name.endswith(".md"):
             base_name = entry.stem
@@ -430,6 +435,8 @@ def copy_flattened_commands(
                 content = _rewrite_opencode_help_wording(content)
 
             dest_path.write_text(content, encoding="utf-8")
+            if managed_command_files is not None and dest_name.startswith("gpd-"):
+                managed_command_files.add(dest_name)
             count += 1
 
     return count
@@ -521,6 +528,31 @@ def _read_opencode_config_state(config_dir: Path) -> tuple[dict[str, object] | N
     if not _opencode_mcp_shape_is_valid(parsed.get("mcp")):
         return None, "malformed"
     return parsed, None
+
+
+def _load_manifest_opencode_generated_command_files(target_dir: Path) -> tuple[str, ...]:
+    """Return tracked OpenCode command filenames from the local manifest metadata."""
+    manifest_path = target_dir / MANIFEST_NAME
+    if not manifest_path.exists():
+        return ()
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return ()
+
+    if not isinstance(manifest, dict):
+        return ()
+
+    command_files = manifest.get(_MANIFEST_OPENCODE_GENERATED_COMMAND_FILES_KEY)
+    if not isinstance(command_files, list):
+        return ()
+
+    tracked: list[str] = []
+    for entry in command_files:
+        if isinstance(entry, str) and entry.startswith("gpd-") and entry.endswith(".md"):
+            tracked.append(entry)
+    return tuple(dict.fromkeys(tracked))
 
 
 def _clone_json_value(value: object) -> object:
@@ -635,6 +667,7 @@ def write_manifest(
     runtime: str | None = None,
     install_scope: str | None = None,
     explicit_target: bool | None = None,
+    managed_command_file_names: tuple[str, ...] | None = None,
 ) -> dict:
     """Write file manifest after installation for future modification detection.
 
@@ -667,6 +700,14 @@ def write_manifest(
         default_target = _default_install_target(config_dir, runtime.strip(), normalized_scope)
         if default_target is not None:
             manifest["explicit_target"] = not _paths_equal(config_dir, default_target)
+    if managed_command_file_names:
+        manifest[_MANIFEST_OPENCODE_GENERATED_COMMAND_FILES_KEY] = sorted(
+            {
+                name
+                for name in managed_command_file_names
+                if isinstance(name, str) and name.startswith("gpd-") and name.endswith(".md")
+            }
+        )
 
     # get-physics-done/ files
     gpd_hashes = generate_manifest(gpd_dir)
@@ -674,10 +715,19 @@ def write_manifest(
         manifest["files"]["get-physics-done/" + rel] = h
 
     # command/gpd-*.md files (OpenCode flat structure)
-    if command_dir.exists():
-        for f in sorted(command_dir.iterdir()):
-            if f.name.startswith("gpd-") and f.name.endswith(".md"):
-                manifest["files"]["command/" + f.name] = file_hash(f)
+    command_names = managed_command_file_names
+    if command_names is None:
+        command_names = tuple(
+            sorted(
+                f.name
+                for f in command_dir.iterdir()
+                if f.name.startswith("gpd-") and f.name.endswith(".md")
+            )
+        ) if command_dir.exists() else ()
+    for name in command_names:
+        command_path = command_dir / name
+        if command_path.is_file():
+            manifest["files"]["command/" + name] = file_hash(command_path)
 
     # agents/gpd-*.md files
     if agents_dir.exists():
@@ -787,13 +837,15 @@ def uninstall_opencode(target_dir: Path, *, config_dir: Path, allow_empty_config
     counts: dict[str, int] = {"commands": 0, "agents": 0, "hooks": 0, "dirs": 0, "permissions": 0}
     managed_hooks = managed_hook_paths(target_dir)
     runtime_permission_state: dict[str, object] | None = None
+    tracked_command_files = _load_manifest_opencode_generated_command_files(target_dir)
 
     # 1. Remove command/gpd-*.md files
     command_dir = target_dir / "command"
-    if command_dir.exists():
-        for f in command_dir.iterdir():
-            if f.name.startswith("gpd-") and f.name.endswith(".md"):
-                f.unlink()
+    if command_dir.exists() and tracked_command_files:
+        for name in tracked_command_files:
+            command_path = command_dir / name
+            if command_path.is_file():
+                command_path.unlink()
                 counts["commands"] += 1
 
     # 2. Remove get-physics-done directory
@@ -1024,7 +1076,8 @@ class OpenCodeAdapter(RuntimeAdapter):
         command_dir = target_dir / "command"
         command_dir.mkdir(parents=True, exist_ok=True)
         bridge_command = self.runtime_cli_bridge_command(target_dir)
-        return copy_flattened_commands(
+        generated_command_files: set[str] = set()
+        count = copy_flattened_commands(
             commands_src,
             command_dir,
             "gpd",
@@ -1034,7 +1087,10 @@ class OpenCodeAdapter(RuntimeAdapter):
             self._current_install_scope_flag(),
             bridge_command,
             explicit_target=getattr(self, "_install_explicit_target", False),
+            managed_command_files=generated_command_files,
         )
+        self._generated_command_files = tuple(sorted(generated_command_files))
+        return count
 
     def _install_content(self, gpd_root: Path, target_dir: Path, path_prefix: str, failures: list[str]) -> None:
         bridge_command = self.runtime_cli_bridge_command(target_dir)
@@ -1256,6 +1312,7 @@ class OpenCodeAdapter(RuntimeAdapter):
             runtime=self.runtime_name,
             install_scope=self._current_install_scope_flag(),
             explicit_target=getattr(self, "_install_explicit_target", False),
+            managed_command_file_names=getattr(self, "_generated_command_files", ()),
         )
 
     def uninstall(self, target_dir: Path) -> dict[str, object]:

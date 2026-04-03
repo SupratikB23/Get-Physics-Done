@@ -349,34 +349,15 @@ def _materialize_workflow_paths(
 
 
 def materialize_first_round_review_schema_headings(content: str) -> str:
-    """Render staged-review schema headings with first-round filenames.
+    """Render staged-review prompt content with concrete first-round filenames.
 
-    Source prompts stay round-aware via ``{round_suffix}``, but installed agent
-    prompts should show the concrete first-round artifact names in the schema
-    headings models read before producing those files.
+    Source prompts stay round-aware via ``{round_suffix}`` / ``{-RN}``, but
+    installed agent prompts should show the concrete first-round artifact names
+    models read before producing those files. Keep the source markdown generic;
+    materialize only at install time.
     """
-    replacements = {
-        "Required schema for `CLAIMS{round_suffix}.json` (`ClaimIndex`):": (
-            "Required schema for `CLAIMS.json` (`ClaimIndex`):"
-        ),
-        "Required schema for `STAGE-reader{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-reader.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-        "Required schema for `STAGE-literature{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-literature.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-        "Required schema for `STAGE-math{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-math.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-        "Required schema for `STAGE-physics{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-physics.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-        "Required schema for `STAGE-interestingness{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-interestingness.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-    }
-    for source, rendered in replacements.items():
-        content = content.replace(source, rendered)
+    content = content.replace("{round_suffix}", "")
+    content = content.replace("{-RN}", "")
     return content
 
 
@@ -1310,6 +1291,7 @@ def write_manifest(
     *,
     runtime: str | None = None,
     skills_dir: str | Path | None = None,
+    managed_skill_dir_names: tuple[str, ...] | None = None,
     metadata: dict[str, object] | None = None,
     install_scope: str | None = None,
     explicit_target: bool | None = None,
@@ -1375,11 +1357,15 @@ def write_manifest(
     if skills_dir:
         skills = Path(skills_dir)
         if skills.exists():
+            managed_names = set(managed_skill_dir_names or ())
             for entry in sorted(skills.iterdir()):
-                if entry.is_dir() and entry.name.startswith("gpd-"):
-                    skill_md = entry / "SKILL.md"
-                    if skill_md.exists():
-                        files[f"skills/{entry.name}/SKILL.md"] = file_hash(skill_md)
+                if not entry.is_dir() or not entry.name.startswith("gpd-"):
+                    continue
+                if managed_names and entry.name not in managed_names:
+                    continue
+                skill_md = entry / "SKILL.md"
+                if skill_md.exists():
+                    files[f"skills/{entry.name}/SKILL.md"] = file_hash(skill_md)
 
     manifest["files"] = files
     if metadata:

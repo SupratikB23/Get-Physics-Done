@@ -15,6 +15,7 @@ from gpd.adapters.runtime_catalog import (
     get_managed_install_surface_policy,
     get_runtime_capabilities,
     get_runtime_descriptor,
+    get_runtime_help_example_runtime,
     get_shared_install_metadata,
     iter_runtime_descriptors,
     list_runtime_names,
@@ -78,6 +79,21 @@ def test_runtime_catalog_records_native_include_support() -> None:
     assert get_runtime_descriptor("codex").native_include_support is False
     assert get_runtime_descriptor("gemini").native_include_support is False
     assert get_runtime_descriptor("opencode").native_include_support is False
+    assert get_runtime_descriptor("claude-code").installer_help_example_scope == "global"
+    assert get_runtime_descriptor("codex").installer_help_example_scope == "local"
+
+
+def test_runtime_catalog_marks_install_help_example_runtimes() -> None:
+    assert get_runtime_help_example_runtime("global") == "claude-code"
+    assert get_runtime_help_example_runtime("local") == "codex"
+
+
+def test_runtime_catalog_declares_one_explicit_installer_help_example_per_scope() -> None:
+    examples = [descriptor.runtime_name for descriptor in iter_runtime_descriptors() if descriptor.installer_help_example_scope]
+
+    assert examples == ["claude-code", "codex"]
+    assert get_runtime_descriptor("claude-code").installer_help_example_scope == "global"
+    assert get_runtime_descriptor("codex").installer_help_example_scope == "local"
 
 
 def test_shared_install_metadata_is_centralized_in_runtime_catalog() -> None:
