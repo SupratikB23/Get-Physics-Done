@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from pydantic import ValidationError as PydanticValidationError
 
 __all__ = [
     "ConventionLock",
@@ -26,6 +27,7 @@ __all__ = [
     "ContractForbiddenProxyResult",
     "ContractResults",
     "parse_contract_results_data_strict",
+    "parse_comparison_verdicts_data_strict",
     "SuggestedContractCheck",
     "ComparisonVerdict",
     "PROJECT_CONTRACT_MAPPING_LIST_FIELDS",
@@ -848,6 +850,50 @@ def parse_contract_results_data_strict(value: object) -> ContractResults:
     if not isinstance(value, dict):
         raise ValueError("contract_results must be an object")
     return ContractResults.model_validate(normalize_contract_results_input(value, strict=True))
+
+
+def _format_pydantic_validation_errors(exc: PydanticValidationError) -> list[str]:
+    messages: list[str] = []
+    seen: set[str] = set()
+    for error in exc.errors():
+        location = ".".join(str(part) for part in error.get("loc", ())) or "value"
+        message = str(error.get("msg", "validation failed")).strip() or "validation failed"
+        input_value = error.get("input")
+
+        if message == "Field required":
+            formatted = f"{location} is required"
+        elif "valid dictionary" in message.lower():
+            actual_type = type(input_value).__name__
+            formatted = f"{location} must be an object, not {actual_type}"
+        elif message == "Value error, must not be blank":
+            formatted = f"{location} must not be blank"
+        elif message in {"Value error, must be a non-empty string", "Value error, value must not be blank"}:
+            formatted = f"{location} must be a non-empty string"
+        else:
+            formatted = f"{location}: {message}"
+        if formatted in seen:
+            continue
+        seen.add(formatted)
+        messages.append(formatted)
+    return messages or [str(exc)]
+
+
+def parse_comparison_verdicts_data_strict(value: object) -> list[ComparisonVerdict]:
+    """Return strict comparison-verdict data for runtime and artifact boundaries."""
+
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("must be a list")
+
+    verdicts: list[ComparisonVerdict] = []
+    for index, entry in enumerate(value):
+        try:
+            verdicts.append(ComparisonVerdict.model_validate(entry))
+        except PydanticValidationError as exc:
+            details = "; ".join(f"[{index}] {message}" for message in _format_pydantic_validation_errors(exc))
+            raise ValueError(details) from exc
+    return verdicts
 
 
 class SuggestedContractCheck(BaseModel):

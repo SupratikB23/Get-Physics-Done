@@ -42,6 +42,11 @@ review-contract:
     - "conventions"
     - "research_artifacts"
     - "manuscript"
+    - "artifact_manifest"
+    - "bibliography_audit"
+    - "bibliography_audit_clean"
+    - "reproducibility_manifest"
+    - "reproducibility_ready"
     - "manuscript_proof_review"
   stage_ids:
     - "reader"
@@ -102,12 +107,8 @@ Review target: $ARGUMENTS (optional paper directory or manuscript path)
 @GPD/STATE.md
 @GPD/ROADMAP.md
 
-Check canonical candidate manuscript roots in order:
-
-```bash
-find paper manuscript draft -maxdepth 1 \( -name "*.tex" -o -name "*.md" -o -name "ARTIFACT-MANIFEST.json" \) 2>/dev/null
-```
-
+The default manuscript family is limited to `paper/`, `manuscript/`, and `draft/`.
+Let centralized preflight resolve the active manuscript entrypoint from the explicit argument when provided, otherwise from the manuscript-root `ARTIFACT-MANIFEST.json`, then `PAPER-CONFIG.json`, then the canonical current manuscript entrypoint rules for those roots. Do not use ad hoc glob discovery.
 If none of those roots exist, pass an explicit manuscript path or paper directory and let centralized preflight reject anything outside the supported target family.
 
 </context>
@@ -126,6 +127,7 @@ fi
 **Follow the peer-review workflow** from `@{GPD_INSTALL_DIR}/workflows/peer-review.md`.
 
 The workflow forwards the resolved `$ARGUMENTS` manuscript target into review preflight and keeps manuscript-root-relative support artifacts anchored to that same explicit root instead of falling back to `paper/...`.
+In strict mode the preflight gate is semantic, not just file-presence based: the manuscript-root bibliography audit must clear `bibliography_audit_clean`, and the reproducibility manifest must clear `reproducibility_ready` before the staged panel proceeds.
 
 When announcing the panel to the user, say what each stage does in one concise sentence, for example:
 

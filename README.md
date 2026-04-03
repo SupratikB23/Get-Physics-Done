@@ -502,7 +502,7 @@ Low-level function and span calls are not recorded automatically. Observability 
 
 | Command | What it does |
 |---------|--------------|
-| `gpd paper-build [PAPER-CONFIG.json] [--output-dir <dir>]` | Materialize the canonical manuscript scaffold from `paper/PAPER-CONFIG.json`, emit `main.tex`, bibliography artifacts, and the paper artifact manifest |
+| `gpd paper-build [PAPER-CONFIG.json] [--output-dir <dir>]` | Materialize the canonical manuscript scaffold from `paper/PAPER-CONFIG.json`, emit `{topic_specific_stem}.tex`, bibliography artifacts, and the paper artifact manifest |
 
 </details>
 

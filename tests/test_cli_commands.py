@@ -24,12 +24,29 @@ from gpd.adapters import get_adapter
 from gpd.adapters.runtime_catalog import iter_runtime_descriptors, list_runtime_names
 from gpd.cli import app
 from gpd.core.recent_projects import record_recent_project
+from gpd.core.reproducibility import compute_sha256
 from gpd.core.state import StateUpdateResult, default_state_dict, generate_state_markdown
+from tests.manuscript_test_support import (
+    CANONICAL_MANUSCRIPT_STEM,
+)
+from tests.manuscript_test_support import (
+    manuscript_path as canonical_manuscript_path,
+)
+from tests.manuscript_test_support import (
+    manuscript_pdf_path as canonical_manuscript_pdf_path,
+)
+from tests.manuscript_test_support import (
+    manuscript_relpath as canonical_manuscript_relpath,
+)
 
 runner = CliRunner()
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "stage0"
 _RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
 _PRIMARY_RAW_RUNTIME_DESCRIPTOR = _RUNTIME_DESCRIPTORS[0]
+_CANONICAL_MANUSCRIPT_REL = canonical_manuscript_relpath()
+_CANONICAL_MANUSCRIPT_BASENAME = f"{CANONICAL_MANUSCRIPT_STEM}.tex"
+_CANONICAL_MANUSCRIPT_PDF_BASENAME = f"{CANONICAL_MANUSCRIPT_STEM}.pdf"
+_CANONICAL_MARKDOWN_BASENAME = f"{CANONICAL_MANUSCRIPT_STEM}.md"
 _DOLLAR_COMMAND_DESCRIPTOR = next(descriptor for descriptor in _RUNTIME_DESCRIPTORS if descriptor.command_prefix.startswith("$"))
 _SLASH_COMMAND_DESCRIPTOR = next(
     descriptor
@@ -129,10 +146,53 @@ def gpd_project(tmp_path: Path) -> Path:
 
     paper_dir = tmp_path / "paper"
     paper_dir.mkdir()
-    (paper_dir / "main.tex").write_text("\\documentclass{article}\n\\begin{document}\nTest manuscript.\n\\end{document}\n")
-    (paper_dir / "main.pdf").write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
+    manuscript = canonical_manuscript_path(tmp_path)
+    manuscript.write_text(
+        "\\documentclass{article}\n\\begin{document}\nTest manuscript.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    compiled_manuscript = canonical_manuscript_pdf_path(tmp_path)
+    compiled_manuscript.write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
+    (paper_dir / "PAPER-CONFIG.json").write_text(
+        json.dumps(
+            {
+                "title": "Curvature Flow Bounds",
+                "authors": [{"name": "A. Researcher"}],
+                "abstract": "Abstract.",
+                "sections": [{"heading": "Introduction", "content": "Test manuscript."}],
+            }
+        ),
+        encoding="utf-8",
+    )
     (paper_dir / "ARTIFACT-MANIFEST.json").write_text(
-        json.dumps({"version": 1, "paper_title": "Test", "journal": "prl", "created_at": "2026-03-10T00:00:00+00:00", "artifacts": []}),
+        json.dumps(
+            {
+                "version": 1,
+                "paper_title": "Test",
+                "journal": "prl",
+                "created_at": "2026-03-10T00:00:00+00:00",
+                "artifacts": [
+                    {
+                        "artifact_id": "manuscript",
+                        "category": "tex",
+                        "path": _CANONICAL_MANUSCRIPT_BASENAME,
+                        "sha256": compute_sha256(manuscript),
+                        "produced_by": "tests.test_cli_commands",
+                        "sources": [],
+                        "metadata": {"role": "manuscript"},
+                    },
+                    {
+                        "artifact_id": "compiled-manuscript",
+                        "category": "pdf",
+                        "path": _CANONICAL_MANUSCRIPT_PDF_BASENAME,
+                        "sha256": compute_sha256(compiled_manuscript),
+                        "produced_by": "tests.test_cli_commands",
+                        "sources": [{"path": _CANONICAL_MANUSCRIPT_BASENAME, "role": "compiled_from"}],
+                        "metadata": {"role": "compiled_manuscript"},
+                    },
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     (paper_dir / "BIBLIOGRAPHY-AUDIT.json").write_text(
@@ -197,17 +257,32 @@ def _invoke(*args: str, expect_ok: bool = True) -> None:
         assert result.exit_code == 0, f"gpd {' '.join(args)} failed:\n{result.output}"
 
 
+def _manuscript_entrypoint_path(
+    project_root: Path,
+    *,
+    root_name: str = "paper",
+    suffix: str = ".tex",
+) -> Path:
+    return project_root / root_name / f"{CANONICAL_MANUSCRIPT_STEM}{suffix}"
+
+
+def _manuscript_entrypoint_relpath(
+    *,
+    root_name: str = "paper",
+    suffix: str = ".tex",
+) -> str:
+    return f"{root_name}/{CANONICAL_MANUSCRIPT_STEM}{suffix}"
+
+
 def _write_review_stage_artifacts(
     project_root: Path,
     artifact_names: tuple[str, ...] | None = None,
     *,
-    manuscript_path: str = "paper/main.tex",
+    manuscript_path: str = _CANONICAL_MANUSCRIPT_REL,
     proof_bearing: bool = False,
     write_proof_redteam: bool = False,
     proof_redteam_status: str = "passed",
 ) -> None:
-    from gpd.core.reproducibility import compute_sha256
-
     review_dir = project_root / "GPD" / "review"
     review_dir.mkdir(parents=True, exist_ok=True)
     manuscript_abspath = (project_root / manuscript_path).resolve(strict=False)
@@ -354,19 +429,19 @@ def _write_review_stage_artifacts(
                     "### Named-Parameter Coverage\n"
                     "| Parameter | Role / Domain | Proof Location | Status | Notes |\n"
                     "| --- | --- | --- | --- | --- |\n"
-                    "| `r_0` | target radius | paper/main.tex:1 | covered | Tracked explicitly. |\n"
+                    f"| `r_0` | target radius | {manuscript_path}:1 | covered | Tracked explicitly. |\n"
                     "### Hypothesis Coverage\n"
                     "| Hypothesis | Proof Location | Status | Notes |\n"
                     "| --- | --- | --- | --- |\n"
-                    "| `H1` | paper/main.tex:1 | covered | Used in the proof. |\n"
+                    f"| `H1` | {manuscript_path}:1 | covered | Used in the proof. |\n"
                     "### Quantifier / Domain Coverage\n"
                     "| Obligation | Proof Location | Status | Notes |\n"
                     "| --- | --- | --- | --- |\n"
-                    "| `for every r_0 > 0` | paper/main.tex:1 | covered | No narrowing introduced. |\n"
+                    f"| `for every r_0 > 0` | {manuscript_path}:1 | covered | No narrowing introduced. |\n"
                     "### Conclusion-Clause Coverage\n"
                     "| Clause | Proof Location | Status | Notes |\n"
                     "| --- | --- | --- | --- |\n"
-                    "| annulus intersection holds | paper/main.tex:1 | covered | Final theorem statement matches. |\n"
+                    f"| annulus intersection holds | {manuscript_path}:1 | covered | Final theorem statement matches. |\n"
                     "## Adversarial Probe\n"
                     "- Probe type: dropped-parameter test\n"
                     "- Result: The proof still references r_0, so the full claim survives.\n"
@@ -399,7 +474,7 @@ def _write_publication_review_outcome(
     final_recommendation: str = "accept",
     round_number: int = 1,
     blocking_issue_ids: list[str] | None = None,
-    manuscript_path: str = "paper/main.tex",
+    manuscript_path: str = _CANONICAL_MANUSCRIPT_REL,
     proof_bearing: bool = False,
     write_proof_redteam: bool = False,
     proof_redteam_status: str = "passed",
@@ -1182,6 +1257,11 @@ class TestReviewValidationCommands:
             "conventions",
             "research_artifacts",
             "manuscript",
+            "artifact_manifest",
+            "bibliography_audit",
+            "bibliography_audit_clean",
+            "reproducibility_manifest",
+            "reproducibility_ready",
             "manuscript_proof_review",
         ]
         assert "manuscript scaffold target (existing draft or bootstrap target)" in payload["review_contract"]["required_evidence"]
@@ -1215,6 +1295,11 @@ class TestReviewValidationCommands:
             "conventions",
             "research_artifacts",
             "manuscript",
+            "artifact_manifest",
+            "bibliography_audit",
+            "bibliography_audit_clean",
+            "reproducibility_manifest",
+            "reproducibility_ready",
             "manuscript_proof_review",
         ]
         assert "existing manuscript" in payload["review_contract"]["required_evidence"]
@@ -1295,16 +1380,24 @@ class TestReviewValidationCommands:
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["command"] == "gpd:arxiv-submission"
+        assert "manuscript-root artifact manifest" in payload["review_contract"]["required_evidence"]
+        assert "manuscript-root bibliography audit" in payload["review_contract"]["required_evidence"]
         assert "latest peer-review review ledger" in payload["review_contract"]["required_evidence"]
         assert "latest peer-review referee decision" in payload["review_contract"]["required_evidence"]
+        assert "missing manuscript-root artifact manifest" in payload["review_contract"]["blocking_conditions"]
+        assert "missing manuscript-root bibliography audit" in payload["review_contract"]["blocking_conditions"]
         assert "missing compiled manuscript" in payload["review_contract"]["blocking_conditions"]
         assert "missing latest staged peer-review decision evidence" in payload["review_contract"]["blocking_conditions"]
         assert "latest staged peer-review recommendation blocks submission packaging" in payload["review_contract"]["blocking_conditions"]
         assert payload["review_contract"]["preflight_checks"] == [
             "project_state",
             "manuscript",
+            "artifact_manifest",
+            "bibliography_audit",
+            "bibliography_audit_clean",
             "compiled_manuscript",
             "conventions",
+            "publication_blockers",
             "review_ledger",
             "review_ledger_valid",
             "referee_decision",
@@ -1978,6 +2071,89 @@ class TestReviewValidationCommands:
         assert checks["manuscript_proof_review"]["blocking"] is True
         assert "PROOF-REDTEAM.md" in checks["manuscript_proof_review"]["detail"]
 
+    def test_review_preflight_write_paper_requires_math_anchor_for_theorem_bearing_claim_inventory(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        _write_review_stage_artifacts(
+            gpd_project,
+            artifact_names=("STAGE-reader.json",),
+            proof_bearing=True,
+            write_proof_redteam=False,
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "write-paper"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["manuscript_proof_review"]["passed"] is False
+        assert checks["manuscript_proof_review"]["blocking"] is True
+        assert "no prior staged math review artifact matches the active manuscript" in checks["manuscript_proof_review"]["detail"]
+
+    def test_review_preflight_write_paper_detects_theorem_bearing_manuscript_text_without_stage_artifacts(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        _manuscript_entrypoint_path(gpd_project).write_text(
+            "\\documentclass{article}\n"
+            "\\begin{document}\n"
+            "\\begin{theorem}For every r_0 > 0, the orbit intersects the target annulus.\\end{theorem}\n"
+            "\\begin{proof}The proof is omitted.\\end{proof}\n"
+            "\\end{document}\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "write-paper"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["manuscript_proof_review"]["passed"] is False
+        assert checks["manuscript_proof_review"]["blocking"] is True
+        assert "no prior staged math review artifact matches the active manuscript" in checks["manuscript_proof_review"]["detail"]
+
+    def test_review_preflight_write_paper_detects_theorem_bearing_nested_section_text_without_stage_artifacts(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        manuscript_path = _manuscript_entrypoint_path(gpd_project)
+        manuscript_path.write_text(
+            "\\documentclass{article}\n"
+            "\\begin{document}\n"
+            "\\input{sections/results}\n"
+            "\\end{document}\n",
+            encoding="utf-8",
+        )
+        section_path = manuscript_path.parent / "sections" / "results.tex"
+        section_path.parent.mkdir(parents=True, exist_ok=True)
+        section_path.write_text(
+            "\\begin{claim}For every r_0 > 0, the orbit intersects the target annulus.\\end{claim}\n"
+            "\\begin{proof}The proof is omitted.\\end{proof}\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "write-paper"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["manuscript_proof_review"]["passed"] is False
+        assert checks["manuscript_proof_review"]["blocking"] is True
+        assert "no prior staged math review artifact matches the active manuscript" in checks["manuscript_proof_review"]["detail"]
+
     def test_review_preflight_write_paper_blocks_stale_manuscript_proof_review(
         self,
         gpd_project: Path,
@@ -1991,7 +2167,7 @@ class TestReviewValidationCommands:
         )
         assert initial.exit_code == 0, initial.output
 
-        manuscript = gpd_project / "paper" / "main.tex"
+        manuscript = canonical_manuscript_path(gpd_project)
         manuscript.write_text(
             "\\documentclass{article}\n\\begin{document}\nRevised theorem statement.\n\\end{document}\n",
             encoding="utf-8",
@@ -2068,7 +2244,7 @@ class TestReviewValidationCommands:
         )
         assert initial.exit_code == 0, initial.output
 
-        manuscript = gpd_project / "paper" / "main.tex"
+        manuscript = canonical_manuscript_path(gpd_project)
         manuscript.write_text(
             "\\documentclass{article}\n\\begin{document}\nPeer review should refresh this proof.\n\\end{document}\n",
             encoding="utf-8",
@@ -2088,7 +2264,7 @@ class TestReviewValidationCommands:
         assert payload["passed"] is True
 
     def test_review_preflight_write_paper_strict_allows_fresh_bootstrap_without_manuscript(self, gpd_project: Path) -> None:
-        (gpd_project / "paper" / "main.tex").unlink()
+        canonical_manuscript_path(gpd_project).unlink()
 
         result = runner.invoke(
             app,
@@ -2108,8 +2284,8 @@ class TestReviewValidationCommands:
 
     def test_review_preflight_write_paper_strict_recognizes_markdown_resume_directory(self, gpd_project: Path) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
-        (paper_dir / "main.md").write_text("# Markdown manuscript\n", encoding="utf-8")
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
+        (paper_dir / _CANONICAL_MARKDOWN_BASENAME).write_text("# Markdown manuscript\n", encoding="utf-8")
 
         result = runner.invoke(
             app,
@@ -2121,7 +2297,7 @@ class TestReviewValidationCommands:
         payload = json.loads(result.output)
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["manuscript"]["passed"] is True
-        assert "paper/main.md" in checks["manuscript"]["detail"]
+        assert f"paper/{_CANONICAL_MARKDOWN_BASENAME}" in checks["manuscript"]["detail"]
         assert checks["artifact_manifest"]["passed"] is True
         assert checks["bibliography_audit"]["passed"] is True
         assert checks["reproducibility_manifest"]["passed"] is True
@@ -2133,15 +2309,20 @@ class TestReviewValidationCommands:
         resume_dir_name: str,
     ) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
 
         resume_dir = gpd_project / resume_dir_name
         resume_dir.mkdir()
-        (resume_dir / "main.tex").write_text(
+        (resume_dir / _CANONICAL_MANUSCRIPT_BASENAME).write_text(
             "\\documentclass{article}\n\\begin{document}\nResume manuscript.\n\\end{document}\n",
             encoding="utf-8",
         )
-        for artifact_name in ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json", "reproducibility-manifest.json"):
+        for artifact_name in (
+            "PAPER-CONFIG.json",
+            "ARTIFACT-MANIFEST.json",
+            "BIBLIOGRAPHY-AUDIT.json",
+            "reproducibility-manifest.json",
+        ):
             (resume_dir / artifact_name).write_text((paper_dir / artifact_name).read_text(encoding="utf-8"), encoding="utf-8")
 
         result = runner.invoke(
@@ -2154,7 +2335,7 @@ class TestReviewValidationCommands:
         payload = json.loads(result.output)
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["manuscript"]["passed"] is True
-        assert f"{resume_dir_name}/main.tex" in checks["manuscript"]["detail"]
+        assert f"{resume_dir_name}/{_CANONICAL_MANUSCRIPT_BASENAME}" in checks["manuscript"]["detail"]
         assert checks["artifact_manifest"]["passed"] is True
         assert checks["bibliography_audit"]["passed"] is True
         assert checks["reproducibility_manifest"]["passed"] is True
@@ -2164,17 +2345,17 @@ class TestReviewValidationCommands:
         self,
         gpd_project: Path,
     ) -> None:
-        (gpd_project / "paper" / "main.tex").unlink()
+        canonical_manuscript_path(gpd_project).unlink()
 
         resume_dir = gpd_project / "manuscript"
         resume_dir.mkdir()
-        (resume_dir / "main.tex").write_text(
+        (resume_dir / _CANONICAL_MANUSCRIPT_BASENAME).write_text(
             "\\documentclass{article}\n\\begin{document}\nResume manuscript.\n\\end{document}\n",
             encoding="utf-8",
         )
         _write_legacy_publication_artifacts(
             gpd_project,
-            ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json", "reproducibility-manifest.json"),
+            ("PAPER-CONFIG.json", "ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json", "reproducibility-manifest.json"),
         )
 
         result = runner.invoke(
@@ -2183,14 +2364,14 @@ class TestReviewValidationCommands:
             catch_exceptions=False,
         )
 
-        assert result.exit_code == 1, result.output
+        assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["manuscript"]["passed"] is True
-        assert "manuscript/main.tex" in checks["manuscript"]["detail"]
-        assert checks["artifact_manifest"]["passed"] is False
-        assert checks["bibliography_audit"]["passed"] is False
-        assert checks["reproducibility_manifest"]["passed"] is False
+        assert "fresh bootstrap is allowed" in checks["manuscript"]["detail"]
+        assert "artifact_manifest" not in checks
+        assert "bibliography_audit" not in checks
+        assert "reproducibility_manifest" not in checks
 
     def test_command_context_global_command_passes_without_project(
         self,
@@ -2354,8 +2535,8 @@ class TestReviewValidationCommands:
         self, gpd_project: Path
     ) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
-        (paper_dir / "main.md").write_text("# Markdown manuscript\n", encoding="utf-8")
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
+        (paper_dir / _CANONICAL_MARKDOWN_BASENAME).write_text("# Markdown manuscript\n", encoding="utf-8")
 
         result = runner.invoke(
             app,
@@ -2369,7 +2550,7 @@ class TestReviewValidationCommands:
         assert payload["passed"] is True
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["manuscript"]["passed"] is True
-        assert "paper/main.md" in checks["manuscript"]["detail"]
+        assert f"paper/{_CANONICAL_MARKDOWN_BASENAME}" in checks["manuscript"]["detail"]
         assert checks["artifact_manifest"]["passed"] is True
         assert checks["bibliography_audit"]["passed"] is True
         assert checks["reproducibility_manifest"]["passed"] is True
@@ -2514,8 +2695,8 @@ class TestReviewValidationCommands:
 
     def test_review_preflight_respond_to_referees_accepts_markdown_manuscript(self, gpd_project: Path) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
-        (paper_dir / "main.md").write_text("# Markdown manuscript\n", encoding="utf-8")
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
+        (paper_dir / _CANONICAL_MARKDOWN_BASENAME).write_text("# Markdown manuscript\n", encoding="utf-8")
 
         result = runner.invoke(
             app,
@@ -2527,10 +2708,10 @@ class TestReviewValidationCommands:
         payload = json.loads(result.output)
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["manuscript"]["passed"] is True
-        assert "paper/main.md" in checks["manuscript"]["detail"]
+        assert f"paper/{_CANONICAL_MARKDOWN_BASENAME}" in checks["manuscript"]["detail"]
 
     def test_review_preflight_peer_review_fails_without_manuscript(self, gpd_project: Path) -> None:
-        (gpd_project / "paper" / "main.tex").unlink()
+        canonical_manuscript_path(gpd_project).unlink()
 
         result = runner.invoke(
             app,
@@ -2546,7 +2727,7 @@ class TestReviewValidationCommands:
         assert checks["manuscript"]["passed"] is False
 
     def test_review_preflight_fails_without_manuscript(self, gpd_project: Path) -> None:
-        (gpd_project / "paper" / "main.tex").unlink()
+        canonical_manuscript_path(gpd_project).unlink()
 
         result = runner.invoke(
             app,
@@ -2583,7 +2764,7 @@ class TestReviewValidationCommands:
         assert payload["command"] == "gpd:peer-review"
         assert payload["passed"] is True
         assert checks["manuscript"]["passed"] is True
-        assert "paper/main.tex" in checks["manuscript"]["detail"]
+        assert _CANONICAL_MANUSCRIPT_REL in checks["manuscript"]["detail"]
 
 
     def test_review_preflight_peer_review_strict_requires_artifact_audits(self, gpd_project: Path) -> None:
@@ -2618,21 +2799,33 @@ class TestReviewValidationCommands:
         assert "could not parse artifact manifest" in checks["artifact_manifest"]["detail"]
 
     def test_review_preflight_peer_review_accepts_explicit_manuscript_path(self, gpd_project: Path) -> None:
-        (gpd_project / "paper" / "main.tex").unlink()
+        canonical_manuscript_path(gpd_project).unlink()
 
         paper_dir = gpd_project / "paper"
         review_dir = gpd_project / "submission"
         review_dir.mkdir()
-        (review_dir / "main.tex").write_text(
+        (_manuscript_entrypoint_path(gpd_project, root_name="submission")).write_text(
             "\\documentclass{article}\n\\begin{document}\nSubmission manuscript.\n\\end{document}\n",
             encoding="utf-8",
         )
-        for artifact_name in ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json", "reproducibility-manifest.json"):
+        for artifact_name in (
+            "PAPER-CONFIG.json",
+            "ARTIFACT-MANIFEST.json",
+            "BIBLIOGRAPHY-AUDIT.json",
+            "reproducibility-manifest.json",
+        ):
             (review_dir / artifact_name).write_text((paper_dir / artifact_name).read_text(encoding="utf-8"), encoding="utf-8")
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "review-preflight", "peer-review", "submission/main.tex", "--strict"],
+            [
+                "--raw",
+                "validate",
+                "review-preflight",
+                "peer-review",
+                _manuscript_entrypoint_relpath(root_name="submission"),
+                "--strict",
+            ],
             catch_exceptions=False,
         )
 
@@ -2642,7 +2835,7 @@ class TestReviewValidationCommands:
         assert payload["passed"] is True
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["manuscript"]["passed"] is True
-        assert "submission/main.tex" in checks["manuscript"]["detail"]
+        assert _manuscript_entrypoint_relpath(root_name="submission") in checks["manuscript"]["detail"]
 
     def test_review_preflight_peer_review_strict_does_not_fall_back_to_gpd_paper_for_explicit_manuscript(
         self,
@@ -2650,14 +2843,21 @@ class TestReviewValidationCommands:
     ) -> None:
         review_dir = gpd_project / "submission"
         review_dir.mkdir()
-        (review_dir / "main.tex").write_text(
+        (_manuscript_entrypoint_path(gpd_project, root_name="submission")).write_text(
             "\\documentclass{article}\n\\begin{document}\nSubmission manuscript.\n\\end{document}\n",
             encoding="utf-8",
         )
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "review-preflight", "peer-review", "submission/main.tex", "--strict"],
+            [
+                "--raw",
+                "validate",
+                "review-preflight",
+                "peer-review",
+                _manuscript_entrypoint_relpath(root_name="submission"),
+                "--strict",
+            ],
             catch_exceptions=False,
         )
 
@@ -2686,7 +2886,7 @@ class TestReviewValidationCommands:
         gpd_project: Path,
     ) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
         (paper_dir / "z-notes.tex").write_text("\\section{Notes}\n", encoding="utf-8")
         (paper_dir / "a-appendix.md").write_text("# Appendix\n", encoding="utf-8")
 
@@ -2783,7 +2983,6 @@ class TestReviewValidationCommands:
     def test_review_preflight_arxiv_submission_strict_requires_artifact_audits(self, gpd_project: Path) -> None:
         paper_dir = gpd_project / "paper"
         (paper_dir / "ARTIFACT-MANIFEST.json").unlink()
-        (paper_dir / "BIBLIOGRAPHY-AUDIT.json").unlink()
 
         result = runner.invoke(
             app,
@@ -2795,6 +2994,23 @@ class TestReviewValidationCommands:
         payload = json.loads(result.output)
         checks = {check["name"]: check for check in payload["checks"]}
         assert checks["artifact_manifest"]["passed"] is False
+        assert checks["bibliography_audit"]["passed"] is True
+        assert checks["compiled_manuscript"]["passed"] is True
+
+    def test_review_preflight_arxiv_submission_strict_requires_bibliography_audit(self, gpd_project: Path) -> None:
+        paper_dir = gpd_project / "paper"
+        (paper_dir / "BIBLIOGRAPHY-AUDIT.json").unlink()
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "arxiv-submission"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["artifact_manifest"]["passed"] is True
         assert checks["bibliography_audit"]["passed"] is False
         assert checks["compiled_manuscript"]["passed"] is True
 
@@ -2883,6 +3099,38 @@ class TestReviewValidationCommands:
         assert checks["manuscript_proof_review"]["blocking"] is True
         assert "not required" not in checks["manuscript_proof_review"]["detail"]
 
+    def test_review_preflight_arxiv_submission_detects_theorem_bearing_manuscript_text_without_theorem_claim_inventory(
+        self,
+        gpd_project: Path,
+    ) -> None:
+        _write_publication_review_outcome(
+            gpd_project,
+            final_recommendation="accept",
+            proof_bearing=False,
+            write_proof_redteam=False,
+        )
+        _manuscript_entrypoint_path(gpd_project).write_text(
+            "\\documentclass{article}\n"
+            "\\begin{document}\n"
+            "\\begin{lemma}For every r_0 > 0, the orbit intersects the target annulus.\\end{lemma}\n"
+            "\\begin{proof}The proof is omitted.\\end{proof}\n"
+            "\\end{document}\n",
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "arxiv-submission"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["manuscript_proof_review"]["passed"] is False
+        assert checks["manuscript_proof_review"]["blocking"] is True
+        assert "not required" not in checks["manuscript_proof_review"]["detail"]
+
     def test_review_preflight_arxiv_submission_rejects_theorem_claim_inventory_omitted_from_math_review(
         self,
         gpd_project: Path,
@@ -2962,7 +3210,7 @@ class TestReviewValidationCommands:
             final_recommendation="accept",
             proof_bearing=False,
         )
-        manuscript_path = gpd_project / "paper" / "main.tex"
+        manuscript_path = canonical_manuscript_path(gpd_project)
         manuscript_path.write_text(
             "\\documentclass{article}\n\\begin{document}\nEdited after review.\n\\end{document}\n",
             encoding="utf-8",
@@ -3125,7 +3373,7 @@ class TestReviewValidationCommands:
         _write_publication_review_outcome(
             gpd_project,
             final_recommendation="accept",
-            manuscript_path="submission/main.tex",
+            manuscript_path=_manuscript_entrypoint_relpath(root_name="submission"),
         )
 
         result = runner.invoke(
@@ -3165,16 +3413,16 @@ class TestReviewValidationCommands:
         gpd_project: Path,
     ) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
 
         submission_dir = gpd_project / "submission"
         submission_dir.mkdir()
-        (submission_dir / "main.tex").write_text(
+        (submission_dir / _CANONICAL_MANUSCRIPT_BASENAME).write_text(
             "\\documentclass{article}\n\\begin{document}\nSubmission manuscript.\n\\end{document}\n",
             encoding="utf-8",
         )
-        (submission_dir / "main.pdf").write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
-        for artifact_name in ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"):
+        (submission_dir / _CANONICAL_MANUSCRIPT_PDF_BASENAME).write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
+        for artifact_name in ("PAPER-CONFIG.json", "ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"):
             (submission_dir / artifact_name).write_text(
                 (paper_dir / artifact_name).read_text(encoding="utf-8"),
                 encoding="utf-8",
@@ -3194,16 +3442,16 @@ class TestReviewValidationCommands:
 
     def test_review_preflight_arxiv_submission_rejects_explicit_manuscript_file(self, gpd_project: Path) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
 
         submission_dir = gpd_project / "submission"
         submission_dir.mkdir()
-        (submission_dir / "main.tex").write_text(
+        (submission_dir / _CANONICAL_MANUSCRIPT_BASENAME).write_text(
             "\\documentclass{article}\n\\begin{document}\nSubmission manuscript.\n\\end{document}\n",
             encoding="utf-8",
         )
-        (submission_dir / "main.pdf").write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
-        for artifact_name in ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"):
+        (submission_dir / _CANONICAL_MANUSCRIPT_PDF_BASENAME).write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
+        for artifact_name in ("PAPER-CONFIG.json", "ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"):
             (submission_dir / artifact_name).write_text(
                 (paper_dir / artifact_name).read_text(encoding="utf-8"),
                 encoding="utf-8",
@@ -3211,7 +3459,14 @@ class TestReviewValidationCommands:
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "review-preflight", "arxiv-submission", "submission/main.tex", "--strict"],
+            [
+                "--raw",
+                "validate",
+                "review-preflight",
+                "arxiv-submission",
+                _manuscript_entrypoint_relpath(root_name="submission"),
+                "--strict",
+            ],
             catch_exceptions=False,
         )
 
@@ -3226,23 +3481,30 @@ class TestReviewValidationCommands:
         gpd_project: Path,
     ) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
 
         submission_dir = gpd_project / "submission"
         submission_dir.mkdir()
-        (submission_dir / "main.tex").write_text(
+        (submission_dir / _CANONICAL_MANUSCRIPT_BASENAME).write_text(
             "\\documentclass{article}\n\\begin{document}\nSubmission manuscript.\n\\end{document}\n",
             encoding="utf-8",
         )
-        (submission_dir / "main.pdf").write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
+        (submission_dir / _CANONICAL_MANUSCRIPT_PDF_BASENAME).write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
         _write_legacy_publication_artifacts(
             gpd_project,
-            ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"),
+            ("PAPER-CONFIG.json", "ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"),
         )
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "review-preflight", "arxiv-submission", "submission/main.tex", "--strict"],
+            [
+                "--raw",
+                "validate",
+                "review-preflight",
+                "arxiv-submission",
+                _manuscript_entrypoint_relpath(root_name="submission"),
+                "--strict",
+            ],
             catch_exceptions=False,
         )
 
@@ -3257,15 +3519,22 @@ class TestReviewValidationCommands:
         gpd_project: Path,
     ) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
 
         submission_dir = gpd_project / "submission"
         submission_dir.mkdir()
-        (submission_dir / "main.md").write_text("# Markdown manuscript\n", encoding="utf-8")
+        (submission_dir / _CANONICAL_MARKDOWN_BASENAME).write_text("# Markdown manuscript\n", encoding="utf-8")
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "review-preflight", "arxiv-submission", "submission/main.md", "--strict"],
+            [
+                "--raw",
+                "validate",
+                "review-preflight",
+                "arxiv-submission",
+                _manuscript_entrypoint_relpath(root_name="submission", suffix=".md"),
+                "--strict",
+            ],
             catch_exceptions=False,
         )
 
@@ -3280,11 +3549,11 @@ class TestReviewValidationCommands:
         gpd_project: Path,
     ) -> None:
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").unlink()
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).unlink()
 
         submission_dir = gpd_project / "submission"
         submission_dir.mkdir()
-        (submission_dir / "main.md").write_text("# Markdown manuscript\n", encoding="utf-8")
+        (submission_dir / _CANONICAL_MARKDOWN_BASENAME).write_text("# Markdown manuscript\n", encoding="utf-8")
 
         result = runner.invoke(
             app,
@@ -3310,7 +3579,7 @@ class TestReviewValidationCommands:
             encoding="utf-8",
         )
         (submission_dir / "alt.pdf").write_bytes(b"%PDF-1.4\n% fake arxiv submission pdf\n")
-        for artifact_name in ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"):
+        for artifact_name in ("PAPER-CONFIG.json", "ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json"):
             (submission_dir / artifact_name).write_text(
                 (paper_dir / artifact_name).read_text(encoding="utf-8"),
                 encoding="utf-8",
@@ -3491,7 +3760,7 @@ class TestReviewValidationCommands:
     def test_validate_paper_quality_command_from_project_artifacts(self, gpd_project: Path) -> None:
         stage4_dir = Path(__file__).resolve().parent / "fixtures" / "stage4"
         paper_dir = gpd_project / "paper"
-        (paper_dir / "main.tex").write_text(
+        (paper_dir / _CANONICAL_MANUSCRIPT_BASENAME).write_text(
             "\\documentclass{article}\n"
             "\\begin{document}\n"
             "\\begin{abstract}Benchmark result with explicit comparison.\\end{abstract}\n"
@@ -3613,7 +3882,7 @@ class TestReviewValidationCommands:
         decision_path.write_text(
             json.dumps(
                 {
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "target_journal": "jhep",
                     "final_recommendation": "major_revision",
                     "final_confidence": "high",
@@ -3649,7 +3918,31 @@ class TestReviewValidationCommands:
                 {
                     "version": 1,
                     "round": 1,
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
+                    "issues": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        ledger_path = gpd_project / "review-ledger-extra-artifact.json"
+        ledger_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "round": 1,
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
+                    "issues": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        ledger_path = gpd_project / "review-ledger-extra-artifact.json"
+        ledger_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "round": 1,
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "issues": [],
                 }
             ),
@@ -3676,6 +3969,36 @@ class TestReviewValidationCommands:
         assert "policy-driving inputs" in result.output
         assert "all journals" in result.output
 
+    def test_validate_referee_decision_strict_requires_matching_ledger(self, gpd_project: Path) -> None:
+        _write_review_stage_artifacts(gpd_project)
+        decision_path = gpd_project / "referee-decision-strict-no-ledger.json"
+        decision_path.write_text(
+            json.dumps(
+                {
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
+                    "target_journal": "jhep",
+                    "final_recommendation": "major_revision",
+                    "stage_artifacts": [
+                        "GPD/review/STAGE-reader.json",
+                        "GPD/review/STAGE-literature.json",
+                        "GPD/review/STAGE-math.json",
+                        "GPD/review/STAGE-physics.json",
+                        "GPD/review/STAGE-interestingness.json",
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        assert "Strict referee-decision validation requires --ledger" in payload["error"]
+
     def test_validate_referee_decision_command_accepts_round_suffixed_stage_artifacts(self, gpd_project: Path) -> None:
         _write_review_stage_artifacts(
             gpd_project,
@@ -3686,13 +4009,13 @@ class TestReviewValidationCommands:
                 "STAGE-physics-R2.json",
                 "STAGE-interestingness-R2.json",
             ),
-            manuscript_path="submission/main.tex",
+            manuscript_path=_manuscript_entrypoint_relpath(root_name="submission"),
         )
         decision_path = gpd_project / "referee-decision-r2.json"
         decision_path.write_text(
             json.dumps(
                 {
-                    "manuscript_path": "submission/main.tex",
+                    "manuscript_path": _manuscript_entrypoint_relpath(root_name="submission"),
                     "target_journal": "jhep",
                     "final_recommendation": "major_revision",
                     "final_confidence": "high",
@@ -3722,10 +4045,22 @@ class TestReviewValidationCommands:
             ),
             encoding="utf-8",
         )
+        ledger_path = gpd_project / "review-ledger-r2.json"
+        ledger_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "round": 2,
+                    "manuscript_path": _manuscript_entrypoint_relpath(root_name="submission"),
+                    "issues": [],
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+            ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
             catch_exceptions=False,
         )
 
@@ -3748,7 +4083,7 @@ class TestReviewValidationCommands:
         decision_path.write_text(
             json.dumps(
                 {
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "target_journal": "jhep",
                     "final_recommendation": "major_revision",
                     "stage_artifacts": [
@@ -3762,10 +4097,22 @@ class TestReviewValidationCommands:
             ),
             encoding="utf-8",
         )
+        ledger_path = gpd_project / "review-ledger-extra-artifact.json"
+        ledger_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "round": 1,
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
+                    "issues": [],
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+            ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
             catch_exceptions=False,
         )
 
@@ -3780,7 +4127,7 @@ class TestReviewValidationCommands:
         decision_path.write_text(
             json.dumps(
                 {
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "target_journal": "jhep",
                     "final_recommendation": "major_revision",
                     "stage_artifacts": [
@@ -3795,10 +4142,22 @@ class TestReviewValidationCommands:
             ),
             encoding="utf-8",
         )
+        ledger_path = gpd_project / "review-ledger-extra-artifact.json"
+        ledger_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "round": 1,
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
+                    "issues": [],
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+            ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
             catch_exceptions=False,
         )
 
@@ -3814,7 +4173,7 @@ class TestReviewValidationCommands:
         decision_path.write_text(
             json.dumps(
                 {
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "target_journal": "prl",
                     "final_recommendation": "minor_revision",
                     "stage_artifacts": [
@@ -3831,10 +4190,22 @@ class TestReviewValidationCommands:
             ),
             encoding="utf-8",
         )
+        ledger_path = gpd_project / "review-ledger-prl.json"
+        ledger_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "round": 1,
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
+                    "issues": [],
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+            ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
             catch_exceptions=False,
         )
 
@@ -3848,7 +4219,7 @@ class TestReviewValidationCommands:
         decision_path.write_text(
             json.dumps(
                 {
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "target_journal": "jhep",
                     "final_recommendation": "major_revision",
                     "stage_artifacts": [
@@ -3862,10 +4233,22 @@ class TestReviewValidationCommands:
             ),
             encoding="utf-8",
         )
+        ledger_path = gpd_project / "review-ledger-missing-artifacts.json"
+        ledger_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "round": 1,
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
+                    "issues": [],
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = runner.invoke(
             app,
-            ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+            ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
             catch_exceptions=False,
         )
 
@@ -3882,7 +4265,7 @@ class TestReviewValidationCommands:
         decision_path.write_text(
             json.dumps(
                 {
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "target_journal": "jhep",
                     "final_recommendation": "major_revision",
                     "stage_artifacts": [
@@ -3903,7 +4286,7 @@ class TestReviewValidationCommands:
                 {
                     "version": 1,
                     "round": 1,
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "issues": [
                         {
                             "issue_id": "REF-001",
@@ -3959,7 +4342,7 @@ class TestReviewValidationCommands:
         decision_path.write_text(
             json.dumps(
                 {
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "target_journal": "jhep",
                     "final_recommendation": "major_revision",
                     "stage_artifacts": [
@@ -3979,7 +4362,7 @@ class TestReviewValidationCommands:
                 {
                     "version": 1,
                     "round": 1,
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "issues": [
                         {
                             "issue_id": "REF-001",
@@ -4082,7 +4465,7 @@ class TestReviewValidationCommands:
         decision_path.write_text(
             json.dumps(
                 {
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "target_journal": "jhep",
                     "final_recommendation": "major_revision",
                     "stage_artifacts": "not-a-list",
@@ -4108,7 +4491,7 @@ class TestReviewValidationCommands:
                 {
                     "version": 1,
                     "round": 1,
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "issues": [
                         {
                             "issue_id": "REF-001",
@@ -4143,7 +4526,7 @@ class TestReviewValidationCommands:
                 {
                     "version": 1,
                     "round": 1,
-                    "manuscript_path": "paper/main.tex",
+                    "manuscript_path": _CANONICAL_MANUSCRIPT_REL,
                     "issues": "not-a-list",
                 }
             ),

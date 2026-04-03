@@ -30,6 +30,7 @@ from gpd.core.surface_phrases import (
     workflow_preset_surface_note,
 )
 from tests.doc_surface_contracts import assert_recovery_ladder_contract
+from tests.runtime_test_support import PRIMARY_RUNTIME, runtime_resume_work_command
 
 
 def test_cost_surface_phrases_stay_conservative_and_advisory() -> None:
@@ -91,8 +92,11 @@ def test_recovery_surface_phrases_cover_current_and_cross_project_paths() -> Non
         == "Use the machine-local recent-project index to choose the workspace you want to reopen."
     )
     assert (
-        recovery_continue_action(mode="current-workspace", continue_command="codex-resume-work")
-        == "`codex-resume-work` continues in-runtime from the selected project state."
+        recovery_continue_action(
+            mode="current-workspace",
+            continue_command=runtime_resume_work_command(PRIMARY_RUNTIME),
+        )
+        == f"`{runtime_resume_work_command(PRIMARY_RUNTIME)}` continues in-runtime from the selected project state."
     )
     assert recovery_continue_reason(mode="current-workspace") == "Continue paused work inside the current workspace."
     assert recovery_continue_reason(mode="recent-projects") == "Continue paused work inside the selected workspace."

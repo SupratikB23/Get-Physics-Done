@@ -30,6 +30,7 @@ __all__ = [
     "RefereeDecisionInput",
     "RefereeDecisionReport",
     "evaluate_referee_decision",
+    "validate_stage_review_artifact_payload",
     "validate_stage_review_artifact_file",
     "validate_stage_review_artifact_alignment",
 ]
@@ -638,8 +639,6 @@ def validate_stage_review_artifact_file(
 ) -> list[str]:
     """Return semantic validation errors for a stage-review file."""
 
-    details = _canonical_stage_artifact_details(artifact_path)
-    errors: list[str] = []
     try:
         payload = _load_review_json_artifact(artifact_path)
         stage_report = StageReviewReport.model_validate(payload)
@@ -651,6 +650,25 @@ def validate_stage_review_artifact_file(
             + _format_model_errors(exc, label=artifact_path.name)
         ]
 
+    return validate_stage_review_artifact_payload(
+        stage_report,
+        artifact_path=artifact_path,
+        expected_manuscript_path=expected_manuscript_path,
+        expected_manuscript_sha256=expected_manuscript_sha256,
+    )
+
+
+def validate_stage_review_artifact_payload(
+    stage_report: StageReviewReport,
+    *,
+    artifact_path: Path,
+    expected_manuscript_path: str | None = None,
+    expected_manuscript_sha256: str | None = None,
+) -> list[str]:
+    """Return semantic validation errors for one typed stage-review artifact."""
+
+    details = _canonical_stage_artifact_details(artifact_path)
+    errors: list[str] = []
     round_suffix = details[1] if details is not None else _round_suffix_for_round(stage_report.round)
     if details is None:
         errors.append(

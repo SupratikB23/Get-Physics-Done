@@ -128,7 +128,7 @@ class TestBuildPaper:
             [("author", "Einstein"), ("title", "Zur Elektrodynamik"), ("year", "1905")],
         )
 
-        pdf_path = tmp_path / "main.pdf"
+        pdf_path = tmp_path / f"{derive_output_filename(config)}.pdf"
         mock_result = CompilationResult(success=True, pdf_path=pdf_path)
         pdf_path.write_bytes(b"%PDF-fake")
 
@@ -186,7 +186,7 @@ class TestBuildPaper:
             figures=[FigureRef(path=fig_path, caption="Velocity field.", label="velocity")],
         )
 
-        pdf_path = tmp_path / "main.pdf"
+        pdf_path = tmp_path / f"{derive_output_filename(config)}.pdf"
         mock_result = CompilationResult(success=True, pdf_path=pdf_path)
         pdf_path.write_bytes(b"%PDF-fake")
 
@@ -221,7 +221,7 @@ class TestBuildPaper:
             sections=[Section(title="Introduction", content="Hello world.")],
         )
 
-        pdf_path = tmp_path / "main.pdf"
+        pdf_path = tmp_path / f"{derive_output_filename(config)}.pdf"
         mock_result = CompilationResult(success=True, pdf_path=pdf_path)
         pdf_path.write_bytes(b"%PDF-fake")
 
@@ -279,7 +279,7 @@ class TestBuildPaper:
             reference_id="lit-ref-einstein-1905",
         )
 
-        pdf_path = tmp_path / "main.pdf"
+        pdf_path = tmp_path / f"{derive_output_filename(config)}.pdf"
         mock_result = CompilationResult(success=True, pdf_path=pdf_path)
         pdf_path.write_bytes(b"%PDF-fake")
 
@@ -334,7 +334,7 @@ class TestBuildPaper:
             reference_id="lit-ref-einstein-1905",
         )
 
-        pdf_path = tmp_path / "main.pdf"
+        pdf_path = tmp_path / f"{derive_output_filename(config)}.pdf"
         mock_result = CompilationResult(success=True, pdf_path=pdf_path)
         pdf_path.write_bytes(b"%PDF-fake")
 
@@ -423,7 +423,7 @@ class TestBuildPaper:
             ],
         )
 
-        pdf_path = tmp_path / "main.pdf"
+        pdf_path = tmp_path / f"{derive_output_filename(config)}.pdf"
         pdf_path.write_bytes(b"%PDF-fake")
         mock_result = CompilationResult(success=True, pdf_path=pdf_path)
 
@@ -551,14 +551,14 @@ class TestPublicAPI:
         )
 
         claim_index = ClaimIndex(
-            manuscript_path="paper/main.tex",
+            manuscript_path="paper/curvature_flow_bounds.tex",
             manuscript_sha256="a" * 64,
             claims=[
                 ClaimRecord(
                     claim_id="CLM-001",
                     claim_type=ClaimType.main_result,
                     text="A bounded result is established.",
-                    artifact_path="paper/main.tex",
+                    artifact_path="paper/curvature_flow_bounds.tex",
                     section="Results",
                 )
             ],
@@ -566,7 +566,7 @@ class TestPublicAPI:
         stage_report = StageReviewReport(
             stage_id="physics",
             stage_kind=ReviewStageKind.physics,
-            manuscript_path="paper/main.tex",
+            manuscript_path="paper/curvature_flow_bounds.tex",
             manuscript_sha256="a" * 64,
             claims_reviewed=["CLM-001"],
             summary="Physics support is adequate.",
@@ -584,7 +584,7 @@ class TestPublicAPI:
             recommendation_ceiling=ReviewRecommendation.minor_revision,
         )
         ledger = ReviewLedger(
-            manuscript_path="paper/main.tex",
+            manuscript_path="paper/curvature_flow_bounds.tex",
             issues=[
                 ReviewIssue(
                     issue_id="REF-001",

@@ -232,11 +232,7 @@ def build_runtime_install_repair_command(
     """Return the public reinstall/update command for one runtime install."""
     from gpd.adapters import get_adapter
 
-    base = get_shared_install_metadata().bootstrap_command
-    try:
-        command = get_adapter(runtime).update_command
-    except KeyError:
-        command = base
+    command = get_adapter(runtime).update_command
 
     normalized_scope = _normalize_install_scope_flag(install_scope)
     if normalized_scope:

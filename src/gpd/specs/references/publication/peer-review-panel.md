@@ -215,7 +215,7 @@ Stage 1 `CLAIMS{round_suffix}.json` must follow this compact `ClaimIndex` shape:
     {
       "claim_id": "CLM-001",
       "claim_type": "main_result | novelty | significance | physical_interpretation | generality | method",
-      "claim_kind": "theorem | lemma | corollary | proposition | claim | other",
+      "claim_kind": "theorem | lemma | corollary | proposition | result | claim | other",
       "text": "Exact manuscript claim text or faithful paraphrase",
       "artifact_path": "paper/topic_stem.tex",
       "section": "Conclusion",
@@ -234,7 +234,7 @@ Stage 1 `CLAIMS{round_suffix}.json` must follow this compact `ClaimIndex` shape:
 - `manuscript_sha256` must be the lowercase 64-hex digest for the exact manuscript snapshot under review.
 - `ClaimIndex` and every nested `ClaimRecord` use a closed schema; do not invent extra keys beyond those shown here.
 - `claim_id` must match `CLM-[A-Za-z0-9][A-Za-z0-9_-]*`.
-- `claim_kind` must use exactly: `theorem`, `lemma`, `corollary`, `proposition`, `claim`, `other`.
+- `claim_kind` must use exactly: `theorem`, `lemma`, `corollary`, `proposition`, `result`, `claim`, `other`.
 - Keep `section` as an empty string and `equation_refs`, `figure_refs`, `supporting_artifacts` as empty lists when unavailable.
 - Keep `theorem_assumptions` and `theorem_parameters` as arrays even when unavailable.
 - When a claim is theorem-bearing, set `claim_kind` explicitly instead of leaving it at `other`; `theorem_assumptions` must enumerate the theorem's explicit hypotheses or regime assumptions, and `theorem_parameters` must enumerate the free target parameters or quantified variables the proof must cover.

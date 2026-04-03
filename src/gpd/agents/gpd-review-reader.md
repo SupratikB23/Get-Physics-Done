@@ -47,7 +47,7 @@ Required schema for `CLAIMS{round_suffix}.json` (`ClaimIndex`):
 - Each entry in `claims` is a `ClaimRecord` with: `claim_id`, `claim_type`, `claim_kind`, `text`, `artifact_path`, `section`, `equation_refs`, `figure_refs`, `supporting_artifacts`, `theorem_assumptions`, `theorem_parameters`
 - `claim_id` must match `CLM-[A-Za-z0-9][A-Za-z0-9_-]*` exactly
 - `claim_type` must use exactly: `main_result`, `novelty`, `significance`, `physical_interpretation`, `generality`, `method`
-- `claim_kind` must use exactly: `theorem`, `lemma`, `corollary`, `proposition`, `claim`, `other`
+- `claim_kind` must use exactly: `theorem`, `lemma`, `corollary`, `proposition`, `result`, `claim`, `other`
 - Use `section` as an empty string and the reference/artifact arrays as empty lists when a field is not applicable; do not invent locations or evidence
 - Keep `theorem_assumptions` and `theorem_parameters` as arrays even when empty
 - When a claim is theorem-bearing, set `claim_kind` explicitly instead of leaving it at `other`; `theorem_assumptions` must list each explicit theorem hypothesis or regime assumption, and `theorem_parameters` must list each explicit target parameter or quantified free variable that the proof must cover

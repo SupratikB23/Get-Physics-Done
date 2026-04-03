@@ -594,6 +594,45 @@ def test_public_docs_keep_runtime_surface_first() -> None:
     assert "does not fabricate opaque provider internals" in readme
 
 
+def test_public_docs_use_topic_specific_manuscript_stems_instead_of_main_legacy_paths() -> None:
+    repo_root = _repo_root()
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    test_readme = (repo_root / "tests/README.md").read_text(encoding="utf-8")
+    artifact_surfacing = (repo_root / "src/gpd/specs/references/orchestration/artifact-surfacing.md").read_text(
+        encoding="utf-8"
+    )
+    hypothesis_research = (repo_root / "src/gpd/specs/references/protocols/hypothesis-driven-research.md").read_text(
+        encoding="utf-8"
+    )
+    executor = (repo_root / "src/gpd/agents/gpd-executor.md").read_text(encoding="utf-8")
+    executor_completion = (
+        repo_root / "src/gpd/specs/references/execution/executor-completion.md"
+    ).read_text(encoding="utf-8")
+
+    assert "paper/<topic_stem>.tex" in artifact_surfacing
+    assert "paper/<topic_stem>.pdf" in artifact_surfacing
+    assert "paper/main.tex" not in artifact_surfacing
+    assert "paper/output/main.pdf" not in artifact_surfacing
+
+    assert "{topic_specific_stem}.tex" in readme
+    assert "emit `main.tex`" not in readme
+
+    assert "<topic_stem>.tex" in test_readme
+    assert "<topic_stem>.pdf" in test_readme
+    assert "paper-config.json" not in test_readme
+    assert "paper/main.tex" not in test_readme
+    assert "main.pdf" not in test_readme
+
+    assert "ARTIFACT-MANIFEST.json" in hypothesis_research
+    assert "PAPER-CONFIG.json" in hypothesis_research
+    assert "latexmk -pdf \"${MANUSCRIPT_TEX}\"" in hypothesis_research
+    assert "main.tex" not in hypothesis_research
+
+    assert "latexmk -pdf -interaction=nonstopmode \"${MANUSCRIPT_TEX}\"" in executor
+    assert "main.tex" not in executor
+    assert "paper/figures/main.pdf" not in executor_completion
+
+
 def test_public_supported_runtime_rows_follow_runtime_catalog_commands() -> None:
     readme = (_repo_root() / "README.md").read_text(encoding="utf-8")
     supported_runtimes = _markdown_section(readme, "## Supported Runtimes")

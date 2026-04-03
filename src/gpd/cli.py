@@ -65,8 +65,7 @@ from gpd.core.project_reentry import (
     resolve_project_reentry,
 )
 from gpd.core.proof_review import (
-    manuscript_has_theorem_bearing_claim_inventory,
-    manuscript_has_theorem_bearing_review_anchor,
+    manuscript_requires_theorem_bearing_review,
     resolve_manuscript_proof_review_status,
     resolve_phase_proof_review_status,
 )
@@ -4980,13 +4979,6 @@ def _resolve_review_preflight_manuscript(
             candidate = resolve_manuscript_entrypoint_from_root(target, allow_markdown=allow_markdown)
             if candidate is not None:
                 return candidate, f"{_format_display_path(target)} resolved to {_format_display_path(candidate)}"
-            legacy_markdown = target / "main.md"
-            if not allow_markdown and legacy_markdown.exists():
-                return (
-                    None,
-                    f"expected a manuscript .tex entrypoint under {_format_display_path(target)} for LaTeX-only submission "
-                    f"(found legacy {_format_display_path(legacy_markdown)})",
-                )
             return None, f"no manuscript entry point found under {_format_display_path(target)}"
 
     manuscript = resolve_current_manuscript_entrypoint(cwd, allow_markdown=allow_markdown)
@@ -4996,7 +4988,7 @@ def _resolve_review_preflight_manuscript(
         return (
             None,
             "no manuscript entrypoint found under paper/, manuscript/, or draft/ "
-            "(expected ARTIFACT-MANIFEST.json, PAPER-CONFIG.json-derived output, or a legacy main.{tex,md})",
+            "(expected ARTIFACT-MANIFEST.json or PAPER-CONFIG.json-derived output)",
         )
     return None, "no LaTeX manuscript entrypoint found under paper/, manuscript/, or draft/"
 
@@ -5223,11 +5215,17 @@ def _review_contract_condition_is_active(
         "theorem-bearing claims are present",
         "theorem-bearing manuscripts are present",
     }:
-        return manuscript is not None and (
-            manuscript_has_theorem_bearing_review_anchor(project_cwd, manuscript)
-            or manuscript_has_theorem_bearing_claim_inventory(project_cwd, manuscript)
-        )
+        return manuscript is not None and manuscript_requires_theorem_bearing_review(project_cwd, manuscript)
     return False
+
+
+def _requires_theorem_bearing_manuscript_review(
+    project_cwd: Path,
+    manuscript: Path | None,
+) -> bool:
+    """Return whether theorem-bearing proof review must be enforced."""
+
+    return manuscript is not None and manuscript_requires_theorem_bearing_review(project_cwd, manuscript)
 
 
 def _active_review_contract_condition_whens(
@@ -6732,6 +6730,7 @@ def _build_review_preflight(
                         manuscript,
                         persist_manifest=True,
                     )
+                    theorem_bearing_review_required = _requires_theorem_bearing_manuscript_review(project_cwd, manuscript)
                     manuscript_proof_review_blocking_states = {
                         "stale",
                         "invalid_manifest",
@@ -6746,7 +6745,6 @@ def _build_review_preflight(
                     manuscript_proof_review_blocking = False
                     manuscript_proof_review_detail = manuscript_proof_review.detail
                     if command.name == "gpd:arxiv-submission":
-                        theorem_bearing_review_required = "theorem-bearing manuscripts are present" in active_condition_whens
                         if theorem_bearing_review_required:
                             manuscript_proof_review_passed = manuscript_proof_review.can_rely_on_prior_review
                             manuscript_proof_review_blocking = True
@@ -6756,11 +6754,12 @@ def _build_review_preflight(
                                 "no theorem-bearing claims were detected in the latest matching staged claim inventory "
                                 "or staged math review; manuscript proof review is not required for submission"
                             )
-                    elif (
-                        command.name == "gpd:write-paper"
-                        and manuscript_proof_review.state in manuscript_proof_review_blocking_states
-                    ):
-                        manuscript_proof_review_blocking = True
+                    elif command.name == "gpd:write-paper":
+                        if theorem_bearing_review_required:
+                            manuscript_proof_review_passed = manuscript_proof_review.can_rely_on_prior_review
+                            manuscript_proof_review_blocking = True
+                        elif manuscript_proof_review.state in manuscript_proof_review_blocking_states:
+                            manuscript_proof_review_blocking = True
                     add_check(
                         "manuscript_proof_review",
                         manuscript_proof_review_passed,
@@ -7074,7 +7073,10 @@ def validate_review_stage_report_cmd(
     input_path: str = typer.Argument(..., help="Path to a stage-review JSON file, or '-' for stdin"),
 ) -> None:
     """Validate a staged peer-review report."""
-    from gpd.core.referee_policy import validate_stage_review_artifact_file
+    from gpd.core.referee_policy import (
+        validate_stage_review_artifact_file,
+        validate_stage_review_artifact_payload,
+    )
     from gpd.mcp.paper.models import StageReviewReport
 
     payload = _load_json_document(input_path)
@@ -7086,17 +7088,20 @@ def validate_review_stage_report_cmd(
             exc=exc,
             schema_reference="references/publication/peer-review-panel.md",
         )
-    if input_path != "-":
+    if input_path == "-":
+        artifact_path = _get_cwd() / "GPD" / "review" / f"STAGE-{stage_report.stage_id}{'' if stage_report.round <= 1 else f'-R{stage_report.round}'}.json"
+        semantic_errors = validate_stage_review_artifact_payload(stage_report, artifact_path=artifact_path)
+    else:
         artifact_path = Path(input_path)
         if not artifact_path.is_absolute():
             artifact_path = _get_cwd() / artifact_path
         semantic_errors = validate_stage_review_artifact_file(artifact_path)
-        if semantic_errors:
-            message = "; ".join(semantic_errors[:5])
-            if len(semantic_errors) > 5:
-                message += f" (+{len(semantic_errors) - 5} more)"
-            message += ". See `references/publication/peer-review-panel.md`"
-            _error(message)
+    if semantic_errors:
+        message = "; ".join(semantic_errors[:5])
+        if len(semantic_errors) > 5:
+            message += f" (+{len(semantic_errors) - 5} more)"
+        message += ". See `references/publication/peer-review-panel.md`"
+        _error(message)
     _output(stage_report)
 
 
@@ -7139,6 +7144,8 @@ def validate_referee_decision(
 
     if input_path == "-" and ledger_path == "-":
         _error("Cannot read both referee-decision and review-ledger from stdin in the same command.")
+    if strict and ledger_path is None:
+        _error("Strict referee-decision validation requires --ledger with the matching review-ledger JSON.")
 
     payload = _load_json_document(input_path)
     try:
@@ -7347,11 +7354,8 @@ def paper_build(
         config_path,
         candidates=(
             "paper/PAPER-CONFIG.json",
-            "paper/paper-config.json",
             "manuscript/PAPER-CONFIG.json",
-            "manuscript/paper-config.json",
             "draft/PAPER-CONFIG.json",
-            "draft/paper-config.json",
         ),
         label="paper config",
     )

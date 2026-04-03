@@ -16,6 +16,7 @@ from gpd.core.costs import (
     resolve_cost_advisory,
     usage_ledger_path,
 )
+from tests.runtime_test_support import runtime_without_telemetry
 
 _TELEMETRY_RUNTIME = next(
     descriptor.runtime_name
@@ -383,10 +384,11 @@ def test_record_usage_skips_runtime_without_declared_telemetry_collection_path(
     data_root = tmp_path / "data"
     project = _bootstrap_project(tmp_path)
     monkeypatch.setattr(costs, "get_current_session_id", lambda _root: "sess-claude")
+    no_telemetry_runtime = runtime_without_telemetry()
 
     record = record_usage_from_runtime_payload(
         _payload(input_tokens=100, output_tokens=25, cost_usd=0.01),
-        runtime="claude-code",
+        runtime=no_telemetry_runtime,
         cwd=project,
         data_root=data_root,
     )
@@ -922,17 +924,18 @@ def test_build_cost_summary_surfaces_active_runtime_capabilities_without_records
 ) -> None:
     project = _bootstrap_project(tmp_path)
     monkeypatch.setattr(costs, "get_current_session_id", lambda _root: None)
+    no_telemetry_runtime = runtime_without_telemetry()
 
     class _Config:
         model_profile = "review"
-        model_overrides = {"claude-code": {"fast": "tier-1"}}
+        model_overrides = {no_telemetry_runtime: {"fast": "tier-1"}}
 
     monkeypatch.setattr("gpd.core.config.load_config", lambda _cwd: _Config())
-    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", lambda cwd=None: "claude-code")
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", lambda cwd=None: no_telemetry_runtime)
 
     summary = build_cost_summary(project, data_root=tmp_path / "data", last_sessions=5)
 
-    assert summary.active_runtime == "claude-code"
+    assert summary.active_runtime == no_telemetry_runtime
     assert summary.active_runtime_capabilities["telemetry_completeness"] == "none"
     assert summary.active_runtime_capabilities["statusline_surface"] == "explicit"
     assert summary.model_profile == "review"

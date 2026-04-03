@@ -96,25 +96,15 @@ gpd validate review-preflight write-paper --strict
 ```
 
 If review preflight exits nonzero because of missing project state, missing roadmap, degraded review integrity, missing research artifacts, or non-review-ready reproducibility coverage, STOP and show the blocking issues before drafting. Keep the current `project_contract`, `project_contract_load_info`, `project_contract_validation`, and `active_reference_context` visible throughout the staged review; they are authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes.
-For any resumed manuscript, strict preflight reads `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`, and `reproducibility-manifest.json` from the resolved manuscript directory itself. Do not satisfy that gate with legacy publication artifacts from a different manuscript directory when the active manuscript lives elsewhere.
+For any resumed manuscript, strict preflight reads `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`, and `reproducibility-manifest.json` from the resolved manuscript directory itself. The strict gate also requires `bibliography_audit_clean` and `reproducibility_ready`, not just file presence. Do not satisfy that gate with legacy publication artifacts from a different manuscript directory when the active manuscript lives elsewhere.
 If the manuscript depends on any theorem-style or `proof_obligation` result, treat passed proof-redteam artifacts from the source phases as mandatory review inputs. Missing or open proof audits are CRITICAL blockers, not polish issues.
 
-**Locate paper directory (if resuming):**
+**Resolve paper directory (if resuming):**
 
-```bash
-for DIR in paper manuscript draft; do
-  if [ -f "${DIR}/ARTIFACT-MANIFEST.json" ] || [ -f "${DIR}/PAPER-CONFIG.json" ] || ls "${DIR}"/*.tex "${DIR}"/*.md >/dev/null 2>&1; then
-    PAPER_DIR="$DIR"
-    break
-  fi
-done
-if [ -z "${PAPER_DIR}" ]; then
-  PAPER_DIR="paper"
-fi
-```
+If strict preflight or init already resolved an active manuscript under `paper/`, `manuscript/`, or `draft/`, keep that manuscript root as `PAPER_DIR`. Prefer the manuscript-root `ARTIFACT-MANIFEST.json`, then `PAPER-CONFIG.json`, then the canonical current manuscript entrypoint rules within those roots. Do not choose `PAPER_DIR` by first-match `*.tex` or `*.md` globbing.
 
-If the loop found an existing manuscript directory, the workflow is resuming or revising that manuscript directory. Strict review for that resume path uses `${PAPER_DIR}/ARTIFACT-MANIFEST.json`, `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json`, and `${PAPER_DIR}/reproducibility-manifest.json` from the same directory.
-If no existing manuscript was found, `PAPER_DIR` defaults to `paper` and the workflow bootstraps a fresh scaffold there.
+If a manuscript root was resolved, the workflow is resuming or revising that manuscript directory. Strict review for that resume path uses `${PAPER_DIR}/ARTIFACT-MANIFEST.json`, `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json`, and `${PAPER_DIR}/reproducibility-manifest.json` from the same directory.
+If no manuscript root was resolved, set `PAPER_DIR=paper` and bootstrap a fresh scaffold there.
 
 **Check optional local LaTeX compiler availability for smoke tests (cross-platform):**
 

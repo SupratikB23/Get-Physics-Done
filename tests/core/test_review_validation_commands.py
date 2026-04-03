@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from gpd.cli import app
@@ -115,6 +116,25 @@ def _write_canonical_stage_artifacts(project_root: Path, *, manuscript_path: str
             manuscript_path=manuscript_path,
             round_number=round_number,
         )
+
+
+def _write_matching_review_ledger(
+    project_root: Path,
+    *,
+    manuscript_path: str = "paper/main.tex",
+    round_number: int = 1,
+) -> Path:
+    ledger_path = project_root / "review-ledger.json"
+    _write_json(
+        ledger_path,
+        {
+            "version": 1,
+            "round": round_number,
+            "manuscript_path": manuscript_path,
+            "issues": [],
+        },
+    )
+    return ledger_path
 
 
 def test_validate_review_claim_index_accepts_canonical_payload(tmp_path: Path) -> None:
@@ -260,6 +280,39 @@ def test_validate_review_stage_report_rejects_missing_math_proof_audit_for_theor
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
     assert "theorem-bearing claims must have proof_audits" in payload["error"]
+
+
+def test_validate_review_stage_report_stdin_uses_workspace_semantic_alignment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    stage_report = StageReviewReport(
+        version=1,
+        round=1,
+        stage_id=ReviewStageKind.reader.value,
+        stage_kind=ReviewStageKind.reader,
+        manuscript_path="paper/main.tex",
+        manuscript_sha256="a" * 64,
+        claims_reviewed=["CLM-001"],
+        summary="The manuscript claims are clearly extracted.",
+        strengths=[],
+        findings=[],
+        confidence=ReviewConfidence.medium,
+        recommendation_ceiling=ReviewRecommendation.major_revision,
+    )
+
+    result = runner.invoke(
+        app,
+        ["--raw", "validate", "review-stage-report", "-"],
+        input=json.dumps(stage_report.model_dump(mode="json")),
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert "matching claim index is missing" in payload["error"]
+    assert "references/publication/peer-review-panel.md" in payload["error"]
 
 
 def test_validate_review_stage_report_rejects_unreviewed_theorem_bearing_claim(tmp_path: Path) -> None:
@@ -610,10 +663,11 @@ def test_validate_referee_decision_strict_requires_explicit_policy_fields(tmp_pa
     payload.pop("final_confidence")
     decision_path = tmp_path / "referee-decision.json"
     _write_json(decision_path, payload)
+    ledger_path = _write_matching_review_ledger(tmp_path)
 
     result = runner.invoke(
         app,
-        ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
         catch_exceptions=False,
     )
 
@@ -654,10 +708,11 @@ def test_validate_referee_decision_strict_requires_explicit_policy_fields_for_st
     payload.pop("final_confidence")
     decision_path = tmp_path / "referee-decision-jhep.json"
     _write_json(decision_path, payload)
+    ledger_path = _write_matching_review_ledger(tmp_path)
 
     result = runner.invoke(
         app,
-        ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
         catch_exceptions=False,
     )
 
@@ -696,10 +751,11 @@ def test_validate_referee_decision_strict_rejects_blank_manuscript_path(tmp_path
             "blocking_issue_ids": [],
         },
     )
+    ledger_path = _write_matching_review_ledger(tmp_path)
 
     result = runner.invoke(
         app,
-        ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
         catch_exceptions=False,
     )
 
@@ -792,10 +848,11 @@ def test_validate_referee_decision_strict_rejects_stage_artifact_claim_index_mis
     )
     decision_path = tmp_path / "referee-decision.json"
     _write_json(decision_path, decision.model_dump(mode="json"))
+    ledger_path = _write_matching_review_ledger(tmp_path)
 
     result = runner.invoke(
         app,
-        ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
         catch_exceptions=False,
     )
 
@@ -833,6 +890,16 @@ def test_validate_referee_decision_strict_anchors_relative_stage_artifacts_to_ab
     )
     decision_path = tmp_path / "GPD" / "review" / "REFEREE-DECISION.json"
     _write_json(decision_path, decision.model_dump(mode="json"))
+    ledger_path = tmp_path / "GPD" / "review" / "REVIEW-LEDGER.json"
+    _write_json(
+        ledger_path,
+        {
+            "version": 1,
+            "round": 1,
+            "manuscript_path": "paper/main.tex",
+            "issues": [],
+        },
+    )
 
     result = runner.invoke(
         app,
@@ -844,6 +911,8 @@ def test_validate_referee_decision_strict_anchors_relative_stage_artifacts_to_ab
             "referee-decision",
             str(decision_path),
             "--strict",
+            "--ledger",
+            str(ledger_path),
         ],
         catch_exceptions=False,
     )

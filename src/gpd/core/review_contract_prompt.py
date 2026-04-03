@@ -13,12 +13,18 @@ VALID_REVIEW_PREFLIGHT_CHECKS = (
     "conventions",
     "research_artifacts",
     "manuscript",
+    "artifact_manifest",
+    "bibliography_audit",
+    "bibliography_audit_clean",
     "compiled_manuscript",
+    "publication_blockers",
     "review_ledger",
     "review_ledger_valid",
     "referee_decision",
     "referee_decision_valid",
     "publication_review_outcome",
+    "reproducibility_manifest",
+    "reproducibility_ready",
     "manuscript_proof_review",
     "referee_report_source",
     "phase_artifacts",
@@ -57,7 +63,12 @@ REVIEW_CONTRACT_WRAPPER_KEYS = (REVIEW_CONTRACT_PROMPT_WRAPPER_KEY, REVIEW_CONTR
 REVIEW_CONTRACT_KEYS = frozenset(REVIEW_CONTRACT_FIELD_ORDER)
 REVIEW_CONTRACT_CONDITIONAL_KEYS = frozenset(REVIEW_CONTRACT_CONDITIONAL_FIELD_ORDER)
 
-def _load_review_contract_payload(review_contract: object) -> tuple[dict[str, object], bool]:
+
+def _load_review_contract_payload(
+    review_contract: object,
+    *,
+    allowed_wrapper_key: str,
+) -> tuple[dict[str, object], bool]:
     """Return a strict review-contract mapping and whether it was wrapped."""
 
     if review_contract is None:
@@ -82,6 +93,9 @@ def _load_review_contract_payload(review_contract: object) -> tuple[dict[str, ob
         raise ValueError("review contract must use only one wrapper key")
 
     wrapped_key = wrapped_key_matches[0] if wrapped_key_matches else None
+    if wrapped_key is not None and wrapped_key != allowed_wrapper_key:
+        raise ValueError(f"review contract must use the wrapper key '{allowed_wrapper_key}'")
+
     wrapped_candidate = loaded.get(wrapped_key) if wrapped_key is not None else None
     if wrapped_key is not None and wrapped_candidate is None:
         return {}, True
@@ -90,9 +104,7 @@ def _load_review_contract_payload(review_contract: object) -> tuple[dict[str, ob
     wrapped = dict(wrapped_candidate) if isinstance(wrapped_candidate, Mapping) else None
 
     if wrapped is not None:
-        unknown_top_level_keys = sorted(
-            str(key) for key in loaded if key not in REVIEW_CONTRACT_WRAPPER_KEYS
-        )
+        unknown_top_level_keys = sorted(str(key) for key in loaded if key not in REVIEW_CONTRACT_WRAPPER_KEYS)
         if unknown_top_level_keys:
             formatted = ", ".join(unknown_top_level_keys)
             raise ValueError(f"Unknown review-contract field(s): {formatted}")
@@ -258,10 +270,15 @@ def _normalize_review_contract_conditional_requirements(value: object) -> list[d
     return normalized
 
 
-def normalize_review_contract_payload(review_contract: object) -> dict[str, object]:
-    """Return a canonical typed payload for rendering a review contract section."""
-
-    loaded, wrapped = _load_review_contract_payload(review_contract)
+def _normalize_review_contract_payload(
+    review_contract: object,
+    *,
+    allowed_wrapper_key: str,
+) -> dict[str, object]:
+    loaded, wrapped = _load_review_contract_payload(
+        review_contract,
+        allowed_wrapper_key=allowed_wrapper_key,
+    )
     if not loaded:
         if wrapped:
             raise ValueError("review contract must set schema_version, review_mode")
@@ -346,6 +363,24 @@ def normalize_review_contract_payload(review_contract: object) -> dict[str, obje
         ),
         "required_state": required_state,
     }
+
+
+def normalize_review_contract_payload(review_contract: object) -> dict[str, object]:
+    """Return a canonical typed payload for rendering a review contract section."""
+
+    return _normalize_review_contract_payload(
+        review_contract,
+        allowed_wrapper_key=REVIEW_CONTRACT_PROMPT_WRAPPER_KEY,
+    )
+
+
+def normalize_review_contract_frontmatter_payload(review_contract: object) -> dict[str, object]:
+    """Return a canonical typed payload for command frontmatter review contracts."""
+
+    return _normalize_review_contract_payload(
+        review_contract,
+        allowed_wrapper_key=REVIEW_CONTRACT_FRONTMATTER_KEY,
+    )
 
 
 def render_review_contract_prompt(review_contract: object) -> str:

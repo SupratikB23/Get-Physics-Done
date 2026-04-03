@@ -16,7 +16,7 @@ import yaml
 
 from gpd.command_labels import canonical_command_label, canonical_skill_label, command_slug_from_label
 from gpd.core.review_contract_prompt import (
-    normalize_review_contract_payload,
+    normalize_review_contract_frontmatter_payload,
     render_review_contract_prompt,
 )
 
@@ -412,7 +412,7 @@ def _command_model_content(body: str, review_contract: ReviewCommandContract | N
 def _parse_review_contract(raw: object, command_name: str) -> ReviewCommandContract | None:
     """Parse review-contract frontmatter through the canonical shared normalizer."""
     try:
-        payload = normalize_review_contract_payload(raw)
+        payload = normalize_review_contract_frontmatter_payload(raw)
     except ValueError as exc:
         raise ValueError(f"review-contract for {command_name}: {exc}") from exc
 

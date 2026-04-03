@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from gpd.adapters import get_adapter
@@ -65,12 +66,54 @@ def runtime_resume_work_command(runtime_name: str) -> str:
     return get_adapter(runtime_name).format_command("resume-work")
 
 
+def runtime_onboarding_doc_filename(runtime_name: str) -> str:
+    display_name = runtime_display_name(runtime_name)
+    slug = re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-")
+    return f"{slug}.md"
+
+
+def _runtime_primary_config_surface(runtime_name: str) -> str:
+    descriptor = runtime_descriptor(runtime_name)
+    for surface in (
+        descriptor.capabilities.permission_surface_kind,
+        descriptor.capabilities.statusline_config_surface,
+        descriptor.capabilities.notify_config_surface,
+    ):
+        if surface != "none" and ":" in surface:
+            return surface
+    raise LookupError(f"No config-file surface found for runtime {runtime_name!r}")
+
+
+def runtime_primary_config_filename(runtime_name: str) -> str:
+    return _runtime_primary_config_surface(runtime_name).split(":", 1)[0]
+
+
+def runtime_empty_config_content(runtime_name: str) -> str:
+    return "{}" if runtime_primary_config_filename(runtime_name).endswith(".json") else ""
+
+
 def runtime_suggest_next_command(runtime_name: str) -> str:
     return get_adapter(runtime_name).format_command("suggest-next")
 
 
 def runtime_pause_work_command(runtime_name: str) -> str:
     return get_adapter(runtime_name).format_command("pause-work")
+
+
+def runtime_without_telemetry() -> str:
+    return next(
+        descriptor.runtime_name
+        for descriptor in _RUNTIME_DESCRIPTORS
+        if descriptor.capabilities.telemetry_completeness == "none"
+    )
+
+
+def runtime_with_manifest_file_prefix(prefix: str) -> str:
+    return next(
+        descriptor.runtime_name
+        for descriptor in _RUNTIME_DESCRIPTORS
+        if prefix in descriptor.manifest_file_prefixes
+    )
 
 
 def runtime_with_permissions_surface(surface: str) -> str:

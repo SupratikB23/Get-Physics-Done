@@ -103,7 +103,7 @@ gpd validate review-preflight peer-review "$ARGUMENTS" --strict
 If preflight exits nonzero because of missing project state, missing manuscript, degraded review integrity, or missing review-grade paper artifacts, STOP and show the blocking issues.
 If preflight reports blocked contract/state integrity, surface `project_contract_load_info` and `project_contract_validation` details in the stop message and repair the blocked contract before retrying.
 
-In strict peer-review mode, `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`, and a reproducibility manifest are required inputs. `gpd paper-build` is the step that regenerates `BIBLIOGRAPHY-AUDIT.json` for the current bibliography; rerun it before proceeding whenever the manuscript bibliography or citation set has changed. If `derived_manuscript_reference_status` is available from init, use it as a quick read on what is likely stale or complete, but do not let it override the manuscript-root publication artifacts. Peer review is expected to fail closed when those review-support artifacts are absent, stale, or not review-ready.
+In strict peer-review mode, `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`, and a reproducibility manifest are required inputs. `gpd paper-build` is the step that regenerates `BIBLIOGRAPHY-AUDIT.json` for the current bibliography; rerun it before proceeding whenever the manuscript bibliography or citation set has changed. Strict preflight also enforces the semantic gates `bibliography_audit_clean` and `reproducibility_ready`; those artifacts must be review-ready, not merely present. If `derived_manuscript_reference_status` is available from init, use it as a quick read on what is likely stale or complete, but do not let it override the manuscript-root publication artifacts. Peer review is expected to fail closed when those review-support artifacts are absent, stale, or not review-ready.
 Passing preflight still does not establish scientific support. Complete manifests and audits cannot rescue missing decisive comparisons, overclaimed conclusions, or absent contract-backed evidence.
 </step>
 
@@ -112,7 +112,7 @@ Passing preflight still does not establish scientific support. Complete manifest
 
 Load the following files:
 
-- The resolved manuscript main file and all nearby `*.tex` section files
+- The resolved manuscript entrypoint and any nearby manuscript `*.tex` or `*.md` files that belong to the same manuscript root
 - `GPD/STATE.md`
 - `GPD/ROADMAP.md`
 - All summary artifacts matching `GPD/phases/*/*SUMMARY.md`
@@ -126,6 +126,7 @@ Load the following files:
 - All `*.bib` files under `${MANUSCRIPT_ROOT}`, plus `references/references.bib` if present
 
 Infer the target journal from `${PAPER_CONFIG_PATH}` when available; otherwise use `unspecified`.
+Do not rediscover the manuscript by `find` or first-match globbing at this stage; the resolved manuscript root from init/preflight remains authoritative.
 
 If bundle context is present, compare its decisive-artifact and reference expectations against the actual comparison artifacts and figure tracker. Missing bundle-suggested coverage is a warning unless the manuscript has narrowed the claim honestly; missing contract-backed decisive evidence remains a blocker.
 
@@ -369,7 +370,7 @@ Output path: `GPD/review/STAGE-math{round_suffix}.json`
 	- `${REPRODUCIBILITY_MANIFEST_PATH}` if present
 
 	Focus on key equations, limits, internal consistency, and approximation validity.
-	If theorem-bearing claims are present, expect a sibling `GPD/review/PROOF-REDTEAM{round_suffix}.md` artifact from `gpd-check-proof` and keep the math-stage findings aligned with it rather than writing a second proof-audit file yourself.
+	If theorem-bearing claims are present, `gpd-check-proof` may be running in parallel and will produce `GPD/review/PROOF-REDTEAM{round_suffix}.md`; do not wait on that artifact to begin the math review, and do not duplicate the proof audit yourself.
 	Treat `project_contract_load_info` and `project_contract_validation` as the authoritative contract gate state. Treat `project_contract` and `contract_intake` as approved evidence only when that gate is clean and passing. Treat `effective_reference_intake`, `reference_artifacts_content`, and `active_reference_context` as binding carry-forward evidence even when the contract gate is blocked. If that gate is blocked, keep `project_contract` and `contract_intake` visible as context but do not rely on them as approved scope.
 	Return STAGE 3 COMPLETE with assessment, blocker count, and major concern count.",
   description="Peer review stage 3: mathematical soundness"

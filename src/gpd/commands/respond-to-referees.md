@@ -64,14 +64,15 @@ Referee report source: $ARGUMENTS (file path or "paste" for inline input)
 @GPD/review/REVIEW-LEDGER{round_suffix}.json
 @GPD/review/REFEREE-DECISION{round_suffix}.json
 
-Check for existing paper and prior response files:
+Check for prior response and staged review files:
 
 ```bash
-find paper manuscript draft -maxdepth 1 \( -name "*.tex" -o -name "*.md" -o -name "ARTIFACT-MANIFEST.json" \) 2>/dev/null
 ls GPD/AUTHOR-RESPONSE*.md 2>/dev/null
 ls GPD/review/REFEREE_RESPONSE*.md 2>/dev/null
 ls GPD/review/REVIEW-LEDGER*.json GPD/review/REFEREE-DECISION*.json 2>/dev/null
 ```
+
+Use centralized preflight to resolve the active manuscript from the explicit argument when present, otherwise from the canonical manuscript roots `paper/`, `manuscript/`, or `draft/` via the manuscript-root manifest/config/entrypoint resolver. Do not reintroduce first-match glob discovery here.
 
 </context>
 

@@ -598,7 +598,7 @@ Done.
     assert result.citations.citation_keys_resolve.total == 1
 
 
-def test_build_paper_quality_input_uses_active_manuscript_root_and_lowercase_config(tmp_path: Path) -> None:
+def test_build_paper_quality_input_uses_active_manuscript_root_and_canonical_config(tmp_path: Path) -> None:
     (tmp_path / "paper").mkdir()
     _write(
         tmp_path / "manuscript" / "lowercase_config_title.tex",
@@ -617,7 +617,7 @@ Done.
         + "\n",
     )
     _write(
-        tmp_path / "manuscript" / "paper-config.json",
+        tmp_path / "manuscript" / "PAPER-CONFIG.json",
         json.dumps(_paper_config_payload("Lowercase Config Title", "jhep")),
     )
     _write(
@@ -653,6 +653,132 @@ figure_registry:
     assert result.citations.citation_keys_resolve.satisfied == 1
     assert result.citations.citation_keys_resolve.total == 1
     assert result.figures.decisive_artifact_roles_clear.satisfied == 1
+
+
+def test_build_paper_quality_input_reads_topic_specific_markdown_entrypoint(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "paper" / "curvature_flow_bounds.md",
+        """
+# Curvature Flow Bounds
+
+## Abstract
+Markdown manuscript test.
+
+## Introduction
+See \\cite{bench2026}.
+
+## Conclusion
+Done.
+""".strip()
+        + "\n",
+    )
+    _write(
+        tmp_path / "paper" / "PAPER-CONFIG.json",
+        json.dumps(_paper_config_payload("Curvature Flow Bounds", "jhep")),
+    )
+    _write(
+        tmp_path / "paper" / "refs.bib",
+        "@article{bench2026,\n  title={Benchmark},\n  author={Doe, Jane},\n  year={2026}\n}\n",
+    )
+
+    result = build_paper_quality_input(tmp_path)
+
+    assert result.title == "Curvature Flow Bounds"
+    assert result.journal == "jhep"
+    assert result.citations.citation_keys_resolve.satisfied == 1
+    assert result.citations.citation_keys_resolve.total == 1
+    assert result.completeness.required_sections_present.satisfied == 3
+    assert result.completeness.required_sections_present.total == 3
+
+
+def test_build_paper_quality_input_collects_comparison_verdicts_from_active_manuscript_root(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "manuscript" / "curvature_flow_bounds.tex",
+        "\\documentclass{article}\\begin{document}\\begin{abstract}A.\\end{abstract}\\section{Introduction}Intro.\\section{Conclusion}Done.\\end{document}\n",
+    )
+    _write(
+        tmp_path / "manuscript" / "PAPER-CONFIG.json",
+        json.dumps(_paper_config_payload("Curvature Flow Bounds", "jhep")),
+    )
+    _write(
+        tmp_path / "manuscript" / "ARTIFACT-MANIFEST.json",
+        json.dumps(
+            {
+                "version": 1,
+                "paper_title": "Curvature Flow Bounds",
+                "journal": "jhep",
+                "created_at": "2026-03-13T00:00:00+00:00",
+                "artifacts": [
+                    {
+                        "artifact_id": "tex-paper",
+                        "category": "tex",
+                        "path": "curvature_flow_bounds.tex",
+                        "sha256": "0" * 64,
+                        "produced_by": "test",
+                        "sources": [],
+                        "metadata": {},
+                    }
+                ],
+            }
+        ),
+    )
+    _write(
+        tmp_path / "manuscript" / "BIBLIOGRAPHY-AUDIT.json",
+        json.dumps(
+            {
+                "generated_at": "2026-03-13T00:00:00+00:00",
+                "total_sources": 0,
+                "resolved_sources": 0,
+                "partial_sources": 0,
+                "unverified_sources": 0,
+                "failed_sources": 0,
+                "entries": [],
+            }
+        ),
+    )
+    _write(
+        tmp_path / "manuscript" / "FIGURE_TRACKER.md",
+        """---
+figure_registry:
+  - id: fig-benchmark
+    label: "Fig. 1"
+    kind: figure
+    role: benchmark
+    path: manuscript/figures/benchmark.pdf
+    contract_ids: [claim-benchmark]
+    decisive: true
+    has_units: true
+    has_uncertainty: true
+    referenced_in_text: true
+    caption_self_contained: true
+    colorblind_safe: true
+---
+
+# Figure Tracker
+""",
+    )
+    _write(
+        tmp_path / "manuscript" / "RESULTS-NOTE.md",
+        """---
+comparison_verdicts:
+  - subject_id: claim-benchmark
+    subject_kind: claim
+    subject_role: decisive
+    reference_id: ref-benchmark
+    comparison_kind: benchmark
+    metric: relative_error
+    threshold: "<= 0.01"
+    verdict: pass
+---
+
+# Results Note
+""",
+    )
+
+    result = build_paper_quality_input(tmp_path)
+
+    assert result.figures.decisive_artifact_roles_clear.satisfied == 1
+    assert result.results.decisive_artifacts_with_explicit_verdicts.satisfied == 1
 
 
 def test_build_paper_quality_input_surfaces_current_manuscript_reference_status(tmp_path: Path) -> None:
@@ -1071,6 +1197,32 @@ comparison_verdicts:
 ---
 
 # Internal Comparison
+""",
+    )
+
+    result = build_paper_quality_input(tmp_path)
+
+    assert result.journal_extra_checks["comparison_verdicts_valid"] is False
+
+
+def test_build_paper_quality_input_marks_invalid_active_manuscript_root_comparison_verdicts(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "manuscript" / "curvature_flow_bounds.tex",
+        "\\documentclass{article}\\begin{document}\\begin{abstract}A.\\end{abstract}\\section{Introduction}Intro.\\section{Conclusion}Done.\\end{document}\n",
+    )
+    _write(
+        tmp_path / "manuscript" / "PAPER-CONFIG.json",
+        json.dumps(_paper_config_payload("Curvature Flow Bounds", "jhep")),
+    )
+    _write(
+        tmp_path / "manuscript" / "INVALID-COMPARISON.md",
+        """---
+comparison_verdicts: invalid
+---
+
+# Invalid Comparison
 """,
     )
 

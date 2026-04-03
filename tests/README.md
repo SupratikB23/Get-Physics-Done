@@ -60,7 +60,7 @@ Generated-output families are modeled when code or tests depend on them:
 - `dist/*.tar.gz`
 - `<workspace>/GPD/**`
 - runtime config files and caches
-- paper build outputs such as `main.pdf`, `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`
+- paper build outputs such as `{topic_specific_stem}.pdf`, `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`
 
 ## Edge Taxonomy
 
@@ -265,23 +265,23 @@ flowchart TD
 - `src/gpd/cli.py -> external project-layout family <cwd>/GPD/{state.json,STATE.md,config.json,phases/**,milestones/**,traces/**}`
   `candidate-set`
 
-- `src/gpd/cli.py -> ordered paper-config candidate family {paper,manuscript,draft}/{PAPER-CONFIG.json,paper-config.json}`
+- `src/gpd/cli.py -> ordered paper-config candidate family {paper,manuscript,draft}/PAPER-CONFIG.json`
   `candidate-set`
 
-- `src/gpd/cli.py -> ordered paper-config candidate family {paper,manuscript,draft}/{PAPER-CONFIG.json,paper-config.json}`
+- `src/gpd/cli.py -> ordered paper-config candidate family {paper,manuscript,draft}/PAPER-CONFIG.json`
   `ordering-contract`
   `_resolve_existing_input_path()` returns the first existing config from the declared candidate order.
 
-- `src/gpd/cli.py -> candidate manuscript roots {paper/main.tex, manuscript/main.tex, draft/main.tex}`
+- `src/gpd/cli.py -> active manuscript roots {paper,manuscript,draft} resolved via {ARTIFACT-MANIFEST.json, PAPER-CONFIG.json}`
   `candidate-set`
 
-- `src/gpd/cli.py -> candidate manuscript roots {paper/main.tex, manuscript/main.tex, draft/main.tex}`
+- `src/gpd/cli.py -> active manuscript roots {paper,manuscript,draft} resolved via {ARTIFACT-MANIFEST.json, PAPER-CONFIG.json}`
   `ordering-contract`
 
-- `src/gpd/cli.py -> peer-review manuscript candidate family {target/main.tex, target/main.md}`
+- `src/gpd/cli.py -> peer-review manuscript entrypoint resolver {target/ARTIFACT-MANIFEST.json, target/PAPER-CONFIG.json}`
   `candidate-set`
 
-- `src/gpd/cli.py -> peer-review manuscript candidate family {target/main.tex, target/main.md}`
+- `src/gpd/cli.py -> peer-review manuscript entrypoint resolver {target/ARTIFACT-MANIFEST.json, target/PAPER-CONFIG.json}`
   `ordering-contract`
 
 - `src/gpd/cli.py -> bibliography candidate family {config_path.parent, output_dir, <cwd>/references}/{<bib_stem>.bib}`
@@ -515,14 +515,14 @@ flowchart TD
 - `src/gpd/commands/write-paper.md -> gpd paper-build paper/PAPER-CONFIG.json`
   `spawn`
 
-- `src/gpd/commands/write-paper.md -> paper/{PAPER-CONFIG.json,main.tex,ARTIFACT-MANIFEST.json}`
+- `src/gpd/commands/write-paper.md -> paper/{PAPER-CONFIG.json,<topic_stem>.tex,ARTIFACT-MANIFEST.json}`
   `generated-output`
   The command explicitly creates the paper config and requires the canonical manuscript scaffold before drafting continues.
 
 - `src/gpd/commands/peer-review.md -> src/gpd/agents/{gpd-review-reader,gpd-review-literature,gpd-review-math,gpd-check-proof,gpd-review-physics,gpd-review-significance,gpd-referee}.md`
   `spawn`
 
-- `src/gpd/commands/peer-review.md -> candidate manuscript roots {paper/main.tex, manuscript/main.tex, draft/main.tex}`
+- `src/gpd/commands/peer-review.md -> active manuscript roots {paper,manuscript,draft} resolved via {ARTIFACT-MANIFEST.json, PAPER-CONFIG.json}`
   `candidate-set`
 
 - `src/gpd/commands/health.md -> GPD/{STATE.md,state.json,config.json}`
@@ -793,7 +793,7 @@ flowchart TD
   `spawn`
   Invoked as `gpd paper-build paper/PAPER-CONFIG.json` before section drafting and review.
 
-- `src/gpd/specs/workflows/write-paper.md -> paper/{PAPER-CONFIG.json,main.tex,ARTIFACT-MANIFEST.json}`
+- `src/gpd/specs/workflows/write-paper.md -> paper/{PAPER-CONFIG.json,<topic_stem>.tex,ARTIFACT-MANIFEST.json}`
   `generated-output`
   Drafting and downstream review are gated on the scaffold and manifest emitted by the paper-build contract.
 
@@ -803,7 +803,7 @@ flowchart TD
 - `src/gpd/specs/workflows/peer-review.md -> src/gpd/agents/{gpd-review-reader,gpd-review-literature,gpd-review-math,gpd-check-proof,gpd-review-physics,gpd-review-significance,gpd-referee}.md`
   `spawn`
 
-- `src/gpd/specs/workflows/peer-review.md -> candidate manuscript roots {paper/main.tex, manuscript/main.tex, draft/main.tex}`
+- `src/gpd/specs/workflows/peer-review.md -> active manuscript roots {paper,manuscript,draft} resolved via {ARTIFACT-MANIFEST.json, PAPER-CONFIG.json}`
   `candidate-set`
 
 - `src/gpd/specs/workflows/peer-review.md -> paper/{PAPER-CONFIG.json,ARTIFACT-MANIFEST.json,BIBLIOGRAPHY-AUDIT.json}`
@@ -1319,7 +1319,7 @@ They explicitly preserve:
 - `src/gpd/mcp/paper/review_artifacts.py -> generated outputs {CLAIMS.json, STAGE-*.json, REVIEW-LEDGER.json, REFEREE-DECISION.json}`
   `generated-output`
 
-- `src/gpd/mcp/paper/compiler.py -> generated outputs {figures/**, main.tex, <bib>.bib, BIBLIOGRAPHY-AUDIT.json, ARTIFACT-MANIFEST.json, main.pdf}`
+- `src/gpd/mcp/paper/compiler.py -> generated outputs {figures/**, <topic_stem>.tex, <bib>.bib, BIBLIOGRAPHY-AUDIT.json, ARTIFACT-MANIFEST.json, <topic_stem>.pdf}`
   `generated-output`
 
 - `tests/test_paper_e2e.py -> src/gpd/mcp/paper/compiler.py`
@@ -1334,7 +1334,7 @@ They explicitly preserve:
 - `tests/test_paper_e2e.py -> src/gpd/mcp/paper/bibliography.py`
   `hard-import`
 
-- `tests/test_paper_e2e.py -> generated outputs {main.tex, references.bib, ARTIFACT-MANIFEST.json, BIBLIOGRAPHY-AUDIT.json, main.pdf, figures/**}`
+- `tests/test_paper_e2e.py -> generated outputs {<topic_stem>.tex, references.bib, ARTIFACT-MANIFEST.json, BIBLIOGRAPHY-AUDIT.json, <topic_stem>.pdf, figures/**}`
   `generated-output`
 
 - `tests/test_paper_models.py -> src/gpd/mcp/paper/{models,journal_map,template_registry}.py`
@@ -1648,7 +1648,7 @@ Operationally important node families that are not canonical repo files:
 - `<cwd>/GPD/phase-checkpoints/*.md`
 - `dist/*.whl`
 - `dist/*.tar.gz`
-- paper outputs `main.tex`, `references.bib`, `main.pdf`, `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`
+- paper outputs `<topic_stem>.tex`, `references.bib`, `<topic_stem>.pdf`, `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`
 - GitHub Actions used by CI
 - npm latest-version endpoint `https://registry.npmjs.org/get-physics-done/latest`
 

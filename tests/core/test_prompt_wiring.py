@@ -500,6 +500,11 @@ def test_review_commands_expose_typed_contracts() -> None:
     assert "GPD/REFEREE-REPORT{round_suffix}.md" in write_paper.review_contract.required_outputs
     assert "GPD/REFEREE-REPORT{round_suffix}.tex" in write_paper.review_contract.required_outputs
     assert "manuscript" in write_paper.review_contract.preflight_checks
+    assert "artifact_manifest" in write_paper.review_contract.preflight_checks
+    assert "bibliography_audit" in write_paper.review_contract.preflight_checks
+    assert "bibliography_audit_clean" in write_paper.review_contract.preflight_checks
+    assert "reproducibility_manifest" in write_paper.review_contract.preflight_checks
+    assert "reproducibility_ready" in write_paper.review_contract.preflight_checks
     assert "manuscript_proof_review" in write_paper.review_contract.preflight_checks
 
     assert peer_review.review_contract is not None
@@ -510,6 +515,11 @@ def test_review_commands_expose_typed_contracts() -> None:
     assert "GPD/review/STAGE-interestingness{round_suffix}.json" in peer_review.review_contract.required_outputs
     assert "GPD/review/REFEREE-DECISION{round_suffix}.json" in peer_review.review_contract.required_outputs
     assert "manuscript" in peer_review.review_contract.preflight_checks
+    assert "artifact_manifest" in peer_review.review_contract.preflight_checks
+    assert "bibliography_audit" in peer_review.review_contract.preflight_checks
+    assert "bibliography_audit_clean" in peer_review.review_contract.preflight_checks
+    assert "reproducibility_manifest" in peer_review.review_contract.preflight_checks
+    assert "reproducibility_ready" in peer_review.review_contract.preflight_checks
     assert "manuscript_proof_review" in peer_review.review_contract.preflight_checks
     assert peer_review.review_contract.stage_ids == [
         "reader",
@@ -552,6 +562,10 @@ def test_review_commands_expose_typed_contracts() -> None:
 
     assert arxiv_submission.review_contract is not None
     assert arxiv_submission.review_contract.review_mode == "publication"
+    assert "artifact_manifest" in arxiv_submission.review_contract.preflight_checks
+    assert "bibliography_audit" in arxiv_submission.review_contract.preflight_checks
+    assert "bibliography_audit_clean" in arxiv_submission.review_contract.preflight_checks
+    assert "publication_blockers" in arxiv_submission.review_contract.preflight_checks
     assert "manuscript_proof_review" in arxiv_submission.review_contract.preflight_checks
     assert [
         {
@@ -725,6 +739,7 @@ def test_review_workflows_keep_round_suffix_artifacts_visible_and_anchor_respons
 
 
 def test_publication_commands_accept_documented_manuscript_layouts() -> None:
+    write_paper = (COMMANDS_DIR / "write-paper.md").read_text(encoding="utf-8")
     peer_review = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
     respond = (COMMANDS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
     arxiv = (COMMANDS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
@@ -746,6 +761,8 @@ def test_publication_commands_accept_documented_manuscript_layouts() -> None:
     assert "manuscript proof-review status before packaging begins" in arxiv
     assert "resolve only from `paper/`, `manuscript/`, or `draft/`" in arxiv
     assert 'find . -name "main.tex"' not in arxiv
+    assert 'find . -name "*.tex"' not in write_paper
+    assert "first-match" not in arxiv
 
 
 def test_proof_contract_prompts_surface_explicit_theorem_fields_and_review_bindings() -> None:
@@ -1747,10 +1764,10 @@ def test_peer_review_prompt_includes_concise_stage_map_for_users() -> None:
 def test_peer_review_command_limits_default_manuscript_targets_to_canonical_roots() -> None:
     peer_review_command = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
 
-    assert (
-        'find paper manuscript draft -maxdepth 1 \\( -name "*.tex" -o -name "*.md" -o -name "ARTIFACT-MANIFEST.json" \\) 2>/dev/null'
-        in peer_review_command
-    )
+    assert "The default manuscript family is limited to `paper/`, `manuscript/`, and `draft/`." in peer_review_command
+    assert "then `PAPER-CONFIG.json`, then the canonical current manuscript entrypoint rules" in peer_review_command
+    assert "Do not use ad hoc glob discovery." in peer_review_command
+    assert "find paper manuscript draft" not in peer_review_command
     assert "find . -maxdepth 3" not in peer_review_command
     assert "pass an explicit manuscript path or paper directory" in peer_review_command
 
@@ -1768,6 +1785,22 @@ def test_peer_review_referee_surface_fail_closed_stage6_contract() -> None:
     assert "passes `gpd validate referee-decision ... --strict --ledger ...`" in reliability
     assert "passes `gpd validate review-ledger ...`, including a non-empty `manuscript_path`" in reliability
     assert "A blank `manuscript_path` in the review ledger or referee decision is a contract failure" in reliability
+    assert "bibliography_audit_clean" in reliability
+    assert "reproducibility_ready" in reliability
+
+
+def test_publication_prompts_surface_strict_semantic_manuscript_gates() -> None:
+    write_paper = (COMMANDS_DIR / "write-paper.md").read_text(encoding="utf-8")
+    peer_review = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
+    arxiv = (COMMANDS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
+    peer_review_workflow = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
+    write_paper_workflow = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
+    arxiv_workflow = (WORKFLOWS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
+
+    for content in (write_paper, peer_review, peer_review_workflow, write_paper_workflow):
+        assert "reproducibility_ready" in content
+    for content in (write_paper, peer_review, arxiv, peer_review_workflow, write_paper_workflow, arxiv_workflow):
+        assert "bibliography_audit_clean" in content
 
 
 def test_research_verification_body_scaffold_keeps_body_only_subject_labels_distinct() -> None:
@@ -2356,6 +2389,13 @@ def test_stage8_surfaces_decisive_comparisons_paper_quality_artifacts_and_profil
     assert "GPD/paper/FIGURE_TRACKER.md" not in execute_phase
     assert "figure_registry" in scoring
     assert "manuscript-root `FIGURE_TRACKER.md`" in scoring
+    assert "paper/<topic_stem>.tex" in (REFERENCES_DIR / "orchestration" / "artifact-surfacing.md").read_text(encoding="utf-8")
+    assert "paper/<topic_stem>.pdf" in (REFERENCES_DIR / "orchestration" / "artifact-surfacing.md").read_text(encoding="utf-8")
+    assert "ARTIFACT-MANIFEST.json" in (REFERENCES_DIR / "protocols" / "hypothesis-driven-research.md").read_text(encoding="utf-8")
+    assert "MANUSCRIPT_TEX" in (REFERENCES_DIR / "protocols" / "hypothesis-driven-research.md").read_text(encoding="utf-8")
+    assert "MANUSCRIPT_TEX" in executor
+    assert "main.tex" not in (REFERENCES_DIR / "protocols" / "hypothesis-driven-research.md").read_text(encoding="utf-8")
+    assert "main.tex" not in executor
     assert "Review (Recommended)" in settings
     assert "all required contract-aware checks" in profiles
     assert "current registry: 5.1-5.19" in quick_reference

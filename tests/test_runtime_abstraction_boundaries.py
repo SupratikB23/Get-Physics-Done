@@ -176,6 +176,11 @@ def _shared_runtime_facing_test_paths() -> tuple[Path, ...]:
 
 
 _SHARED_TEST_RUNTIME_SURFACE_PATHS = _shared_runtime_facing_test_paths()
+_STRICT_SHARED_CORE_RUNTIME_SURFACE_PATHS = tuple(
+    path
+    for path in _SHARED_TEST_RUNTIME_SURFACE_PATHS
+    if path.relative_to(REPO_ROOT).parts[:2] in {("tests", "core"), ("tests", "mcp")}
+)
 _TEXT_SURFACE_SUFFIXES = {".json", ".md", ".py"}
 _SHARED_GENERIC_PROVIDER_MODEL_TEST_PATHS = (
     REPO_ROOT / "tests/core/test_health.py",
@@ -284,7 +289,7 @@ def _runtime_fixture_values() -> tuple[str, ...]:
     return tuple(sorted(values))
 
 
-def _runtime_fixture_literal_findings(content: str) -> list[str]:
+def _runtime_fixture_literal_findings(content: str, *, minimum_matches: int = 2) -> list[str]:
     fixture_values = _runtime_fixture_values()
     block_pattern = re.compile(r"(?s)(\[[^\[\]]*\]|\{[^\{\}]*\}|\([^\(\)]*\))")
     findings: list[str] = []
@@ -299,9 +304,7 @@ def _runtime_fixture_literal_findings(content: str) -> list[str]:
             for value in fixture_values
             if re.search(rf'["\']{re.escape(value)}["\']', block)
         }
-        # Flag partial runtime fixture blocks once they contain more than one
-        # catalog token, even if the test does not mirror the full runtime list.
-        if len(matched_values) >= 2:
+        if len(matched_values) >= minimum_matches:
             findings.append(block.replace("\n", " "))
     return findings
 
@@ -474,6 +477,19 @@ def test_shared_runtime_facing_tests_do_not_duplicate_runtime_catalog_literals()
 
     assert leaks == [], (
         "Shared runtime-facing tests should derive supported runtime sets from the runtime catalog:\n"
+        f"{_format_failures(leaks)}"
+    )
+
+
+def test_shared_core_runtime_surface_tests_do_not_hardcode_single_runtime_catalog_literals() -> None:
+    leaks: list[tuple[Path, int, str]] = []
+    for path in _STRICT_SHARED_CORE_RUNTIME_SURFACE_PATHS:
+        content = path.read_text(encoding="utf-8")
+        for block in _runtime_fixture_literal_findings(content, minimum_matches=1):
+            leaks.append((path, 0, f"hard-coded single-runtime fixture block: {block[:160]}"))
+
+    assert leaks == [], (
+        "Shared core runtime-surface tests should derive runtime literals from the runtime catalog:\n"
         f"{_format_failures(leaks)}"
     )
 

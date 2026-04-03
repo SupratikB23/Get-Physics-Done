@@ -72,26 +72,19 @@ If review preflight exits nonzero because of missing project state, missing manu
 
 **Locate paper directory:**
 
-```bash
-for DIR in paper manuscript draft; do
-  if [ -f "${DIR}/ARTIFACT-MANIFEST.json" ] || [ -f "${DIR}/PAPER-CONFIG.json" ] || ls "${DIR}"/*.tex "${DIR}"/*.md >/dev/null 2>&1; then
-    PAPER_DIR="$DIR"
-    break
-  fi
-done
-```
+Use the strict preflight resolution as the manuscript-root authority. Prefer the explicit user target when provided, otherwise the canonical manuscript roots `paper/`, `manuscript/`, and `draft/` via `ARTIFACT-MANIFEST.json`, then `PAPER-CONFIG.json`, then the canonical entrypoint resolver. Do not pick `PAPER_DIR` by first-match `*.tex` or `*.md` globbing.
 
 **If no paper found:**
 
 ```
-No paper directory found. Searched: paper/, manuscript/, draft/ for a manuscript entrypoint or manifest
+No paper directory found. Searched the canonical manuscript roots `paper/`, `manuscript/`, and `draft/` via the manuscript resolver
 
 Run /gpd:write-paper first to generate a manuscript from research results.
 ```
 
 Exit.
 
-Use `MANUSCRIPT_BASENAME` for the basename of the resolved manuscript entrypoint in `${PAPER_DIR}`. If `${PAPER_DIR}/ARTIFACT-MANIFEST.json` exists, prefer the `.tex` artifact recorded there rather than assuming `main.tex`.
+Use `MANUSCRIPT_BASENAME` for the basename of the resolved manuscript entrypoint in `${PAPER_DIR}`. If `${PAPER_DIR}/ARTIFACT-MANIFEST.json` exists, prefer the `.tex` artifact recorded there rather than assuming any legacy default stem.
 
 **Convention verification** — referee responses must use the same conventions as the paper:
 

@@ -170,20 +170,15 @@ def test_graph_test_file_references_exist() -> None:
     assert missing == []
 
 
-def test_graph_claude_artifact_language_matches_tree() -> None:
+def test_graph_checked_in_runtime_artifact_language_matches_tree() -> None:
     graph = read_graph_text()
+    heading_match = re.search(r"## Installed Runtime Artifact Family: `(?P<config_dir>\.[^`]+/\*\*)`", graph)
 
-    assert "## Installed Runtime Artifact Family: `.claude/**`" in graph
-    assert ".claude/settings.local.json" not in graph
-    assert "## Checked-In Installed Snapshot: `.claude/**`" not in graph
-    assert "checked-in installed artifacts like `.claude/**`" not in graph
-
-    if not (REPO_ROOT / ".claude").exists():
-        assert "- `.claude/commands/gpd/*.md`" not in graph
-        assert "- `.claude/agents/*.md`" not in graph
-        assert "- `.claude/get-physics-done/workflows/**/*.md`" not in graph
-        assert "- `.claude/get-physics-done/templates/**/*.md`" not in graph
-        assert "- `.claude/get-physics-done/references/**/*.md`" not in graph
+    assert heading_match is not None
+    assert "settings.local.json" not in graph
+    config_dir_glob = heading_match.group("config_dir")
+    assert f"## Checked-In Installed Snapshot: `{config_dir_glob}`" not in graph
+    assert f"checked-in installed artifacts like `{config_dir_glob}`" not in graph
 
 
 def test_graph_contract_scope_parser_matches_expected_counts() -> None:

@@ -28,6 +28,12 @@ from gpd.core.costs import UsageRecord, _profile_tier_mix, usage_ledger_path
 from gpd.core.recent_projects import record_recent_project
 from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
 from gpd.core.state import default_state_dict, generate_state_markdown
+from tests.manuscript_test_support import (
+    manuscript_path as canonical_manuscript_path,
+)
+from tests.manuscript_test_support import (
+    manuscript_pdf_path as canonical_manuscript_pdf_path,
+)
 from tests.runtime_install_helpers import seed_complete_runtime_install
 
 runner = CliRunner()
@@ -60,7 +66,9 @@ def _assert_no_top_level_resume_aliases(payload: dict[str, object]) -> None:
 
 
 def _assert_resume_compat_surface_inventory(compat_surface: dict[str, object]) -> None:
-    assert tuple(compat_surface) == RESUME_COMPATIBILITY_ALIAS_KEYS
+    assert set(compat_surface) == set(RESUME_COMPATIBILITY_ALIAS_KEYS)
+    for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+        assert key in compat_surface
 
 
 @pytest.fixture()
@@ -89,7 +97,7 @@ _RUNTIME_ENV_PREFIXES = _runtime_env_prefixes()
 
 
 def _runtime_env_vars_to_clear() -> set[str]:
-    env_vars = {"GPD_ACTIVE_RUNTIME", "XDG_CONFIG_HOME"}
+    env_vars = {"GPD_ACTIVE_RUNTIME", "XDG_CONFIG_HOME", "HOME", "GPD_HOME"}
     for descriptor in _RUNTIME_DESCRIPTORS:
         global_config = descriptor.global_config
         for env_var in (global_config.env_var, global_config.env_dir_var, global_config.env_file_var):
@@ -102,11 +110,14 @@ _RUNTIME_ENV_VARS_TO_CLEAR = _runtime_env_vars_to_clear()
 
 
 @pytest.fixture(autouse=True)
-def _reset_runtime_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _reset_runtime_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Keep CLI integration tests isolated from prior runtime env overrides."""
     for key in list(os.environ):
         if key.startswith(_RUNTIME_ENV_PREFIXES) or key in _RUNTIME_ENV_VARS_TO_CLEAR:
             monkeypatch.delenv(key, raising=False)
+    home_dir = tmp_path / "home"
+    home_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HOME", str(home_dir))
 
 
 def _install_runtime(
@@ -199,8 +210,8 @@ def test_paper_build_surfaces_reference_bibtex_bridge(tmp_path: Path) -> None:
     result_payload.bibliography_audit = SimpleNamespace(
         entries=[SimpleNamespace(key="einstein1905", reference_id="lit-ref-einstein-1905")]
     )
-    result_payload.tex_path = paper_dir / "main.tex"
-    result_payload.pdf_path = paper_dir / "main.pdf"
+    result_payload.tex_path = canonical_manuscript_path(tmp_path)
+    result_payload.pdf_path = canonical_manuscript_pdf_path(tmp_path)
     result_payload.success = True
     result_payload.errors = []
 

@@ -69,6 +69,9 @@ def test_quick_publication_and_settings_surfaces_block_proof_bypass() -> None:
     assert "<step name=\"detect_proof_bearing_manuscript\">" in peer_review
     assert "GPD/review/PROOF-REDTEAM{round_suffix}.md" in peer_review
     assert "gpd-check-proof" in peer_review
+    assert "may be running in parallel" in peer_review
+    assert "do not wait on that artifact to begin the math review" in peer_review
+    assert "expect a sibling `GPD/review/PROOF-REDTEAM{round_suffix}.md` artifact" not in peer_review
     assert "Recommendation floor: `major_revision` or `reject`." in peer_review
 
     assert "this does NOT disable mandatory proof red-teaming" in settings

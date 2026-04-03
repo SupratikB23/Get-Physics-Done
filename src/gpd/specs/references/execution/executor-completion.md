@@ -40,7 +40,7 @@ contract_results:
   deliverables:
     deliv-main:
       status: passed
-      path: "paper/figures/main.pdf"
+      path: "paper/figures/benchmark.pdf"
       summary: "[artifact produced and why it matters]"
       linked_ids: [claim-main, test-main]
   acceptance_tests:

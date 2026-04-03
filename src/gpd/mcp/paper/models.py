@@ -195,7 +195,7 @@ class ClaimRecord(BaseModel):
 
     claim_id: ClaimId
     claim_type: ClaimType
-    claim_kind: Literal["theorem", "lemma", "corollary", "proposition", "claim", "other"] = "other"
+    claim_kind: Literal["theorem", "lemma", "corollary", "proposition", "result", "claim", "other"] = "other"
     text: str
     artifact_path: str
     section: str = ""

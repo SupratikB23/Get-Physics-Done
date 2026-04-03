@@ -20,6 +20,7 @@ from gpd.adapters.install_utils import (
     _inject_review_contract_prompt_from_frontmatter,
     _is_hook_command_for_script,
     build_hook_command,
+    build_runtime_install_repair_command,
     compile_markdown_for_runtime,
     convert_tool_references_in_body,
     copy_with_path_replacement,
@@ -69,6 +70,11 @@ def test_get_global_dir_unknown_runtime_raises_keyerror() -> None:
 def test_replace_placeholders_unknown_runtime_raises_keyerror() -> None:
     with pytest.raises(KeyError, match="Unknown runtime"):
         replace_placeholders("{GPD_RUNTIME_FLAG}", "/custom/", "bogus-runtime")
+
+
+def test_build_runtime_install_repair_command_unknown_runtime_raises_keyerror(tmp_path: Path) -> None:
+    with pytest.raises(KeyError, match="Unknown runtime"):
+        build_runtime_install_repair_command("bogus-runtime", install_scope="local", target_dir=tmp_path / ".runtime")
 
 
 def test_replace_placeholders_materializes_shared_install_metadata_placeholders() -> None:
@@ -663,10 +669,10 @@ class TestBuildHookCommand:
             tmp_path,
             "statusline.py",
             is_global=False,
-            config_dir_name=".claude",
+            config_dir_name=".runtime",
         )
 
-        assert command == "/custom/venv/bin/python .claude/hooks/statusline.py"
+        assert command == "/custom/venv/bin/python .runtime/hooks/statusline.py"
 
     def test_explicit_target_uses_absolute_hook_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("GPD_PYTHON", raising=False)
@@ -678,7 +684,7 @@ class TestBuildHookCommand:
             tmp_path,
             "statusline.py",
             is_global=False,
-            config_dir_name=".claude",
+            config_dir_name=".runtime",
             explicit_target=True,
         )
 
@@ -760,7 +766,7 @@ class TestFinishInstall:
     """Tests for finish_install: preserve third-party statuslines unless forced."""
 
     def test_preserves_third_party_statusline_commands(self, tmp_path: Path) -> None:
-        settings_path = tmp_path / ".claude" / "settings.json"
+        settings_path = tmp_path / ".runtime" / "settings.json"
         settings_path.parent.mkdir(parents=True)
         settings_path.write_text(
             json.dumps(
@@ -786,7 +792,7 @@ class TestFinishInstall:
         assert updated["statusLine"]["command"] == "python3 /opt/thirdparty/statusline.py --mode other"
 
     def test_forced_install_overwrites_third_party_statusline_commands(self, tmp_path: Path) -> None:
-        settings_path = tmp_path / ".claude" / "settings.json"
+        settings_path = tmp_path / ".runtime" / "settings.json"
         settings_path.parent.mkdir(parents=True)
         settings_path.write_text(
             json.dumps(

@@ -46,27 +46,18 @@ fi
 ```
 
 If review preflight exits nonzero because of missing project state, missing manuscript, missing compiled manuscript, unresolved publication blockers, degraded review integrity, missing conventions, missing staged review artifacts, or stale theorem-proof review state, STOP and fix those blockers before packaging. If `derived_manuscript_reference_status` is present, use it as a first-pass summary of reference coverage and citation freshness, but keep the resolved manuscript root's `ARTIFACT-MANIFEST.json` and `BIBLIOGRAPHY-AUDIT.json` authoritative for strict packaging decisions.
-Strict preflight also requires `ARTIFACT-MANIFEST.json` and `BIBLIOGRAPHY-AUDIT.json` beside the resolved manuscript entry point. If `$ARGUMENTS` resolves to `submission/topic_stem.tex`, those review artifacts must come from `submission/`, not from legacy `GPD/paper/` copies or some other manuscript directory.
+Strict preflight also requires `ARTIFACT-MANIFEST.json` and `BIBLIOGRAPHY-AUDIT.json` beside the resolved manuscript entry point. Treat those files as manuscript-root artifact gates. If `$ARGUMENTS` resolves to `submission/topic_stem.tex`, those review artifacts must come from `submission/`, not from legacy `GPD/paper/` copies or some other manuscript directory.
 Treat `gpd paper-build` as the authoritative step that regenerates `BIBLIOGRAPHY-AUDIT.json` for the resolved manuscript root. Do not package stale audit artifacts, even if the bibliography only changed indirectly through a citation-source handoff.
 Strict preflight also requires the latest round-specific `GPD/review/REVIEW-LEDGER*.json` / `GPD/review/REFEREE-DECISION*.json` pair as authoritative submission-gate input. Missing either artifact is a hard stop. That pair must validate against the active manuscript, and packaging may continue only when the latest recommendation is `accept` or `minor_revision` with no unresolved blocking issues. A latest `major_revision` or `reject` decision is a hard stop for submission packaging. For theorem-bearing manuscripts, `manuscript_proof_review` must also already be cleared; arXiv packaging is not allowed to repair or waive a stale proof review.
 
 **Resolve manuscript target from $ARGUMENTS:**
 
 1. If `$ARGUMENTS` specifies a `.tex` file, set `resolved_main_tex` to that file and `resolved_dir` to its parent directory.
-2. If `$ARGUMENTS` specifies a directory, resolve the canonical manuscript `.tex` entrypoint under that directory (prefer the path recorded in `ARTIFACT-MANIFEST.json`, otherwise the `PAPER-CONFIG.json`-derived stem, and only then legacy `main.tex`), set `resolved_main_tex` to that entry point, and `resolved_dir` to the directory.
+2. If `$ARGUMENTS` specifies a directory, resolve the canonical manuscript `.tex` entrypoint under that directory (prefer the path recorded in `ARTIFACT-MANIFEST.json`, otherwise the `PAPER-CONFIG.json`-derived stem), set `resolved_main_tex` to that entry point, and `resolved_dir` to the directory.
    If no manuscript `.tex` entrypoint exists there, STOP. Do not silently pick an arbitrary `*.tex` file from that directory.
-3. Otherwise, search standard locations:
+3. Otherwise, inspect only the documented manuscript roots `paper/`, `manuscript/`, and `draft/` in that order. Prefer the root that already exposes the manuscript-root artifact gates. If multiple roots are present, use the one with the explicit manuscript-root artifacts and a current `PAPER-CONFIG.json` or `ARTIFACT-MANIFEST.json`-declared entrypoint, not an arbitrary glob match.
 
-```bash
-for DIR in paper manuscript draft; do
-  if [ -f "${DIR}/ARTIFACT-MANIFEST.json" ] || [ -f "${DIR}/PAPER-CONFIG.json" ] || ls "${DIR}"/*.tex >/dev/null 2>&1; then
-    PAPER_DIR="$DIR"
-    break
-  fi
-done
-```
-
-4. If still not found, STOP. Do not fall back to `find`, globbing, or first-match selection outside the documented default roots.
+4. If still not found, STOP. Do not fall back to `find` or arbitrary globbing outside the documented default roots.
 
 **If no paper found:**
 
@@ -92,7 +83,7 @@ SUBMISSION_DIR="arxiv-submission"
 <step name="paper_build_gate">
 **Require the built manuscript contract before packaging:**
 
-The resolved manuscript must already have been materialized by `gpd paper-build`. If `${PAPER_DIR}/PAPER-CONFIG.json` exists, refresh the manuscript and artifact manifest with `gpd paper-build "${PAPER_DIR}/PAPER-CONFIG.json" --output-dir "${PAPER_DIR}"` before packaging. If `derived_manuscript_reference_status` is present, use it as a fast sanity check for whether citation state is likely fresh or stale, but do not package on that basis alone. If the build artifacts are missing, stale, or invalid, STOP and tell the user to run `gpd paper-build` first. Do not treat manual `pdflatex` runs as the source of build truth.
+The resolved manuscript must already have been materialized by `gpd paper-build`. If `${PAPER_DIR}/PAPER-CONFIG.json` exists, refresh the manuscript and artifact manifest with `gpd paper-build "${PAPER_DIR}/PAPER-CONFIG.json" --output-dir "${PAPER_DIR}"` before packaging. If `derived_manuscript_reference_status` is present, use it as a fast sanity check for whether citation state is likely fresh or stale, but do not package on that basis alone. If the build artifacts are missing, stale, or invalid, STOP and tell the user to run `gpd paper-build` first. In strict mode, the bibliography audit must also satisfy `bibliography_audit_clean`; unresolved bibliography issues are submission blockers even if the JSON file exists. Do not treat manual `pdflatex` runs as the source of build truth.
 </step>
 
 <step name="paper_quality_gate">

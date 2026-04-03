@@ -12,13 +12,15 @@ review-contract:
     - arxiv-submission.tar.gz
   required_evidence:
     - compiled manuscript
-    - bibliography audit
-    - artifact manifest
+    - manuscript-root bibliography audit
+    - manuscript-root artifact manifest
     - latest peer-review review ledger
     - latest peer-review referee decision
   blocking_conditions:
     - missing project state
     - missing manuscript
+    - missing manuscript-root artifact manifest
+    - missing manuscript-root bibliography audit
     - missing compiled manuscript
     - missing conventions
     - missing latest staged peer-review decision evidence
@@ -28,8 +30,12 @@ review-contract:
   preflight_checks:
     - project_state
     - manuscript
+    - artifact_manifest
+    - bibliography_audit
+    - bibliography_audit_clean
     - compiled_manuscript
     - conventions
+    - publication_blockers
     - review_ledger
     - review_ledger_valid
     - referee_decision
@@ -62,7 +68,8 @@ Prepare a completed paper for arXiv submission. Handles the full submission pipe
 
 Output: A submission-ready tarball and checklist of manual steps remaining.
 
-The workflow's preflight gate checks the explicit paper target, the compiled manuscript, unresolved publication blockers, the latest staged review decision, and for theorem-bearing manuscripts a cleared manuscript proof-review status before packaging begins.
+The workflow's preflight gate checks the explicit paper target, the manuscript-root artifact gates, the compiled manuscript, unresolved publication blockers, the latest staged review decision, and for theorem-bearing manuscripts a cleared manuscript proof-review status before packaging begins.
+In strict mode that bibliography gate is semantic: `BIBLIOGRAPHY-AUDIT.json` must also pass `bibliography_audit_clean`, not merely exist.
 </objective>
 
 <execution_context>
@@ -70,7 +77,7 @@ The workflow's preflight gate checks the explicit paper target, the compiled man
 </execution_context>
 
 <context>
-Paper directory: $ARGUMENTS (optional; when omitted, resolve only from `paper/`, `manuscript/`, or `draft/`)
+Paper directory: $ARGUMENTS (optional; when omitted, resolve only from `paper/`, `manuscript/`, or `draft/` manuscript roots)
 
 @GPD/STATE.md
 </context>
@@ -79,13 +86,14 @@ Paper directory: $ARGUMENTS (optional; when omitted, resolve only from `paper/`,
 
 ## 1. Locate Paper
 
-Find the paper directory:
+Resolve the paper directory from the explicit argument when provided. Otherwise inspect only the documented manuscript roots `paper/`, `manuscript/`, and `draft/`, and use the manuscript-root artifact gates to decide which root is active:
 
-```bash
-find paper manuscript draft -maxdepth 1 -name "*.tex" 2>/dev/null
-```
+- `ARTIFACT-MANIFEST.json` identifies the canonical manuscript entry point when present.
+- `BIBLIOGRAPHY-AUDIT.json` must live beside that resolved manuscript root before packaging and must be semantically clean (`bibliography_audit_clean`).
+- `PAPER-CONFIG.json` / `gpd paper-build` may refresh the manuscript and bibliography audit for that same root.
+- Do not scan arbitrary `*.tex` files or rely on glob-based discovery.
 
-If no paper found, suggest `/gpd:write-paper` first.
+If no manuscript root is found, suggest `/gpd:write-paper` first.
 
 ## 2. Validate LaTeX
 

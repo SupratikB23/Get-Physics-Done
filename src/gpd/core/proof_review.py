@@ -10,6 +10,7 @@ from pathlib import Path
 
 from pydantic import ValidationError as PydanticValidationError
 
+from gpd.contracts import statement_looks_theorem_like
 from gpd.core.frontmatter import FrontmatterParseError, extract_frontmatter
 from gpd.core.manuscript_artifacts import resolve_current_manuscript_entrypoint
 from gpd.core.referee_policy import validate_stage_review_artifact_alignment
@@ -20,7 +21,9 @@ __all__ = [
     "MANUSCRIPT_PROOF_REVIEW_MANIFEST_NAME",
     "ProofReviewStatus",
     "manuscript_has_theorem_bearing_claim_inventory",
+    "manuscript_has_theorem_bearing_language",
     "manuscript_has_theorem_bearing_review_anchor",
+    "manuscript_requires_theorem_bearing_review",
     "manuscript_proof_review_manifest_path",
     "phase_proof_review_manifest_path",
     "resolve_manuscript_proof_review_status",
@@ -59,6 +62,13 @@ _MANUSCRIPT_PROOF_AFFECTING_EXTENSIONS = frozenset(
     }
 )
 _STAGE_MATH_FILENAME_RE = re.compile(r"^STAGE-math(?P<round_suffix>-R(?P<round>\d+))?\.json$")
+_THEOREM_STYLE_MANUSCRIPT_RE = re.compile(
+    r"(\\begin\{(?:theorem|lemma|corollary|proposition|claim|proof)\})"
+    r"|(\\newtheorem\{)"
+    r"|(^\s{0,3}\#{1,6}\s*(?:theorem|lemma|corollary|proposition|claim|proof)\b)"
+    r"|(^\s*(?:theorem|lemma|corollary|proposition|claim|proof)\b[\s.:])",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +180,50 @@ def manuscript_has_theorem_bearing_claim_inventory(
         return False
     _, _, theorem_bearing = max(matches)
     return theorem_bearing
+
+
+def manuscript_has_theorem_bearing_language(
+    project_root: Path,
+    manuscript_entrypoint: Path | None = None,
+) -> bool:
+    """Return whether manuscript text itself looks theorem-bearing."""
+
+    entrypoint = manuscript_entrypoint or resolve_current_manuscript_entrypoint(project_root, allow_markdown=True)
+    if entrypoint is None or not entrypoint.exists():
+        return False
+
+    manuscript_paths: list[Path] = [entrypoint]
+    for candidate in sorted(entrypoint.parent.rglob("*")):
+        if candidate == entrypoint or not candidate.is_file():
+            continue
+        if candidate.suffix.lower() not in {".tex", ".md"}:
+            continue
+        manuscript_paths.append(candidate)
+
+    for manuscript_path in manuscript_paths:
+        try:
+            content = manuscript_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if _THEOREM_STYLE_MANUSCRIPT_RE.search(content):
+            return True
+        if statement_looks_theorem_like(content):
+            return True
+    return False
+
+
+def manuscript_requires_theorem_bearing_review(
+    project_root: Path,
+    manuscript_entrypoint: Path | None = None,
+) -> bool:
+    """Return whether a manuscript should be treated as theorem-bearing."""
+
+    entrypoint = manuscript_entrypoint or resolve_current_manuscript_entrypoint(project_root, allow_markdown=True)
+    return entrypoint is not None and (
+        manuscript_has_theorem_bearing_language(project_root, entrypoint)
+        or manuscript_has_theorem_bearing_review_anchor(project_root, entrypoint)
+        or manuscript_has_theorem_bearing_claim_inventory(project_root, entrypoint)
+    )
 
 
 def _resolve_review_artifacts(project_root: Path, artifact_paths: tuple[str, ...]) -> tuple[Path, ...]:

@@ -32,11 +32,7 @@ def _load_adapter_class(runtime_name: str) -> type[RuntimeAdapter]:
     for value in vars(module).values():
         if not isinstance(value, type) or not issubclass(value, RuntimeAdapter) or value is RuntimeAdapter:
             continue
-        try:
-            if value().runtime_name == runtime_name:
-                matches.append(value)
-        except Exception:
-            continue
+        matches.append(value)
 
     if len(matches) == 1:
         return matches[0]

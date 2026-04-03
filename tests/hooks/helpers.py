@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 from gpd.adapters import get_adapter
 from gpd.adapters.install_utils import build_runtime_install_repair_command
 from gpd.adapters.runtime_catalog import get_shared_install_metadata, iter_runtime_descriptors
+from tests.runtime_install_helpers import seed_complete_runtime_install
 
 _RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
 _SHARED_INSTALL = get_shared_install_metadata()
@@ -47,40 +49,53 @@ def _infer_runtime_from_config_dir(config_dir: Path) -> str | None:
     return None
 
 
+def _overlay_tree(source: Path, destination: Path) -> None:
+    for entry in source.rglob("*"):
+        relative = entry.relative_to(source)
+        target = destination / relative
+        if entry.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(entry, target)
+
+
 def mark_complete_install(config_dir: Path, *, runtime: str | None = None, install_scope: str = "local") -> None:
     """Create a minimal complete-install marker tree for one runtime config dir."""
     config_dir.mkdir(parents=True, exist_ok=True)
     resolved_runtime = runtime or _infer_runtime_from_config_dir(config_dir)
     if resolved_runtime is not None:
         adapter = get_adapter(resolved_runtime)
-        for relpath in adapter.install_completeness_relpaths():
-            if relpath == _SHARED_INSTALL.manifest_name:
-                continue
-            artifact = config_dir / relpath
-            artifact.parent.mkdir(parents=True, exist_ok=True)
-            if artifact.suffix:
-                artifact.write_text("{}\n" if artifact.suffix == ".json" else "# test\n", encoding="utf-8")
-            else:
-                artifact.mkdir(parents=True, exist_ok=True)
-        if resolved_runtime == "codex":
-            skills_dir = config_dir.parent / ".agents" / "skills"
-            help_skill_dir = skills_dir / "gpd-help"
-            help_skill_dir.mkdir(parents=True, exist_ok=True)
-            (help_skill_dir / "SKILL.md").write_text("# test\n", encoding="utf-8")
-    else:
-        (config_dir / "get-physics-done").mkdir(parents=True, exist_ok=True)
+        preexisting_install_tree = config_dir / "get-physics-done"
+        manifest_path = config_dir / _SHARED_INSTALL.manifest_name
+        stash_dir: Path | None = None
+        if preexisting_install_tree.exists() and not manifest_path.exists():
+            stash_dir = config_dir.parent / f".{config_dir.name}-preinstall-stash"
+            if stash_dir.exists():
+                shutil.rmtree(stash_dir)
+            shutil.move(str(preexisting_install_tree), stash_dir)
+        try:
+            seed_complete_runtime_install(
+                config_dir,
+                runtime=resolved_runtime,
+                install_scope=install_scope,
+                home=config_dir.parent if install_scope == "global" else None,
+                explicit_target=config_dir.name != adapter.config_dir_name,
+            )
+            if stash_dir is not None:
+                _overlay_tree(stash_dir, config_dir / "get-physics-done")
+                shutil.rmtree(stash_dir)
+        except Exception:
+            if stash_dir is not None and not preexisting_install_tree.exists():
+                shutil.move(str(stash_dir), preexisting_install_tree)
+            raise
+        return
 
-    manifest: dict[str, object] = {"install_scope": install_scope}
-    if resolved_runtime is not None:
-        adapter = get_adapter(resolved_runtime)
-        explicit_target = config_dir.name != adapter.config_dir_name
-        manifest["runtime"] = resolved_runtime
-        manifest["explicit_target"] = explicit_target
-        manifest["install_target_dir"] = str(config_dir)
-        if resolved_runtime == "codex":
-            manifest["codex_skills_dir"] = str(config_dir.parent / ".agents" / "skills")
-            manifest["codex_generated_skill_dirs"] = ["gpd-help"]
-    (config_dir / _SHARED_INSTALL.manifest_name).write_text(json.dumps(manifest), encoding="utf-8")
+    (config_dir / "get-physics-done").mkdir(parents=True, exist_ok=True)
+    (config_dir / _SHARED_INSTALL.manifest_name).write_text(
+        json.dumps({"install_scope": install_scope}),
+        encoding="utf-8",
+    )
 
 
 def repair_command(runtime: str, *, install_scope: str, target_dir: Path, explicit_target: bool) -> str:

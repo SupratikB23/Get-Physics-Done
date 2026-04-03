@@ -993,7 +993,7 @@ python scripts/compute_key_result.py | tail -1
 **4. Verify LaTeX compiles (if applicable):**
 
 ```bash
-cd documents/ && latexmk -pdf -interaction=nonstopmode main.tex 2>&1 | tail -5
+cd documents/ && latexmk -pdf -interaction=nonstopmode "${MANUSCRIPT_TEX}" 2>&1 | tail -5
 ```
 
 **5. Verify figures are up to date:**

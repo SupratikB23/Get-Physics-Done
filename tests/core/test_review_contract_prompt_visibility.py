@@ -8,6 +8,7 @@ import pytest
 
 from gpd import registry
 from gpd.core.review_contract_prompt import (
+    normalize_review_contract_frontmatter_payload,
     normalize_review_contract_payload,
     render_review_contract_prompt,
 )
@@ -105,6 +106,18 @@ def test_review_contract_renderer_rejects_unknown_keys_inside_wrapped_payload() 
                     "schema_version": 1,
                     "review_mode": "review",
                     "legacy_note": "stale",
+                }
+            }
+        )
+
+
+def test_review_contract_renderer_rejects_frontmatter_wrapper_alias() -> None:
+    with pytest.raises(ValueError, match="wrapper key 'review_contract'"):
+        render_review_contract_prompt(
+            {
+                "review-contract": {
+                    "schema_version": 1,
+                    "review_mode": "review",
                 }
             }
         )
@@ -217,6 +230,18 @@ def test_review_contract_prompt_and_registry_share_singleton_string_list_normali
     assert dataclasses.asdict(parsed) == normalized
 
 
+def test_review_contract_frontmatter_normalizer_rejects_prompt_wrapper_alias() -> None:
+    with pytest.raises(ValueError, match="wrapper key 'review-contract'"):
+        normalize_review_contract_frontmatter_payload(
+            {
+                "review_contract": {
+                    "schema_version": 1,
+                    "review_mode": "publication",
+                }
+            }
+        )
+
+
 @pytest.mark.parametrize(
     ("payload", "error_fragment"),
     [
@@ -278,6 +303,30 @@ def test_review_contract_renderer_rejects_unknown_preflight_checks() -> None:
                 "preflight_checks": ["compiled_manuscript", "legacy_gate"],
             }
         )
+
+
+def test_review_contract_renderer_accepts_publication_artifact_preflight_checks() -> None:
+    section = render_review_contract_prompt(
+        {
+            "schema_version": 1,
+            "review_mode": "publication",
+            "preflight_checks": [
+                "artifact_manifest",
+                "bibliography_audit",
+                "bibliography_audit_clean",
+                "publication_blockers",
+                "reproducibility_manifest",
+                "reproducibility_ready",
+            ],
+        }
+    )
+
+    assert "artifact_manifest" in section
+    assert "bibliography_audit" in section
+    assert "bibliography_audit_clean" in section
+    assert "publication_blockers" in section
+    assert "reproducibility_manifest" in section
+    assert "reproducibility_ready" in section
 
 
 def test_review_contract_renderer_rejects_invalid_bool_and_required_state_fields() -> None:

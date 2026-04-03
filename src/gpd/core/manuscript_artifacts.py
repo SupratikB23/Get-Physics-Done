@@ -91,10 +91,15 @@ def resolve_manuscript_entrypoint_from_root(manuscript_root: Path, *, allow_mark
 
     if not manuscript_root.exists() or not manuscript_root.is_dir():
         return None
-    return (
-        _manifest_manuscript_entrypoint(manuscript_root, allow_markdown=allow_markdown)
-        or _configured_manuscript_entrypoint(manuscript_root, allow_markdown=allow_markdown)
-    )
+    manifest_entrypoint = _manifest_manuscript_entrypoint(manuscript_root, allow_markdown=allow_markdown)
+    configured_entrypoint = _configured_manuscript_entrypoint(manuscript_root, allow_markdown=allow_markdown)
+    if (
+        manifest_entrypoint is not None
+        and configured_entrypoint is not None
+        and manifest_entrypoint.resolve(strict=False) != configured_entrypoint.resolve(strict=False)
+    ):
+        return None
+    return manifest_entrypoint or configured_entrypoint
 
 
 def resolve_current_manuscript_entrypoint(project_root: Path, *, allow_markdown: bool = True) -> Path | None:

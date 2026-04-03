@@ -39,8 +39,7 @@ from gpd.core.manuscript_artifacts import (
 )
 from gpd.core.phases import _milestone_completion_snapshot
 from gpd.core.proof_review import (
-    manuscript_has_theorem_bearing_claim_inventory,
-    manuscript_has_theorem_bearing_review_anchor,
+    manuscript_requires_theorem_bearing_review,
     resolve_manuscript_proof_review_status,
 )
 from gpd.core.reproducibility import compute_sha256
@@ -560,11 +559,7 @@ def _manuscript_submission_proof_review_is_fresh(
     if manuscript_entrypoint is None:
         return True
 
-    theorem_bearing = (
-        manuscript_has_theorem_bearing_review_anchor(cwd, manuscript_entrypoint)
-        or manuscript_has_theorem_bearing_claim_inventory(cwd, manuscript_entrypoint)
-    )
-    if not theorem_bearing:
+    if not manuscript_requires_theorem_bearing_review(cwd, manuscript_entrypoint):
         return True
 
     proof_review_status = resolve_manuscript_proof_review_status(cwd, manuscript_entrypoint)

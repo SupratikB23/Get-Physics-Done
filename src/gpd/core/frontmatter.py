@@ -28,6 +28,7 @@ from gpd.contracts import (
     collect_plan_contract_integrity_errors,
     collect_proof_audit_alignment_errors,
     contract_has_explicit_context_intake,
+    parse_comparison_verdicts_data_strict,
     parse_contract_results_data_strict,
     parse_project_contract_data_strict,
     statement_looks_theorem_like,
@@ -430,19 +431,7 @@ def _parse_contract_results(meta: dict) -> ContractResults | None:
 
 def _parse_comparison_verdicts(meta: dict) -> list[ComparisonVerdict]:
     """Parse the optional summary comparison-verdict ledger."""
-    raw = meta.get("comparison_verdicts")
-    if raw is None:
-        return []
-    if not isinstance(raw, list):
-        raise ValueError("expected a list")
-    verdicts: list[ComparisonVerdict] = []
-    for index, entry in enumerate(raw):
-        try:
-            verdicts.append(ComparisonVerdict.model_validate(entry))
-        except PydanticValidationError as exc:
-            details = "; ".join(f"[{index}] {message}" for message in _format_pydantic_validation_errors(exc))
-            raise ValueError(details) from exc
-    return verdicts
+    return parse_comparison_verdicts_data_strict(meta.get("comparison_verdicts"))
 
 
 def _parse_suggested_contract_checks(meta: dict) -> list[SuggestedContractCheck]:
@@ -1263,26 +1252,12 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
             errors.append("plan_contract_ref: required when contract_results or comparison_verdicts are present")
 
         contract_results = None
-        raw_contract_results = meta.get("contract_results")
         comparison_verdicts: list[ComparisonVerdict] = []
         suggested_contract_checks: list[SuggestedContractCheck] = []
         try:
             contract_results = _parse_contract_results(meta)
         except (PydanticValidationError, TypeError, ValueError) as exc:
             errors.extend(_prefixed_validation_errors("contract_results", exc))
-        if (
-            schema_name == "verification"
-            and isinstance(raw_contract_results, dict)
-            and "uncertainty_markers" not in raw_contract_results
-            and not any(
-                error.startswith("contract_results:") and "uncertainty_markers" in error
-                for error in errors
-            )
-        ):
-            errors.append(
-                "contract_results: uncertainty_markers must be explicit in contract-backed contract_results"
-            )
-
         try:
             comparison_verdicts = _parse_comparison_verdicts(meta)
         except (PydanticValidationError, TypeError, ValueError) as exc:

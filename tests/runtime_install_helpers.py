@@ -33,12 +33,13 @@ def seed_complete_runtime_install(
     runtime: str,
     install_scope: str = "local",
     home: Path | None = None,
+    explicit_target: bool | None = None,
 ) -> None:
     """Materialize a real adapter-owned install surface for test runtime detection."""
 
     adapter = get_adapter(runtime)
     config_dir.mkdir(parents=True, exist_ok=True)
-    explicit_target = config_dir.name != adapter.config_dir_name
+    resolved_explicit_target = explicit_target if explicit_target is not None else config_dir.name != adapter.config_dir_name
     env_updates: dict[str, str] = {}
     if install_scope == "global":
         env_updates["HOME"] = str(home or config_dir.parent)
@@ -48,6 +49,6 @@ def seed_complete_runtime_install(
             _GPD_ROOT,
             config_dir,
             is_global=install_scope == "global",
-            explicit_target=explicit_target,
+            explicit_target=resolved_explicit_target,
         )
         adapter.finalize_install(install_result)

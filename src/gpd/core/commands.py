@@ -15,7 +15,12 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from gpd.contracts import ComparisonVerdict, ContractResults, parse_contract_results_data_strict
+from gpd.contracts import (
+    ComparisonVerdict,
+    ContractResults,
+    parse_comparison_verdicts_data_strict,
+    parse_contract_results_data_strict,
+)
 from gpd.core.constants import (
     PHASES_DIR_NAME,
     PLAN_SUFFIX,
@@ -316,12 +321,8 @@ def _parse_contract_results(value: object, summary_path: str) -> ContractResults
 
 def _parse_comparison_verdicts(value: object, summary_path: str) -> list[ComparisonVerdict]:
     """Validate the optional comparison-verdict ledger in a summary."""
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise ValidationError(f"Invalid comparison_verdicts in {summary_path}: expected a list")
     try:
-        return [ComparisonVerdict.model_validate(item) for item in value]
+        return parse_comparison_verdicts_data_strict(value)
     except Exception as exc:  # pragma: no cover - pydantic version specifics
         raise ValidationError(f"Invalid comparison_verdicts in {summary_path}: {exc}") from exc
 

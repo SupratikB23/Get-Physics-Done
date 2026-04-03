@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from gpd.adapters.runtime_catalog import get_shared_install_metadata
+from gpd.adapters.runtime_catalog import get_shared_install_metadata, iter_runtime_descriptors
 from gpd.hooks.check_update import (
     UPDATE_CHECK_TTL_SECONDS,
     _do_check,
@@ -24,6 +24,9 @@ from gpd.hooks.runtime_detect import UpdateCacheCandidate
 from tests.hooks.helpers import mark_complete_install as _mark_complete_install
 
 _SHARED_INSTALL = get_shared_install_metadata()
+_RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
+_PRIMARY_RUNTIME_DESCRIPTOR = _RUNTIME_DESCRIPTORS[0]
+_SECONDARY_RUNTIME_DESCRIPTOR = _RUNTIME_DESCRIPTORS[1]
 
 
 def _cache_candidate(path: Path) -> UpdateCacheCandidate:
@@ -219,8 +222,8 @@ class TestReadInstalledVersion:
         from gpd.adapters.install_utils import GPD_INSTALL_DIR_NAME
 
         install_dirs = [
-            Path(".codex") / GPD_INSTALL_DIR_NAME,
-            Path(".claude") / GPD_INSTALL_DIR_NAME,
+            Path(_PRIMARY_RUNTIME_DESCRIPTOR.config_dir_name) / GPD_INSTALL_DIR_NAME,
+            Path(_SECONDARY_RUNTIME_DESCRIPTOR.config_dir_name) / GPD_INSTALL_DIR_NAME,
         ]
 
         with (
@@ -228,14 +231,14 @@ class TestReadInstalledVersion:
             patch("gpd.hooks.runtime_detect.get_gpd_install_dirs", return_value=install_dirs) as mock_get_dirs,
             patch(
                 "gpd.hooks.check_update.config_dir_has_complete_install",
-                side_effect=lambda config_dir: config_dir.name == ".claude",
+                side_effect=lambda config_dir: config_dir.name == _SECONDARY_RUNTIME_DESCRIPTOR.config_dir_name,
             ) as mock_complete,
         ):
             version_files = _version_files()
 
         mock_get_dirs.assert_called_once_with(prefer_active=True)
         assert mock_complete.call_count == 2
-        assert version_files == [Path(".claude") / GPD_INSTALL_DIR_NAME / "VERSION"]
+        assert version_files == [Path(_SECONDARY_RUNTIME_DESCRIPTOR.config_dir_name) / GPD_INSTALL_DIR_NAME / "VERSION"]
 
 
 def test_worker_cache_file_arg_runs_do_check_directly(tmp_path: Path) -> None:

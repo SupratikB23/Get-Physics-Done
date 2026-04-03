@@ -82,6 +82,25 @@ def _descriptors_with_selection_alias_fragment(fragment: str) -> tuple:
     )
 
 
+def _descriptor_with_spaced_selection_alias() -> tuple[object, str]:
+    matches: list[tuple[object, str]] = []
+    for descriptor in _INSTALL_TEST_DESCRIPTORS:
+        normalized_display_name = descriptor.display_name.lower().replace("-", " ").replace("cli", "cli")
+        alias = next(
+            (
+                item
+                for item in descriptor.selection_aliases
+                if " " in item and item != normalized_display_name and item != descriptor.runtime_name.replace("-", " ")
+            ),
+            None,
+        )
+        if alias is not None:
+            matches.append((descriptor, alias))
+    if len(matches) != 1:
+        raise AssertionError(f"Expected exactly one runtime descriptor with a spaced alias, got {len(matches)}")
+    return matches[0]
+
+
 def _install_target(tmp_path: Path, descriptor=_PRIMARY_INSTALL_DESCRIPTOR) -> Path:
     return tmp_path / descriptor.config_dir_name
 
@@ -1685,7 +1704,7 @@ def test_install_interactive_accepts_exact_runtime_display_name_before_fuzzy(tmp
 
 def test_install_interactive_accepts_exact_runtime_selection_alias_before_fuzzy(tmp_path: Path) -> None:
     """An exact selection alias should win before any fuzzy fallback."""
-    target_descriptor = _descriptor_with_selection_alias_fragment("open code")
+    target_descriptor, selection_alias = _descriptor_with_spaced_selection_alias()
     competing_descriptor = _SECONDARY_INSTALL_DESCRIPTOR
     captured_calls: list[dict[str, object]] = []
 
@@ -1701,10 +1720,13 @@ def test_install_interactive_accepts_exact_runtime_selection_alias_before_fuzzy(
 
     target_adapter = _mock_install_adapter(
         target_descriptor,
-        display_name="Open Code",
-        selection_aliases=("open code",),
+        display_name=target_descriptor.display_name,
+        selection_aliases=(selection_alias,),
     )
-    competing_adapter = _mock_install_adapter(competing_descriptor, display_name="Open Code Plus")
+    competing_adapter = _mock_install_adapter(
+        competing_descriptor,
+        display_name=f"{target_descriptor.display_name} Plus",
+    )
 
     with (
         patch("gpd.cli._install_single_runtime", side_effect=mock_install_single),
@@ -1719,7 +1741,7 @@ def test_install_interactive_accepts_exact_runtime_selection_alias_before_fuzzy(
             competing_descriptor.runtime_name: competing_adapter,
         }[runtime]
 
-        result = runner.invoke(app, ["install"], input="open code\n1\n")
+        result = runner.invoke(app, ["install"], input=f"{selection_alias}\n1\n")
 
     assert result.exit_code == 0
     assert captured_calls == [
@@ -1766,7 +1788,7 @@ def test_install_accepts_runtime_display_name_alias(tmp_path: Path) -> None:
 
 def test_uninstall_accepts_runtime_selection_alias(tmp_path: Path) -> None:
     """Non-interactive uninstall should accept runtime selection aliases."""
-    target_descriptor = _descriptor_with_selection_alias_fragment("open code")
+    target_descriptor, selection_alias = _descriptor_with_spaced_selection_alias()
     target = tmp_path / target_descriptor.config_dir_name
     target.mkdir()
     captured_targets: list[Path] = []
@@ -1779,7 +1801,7 @@ def test_uninstall_accepts_runtime_selection_alias(tmp_path: Path) -> None:
             return {"runtime": target_descriptor.runtime_name, "removed": []}
 
     with patch("gpd.adapters.get_adapter", return_value=SpyAdapter()):
-        result = runner.invoke(app, ["uninstall", "open code", "--target-dir", str(target)])
+        result = runner.invoke(app, ["uninstall", selection_alias, "--target-dir", str(target)])
 
     assert result.exit_code == 0
     assert captured_targets == [target]

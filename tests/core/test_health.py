@@ -50,6 +50,7 @@ from tests.runtime_test_support import (
     PRIMARY_RUNTIME,
     runtime_config_dir_name,
     runtime_launch_executable,
+    runtime_primary_config_filename,
     runtime_target_dir,
 )
 
@@ -1999,7 +2000,10 @@ trigger:
         assessment = self._assessment(
             state="owned_incomplete",
             target_dir=target_dir,
-            missing_install_artifacts=("agents/gpd-help/SKILL.md", "config.toml"),
+            missing_install_artifacts=(
+                "agents/gpd-help/SKILL.md",
+                runtime_primary_config_filename(PRIMARY_RUNTIME),
+            ),
         )
 
         report, checks = self._run_runtime_doctor(tmp_path, assessment=assessment, target_dir=target_dir)

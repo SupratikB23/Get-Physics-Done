@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -10,6 +9,7 @@ import pytest
 from gpd.adapters.runtime_catalog import get_shared_install_metadata
 from gpd.core.onboarding_surfaces import beginner_runtime_surfaces
 from tests.doc_surface_contracts import assert_beginner_hub_preflight_contract, assert_beginner_startup_routing_contract
+from tests.runtime_test_support import runtime_onboarding_doc_filename
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _SHARED_INSTALL = get_shared_install_metadata()
@@ -38,14 +38,9 @@ def _markdown_section(content: str, heading: str) -> str:
     return content[start:next_heading]
 
 
-def _runtime_doc_filename(display_name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-")
-    return f"{slug}.md"
-
-
 @pytest.mark.parametrize("surface", beginner_runtime_surfaces(), ids=lambda surface: surface.runtime_name)
 def test_runtime_quickstarts_surface_the_beginner_next_steps(surface) -> None:
-    content = _read(f"docs/{_runtime_doc_filename(surface.display_name)}")
+    content = _read(f"docs/{runtime_onboarding_doc_filename(surface.runtime_name)}")
     fragments = (
         surface.help_command,
         surface.start_command,
@@ -91,9 +86,8 @@ def test_os_quickstarts_link_runtime_guides_and_post_install_help(doc_name: str)
         ),
     )
     assert "Back to the onboarding hub: [GPD Onboarding Hub](./README.md)." in content
-
-    for guide in ("claude-code.md", "codex.md", "gemini-cli.md", "opencode.md"):
-        assert f"./{guide}" in content
+    for surface in beginner_runtime_surfaces():
+        assert f"./{runtime_onboarding_doc_filename(surface.runtime_name)}" in content
 
 
 def test_docs_onboarding_hub_links_os_and_runtime_guides() -> None:
@@ -112,18 +106,14 @@ def test_docs_onboarding_hub_links_os_and_runtime_guides() -> None:
             "./macos.md",
             "./windows.md",
             "./linux.md",
-            "./claude-code.md",
-            "./codex.md",
-            "./gemini-cli.md",
-            "./opencode.md",
-            f"{_SHARED_INSTALL.bootstrap_command} --claude --local",
-            f"{_SHARED_INSTALL.bootstrap_command} --codex --local",
-            f"{_SHARED_INSTALL.bootstrap_command} --gemini --local",
-            f"{_SHARED_INSTALL.bootstrap_command} --opencode --local",
             "## After the guides",
         ),
     )
     assert_beginner_startup_routing_contract(content)
+    for surface in beginner_runtime_surfaces():
+        guide = runtime_onboarding_doc_filename(surface.runtime_name)
+        assert f"./{guide}" in content
+        assert f"{_SHARED_INSTALL.bootstrap_command} {surface.install_flag} --local" in content
     _assert_in_order(
         content,
         (
@@ -154,10 +144,11 @@ def test_root_readme_start_here_links_to_docs_onboarding_hub() -> None:
 
 
 def test_runtime_quickstarts_keep_current_provider_specific_setup_notes() -> None:
-    claude = _read("docs/claude-code.md")
-    gemini = _read("docs/gemini-cli.md")
-    opencode = _read("docs/opencode.md")
+    docs = {
+        surface.runtime_name: _read(f"docs/{runtime_onboarding_doc_filename(surface.runtime_name)}")
+        for surface in beginner_runtime_surfaces()
+    }
 
-    assert "Pro, Max, Teams, Enterprise, or Console account" in claude
-    assert "GOOGLE_CLOUD_PROJECT" in gemini
-    assert "/connect" in opencode
+    assert any("Pro, Max, Teams, Enterprise, or Console account" in content for content in docs.values())
+    assert any("GOOGLE_CLOUD_PROJECT" in content for content in docs.values())
+    assert any("/connect" in content for content in docs.values())

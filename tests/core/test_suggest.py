@@ -19,6 +19,13 @@ from gpd.core.suggest import (
     SuggestResult,
     suggest_next,
 )
+from tests.manuscript_test_support import (
+    CANONICAL_MANUSCRIPT_STEM,
+    manuscript_path,
+    manuscript_pdf_path,
+    manuscript_relpath,
+    write_proof_review_package,
+)
 from tests.runtime_install_helpers import seed_complete_runtime_install
 
 _RUNTIME_NAMES = tuple(list_runtimes())
@@ -104,6 +111,42 @@ def _create_phase(
     return phase_dir
 
 
+def _write_active_manuscript_entrypoint(
+    project_root: Path,
+    *,
+    root_name: str = "paper",
+    suffix: str = ".tex",
+    body: str = "\\documentclass{article}\n",
+) -> Path:
+    manuscript_root = project_root / root_name
+    manuscript_root.mkdir(parents=True, exist_ok=True)
+    entrypoint = manuscript_root / f"{CANONICAL_MANUSCRIPT_STEM}{suffix}"
+    entrypoint.write_text(body, encoding="utf-8")
+    (manuscript_root / "ARTIFACT-MANIFEST.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "paper_title": "Curvature Flow Bounds",
+                "journal": "jhep",
+                "created_at": "2026-03-10T00:00:00+00:00",
+                "artifacts": [
+                    {
+                        "artifact_id": "manuscript",
+                        "category": "tex",
+                        "path": entrypoint.name,
+                        "sha256": compute_sha256(entrypoint),
+                        "produced_by": "tests.core.test_suggest",
+                        "sources": [],
+                        "metadata": {"role": "manuscript"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return entrypoint
+
+
 def _create_roadmap_with_phases(tmp_path: Path, phases: list[tuple[str, str]]) -> None:
     lines = ["# Roadmap", ""]
     for number, name in phases:
@@ -132,220 +175,12 @@ def _write_submission_review_package(
     review_report: bool = False,
 ) -> Path:
     root = _setup_project(tmp_path)
-    manuscript = root / "paper" / "main.tex"
-    manuscript.parent.mkdir(parents=True, exist_ok=True)
-    if theorem_bearing:
-        manuscript.write_text(
-            "\\documentclass{article}\n\\begin{document}\n\\begin{theorem}For every r_0 > 0, the orbit intersects the target annulus.\\end{theorem}\n\\end{document}\n",
-            encoding="utf-8",
-        )
-    else:
-        manuscript.write_text(
-            "\\documentclass{article}\n\\begin{document}\nSubmission draft.\n\\end{document}\n",
-            encoding="utf-8",
-        )
-    (manuscript.parent / "main.pdf").write_bytes(b"%PDF-1.4\n% test submission pdf\n")
-    (manuscript.parent / "ARTIFACT-MANIFEST.json").write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "paper_title": "Submission Draft",
-                "journal": "jhep",
-                "created_at": "2026-03-10T00:00:00+00:00",
-                "artifacts": [],
-            }
-        ),
-        encoding="utf-8",
+    package = write_proof_review_package(
+        root,
+        theorem_bearing=theorem_bearing,
+        review_report=review_report,
     )
-    (manuscript.parent / "BIBLIOGRAPHY-AUDIT.json").write_text(
-        json.dumps(
-            {
-                "generated_at": "2026-03-10T00:00:00+00:00",
-                "total_sources": 0,
-                "resolved_sources": 0,
-                "partial_sources": 0,
-                "unverified_sources": 0,
-                "failed_sources": 0,
-                "entries": [],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    review_dir = root / "GPD" / "review"
-    review_dir.mkdir(parents=True, exist_ok=True)
-    manuscript_sha256 = compute_sha256(manuscript)
-    claim_kind = "theorem" if theorem_bearing else "other"
-    theorem_assumptions = ["chi > 0"] if theorem_bearing else []
-    theorem_parameters = ["r_0"] if theorem_bearing else []
-    claims_reviewed = ["CLM-001"] if theorem_bearing else []
-    proof_audits = [
-        {
-            "claim_id": "CLM-001",
-            "theorem_assumptions_checked": theorem_assumptions,
-            "theorem_parameters_checked": theorem_parameters,
-            "proof_locations": ["paper/main.tex:3"] if theorem_bearing else [],
-            "uncovered_assumptions": [],
-            "uncovered_parameters": [],
-            "coverage_gaps": [],
-            "alignment_status": "aligned" if theorem_bearing else "not_applicable",
-            "notes": "Complete coverage." if theorem_bearing else "Not theorem-bearing.",
-        }
-    ] if theorem_bearing else []
-
-    (review_dir / "CLAIMS.json").write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "manuscript_path": "paper/main.tex",
-                "manuscript_sha256": manuscript_sha256,
-                "claims": [
-                    {
-                        "claim_id": "CLM-001",
-                        "claim_type": "main_result",
-                        "claim_kind": claim_kind,
-                        "text": (
-                            "For every r_0 > 0, the orbit intersects the target annulus."
-                            if theorem_bearing
-                            else "The manuscript reports a descriptive result."
-                        ),
-                        "artifact_path": "paper/main.tex",
-                        "section": "Main Result",
-                        "equation_refs": [],
-                        "figure_refs": [],
-                        "supporting_artifacts": [],
-                        "theorem_assumptions": theorem_assumptions,
-                        "theorem_parameters": theorem_parameters,
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    stage_artifacts = []
-    for stage_id in ("reader", "literature", "math", "physics", "interestingness"):
-        stage_artifact = review_dir / f"STAGE-{stage_id}.json"
-        stage_artifacts.append(f"GPD/review/{stage_artifact.name}")
-        stage_artifact.write_text(
-            json.dumps(
-                {
-                    "version": 1,
-                    "round": 1,
-                    "stage_id": stage_id,
-                    "stage_kind": stage_id,
-                    "manuscript_path": "paper/main.tex",
-                    "manuscript_sha256": manuscript_sha256,
-                    "claims_reviewed": claims_reviewed if stage_id == "math" else [],
-                    "summary": f"{stage_id} review",
-                    "strengths": ["checked manuscript"],
-                    "findings": [],
-                    "proof_audits": proof_audits if stage_id == "math" else [],
-                    "confidence": "high",
-                    "recommendation_ceiling": "minor_revision",
-                }
-            ),
-            encoding="utf-8",
-        )
-
-    (review_dir / "REVIEW-LEDGER.json").write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "round": 1,
-                "manuscript_path": "paper/main.tex",
-                "issues": [],
-            }
-        ),
-        encoding="utf-8",
-    )
-    (review_dir / "REFEREE-DECISION.json").write_text(
-        json.dumps(
-            {
-                "manuscript_path": "paper/main.tex",
-                "target_journal": "jhep",
-                "final_recommendation": "accept",
-                "final_confidence": "high",
-                "stage_artifacts": stage_artifacts,
-                "central_claims_supported": True,
-                "claim_scope_proportionate_to_evidence": True,
-                "physical_assumptions_justified": True,
-                "proof_audit_coverage_complete": True,
-                "theorem_proof_alignment_adequate": True,
-                "unsupported_claims_are_central": False,
-                "reframing_possible_without_new_results": True,
-                "mathematical_correctness": "adequate",
-                "novelty": "adequate",
-                "significance": "adequate",
-                "venue_fit": "adequate",
-                "literature_positioning": "adequate",
-                "unresolved_major_issues": 0,
-                "unresolved_minor_issues": 0,
-                "blocking_issue_ids": [],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    if theorem_bearing and review_report:
-        (review_dir / "PROOF-REDTEAM.md").write_text(
-            (
-                "---\n"
-                "status: passed\n"
-                "reviewer: gpd-check-proof\n"
-                "claim_ids:\n"
-                "  - CLM-001\n"
-                "proof_artifact_paths:\n"
-                "  - paper/main.tex\n"
-                "manuscript_path: paper/main.tex\n"
-                f"manuscript_sha256: {manuscript_sha256}\n"
-                "round: 1\n"
-                "---\n\n"
-                "# Proof Redteam\n"
-                "## Proof Inventory\n"
-                "- Exact claim / theorem text: For every r_0 > 0, the orbit intersects the target annulus.\n"
-                "- Claim / theorem target: Annulus intersection for every target radius.\n"
-                "- Named parameters:\n"
-                "  - `r_0`: target radius\n"
-                "- Hypotheses:\n"
-                "  - `H1`: chi > 0\n"
-                "- Quantifier / domain obligations:\n"
-                "  - for every r_0 > 0\n"
-                "- Conclusion clauses:\n"
-                "  - annulus intersection holds\n"
-                "## Coverage Ledger\n"
-                "### Named-Parameter Coverage\n"
-                "| Parameter | Role / Domain | Proof Location | Status | Notes |\n"
-                "| --- | --- | --- | --- | --- |\n"
-                "| `r_0` | target radius | paper/main.tex:3 | covered | Carried through the argument. |\n"
-                "### Hypothesis Coverage\n"
-                "| Hypothesis | Proof Location | Status | Notes |\n"
-                "| --- | --- | --- | --- |\n"
-                "| `H1` | paper/main.tex:3 | covered | Used in the positivity step. |\n"
-                "### Quantifier / Domain Coverage\n"
-                "| Obligation | Proof Location | Status | Notes |\n"
-                "| --- | --- | --- | --- |\n"
-                "| `for every r_0 > 0` | paper/main.tex:3 | covered | No specialization introduced. |\n"
-                "### Conclusion-Clause Coverage\n"
-                "| Clause | Proof Location | Status | Notes |\n"
-                "| --- | --- | --- | --- |\n"
-                "| annulus intersection holds | paper/main.tex:3 | covered | Final sentence states it. |\n"
-                "## Adversarial Probe\n"
-                "- Probe type: dropped-parameter test\n"
-                "- Result: The proof still references r_0, so the theorem remains global in the target radius.\n"
-                "## Verdict\n"
-                "- Scope status: `matched`\n"
-                "- Quantifier status: `matched`\n"
-                "- Counterexample status: `none_found`\n"
-                "- Blocking gaps:\n"
-                "  - None.\n"
-                "## Required Follow-Up\n"
-                "- None.\n"
-            ),
-            encoding="utf-8",
-        )
-        resolve_manuscript_proof_review_status(root, manuscript, persist_manifest=True)
-
+    resolve_manuscript_proof_review_status(root, package.manuscript_path, persist_manifest=True)
     if review_report:
         (root / "GPD" / "REFEREE-REPORT.md").write_text("Accepted after revision.\n", encoding="utf-8")
     return root
@@ -715,8 +550,7 @@ def test_missing_conventions_suggest_set(tmp_path: Path) -> None:
 
 def test_markdown_manuscript_is_not_treated_as_new_project(tmp_path: Path) -> None:
     """A markdown manuscript should be recognized without PROJECT.md."""
-    (tmp_path / "paper").mkdir()
-    (tmp_path / "paper" / "main.md").write_text("# Markdown manuscript\n", encoding="utf-8")
+    _write_active_manuscript_entrypoint(tmp_path, suffix=".md", body="# Markdown manuscript\n")
 
     result = suggest_next(tmp_path)
     actions = [s.action for s in result.suggestions]
@@ -732,8 +566,7 @@ def test_paper_exists_suggests_peer_review_before_submission(tmp_path: Path) -> 
     """Paper draft suggests peer review and does not suggest arXiv before review clears."""
     root = _setup_project(tmp_path)
     _create_roadmap(root)
-    (root / "paper").mkdir()
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n")
+    _write_active_manuscript_entrypoint(root)
     result = suggest_next(root)
     actions = [s.action for s in result.suggestions]
     assert "peer-review" in actions
@@ -745,8 +578,7 @@ def test_referee_report_in_planning_root_suggests_response(tmp_path: Path) -> No
     """Referee report in GPD suggests responding to referees."""
     root = _setup_project(tmp_path)
     _create_roadmap(root)
-    (root / "paper").mkdir()
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n")
+    _write_active_manuscript_entrypoint(root)
     (root / "GPD" / "REFEREE-REPORT.md").write_text("Major revision needed.\n")
     result = suggest_next(root)
     actions = [s.action for s in result.suggestions]
@@ -758,8 +590,7 @@ def test_referee_report_in_planning_root_suggests_response(tmp_path: Path) -> No
 def test_referee_report_in_canonical_gpd_root_suggests_response(tmp_path: Path) -> None:
     root = _setup_project(tmp_path)
     _create_roadmap(root)
-    (root / "paper").mkdir()
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n")
+    _write_active_manuscript_entrypoint(root)
     (root / "GPD" / "REFEREE-REPORT.md").write_text("Major revision needed.\n")
 
     result = suggest_next(root)
@@ -772,8 +603,7 @@ def test_referee_report_in_canonical_gpd_root_suggests_response(tmp_path: Path) 
 def test_markdown_referee_report_suggests_response_without_arxiv_submission(tmp_path: Path) -> None:
     root = _setup_project(tmp_path)
     _create_roadmap(root)
-    (root / "paper").mkdir()
-    (root / "paper" / "main.md").write_text("# Markdown manuscript\n", encoding="utf-8")
+    _write_active_manuscript_entrypoint(root, suffix=".md", body="# Markdown manuscript\n")
     (root / "GPD" / "REFEREE-REPORT.md").write_text("Major revision needed.\n", encoding="utf-8")
 
     result = suggest_next(root)
@@ -804,7 +634,7 @@ def test_blocking_accepted_decision_does_not_suggest_arxiv_submission(tmp_path: 
     (root / "GPD" / "review" / "REFEREE-DECISION.json").write_text(
         json.dumps(
             {
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": manuscript_relpath(),
                 "target_journal": "jhep",
                 "final_recommendation": "accept",
                 "final_confidence": "high",
@@ -850,7 +680,7 @@ def test_accepted_review_decision_overrides_referee_response_with_submission(tmp
 def test_stale_non_theorem_review_snapshot_does_not_suggest_arxiv_submission(tmp_path: Path) -> None:
     root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
     _create_roadmap(root)
-    (root / "paper" / "main.tex").write_text(
+    manuscript_path(root).write_text(
         "\\documentclass{article}\n\\begin{document}\nEdited after accepted review.\n\\end{document}\n",
         encoding="utf-8",
     )
@@ -864,10 +694,12 @@ def test_stale_non_theorem_review_snapshot_does_not_suggest_arxiv_submission(tmp
 def test_review_package_for_different_active_manuscript_does_not_suggest_arxiv_submission(tmp_path: Path) -> None:
     root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
     _create_roadmap(root)
-    (root / "paper" / "main.tex").unlink()
-    alternate_dir = root / "manuscript"
-    alternate_dir.mkdir(parents=True, exist_ok=True)
-    (alternate_dir / "main.tex").write_text("\\documentclass{article}\n\\begin{document}\nOther draft.\n\\end{document}\n")
+    manuscript_path(root).unlink()
+    _write_active_manuscript_entrypoint(
+        root,
+        root_name="manuscript",
+        body="\\documentclass{article}\n\\begin{document}\nOther draft.\n\\end{document}\n",
+    )
 
     result = suggest_next(root)
     actions = [s.action for s in result.suggestions]
@@ -878,8 +710,12 @@ def test_review_package_for_different_active_manuscript_does_not_suggest_arxiv_s
 def test_missing_submission_support_artifacts_do_not_suggest_arxiv_submission(tmp_path: Path) -> None:
     root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
     _create_roadmap(root)
-    for artifact_name in ("ARTIFACT-MANIFEST.json", "BIBLIOGRAPHY-AUDIT.json", "main.pdf"):
-        (root / "paper" / artifact_name).unlink()
+    for artifact_path in (
+        root / "paper" / "ARTIFACT-MANIFEST.json",
+        root / "paper" / "BIBLIOGRAPHY-AUDIT.json",
+        manuscript_pdf_path(root),
+    ):
+        artifact_path.unlink()
 
     result = suggest_next(root)
     actions = [s.action for s in result.suggestions]
@@ -890,14 +726,13 @@ def test_missing_submission_support_artifacts_do_not_suggest_arxiv_submission(tm
 def test_accepted_review_decision_without_review_ledger_does_not_suggest_arxiv_submission(tmp_path: Path) -> None:
     root = _setup_project(tmp_path)
     _create_roadmap(root)
-    (root / "paper").mkdir()
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n", encoding="utf-8")
+    _write_active_manuscript_entrypoint(root)
     review_dir = root / "GPD" / "review"
     review_dir.mkdir(parents=True, exist_ok=True)
     (review_dir / "REFEREE-DECISION.json").write_text(
         json.dumps(
             {
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": manuscript_relpath(),
                 "target_journal": "jhep",
                 "final_recommendation": "accept",
                 "final_confidence": "high",
@@ -932,7 +767,7 @@ def test_theorem_bearing_stale_manuscript_proof_review_blocks_arxiv_submission(t
     root = _write_submission_review_package(tmp_path, theorem_bearing=True, review_report=True)
     _create_roadmap(root)
     (root / "GPD" / "AUTHOR-RESPONSE.md").write_text("Responses incorporated.\n", encoding="utf-8")
-    manuscript = root / "paper" / "main.tex"
+    manuscript = manuscript_path(root)
     manuscript.write_text(
         "\\documentclass{article}\n\\begin{document}\nRevised theorem statement.\n\\end{document}\n",
         encoding="utf-8",
@@ -966,6 +801,27 @@ def test_theorem_bearing_claim_inventory_without_math_coverage_blocks_arxiv_subm
     assert "arxiv-submission" not in actions
 
 
+def test_theorem_bearing_nested_section_text_blocks_arxiv_submission_without_claim_inventory(tmp_path: Path) -> None:
+    root = _write_submission_review_package(tmp_path, theorem_bearing=False, review_report=True)
+    _create_roadmap(root)
+    manuscript = _write_active_manuscript_entrypoint(
+        root,
+        body="\\documentclass{article}\n\\begin{document}\n\\input{sections/results}\n\\end{document}\n",
+    )
+    section_path = manuscript.parent / "sections" / "results.tex"
+    section_path.parent.mkdir(parents=True, exist_ok=True)
+    section_path.write_text(
+        "\\begin{theorem}For every r_0 > 0, the orbit intersects the target annulus.\\end{theorem}\n"
+        "\\begin{proof}Nested theorem proof.\\end{proof}\n",
+        encoding="utf-8",
+    )
+
+    result = suggest_next(root)
+    actions = [s.action for s in result.suggestions]
+
+    assert "arxiv-submission" not in actions
+
+
 def test_theorem_bearing_fresh_manuscript_proof_review_allows_arxiv_submission(tmp_path: Path) -> None:
     root = _write_submission_review_package(tmp_path, theorem_bearing=True, review_report=True)
     _create_roadmap(root)
@@ -979,8 +835,7 @@ def test_theorem_bearing_fresh_manuscript_proof_review_allows_arxiv_submission(t
 def test_milestone_referee_report_namespace_does_not_trigger_response(tmp_path: Path) -> None:
     root = _setup_project(tmp_path)
     _create_roadmap(root)
-    (root / "paper").mkdir()
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n")
+    _write_active_manuscript_entrypoint(root)
     (root / "GPD" / "v1-MILESTONE-REFEREE-REPORT.md").write_text("Milestone review only.\n")
 
     result = suggest_next(root)
@@ -995,8 +850,7 @@ def test_legacy_lowercase_referee_report_locations_no_longer_trigger_response(tm
     _create_roadmap(root)
     paper_dir = root / "GPD" / "paper"
     paper_dir.mkdir(parents=True)
-    (root / "paper").mkdir(parents=True)
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n")
+    _write_active_manuscript_entrypoint(root)
     (paper_dir / "referee-report-1.md").write_text("Major revision needed.\n")
 
     result = suggest_next(root)
@@ -1011,7 +865,7 @@ def test_non_markdown_referee_report_does_not_trigger_response(tmp_path: Path) -
     _create_roadmap(root)
     reports_dir = root / "paper" / "referee-reports"
     reports_dir.mkdir(parents=True)
-    (root / "paper" / "main.tex").write_text("\\documentclass{article}\n")
+    _write_active_manuscript_entrypoint(root)
     (reports_dir / "REFEREE-REPORT-1.txt").write_text("Major revision needed.\n")
 
     result = suggest_next(root)

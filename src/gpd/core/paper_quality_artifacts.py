@@ -14,6 +14,7 @@ from gpd.contracts import (
     ContractResults,
     ConventionLock,
     ResearchContract,
+    parse_comparison_verdicts_data_strict,
     parse_contract_results_data_strict,
 )
 from gpd.core.conventions import check_assertions, convention_check
@@ -46,9 +47,18 @@ __all__ = ["build_paper_quality_input"]
 
 _PLACEHOLDER_RE = re.compile(r"TODO|FIXME|PENDING|TBD|\\text\{\[PENDING\]\}")
 _MISSING_CITE_RE = re.compile(r"\\cite\{MISSING:")
-_ABSTRACT_RE = re.compile(r"\\begin\{abstract\}[\s\S]*?\\end\{abstract\}", re.IGNORECASE)
-_INTRO_RE = re.compile(r"\\section\*?\{[^}]*introduction[^}]*\}", re.IGNORECASE)
-_CONCLUSION_RE = re.compile(r"\\section\*?\{[^}]*conclusion[^}]*\}", re.IGNORECASE)
+_ABSTRACT_RE = re.compile(
+    r"(\\begin\{abstract\}[\s\S]*?\\end\{abstract\}|^\s{0,3}#{1,6}\s*abstract\b)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_INTRO_RE = re.compile(
+    r"(\\section\*?\{[^}]*introduction[^}]*\}|^\s{0,3}#{1,6}\s*introduction\b)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_CONCLUSION_RE = re.compile(
+    r"(\\section\*?\{[^}]*conclusion[^}]*\}|^\s{0,3}#{1,6}\s*conclusion\b)",
+    re.IGNORECASE | re.MULTILINE,
+)
 _SUPPLEMENT_RE = re.compile(r"appendix|supplement", re.IGNORECASE)
 _CITE_RE = re.compile(r"\\cite\{([^}]*)\}")
 _BIB_ENTRY_RE = re.compile(r"@\w+\s*\{\s*([^,\s]+)\s*,")
@@ -183,14 +193,25 @@ def _plan_contract_for_artifact(path: Path, meta: dict[str, object]) -> Research
     return _find_matching_plan_contract(path.parent, meta).contract
 
 
-def _collect_tex_content(paper_dir: Path) -> tuple[list[Path], str]:
-    tex_files = sorted(paper_dir.glob("*.tex"))
+def _collect_manuscript_content(
+    manuscript_dir: Path,
+    *,
+    entrypoint: Path | None,
+) -> tuple[list[Path], str]:
+    content_files: list[Path] = []
+    if entrypoint is not None and entrypoint.exists():
+        content_files.append(entrypoint)
+
+    for tex_file in sorted(manuscript_dir.glob("*.tex")):
+        if tex_file not in content_files:
+            content_files.append(tex_file)
+
     bodies = []
-    for tex_file in tex_files:
-        text = _read_text(tex_file)
+    for content_file in content_files:
+        text = _read_text(content_file)
         if text is not None:
             bodies.append(text)
-    return tex_files, "\n".join(bodies)
+    return content_files, "\n".join(bodies)
 
 
 def _first_existing_path(*candidates: Path) -> Path | None:
@@ -201,7 +222,7 @@ def _first_existing_path(*candidates: Path) -> Path | None:
 
 
 def _load_manuscript_config(manuscript_dir: Path) -> dict[str, object]:
-    config_path = _first_existing_path(manuscript_dir / "PAPER-CONFIG.json", manuscript_dir / "paper-config.json")
+    config_path = _first_existing_path(manuscript_dir / "PAPER-CONFIG.json")
     return _load_json(config_path) if config_path is not None else {}
 
 
@@ -317,23 +338,12 @@ def _parse_comparison_verdict_entries(
     *,
     errors: list[str] | None = None,
 ) -> list[ComparisonVerdict]:
-    if not isinstance(value, list):
+    try:
+        return parse_comparison_verdicts_data_strict(value)
+    except ValueError as exc:
         if errors is not None and value is not None:
-            errors.append(f"comparison_verdicts must be a list, not {type(value).__name__}")
+            errors.append(str(exc))
         return []
-
-    verdicts: list[ComparisonVerdict] = []
-    for index, item in enumerate(value):
-        if not isinstance(item, dict):
-            if errors is not None:
-                errors.append(f"comparison_verdicts[{index}] must be an object, not {type(item).__name__}")
-            continue
-        try:
-            verdicts.append(ComparisonVerdict.model_validate(item))
-        except PydanticValidationError as exc:
-            if errors is not None:
-                errors.append(f"comparison_verdicts[{index}]: {exc}")
-    return verdicts
 
 
 def _comparison_verdict_key(verdict: ComparisonVerdict) -> tuple[str, str | None, str | None, str]:
@@ -359,15 +369,20 @@ def _merge_comparison_verdict(existing: ComparisonVerdict, incoming: ComparisonV
     return existing.model_copy(update=updates) if updates else existing
 
 
-def _collect_comparison_verdicts(project_root: Path) -> tuple[list[ComparisonVerdict], bool]:
+def _collect_comparison_verdicts(
+    project_root: Path,
+    *,
+    manuscript_root: Path | None,
+) -> tuple[list[ComparisonVerdict], bool]:
     verdicts_by_key: dict[tuple[str, str | None, str | None, str], ComparisonVerdict] = {}
     parse_errors: list[str] = []
 
     candidate_roots = [
         project_root / "GPD" / "phases",
         project_root / "GPD" / "comparisons",
-        project_root / "paper",
     ]
+    if manuscript_root is not None:
+        candidate_roots.append(manuscript_root)
     for root in candidate_roots:
         if not root.exists():
             continue
@@ -672,7 +687,10 @@ def build_paper_quality_input(project_root: Path) -> PaperQualityInput:
     bibliography_audit = _load_bibliography_audit(manuscript_artifacts.bibliography_audit)
     paper_config = _load_manuscript_config(paper_dir)
 
-    tex_files, tex_content = _collect_tex_content(paper_dir)
+    manuscript_files, manuscript_content = _collect_manuscript_content(
+        paper_dir,
+        entrypoint=manuscript_artifacts.manuscript_entrypoint,
+    )
     title = (
         artifact_manifest.paper_title
         if artifact_manifest is not None
@@ -681,7 +699,10 @@ def build_paper_quality_input(project_root: Path) -> PaperQualityInput:
     journal = _resolve_paper_journal(artifact_manifest, paper_config)
 
     figure_registry = _load_figure_registry(paper_dir)
-    verdicts, verdicts_parse_ok = _collect_comparison_verdicts(root)
+    verdicts, verdicts_parse_ok = _collect_comparison_verdicts(
+        root,
+        manuscript_root=manuscript_artifacts.manuscript_root,
+    )
     contract_coverage = _collect_contract_coverage(root)
     figures, results = _build_figures_input(
         figure_registry,
@@ -690,16 +711,23 @@ def build_paper_quality_input(project_root: Path) -> PaperQualityInput:
         comparison_required=contract_coverage.requires_decisive_comparison,
     )
 
-    placeholder_count = len(_PLACEHOLDER_RE.findall(tex_content))
-    missing_cites = len(_MISSING_CITE_RE.findall(tex_content))
-    cite_keys = list(dict.fromkeys(part.strip() for match in _CITE_RE.findall(tex_content) for part in match.split(",") if part.strip()))
+    placeholder_count = len(_PLACEHOLDER_RE.findall(manuscript_content))
+    missing_cites = len(_MISSING_CITE_RE.findall(manuscript_content))
+    cite_keys = list(
+        dict.fromkeys(
+            part.strip()
+            for match in _CITE_RE.findall(manuscript_content)
+            for part in match.split(",")
+            if part.strip()
+        )
+    )
     required_sections = 3
     present_sections = 0
-    if _ABSTRACT_RE.search(tex_content):
+    if _ABSTRACT_RE.search(manuscript_content):
         present_sections += 1
-    if _INTRO_RE.search(tex_content):
+    if _INTRO_RE.search(manuscript_content):
         present_sections += 1
-    if _CONCLUSION_RE.search(tex_content):
+    if _CONCLUSION_RE.search(manuscript_content):
         present_sections += 1
 
     resolved_sources = bibliography_audit.resolved_sources if bibliography_audit is not None else 0
@@ -744,9 +772,11 @@ def build_paper_quality_input(project_root: Path) -> PaperQualityInput:
     )
     completeness = CompletenessQualityInput(
         abstract_written_last=BinaryCheck(),
-        required_sections_present=_coverage_metric(present_sections, required_sections) if tex_files else CoverageMetric(),
+        required_sections_present=_coverage_metric(present_sections, required_sections)
+        if manuscript_files
+        else CoverageMetric(),
         placeholders_cleared=BinaryCheck(passed=placeholder_count == 0),
-        supplemental_cross_referenced=BinaryCheck(passed=bool(_SUPPLEMENT_RE.search(tex_content))),
+        supplemental_cross_referenced=BinaryCheck(passed=bool(_SUPPLEMENT_RE.search(manuscript_content))),
     )
     conventions = _build_conventions_input(root)
     verification = VerificationQualityInput(
