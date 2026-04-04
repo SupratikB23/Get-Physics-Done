@@ -3232,15 +3232,6 @@ def _is_authoritative_contract_parse_error(error: str) -> bool:
     return any(pattern.fullmatch(error) for pattern in _AUTHORITATIVE_CONTRACT_PARSE_ERROR_PATTERNS)
 
 
-def _is_nested_extra_input_contract_error(error: str) -> bool:
-    path = _contract_error_path(error)
-    return (
-        error.endswith(": Extra inputs are not permitted")
-        and path is not None
-        and "." in path
-    )
-
-
 def _is_defaultable_singleton_contract_error(error: str) -> bool:
     return any(pattern.fullmatch(error) for pattern in _DEFAULTABLE_SINGLETON_CONTRACT_ERROR_PATTERNS)
 
@@ -3291,8 +3282,6 @@ def _recoverable_mapping_list_shape_error(error: str, *, contract_raw: dict[str,
 def _is_recoverable_contract_parse_error(error: str, *, contract_raw: dict[str, object]) -> bool:
     return any(
         (
-            _is_nested_extra_input_contract_error(error),
-            _is_defaultable_singleton_contract_error(error),
             _recoverable_collection_list_shape_error(error, contract_raw=contract_raw),
             _recoverable_mapping_list_shape_error(error, contract_raw=contract_raw),
         )
@@ -3331,6 +3320,18 @@ def _parse_contract_payload(contract_raw: dict[str, object]) -> tuple[ResearchCo
         _normalize_contract_parse_error(error, contract_raw=contract_raw)
         for error in strict_result.errors
     ]
+    normalized_salvage_recoverable_errors = [
+        _normalize_contract_parse_error(error, contract_raw=contract_raw)
+        for error in salvage_result.recoverable_errors
+    ]
+    recoverable_errors = sorted(
+        dict.fromkeys(
+            error
+            for error in [*normalized_strict_errors, *normalized_salvage_recoverable_errors]
+            if _is_recoverable_contract_parse_error(error, contract_raw=contract_raw)
+        ),
+        key=_contract_error_sort_key,
+    )
     authoritative_errors = [
         error
         for error in normalized_strict_errors
@@ -3339,17 +3340,16 @@ def _parse_contract_payload(contract_raw: dict[str, object]) -> tuple[ResearchCo
     if authoritative_errors:
         return None, [], _contract_payload_error(authoritative_errors)
     if strict_result.contract is None:
-        recoverable = [
-            error
-            for error in normalized_strict_errors
-            if _is_recoverable_contract_parse_error(error, contract_raw=contract_raw)
-        ]
-        blocking = [error for error in normalized_strict_errors if error not in recoverable]
         lossy_singleton_errors = [
             error for error in normalized_strict_errors if _is_lossy_singleton_contract_error(error)
         ]
         if lossy_singleton_errors:
             return None, [], _contract_payload_error(lossy_singleton_errors)
+        blocking = [
+            error
+            for error in [*normalized_strict_errors, *normalized_salvage_recoverable_errors]
+            if error not in recoverable_errors
+        ]
         if blocking:
             return None, [], _contract_payload_error(blocking)
         contract = salvage_result.contract
@@ -3360,20 +3360,21 @@ def _parse_contract_payload(contract_raw: dict[str, object]) -> tuple[ResearchCo
             ]
             combined_errors = salvage_errors or normalized_strict_errors
             return None, [], _contract_payload_error(combined_errors)
-        recoverable = [
-            *recoverable,
-            *(
-                _normalize_contract_parse_error(error, contract_raw=contract_raw)
-                for error in salvage_result.recoverable_errors
-            ),
-        ]
     else:
         contract = strict_result.contract
-        recoverable = []
+        blocking = [error for error in normalized_salvage_recoverable_errors if error not in recoverable_errors]
+        if blocking:
+            return None, [], _contract_payload_error(blocking)
+        if salvage_result.blocking_errors:
+            salvage_errors = [
+                _normalize_contract_parse_error(error, contract_raw=contract_raw)
+                for error in salvage_result.blocking_errors
+            ]
+            return None, [], _contract_payload_error(salvage_errors)
     integrity_error = _validate_contract_integrity(contract, contract_raw=contract_raw)
     if integrity_error is not None:
         return None, [], integrity_error
-    return contract, sorted(dict.fromkeys(recoverable), key=_contract_error_sort_key), None
+    return contract, recoverable_errors, None
 
 
 def _validate_benchmark_reference_binding(

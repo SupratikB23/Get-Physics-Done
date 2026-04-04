@@ -1937,7 +1937,7 @@ def test_run_contract_check_keyword_fallback_reaches_warning_when_prose_evidence
     assert "observed.metric_value" in benchmark["missing_inputs"]
 
 
-def test_contract_tools_salvage_unknown_nested_contract_fields() -> None:
+def test_contract_tools_reject_unknown_nested_contract_fields() -> None:
     from gpd.contracts import parse_project_contract_data_salvage
     from gpd.mcp.servers.verification_server import run_contract_check, suggest_contract_checks
 
@@ -1956,16 +1956,17 @@ def test_contract_tools_salvage_unknown_nested_contract_fields() -> None:
     run_result = run_contract_check(request)
     suggest_result = suggest_contract_checks(contract)
 
-    assert run_result["status"] == "pass"
-    assert run_result["contract_salvaged"] is True
+    expected = {
+        "error": "Invalid contract payload: references.0.notes: Extra inputs are not permitted",
+        "schema_version": 1,
+    }
+
     assert salvage_result.recoverable_errors == ["references.0.notes: Extra inputs are not permitted"]
-    assert run_result["contract_salvage_findings"] == salvage_result.recoverable_errors
-    assert suggest_result["suggested_count"] > 0
-    assert suggest_result["contract_salvaged"] is True
-    assert suggest_result["contract_salvage_findings"] == salvage_result.recoverable_errors
+    assert run_result == expected
+    assert suggest_result == expected
 
 
-def test_suggest_contract_checks_surfaces_unknown_nested_contract_field_salvage_metadata() -> None:
+def test_suggest_contract_checks_rejects_unknown_nested_contract_field_salvage_metadata() -> None:
     from gpd.contracts import parse_project_contract_data_salvage
     from gpd.mcp.servers.verification_server import suggest_contract_checks
 
@@ -1975,9 +1976,11 @@ def test_suggest_contract_checks_surfaces_unknown_nested_contract_field_salvage_
 
     result = suggest_contract_checks(contract)
 
-    assert result["suggested_count"] > 0
-    assert result["contract_salvaged"] is True
-    assert result["contract_salvage_findings"] == salvage_result.recoverable_errors
+    assert salvage_result.recoverable_errors == ["references.0.notes: Extra inputs are not permitted"]
+    assert result == {
+        "error": "Invalid contract payload: references.0.notes: Extra inputs are not permitted",
+        "schema_version": 1,
+    }
 
 
 def test_contract_from_data_drops_nested_unknown_scope_fields() -> None:
@@ -2576,14 +2579,35 @@ def test_contract_tools_reject_shared_contract_integrity_errors(
 
 
 def test_contract_tools_reject_shared_integrity_errors_after_salvage() -> None:
+    from gpd.mcp.servers.verification_server import run_contract_check, suggest_contract_checks
+
     contract = _load_project_contract_fixture()
     contract["references"][0]["notes"] = "legacy extra field"
     contract["deliverables"][0]["id"] = "claim-benchmark"
 
-    _assert_contract_tools_reject(
-        contract,
+    request = {
+        "check_key": "contract.benchmark_reproduction",
+        "contract": contract,
+        "binding": {"claim_ids": ["claim-benchmark"]},
+        "metadata": {"source_reference_id": "ref-benchmark"},
+        "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+    }
+    expected_details = [
+        "references.0.notes: Extra inputs are not permitted",
         "contract id claim-benchmark is reused across claim, deliverable; target resolution is ambiguous",
+    ]
+    expected_error = (
+        "Invalid contract payload: references.0.notes: Extra inputs are not permitted; "
+        "contract id claim-benchmark is reused across claim, deliverable; target resolution is ambiguous"
     )
+
+    run_result = run_contract_check(request)
+    suggest_result = suggest_contract_checks(contract)
+
+    for result in (run_result, suggest_result):
+        assert result["schema_version"] == 1
+        assert result["error"] == expected_error
+        assert result["contract_error_details"] == expected_details
 
 
 def test_verification_server_success_responses_keep_strict_stable_envelopes() -> None:
@@ -2647,10 +2671,10 @@ def test_run_contract_check_surfaces_unknown_nested_contract_field_salvage_metad
         }
     )
 
-    assert "error" not in result
-    assert result["status"] == "pass"
-    assert result["contract_salvaged"] is True
-    assert "claims.0.notes: Extra inputs are not permitted" in result["contract_salvage_findings"]
+    assert result == {
+        "error": "Invalid contract payload: claims.0.notes: Extra inputs are not permitted",
+        "schema_version": 1,
+    }
 
 
 def test_suggest_contract_checks_includes_proof_redteam_checks_for_proof_obligations() -> None:

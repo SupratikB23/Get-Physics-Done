@@ -293,6 +293,22 @@ class TestBuiltinServerDescriptors:
         assert isinstance(python_module["command"], str)
         assert python_module["notes"] == "Requires gpd package installed and Python >=3.11"
 
+    def test_state_public_descriptor_lists_only_live_tools(self):
+        from gpd.mcp.builtin_servers import build_public_descriptors
+
+        descriptor = build_public_descriptors()["gpd-state"]
+
+        assert descriptor["capabilities"] == [
+            "get_state",
+            "get_phase_info",
+            "advance_plan",
+            "get_progress",
+            "validate_state",
+            "run_health_check",
+            "get_config",
+        ]
+        assert "emit_phase_event" not in descriptor["capabilities"]
+
     def test_build_mcp_servers_dict_checks_optional_modules_in_target_interpreter(self, monkeypatch):
         from gpd.mcp import builtin_servers
 
@@ -2438,13 +2454,10 @@ class TestVerificationServer:
             }
         )
 
-        assert result["status"] == "pass"
-        assert result["contract_salvaged"] is True
-        assert result["contract_salvage_findings"] == ["claims.0.notes: Extra inputs are not permitted"]
-        assert (
-            "Contract payload was salvaged before verification: claims.0.notes: Extra inputs are not permitted"
-            in result["automated_issues"]
-        )
+        assert result == {
+            "error": "Invalid contract payload: claims.0.notes: Extra inputs are not permitted",
+            "schema_version": 1,
+        }
 
     def test_suggest_contract_checks_from_contract(self):
         import json
@@ -2512,13 +2525,10 @@ class TestVerificationServer:
 
         result = suggest_contract_checks(contract)
 
-        assert result["suggested_count"] > 0
-        assert result["contract_salvaged"] is True
-        assert result["contract_salvage_findings"] == ["references.0.notes: Extra inputs are not permitted"]
-        assert (
-            "Contract payload was salvaged before check suggestion: references.0.notes: Extra inputs are not permitted"
-            in result["contract_warnings"]
-        )
+        assert result == {
+            "error": "Invalid contract payload: references.0.notes: Extra inputs are not permitted",
+            "schema_version": 1,
+        }
 
     @pytest.mark.parametrize("payload", ["not-a-dict", ["claim-benchmark"], 3])
     def test_suggest_contract_checks_rejects_non_mapping_payloads(self, payload):
