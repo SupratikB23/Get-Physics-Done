@@ -181,7 +181,7 @@ The autonomy mode (from `GPD/config.json` field `autonomy`) controls how much hu
 
 ```bash
 # During load_project_state, extract from init JSON:
-AUTONOMY=$(echo "$INIT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('autonomy','balanced'))")
+AUTONOMY=$(echo "$INIT" | gpd json get .autonomy --default balanced)
 ```
 
 If not set in config.json, default to `balanced`.
@@ -191,7 +191,7 @@ If not set in config.json, default to `balanced`.
 Also read research_mode from init JSON:
 
 ```bash
-RESEARCH_MODE=$(echo "$INIT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('research_mode','balanced'))")
+RESEARCH_MODE=$(echo "$INIT" | gpd json get .research_mode --default balanced)
 ```
 
 | Mode | Execution Style |
@@ -473,21 +473,15 @@ Convention loading: see agent-infrastructure.md Convention Loading Protocol. If 
 
 ```bash
 # FALLBACK — read state.json convention_lock directly
-if [ ! -f GPD/state.json ]; then
+if ! gpd --raw state snapshot >/dev/null 2>&1; then
   echo "WARNING: GPD/state.json not found — no conventions loaded"
 else
-  python3 -c "
-import json, sys
-try:
-    state = json.load(open('GPD/state.json'))
-    lock = state.get('convention_lock', {})
-    if not lock:
-        print('WARNING: convention_lock is empty in state.json')
-    else:
-        print(json.dumps(lock, indent=2))
-except (FileNotFoundError, json.JSONDecodeError) as e:
-    print(f'ERROR: Failed to load conventions: {e}', file=sys.stderr)
-"
+  CONVENTION_LOCK=$(gpd --raw state snapshot 2>/dev/null | gpd json get .convention_lock --default "{}")
+  if [ -z "$CONVENTION_LOCK" ] || [ "$CONVENTION_LOCK" = "{}" ]; then
+    echo "WARNING: convention_lock is empty in state.json"
+  else
+    echo "$CONVENTION_LOCK"
+  fi
 fi
 ```
 
@@ -522,7 +516,7 @@ This enables automated verification by convention validation tooling and the ver
 **Check cross-project pattern library for known pitfalls in this physics domain.**
 
 ```bash
-gpd pattern search "$(python3 -c "import json; print(json.load(open('GPD/state.json')).get('physics_domain',''))" 2>/dev/null)" 2>/dev/null || true
+gpd --raw pattern search "$(gpd --raw state snapshot 2>/dev/null | gpd json get .physics_domain --default "")" 2>/dev/null || true
 ```
 
 If patterns exist, note them for this session — they represent errors to avoid and techniques that work. For patterns with severity `critical` or `high`, keep them in working memory as "watch for" items during derivation and computation. When a step matches a known pattern's trigger conditions, apply the prevention method before proceeding.

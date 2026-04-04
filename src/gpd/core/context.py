@@ -700,8 +700,18 @@ def _render_active_reference_context(
                 lines.append(f"- Source: {source_path}")
             for error in load_errors:
                 lines.append(f"- Blocker: {error}")
+            suppressed_nondurable_warnings = 0
             for warning in load_warnings:
+                if "entry is not concrete enough to preserve as durable guidance:" in warning:
+                    suppressed_nondurable_warnings += 1
+                    continue
                 lines.append(f"- Warning: {warning}")
+            if suppressed_nondurable_warnings:
+                noun = "entry" if suppressed_nondurable_warnings == 1 else "entries"
+                verb = "was" if suppressed_nondurable_warnings == 1 else "were"
+                lines.append(
+                    f"- Warning: {suppressed_nondurable_warnings} non-durable contract intake {noun} {verb} dropped during normalization."
+                )
 
     if contract_validation is not None:
         lines.extend(["", "## Project Contract Validation"])
@@ -714,8 +724,18 @@ def _render_active_reference_context(
             )
         for error in list(contract_validation.get("errors") or []):
             lines.append(f"- Blocker: {error}")
+        suppressed_nondurable_validation_warnings = 0
         for warning in list(contract_validation.get("warnings") or []):
+            if "entry is not concrete enough to preserve as durable guidance:" in warning:
+                suppressed_nondurable_validation_warnings += 1
+                continue
             lines.append(f"- Warning: {warning}")
+        if suppressed_nondurable_validation_warnings:
+            noun = "entry" if suppressed_nondurable_validation_warnings == 1 else "entries"
+            verb = "was" if suppressed_nondurable_validation_warnings == 1 else "were"
+            lines.append(
+                f"- Warning: {suppressed_nondurable_validation_warnings} non-durable contract intake {noun} {verb} dropped during normalization."
+            )
 
     lines.extend(
         [

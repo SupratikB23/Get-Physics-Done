@@ -818,7 +818,7 @@ If the contract is missing a decisive benchmark, falsification path, or forbidde
 Read the research mode from config before starting verification:
 
 ```bash
-MODE=$(python3 -c "import json; print(json.load(open('GPD/config.json')).get('research_mode','balanced'))" 2>/dev/null || echo "balanced")
+MODE=$(gpd --raw config get research_mode 2>/dev/null | gpd json get .value --default balanced 2>/dev/null || echo "balanced")
 ```
 
 The research mode adjusts your verification STRATEGY (what question you're answering), while the profile adjusts your verification DEPTH (how thoroughly you check).
@@ -841,7 +841,7 @@ The research mode adjusts your verification STRATEGY (what question you're answe
 The autonomy mode (from `GPD/config.json` field `autonomy`) determines how much human oversight exists OUTSIDE the verifier. Higher autonomy = verifier is a more critical safety net = stricter verification required.
 
 ```bash
-AUTONOMY=$(python3 -c "import json; print(json.load(open('GPD/config.json')).get('autonomy','balanced'))" 2>/dev/null || echo "balanced")
+AUTONOMY=$(gpd --raw config get autonomy 2>/dev/null | gpd json get .value --default balanced 2>/dev/null || echo "balanced")
 ```
 
 | Autonomy | Verifier Behavior | Rationale |
@@ -1561,7 +1561,7 @@ Flag any results that match known error pattern symptoms in the verification rep
 Search the cross-project pattern library for known error patterns in this domain:
 
 ```bash
-gpd pattern search "$(python3 -c "import json; print(json.load(open('GPD/state.json')).get('physics_domain',''))" 2>/dev/null)" 2>/dev/null || true
+gpd --raw pattern search "$(gpd --raw state snapshot 2>/dev/null | gpd json get .physics_domain --default "")" 2>/dev/null || true
 ```
 
 If patterns are found, add pattern-specific checks (sign checks, factor spot-checks, convergence tests) as described in each pattern's detection guidance. A matching pattern provides a strong starting check — but still verify independently.

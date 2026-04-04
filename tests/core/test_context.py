@@ -2383,7 +2383,7 @@ class TestInitProgress:
         ctx = init_progress(tmp_path)
 
         assert ctx["project_contract"]["references"][0]["must_surface"] is True
-        assert "Recover known limiting behavior" in ctx["active_reference_context"]
+        assert "10.1234/benchmark-figure-2" in ctx["active_reference_context"]
 
     def test_progress_surfaces_derived_state_memory(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)
