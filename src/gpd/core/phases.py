@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+from collections.abc import Callable
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -173,11 +174,135 @@ def _extract_frontmatter(content: str) -> dict:
     return meta
 
 
-def _save_state_markdown(cwd: Path, state_content: str) -> None:
-    """Lazy-load the canonical markdown -> state save path."""
-    from gpd.core.state import save_state_markdown
+def _save_state_markdown_locked(cwd: Path, state_content: str) -> None:
+    """Persist STATE.md-derived content while the canonical state lock is already held."""
+    from gpd.core.state import save_state_markdown_locked
 
-    save_state_markdown(cwd, state_content)
+    save_state_markdown_locked(cwd, state_content)
+
+
+def _update_state_markdown_locked(cwd: Path, update_state_content: Callable[[str], str]) -> bool:
+    """Rewrite STATE.md through the canonical state lock and locked writer path."""
+    state_path = _state_path(cwd)
+    if not state_path.exists():
+        return False
+
+    state_json_path = ProjectLayout(cwd).state_json
+    with file_lock(state_json_path):
+        state_content = state_path.read_text(encoding="utf-8")
+        _save_state_markdown_locked(cwd, update_state_content(state_content))
+    return True
+
+
+def _state_content_with_total_phases(state_content: str, *, total_phases: int) -> str:
+    """Rewrite total-phase counters in STATE.md content."""
+    updated = re.sub(
+        r"(\*\*Total Phases:\*\*\s*)(?:\d+|[—\-]+)",
+        rf"\g<1>{total_phases}",
+        state_content,
+    )
+    return re.sub(
+        r"(\bof\s+)\d+(\s*(?:\(|phases?))",
+        rf"\g<1>{total_phases}\2",
+        updated,
+        flags=re.IGNORECASE,
+    )
+
+
+def _phase_remove_state_content(
+    cwd: Path,
+    state_content: str,
+    *,
+    target_phase: str,
+    updated_roadmap: "RoadmapAnalysis",
+) -> str:
+    """Rewrite STATE.md after removing a phase."""
+    total_phases = updated_roadmap.phase_count
+
+    state_content = _state_content_with_total_phases(state_content, total_phases=total_phases)
+    current_phase_before = _extract_state_field(state_content, "Current Phase")
+    mapped_phase = _remap_phase_after_removal(
+        current_phase_before,
+        target_phase,
+        [phase.number for phase in updated_roadmap.phases],
+    )
+    mapped_phase_name = None
+    if mapped_phase is not None:
+        mapped_phase_entry = _get_roadmap_phase_by_number(cwd, mapped_phase)
+        mapped_phase_name = mapped_phase_entry.name if mapped_phase_entry else None
+
+    replacement_phase = mapped_phase or "\u2014"
+    replacement_name = mapped_phase_name or "\u2014"
+    state_content = _replace_state_field(state_content, "Current Phase", replacement_phase)
+    state_content = _replace_state_field(state_content, "Current Phase Name", replacement_name)
+
+    current_was_removed = (
+        current_phase_before is not None
+        and compare_phase_numbers(phase_normalize(current_phase_before), phase_normalize(target_phase)) == 0
+    )
+    if current_was_removed:
+        state_content = _replace_state_field(state_content, "Current Plan", "\u2014")
+
+    if mapped_phase is not None:
+        mapped_info = find_phase(cwd, mapped_phase)
+        plan_total = len(mapped_info.plans) if mapped_info else 0
+        total_plans_value = str(plan_total) if plan_total else "\u2014"
+    else:
+        total_plans_value = "\u2014"
+    return _replace_state_field(state_content, "Total Plans in Phase", total_plans_value)
+
+
+def _phase_complete_state_content(
+    cwd: Path,
+    state_content: str,
+    *,
+    phase_num: str,
+    next_phase_num: str | None,
+    next_phase_name: str | None,
+    today: str,
+    is_last_phase: bool,
+) -> str:
+    """Rewrite STATE.md after completing a phase."""
+    new_status = "Milestone complete" if is_last_phase else "Ready to plan"
+    current_status = _extract_state_field(state_content, "Status") or ""
+    _validate_transition(current_status, new_status)
+
+    state_content = _replace_state_field(state_content, "Current Phase", next_phase_num or phase_num)
+    phase_name_display = next_phase_name.replace("-", " ") if next_phase_name else (next_phase_num or "\u2014")
+    state_content = _replace_state_field(state_content, "Current Phase Name", phase_name_display)
+    state_content = _replace_state_field(
+        state_content,
+        "Status",
+        "Milestone complete" if is_last_phase else "Ready to plan",
+    )
+    state_content = _replace_state_field(state_content, "Current Plan", "\u2014")
+
+    em_dash = "\u2014"
+    if next_phase_num:
+        next_info = find_phase(cwd, next_phase_num)
+        next_plan_count = len(next_info.plans) if next_info else 0
+        replacement = str(next_plan_count) if next_plan_count else em_dash
+        state_content = _replace_state_field(state_content, "Total Plans in Phase", replacement)
+    else:
+        state_content = _replace_state_field(state_content, "Total Plans in Phase", em_dash)
+
+    state_content = _replace_state_field(state_content, "Last Activity", today)
+
+    transition_msg = f"Phase {phase_num} complete"
+    if next_phase_num:
+        transition_msg += f", transitioned to Phase {next_phase_num}"
+    return _replace_state_field(state_content, "Last Activity Description", transition_msg)
+
+
+def _milestone_complete_state_content(state_content: str, *, today: str, version: str) -> str:
+    """Rewrite STATE.md after completing a milestone."""
+    current_status = _extract_state_field(state_content, "Status") or ""
+    _validate_transition(current_status, "Milestone complete")
+    state_content = _replace_state_field(state_content, "Status", "Milestone complete")
+    state_content = _replace_state_field(state_content, "Last Activity", today)
+    return _replace_state_field(
+        state_content, "Last Activity Description", f"{version} milestone completed and archived"
+    )
 
 
 def _replace_state_field(state_content: str, field_name: str, new_value: str) -> str:
@@ -1372,25 +1497,13 @@ def phase_add(cwd: Path, description: str) -> PhaseAddResult:
 
             atomic_write(roadmap_path, updated)
 
-        # Update total_phases in STATE.md to stay in sync with ROADMAP
-        state_path = _state_path(cwd)
-        if state_path.exists():
-            with file_lock(state_path):
-                state_content = state_path.read_text(encoding="utf-8")
-                updated_roadmap = roadmap_analyze(cwd)
-                total_phases = updated_roadmap.phase_count
-                state_content = re.sub(
-                    r"(\*\*Total Phases:\*\*\s*)(?:\d+|[—\-]+)",
-                    rf"\g<1>{total_phases}",
-                    state_content,
-                )
-                state_content = re.sub(
-                    r"(\bof\s+)\d+(\s*(?:\(|phases?))",
-                    rf"\g<1>{total_phases}\2",
-                    state_content,
-                    flags=re.IGNORECASE,
-                )
-                _save_state_markdown(cwd, state_content)
+        # Update STATE.md using the canonical state lock so the markdown write
+        # stays coupled to the state.json write path.
+        total_phases = roadmap_analyze(cwd).phase_count
+        _update_state_markdown_locked(
+            cwd,
+            lambda state_content: _state_content_with_total_phases(state_content, total_phases=total_phases),
+        )
 
         return PhaseAddResult(
             phase_number=new_phase_num,
@@ -1480,25 +1593,13 @@ def phase_insert(cwd: Path, after_phase: str, description: str) -> PhaseInsertRe
             updated = content[:insert_idx] + phase_entry + content[insert_idx:]
             atomic_write(roadmap_path, updated)
 
-        # Update total_phases in STATE.md to stay in sync with ROADMAP
-        state_path = _state_path(cwd)
-        if state_path.exists():
-            with file_lock(state_path):
-                state_content = state_path.read_text(encoding="utf-8")
-                updated_roadmap = roadmap_analyze(cwd)
-                total_phases = updated_roadmap.phase_count
-                state_content = re.sub(
-                    r"(\*\*Total Phases:\*\*\s*)(?:\d+|[—\-]+)",
-                    rf"\g<1>{total_phases}",
-                    state_content,
-                )
-                state_content = re.sub(
-                    r"(\bof\s+)\d+(\s*(?:\(|phases?))",
-                    rf"\g<1>{total_phases}\2",
-                    state_content,
-                    flags=re.IGNORECASE,
-                )
-                _save_state_markdown(cwd, state_content)
+        # Update STATE.md using the canonical state lock so the markdown write
+        # stays coupled to the state.json write path.
+        total_phases = roadmap_analyze(cwd).phase_count
+        _update_state_markdown_locked(
+            cwd,
+            lambda state_content: _state_content_with_total_phases(state_content, total_phases=total_phases),
+        )
 
         return PhaseInsertResult(
             phase_number=decimal_phase,
@@ -1631,59 +1732,17 @@ def phase_remove(cwd: Path, target_phase: str, *, force: bool = False) -> PhaseR
             renamed_dirs = rd
             renamed_files = rf_
 
-            # Step 3: Update STATE.md
-            state_path = _state_path(cwd)
-            if state_path.exists():
-                with file_lock(state_path):
-                    state_content = state_path.read_text(encoding="utf-8")
-                    updated_roadmap = roadmap_analyze(cwd)
-                    total_phases = updated_roadmap.phase_count
-
-                    state_content = re.sub(
-                        r"(\*\*Total Phases:\*\*\s*)(?:\d+|[—\-]+)",
-                        rf"\g<1>{total_phases}",
-                        state_content,
-                    )
-                    state_content = re.sub(
-                        r"(\bof\s+)\d+(\s*(?:\(|phases?))",
-                        rf"\g<1>{total_phases}\2",
-                        state_content,
-                        flags=re.IGNORECASE,
-                    )
-
-                    current_phase_before = _extract_state_field(state_content, "Current Phase")
-                    mapped_phase = _remap_phase_after_removal(
-                        current_phase_before,
-                        target_phase,
-                        [phase.number for phase in updated_roadmap.phases],
-                    )
-                    mapped_phase_name = None
-                    if mapped_phase is not None:
-                        mapped_phase_entry = _get_roadmap_phase_by_number(cwd, mapped_phase)
-                        mapped_phase_name = mapped_phase_entry.name if mapped_phase_entry else None
-
-                    replacement_phase = mapped_phase or "\u2014"
-                    replacement_name = mapped_phase_name or "\u2014"
-                    state_content = _replace_state_field(state_content, "Current Phase", replacement_phase)
-                    state_content = _replace_state_field(state_content, "Current Phase Name", replacement_name)
-
-                    current_was_removed = (
-                        current_phase_before is not None
-                        and compare_phase_numbers(phase_normalize(current_phase_before), phase_normalize(target_phase))
-                        == 0
-                    )
-                    if current_was_removed:
-                        state_content = _replace_state_field(state_content, "Current Plan", "\u2014")
-
-                    if mapped_phase is not None:
-                        mapped_info = find_phase(cwd, mapped_phase)
-                        plan_total = len(mapped_info.plans) if mapped_info else 0
-                        total_plans_value = str(plan_total) if plan_total else "\u2014"
-                    else:
-                        total_plans_value = "\u2014"
-                    state_content = _replace_state_field(state_content, "Total Plans in Phase", total_plans_value)
-
-                    _save_state_markdown(cwd, state_content)
+            # Step 3: Update STATE.md through the canonical state lock path.
+            updated_roadmap = roadmap_analyze(cwd)
+            state_updated = _update_state_markdown_locked(
+                cwd,
+                lambda state_content: _phase_remove_state_content(
+                    cwd,
+                    state_content,
+                    target_phase=target_phase,
+                    updated_roadmap=updated_roadmap,
+                ),
+            )
 
         result = PhaseRemoveResult(
             removed=target_phase,
@@ -1691,7 +1750,7 @@ def phase_remove(cwd: Path, target_phase: str, *, force: bool = False) -> PhaseR
             renamed_directories=renamed_dirs,
             renamed_files=renamed_files,
             roadmap_updated=True,
-            state_updated=state_path.exists(),
+            state_updated=state_updated,
         )
 
     sync_phase_checkpoints(cwd)
@@ -1895,6 +1954,7 @@ def phase_complete(cwd: Path, phase_num: str) -> PhaseCompleteResult:
     is_last_phase = True
     plan_count = 0
     summary_count = 0
+    state_updated = False
 
     with gpd_span("phases.complete", phase=phase_num):
         with file_lock(roadmap_path) if roadmap_path.exists() else _null_context():
@@ -1944,43 +2004,19 @@ def phase_complete(cwd: Path, phase_num: str) -> PhaseCompleteResult:
                 next_phase_name = next_phase.name or None
                 is_last_phase = False
 
-            # Update STATE.md
-            if state_path.exists():
-                with file_lock(state_path):
-                    state_content = state_path.read_text(encoding="utf-8")
-
-                    new_status = "Milestone complete" if is_last_phase else "Ready to plan"
-                    current_status = _extract_state_field(state_content, "Status") or ""
-                    _validate_transition(current_status, new_status)
-
-                    state_content = _replace_state_field(state_content, "Current Phase", next_phase_num or phase_num)
-
-                    phase_name_display = next_phase_name.replace('-', ' ') if next_phase_name else (next_phase_num or "\u2014")
-                    state_content = _replace_state_field(state_content, "Current Phase Name", phase_name_display)
-                    state_content = _replace_state_field(
-                        state_content,
-                        "Status",
-                        "Milestone complete" if is_last_phase else "Ready to plan",
-                    )
-                    state_content = _replace_state_field(state_content, "Current Plan", "\u2014")
-
-                    em_dash = "\u2014"
-                    if next_phase_num:
-                        next_info = find_phase(cwd, next_phase_num)
-                        next_plan_count = len(next_info.plans) if next_info else 0
-                        replacement = str(next_plan_count) if next_plan_count else em_dash
-                        state_content = _replace_state_field(state_content, "Total Plans in Phase", replacement)
-                    else:
-                        state_content = _replace_state_field(state_content, "Total Plans in Phase", em_dash)
-
-                    state_content = _replace_state_field(state_content, "Last Activity", today)
-
-                    transition_msg = f"Phase {phase_num} complete"
-                    if next_phase_num:
-                        transition_msg += f", transitioned to Phase {next_phase_num}"
-                    state_content = _replace_state_field(state_content, "Last Activity Description", transition_msg)
-
-                    _save_state_markdown(cwd, state_content)
+            # Update STATE.md through the canonical state lock path.
+            state_updated = _update_state_markdown_locked(
+                cwd,
+                lambda state_content: _phase_complete_state_content(
+                    cwd,
+                    state_content,
+                    phase_num=phase_num,
+                    next_phase_num=next_phase_num,
+                    next_phase_name=next_phase_name,
+                    today=today,
+                    is_last_phase=is_last_phase,
+                ),
+            )
 
             # sync_phase_checkpoints() already degrades gracefully for malformed
             # or unreadable summaries. Let unexpected render/write failures
@@ -1997,7 +2033,7 @@ def phase_complete(cwd: Path, phase_num: str) -> PhaseCompleteResult:
             is_last_phase=is_last_phase,
             date=today,
             roadmap_updated=roadmap_path.exists(),
-            state_updated=state_path.exists(),
+            state_updated=state_updated,
         )
 
 
@@ -2027,6 +2063,7 @@ def milestone_complete(cwd: Path, version: str, *, name: str | None = None) -> M
     milestone_name = name or version
 
     archive_dir.mkdir(parents=True, exist_ok=True)
+    state_updated = False
 
     with gpd_span("milestone.complete", version=version, milestone=milestone_name):
         # Gather stats from the union of roadmap phases and on-disk phase dirs so
@@ -2106,17 +2143,14 @@ def milestone_complete(cwd: Path, version: str, *, name: str | None = None) -> M
             else:
                 atomic_write(milestones_path, f"# Milestones\n\n{milestone_entry}")
 
-            if state_path.exists():
-                with file_lock(state_path):
-                    state_content = state_path.read_text(encoding="utf-8")
-                    current_status = _extract_state_field(state_content, "Status") or ""
-                    _validate_transition(current_status, "Milestone complete")
-                    state_content = _replace_state_field(state_content, "Status", "Milestone complete")
-                    state_content = _replace_state_field(state_content, "Last Activity", today)
-                    state_content = _replace_state_field(
-                        state_content, "Last Activity Description", f"{version} milestone completed and archived"
-                    )
-                    _save_state_markdown(cwd, state_content)
+            state_updated = _update_state_markdown_locked(
+                cwd,
+                lambda state_content: _milestone_complete_state_content(
+                    state_content,
+                    today=today,
+                    version=version,
+                ),
+            )
 
             # sync_phase_checkpoints() already handles malformed or unreadable
             # summaries non-fatally. Let unexpected sync failures propagate.
@@ -2136,7 +2170,7 @@ def milestone_complete(cwd: Path, version: str, *, name: str | None = None) -> M
                 audit=(archive_dir / f"{version}-MILESTONE-AUDIT.md").exists(),
             ),
             milestones_updated=True,
-            state_updated=state_path.exists(),
+            state_updated=state_updated,
         )
 
 

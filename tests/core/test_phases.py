@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import textwrap
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
+import gpd.core.phases as phases_module
 from gpd.core.phases import (
     MilestoneIncompleteError,
     PhaseIncompleteError,
@@ -66,6 +68,24 @@ def _create_state(tmp_path: Path, content: str) -> Path:
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_text(textwrap.dedent(content))
     return state
+
+
+def _write_state_pair(tmp_path: Path, state: dict[str, object]) -> None:
+    state_md = generate_state_markdown(state)
+    _create_state(tmp_path, state_md)
+    (tmp_path / "GPD" / "state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def _recording_file_lock(lock_calls: list[Path]):
+    real_file_lock = phases_module.file_lock
+
+    @contextmanager
+    def _wrapper(path: Path, *args, **kwargs):
+        lock_calls.append(Path(path))
+        with real_file_lock(path, *args, **kwargs):
+            yield
+
+    return _wrapper
 
 
 # ─── find_phase ────────────────────────────────────────────────────────────────
@@ -380,13 +400,170 @@ def test_phase_add_leaves_state_files_unchanged_when_atomic_state_save_fails(tmp
     def _boom(_cwd: Path, _state_content: str) -> None:
         raise RuntimeError("sync exploded")
 
-    monkeypatch.setattr("gpd.core.phases._save_state_markdown", _boom)
+    monkeypatch.setattr("gpd.core.state.save_state_markdown_locked", _boom)
 
     with pytest.raises(RuntimeError, match="sync exploded"):
         phase_add(tmp_path, "New Feature")
 
     assert (tmp_path / "GPD" / "STATE.md").read_text(encoding="utf-8") == before_md
     assert (tmp_path / "GPD" / "state.json").read_text(encoding="utf-8") == before_json
+
+
+def _assert_canonical_state_lock_and_locked_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[Path]:
+    lock_calls: list[Path] = []
+    monkeypatch.setattr("gpd.core.phases.file_lock", _recording_file_lock(lock_calls))
+    monkeypatch.setattr(
+        "gpd.core.state.save_state_markdown",
+        lambda *_args, **_kwargs: pytest.fail("public save_state_markdown() should not be used"),
+    )
+    return lock_calls
+
+
+def test_phase_add_uses_canonical_state_lock_and_locked_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _create_roadmap(
+        tmp_path,
+        """\
+        ## Milestone v1.0: Test
+
+        ### Phase 1: Existing Phase
+        **Goal:** exist
+        """,
+    )
+    state = default_state_dict()
+    state["position"]["current_phase"] = "01"
+    state["position"]["current_phase_name"] = "Existing Phase"
+    state["position"]["total_phases"] = 1
+    state["position"]["status"] = "Ready to plan"
+    _write_state_pair(tmp_path, state)
+
+    lock_calls = _assert_canonical_state_lock_and_locked_writer(tmp_path, monkeypatch)
+    result = phase_add(tmp_path, "New Feature")
+
+    assert result.phase_number == 2
+    assert any(path.name == "state.json" for path in lock_calls)
+    assert not any(path.name == "STATE.md" for path in lock_calls)
+
+
+def test_phase_insert_uses_canonical_state_lock_and_locked_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _create_roadmap(
+        tmp_path,
+        """\
+        ### Phase 1: First
+        **Goal:** do first
+
+        ### Phase 2: Second
+        **Goal:** do second
+        """,
+    )
+    state = default_state_dict()
+    state["position"]["current_phase"] = "01"
+    state["position"]["current_phase_name"] = "First"
+    state["position"]["total_phases"] = 2
+    state["position"]["status"] = "Ready to plan"
+    _write_state_pair(tmp_path, state)
+
+    lock_calls = _assert_canonical_state_lock_and_locked_writer(tmp_path, monkeypatch)
+    result = phase_insert(tmp_path, "1", "Hotfix")
+
+    assert result.phase_number == "01.1"
+    assert any(path.name == "state.json" for path in lock_calls)
+    assert not any(path.name == "STATE.md" for path in lock_calls)
+
+
+def test_phase_remove_uses_canonical_state_lock_and_locked_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _create_roadmap(
+        tmp_path,
+        """\
+        ### Phase 1: First
+        **Goal:** first
+
+        ### Phase 2: Second
+        **Goal:** second
+
+        ### Phase 3: Third
+        **Goal:** third
+        """,
+    )
+    state = default_state_dict()
+    state["position"]["current_phase"] = "02"
+    state["position"]["current_phase_name"] = "Second"
+    state["position"]["total_phases"] = 3
+    state["position"]["current_plan"] = "2"
+    state["position"]["total_plans_in_phase"] = 2
+    state["position"]["status"] = "in_progress"
+    state["position"]["last_activity"] = "2026-03-01"
+    state["position"]["last_activity_description"] = "Removing"
+    _write_state_pair(tmp_path, state)
+    _create_phase_dir(tmp_path, "01-first")
+    _create_phase_dir(tmp_path, "02-second")
+    _create_phase_dir(tmp_path, "03-third")
+
+    lock_calls = _assert_canonical_state_lock_and_locked_writer(tmp_path, monkeypatch)
+    result = phase_remove(tmp_path, "2")
+
+    assert result.removed == "2"
+    assert any(path.name == "state.json" for path in lock_calls)
+    assert not any(path.name == "STATE.md" for path in lock_calls)
+
+
+def test_phase_complete_uses_canonical_state_lock_and_locked_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _create_roadmap(
+        tmp_path,
+        """\
+        ### Phase 1: Setup
+        **Goal:** setup
+        **Plans:** 1 plans
+
+        ### Phase 2: Build
+        **Goal:** build
+        """,
+    )
+    state = default_state_dict()
+    state["position"]["current_phase"] = "01"
+    state["position"]["current_phase_name"] = "Setup"
+    state["position"]["total_phases"] = 2
+    state["position"]["current_plan"] = "1"
+    state["position"]["total_plans_in_phase"] = 1
+    state["position"]["status"] = "in_progress"
+    state["position"]["last_activity"] = "2026-03-01"
+    state["position"]["last_activity_description"] = "Working"
+    _write_state_pair(tmp_path, state)
+
+    phase_dir = _create_phase_dir(tmp_path, "01-setup")
+    (phase_dir / "a-PLAN.md").write_text("plan")
+    (phase_dir / "a-SUMMARY.md").write_text("done")
+    _create_phase_dir(tmp_path, "02-build")
+
+    lock_calls = _assert_canonical_state_lock_and_locked_writer(tmp_path, monkeypatch)
+    result = phase_complete(tmp_path, "1")
+
+    assert result.next_phase == "02"
+    assert any(path.name == "state.json" for path in lock_calls)
+    assert not any(path.name == "STATE.md" for path in lock_calls)
+
+
+def test_milestone_complete_uses_canonical_state_lock_and_locked_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _create_roadmap(tmp_path, "## Milestone v1.0: Test\n### Phase 1: X\n**Goal:** x\n")
+    state = default_state_dict()
+    state["status"] = "in_progress"
+    state["last_activity"] = "2026-03-01"
+    state["last_activity_description"] = "Working"
+    _write_state_pair(tmp_path, state)
+
+    phase_dir = _create_phase_dir(tmp_path, "01-x")
+    (phase_dir / "a-PLAN.md").write_text("plan")
+    (phase_dir / "a-SUMMARY.md").write_text("---\none-liner: Did the thing\n---\n## Task 1\nDone")
+
+    lock_calls = _assert_canonical_state_lock_and_locked_writer(tmp_path, monkeypatch)
+    result = milestone_complete(tmp_path, "v1.0", name="Test Milestone")
+
+    assert result.version == "v1.0"
+    assert any(path.name == "state.json" for path in lock_calls)
+    assert not any(path.name == "STATE.md" for path in lock_calls)
+
 
 
 # ─── phase_insert ────────────────────────────────────────────────────────────────
