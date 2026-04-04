@@ -1770,3 +1770,49 @@ def test_runtime_cli_does_not_treat_marker_only_canonical_global_dir_as_local_wh
 
     assert exit_code == 127
     assert observed["config_dir"] == expected_missing_target
+
+
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_does_not_treat_marker_only_env_global_dir_as_local_ancestor_candidate(
+    monkeypatch,
+    tmp_path: Path,
+    descriptor,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    workspace = tmp_path / "workspace"
+    override_dir = workspace / descriptor.config_dir_name
+    override_dir.mkdir(parents=True)
+    _mark_complete_install(override_dir, runtime=descriptor.runtime_name, install_scope="global")
+    (override_dir / MANIFEST_NAME).unlink()
+
+    global_config = descriptor.global_config
+    env_var = global_config.env_var or global_config.env_dir_var or global_config.env_file_var
+    assert env_var is not None
+    env_value = str(override_dir / "config.json") if env_var == global_config.env_file_var else str(override_dir)
+    monkeypatch.setenv(env_var, env_value)
+
+    cli_cwd = workspace / "research" / "notes"
+    cli_cwd.mkdir(parents=True)
+    expected_missing_target = cli_cwd / descriptor.config_dir_name
+
+    exit_code, observed = _run_runtime_cli_with_recording(
+        monkeypatch,
+        cwd=cli_cwd,
+        argv=[
+            "--runtime",
+            descriptor.runtime_name,
+            "--config-dir",
+            f"./{descriptor.config_dir_name}",
+            "--install-scope",
+            "local",
+            "state",
+            "load",
+        ],
+        runtime=descriptor.runtime_name,
+    )
+
+    assert exit_code == 127
+    assert observed["config_dir"] == expected_missing_target

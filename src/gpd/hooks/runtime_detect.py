@@ -23,7 +23,7 @@ from gpd.adapters.runtime_catalog import (
     normalize_runtime_name as _normalize_runtime_name,
 )
 from gpd.adapters.runtime_catalog import (
-    resolve_global_config_dir as _resolve_global_config_dir,
+    resolve_global_config_dir_candidates as _resolve_global_config_dir_candidates,
 )
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, PLANNING_DIR_NAME, TODOS_DIR_NAME
 from gpd.hooks.install_metadata import install_scope_from_manifest, load_install_manifest_runtime_status
@@ -141,8 +141,8 @@ def _runtime_from_manifest_or_path(
             continue
         # Explicit config-dir ownership should remain stable even when the
         # current process carries unrelated runtime/XDG override env vars.
-        canonical_global_dir = _resolve_global_config_dir(adapter.runtime_descriptor, home=resolved_home, environ={})
-        if _paths_equal(config_dir, canonical_global_dir):
+        global_config_dirs = _resolve_global_config_dir_candidates(adapter.runtime_descriptor, home=resolved_home)
+        if any(_paths_equal(config_dir, global_dir) for global_dir in global_config_dirs):
             return runtime
     return None
 

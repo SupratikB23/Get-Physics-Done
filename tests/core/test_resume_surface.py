@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from copy import deepcopy
 
 import pytest
@@ -28,6 +29,16 @@ def test_lookup_resume_surface_helpers_prefer_canonical_values() -> None:
     assert lookup_resume_surface_text(payload, "active_resume_pointer") == "GPD/phases/07/.continue-here.md"
     assert lookup_resume_surface_mapping(payload, "active_bounded_segment") == {"segment_id": "seg-canonical"}
     assert lookup_resume_surface_list(payload, "resume_candidates") == [{"kind": "bounded_segment"}]
+
+
+def test_lookup_resume_surface_helpers_expose_canonical_only_signatures() -> None:
+    for helper in (
+        lookup_resume_surface_text,
+        lookup_resume_surface_mapping,
+        lookup_resume_surface_list,
+    ):
+        signature = inspect.signature(helper)
+        assert tuple(signature.parameters) == ("payload", "key")
 
 
 def test_resume_candidate_helpers_normalize_raw_and_canonical_shapes_to_canonical_origins() -> None:

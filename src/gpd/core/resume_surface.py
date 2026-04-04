@@ -91,46 +91,23 @@ def _lookup_resume_surface_field(
     payload: Mapping[str, object] | None,
     key: str,
     *,
-    compat_surface: Mapping[str, object] | None = None,
-    compat_key: str | None = None,
-    compat_keys: Sequence[str] = (),
-    prefer_compat: bool = False,
     accept: Callable[[object], object | None],
 ) -> object | None:
-    lookup_order = (
-        ((compat_surface, (compat_key, *compat_keys)), (payload, (key,)))
-        if prefer_compat
-        else ((payload, (key,)), (compat_surface, (compat_key, *compat_keys)))
-    )
-    for source, source_keys in lookup_order:
-        if not isinstance(source, Mapping):
-            continue
-        for source_key in source_keys:
-            if source_key is None or source_key not in source:
-                continue
-            accepted = accept(source[source_key])
-            if accepted is not None:
-                return accepted
+    if isinstance(payload, Mapping) and key in payload:
+        accepted = accept(payload[key])
+        if accepted is not None:
+            return accepted
     return None
 
 
 def lookup_resume_surface_text(
     payload: Mapping[str, object] | None,
     key: str,
-    *,
-    compat_surface: Mapping[str, object] | None = None,
-    compat_key: str | None = None,
-    compat_keys: Sequence[str] = (),
-    prefer_compat: bool = False,
 ) -> str | None:
-    """Return the first non-blank text value for a canonical or compat field."""
+    """Return the first non-blank text value for one canonical field."""
     return _lookup_resume_surface_field(
         payload,
         key,
-        compat_surface=compat_surface,
-        compat_key=compat_key,
-        compat_keys=compat_keys,
-        prefer_compat=prefer_compat,
         accept=lambda value: value if isinstance(value, str) and value.strip() else None,
     )
 
@@ -138,20 +115,11 @@ def lookup_resume_surface_text(
 def lookup_resume_surface_value(
     payload: Mapping[str, object] | None,
     key: str,
-    *,
-    compat_surface: Mapping[str, object] | None = None,
-    compat_key: str | None = None,
-    compat_keys: Sequence[str] = (),
-    prefer_compat: bool = False,
 ) -> object | None:
-    """Return the first non-empty canonical or compat value for one field."""
+    """Return the first non-empty value for one canonical field."""
     return _lookup_resume_surface_field(
         payload,
         key,
-        compat_surface=compat_surface,
-        compat_key=compat_key,
-        compat_keys=compat_keys,
-        prefer_compat=prefer_compat,
         accept=lambda value: None
         if value is None or (isinstance(value, str) and not value.strip())
         else value,
@@ -161,20 +129,11 @@ def lookup_resume_surface_value(
 def lookup_resume_surface_mapping(
     payload: Mapping[str, object] | None,
     key: str,
-    *,
-    compat_surface: Mapping[str, object] | None = None,
-    compat_key: str | None = None,
-    compat_keys: Sequence[str] = (),
-    prefer_compat: bool = False,
 ) -> dict[str, object] | None:
-    """Return the first mapping value for a canonical or compat field."""
+    """Return the first mapping value for one canonical field."""
     result = _lookup_resume_surface_field(
         payload,
         key,
-        compat_surface=compat_surface,
-        compat_key=compat_key,
-        compat_keys=compat_keys,
-        prefer_compat=prefer_compat,
         accept=lambda value: dict(value) if isinstance(value, Mapping) else None,
     )
     return result if isinstance(result, dict) else None
@@ -183,20 +142,11 @@ def lookup_resume_surface_mapping(
 def lookup_resume_surface_list(
     payload: Mapping[str, object] | None,
     key: str,
-    *,
-    compat_surface: Mapping[str, object] | None = None,
-    compat_key: str | None = None,
-    compat_keys: Sequence[str] = (),
-    prefer_compat: bool = False,
 ) -> list[object] | None:
-    """Return the first list value for a canonical or compat field."""
+    """Return the first list value for one canonical field."""
     result = _lookup_resume_surface_field(
         payload,
         key,
-        compat_surface=compat_surface,
-        compat_key=compat_key,
-        compat_keys=compat_keys,
-        prefer_compat=prefer_compat,
         accept=lambda value: list(value) if isinstance(value, list) else None,
     )
     return result if isinstance(result, list) else None

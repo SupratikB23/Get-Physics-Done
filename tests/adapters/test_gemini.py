@@ -1299,38 +1299,6 @@ class TestUninstall:
         assert not (target / "bin" / "gpd").exists()
         assert not (target / "policies" / "gpd-auto-edit.toml").exists()
 
-    def test_uninstall_removes_legacy_tools_allowed_entries(
-        self,
-        adapter: GeminiAdapter,
-        gpd_root: Path,
-        tmp_path: Path,
-    ) -> None:
-        target = tmp_path / ".gemini"
-        target.mkdir()
-        result = adapter.install(gpd_root, target)
-        adapter.finish_install(
-            result["settingsPath"],
-            result["settings"],
-            result["statuslineCommand"],
-            True,
-        )
-
-        settings_path = target / "settings.json"
-        manifest_path = target / "gpd-file-manifest.json"
-
-        settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        settings["tools"] = {"allowed": ["read_file", "custom_tool"]}
-        settings_path.write_text(json.dumps(settings), encoding="utf-8")
-
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest.setdefault("managed_config", {})["tools.allowed"] = ["read_file"]
-        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-        adapter.uninstall(target)
-
-        cleaned = json.loads(settings_path.read_text(encoding="utf-8"))
-        assert cleaned["tools"]["allowed"] == ["custom_tool"]
-
     def test_uninstall_preserves_non_gpd_sessionstart_statusline_hook(
         self,
         adapter: GeminiAdapter,

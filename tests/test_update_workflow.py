@@ -290,6 +290,64 @@ def test_legacy_global_install_without_explicit_target_ignores_current_env_overr
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_legacy_env_resolved_global_install_without_explicit_target_keeps_global_update_scope_implicit(
+    tmp_path: Path,
+    descriptor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = get_adapter(descriptor.runtime_name)
+    home_dir = tmp_path / "home"
+    home_dir.mkdir()
+    override_target = tmp_path / "override-config" / descriptor.config_dir_name
+    override_target.mkdir(parents=True)
+
+    install_kwargs: dict[str, object] = {"is_global": True}
+    if "skills/" in descriptor.manifest_file_prefixes:
+        skills_dir = tmp_path / "legacy-global-env" / "skills"
+        skills_dir.mkdir(parents=True)
+        install_kwargs["skills_dir"] = skills_dir
+
+    with monkeypatch.context() as ctx:
+        if descriptor.global_config.strategy == "env_or_home":
+            assert descriptor.global_config.env_var is not None
+            ctx.setenv(descriptor.global_config.env_var, str(override_target))
+        elif descriptor.global_config.strategy == "xdg_app":
+            if descriptor.global_config.env_dir_var is not None:
+                ctx.setenv(descriptor.global_config.env_dir_var, str(override_target))
+            elif descriptor.global_config.env_file_var is not None:
+                ctx.setenv(descriptor.global_config.env_file_var, str(override_target / "config.json"))
+            else:
+                ctx.setenv("XDG_CONFIG_HOME", str(override_target.parent))
+        else:
+            pytest.fail(f"Unsupported global config strategy: {descriptor.global_config.strategy}")
+        ctx.setattr("gpd.hooks.install_metadata.Path.home", lambda: home_dir)
+        _install_and_finalize(adapter, GPD_ROOT, override_target, **install_kwargs)
+
+    manifest_path = override_target / MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("explicit_target", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with monkeypatch.context() as ctx:
+        if descriptor.global_config.strategy == "env_or_home":
+            assert descriptor.global_config.env_var is not None
+            ctx.setenv(descriptor.global_config.env_var, str(override_target))
+        elif descriptor.global_config.strategy == "xdg_app":
+            if descriptor.global_config.env_dir_var is not None:
+                ctx.setenv(descriptor.global_config.env_dir_var, str(override_target))
+            elif descriptor.global_config.env_file_var is not None:
+                ctx.setenv(descriptor.global_config.env_file_var, str(override_target / "config.json"))
+            else:
+                ctx.setenv("XDG_CONFIG_HOME", str(override_target.parent))
+        else:
+            pytest.fail(f"Unsupported global config strategy: {descriptor.global_config.strategy}")
+        ctx.setattr("gpd.hooks.install_metadata.Path.home", lambda: home_dir)
+        command = installed_update_command(override_target)
+
+    assert command is None
+
+
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_legacy_noncanonical_global_install_without_explicit_target_keeps_authoritative_target_dir(
     tmp_path: Path,
     descriptor,

@@ -21,7 +21,11 @@ from gpd.adapters import get_adapter
 from gpd.adapters.install_utils import (
     build_runtime_install_repair_command,
 )
-from gpd.adapters.runtime_catalog import get_shared_install_metadata, normalize_runtime_name, resolve_global_config_dir
+from gpd.adapters.runtime_catalog import (
+    get_shared_install_metadata,
+    normalize_runtime_name,
+    resolve_global_config_dir_candidates,
+)
 from gpd.core.cli_args import resolve_root_global_cli_cwd_from_argv as _resolve_cli_cwd_from_argv
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_REEXEC
 from gpd.hooks.install_metadata import (
@@ -102,7 +106,7 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str) -> bo
 
     adapter = get_adapter(runtime)
     manifest_status, manifest, manifest_runtime = load_install_manifest_runtime_status(candidate)
-    canonical_global_dir = resolve_global_config_dir(adapter.runtime_descriptor, home=Path.home(), environ={})
+    global_config_dirs = resolve_global_config_dir_candidates(adapter.runtime_descriptor, home=Path.home())
     if manifest_status == "ok":
         if manifest_runtime != runtime:
             return False
@@ -110,14 +114,14 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str) -> bo
         manifest_scope = manifest.get("install_scope")
         if manifest_scope == "global":
             return False
-        if _paths_equal(candidate, canonical_global_dir) and manifest_scope != "local":
+        if any(_paths_equal(candidate, global_dir) for global_dir in global_config_dirs) and manifest_scope != "local":
             return False
         return True
 
     has_install_markers = config_dir_has_managed_install_markers(candidate)
     if not has_install_markers:
         return False
-    if _paths_equal(candidate, canonical_global_dir):
+    if any(_paths_equal(candidate, global_dir) for global_dir in global_config_dirs):
         return False
     return True
 
@@ -168,7 +172,6 @@ def _resolve_config_dir(
 def _uses_effective_explicit_target(
     *,
     runtime: str,
-    raw_config_dir: str,
     config_dir: Path,
     install_scope: str,
     explicit_target: bool,
@@ -219,7 +222,6 @@ def _maybe_reexec_from_checkout(raw_argv: list[str], *, cli_cwd: Path) -> None:
 def _install_error_message(
     *,
     runtime: str,
-    raw_config_dir: str,
     config_dir: Path,
     install_scope: str,
     explicit_target: bool,
@@ -235,7 +237,6 @@ def _install_error_message(
         target_dir=config_dir,
         explicit_target=_uses_effective_explicit_target(
             runtime=runtime,
-            raw_config_dir=raw_config_dir,
             config_dir=config_dir,
             install_scope=install_scope,
             explicit_target=explicit_target,
@@ -254,7 +255,6 @@ def _runtime_mismatch_error_message(
     runtime: str,
     manifest_runtime: str,
     manifest_install_scope: str | None,
-    raw_config_dir: str,
     config_dir: Path,
     install_scope: str,
     explicit_target: bool,
@@ -268,7 +268,6 @@ def _runtime_mismatch_error_message(
         target_dir=config_dir,
         explicit_target=_uses_effective_explicit_target(
             runtime=manifest_runtime,
-            raw_config_dir=raw_config_dir,
             config_dir=config_dir,
             install_scope=owning_install_scope,
             explicit_target=explicit_target,
@@ -286,7 +285,6 @@ def _runtime_mismatch_error_message(
 def _malformed_manifest_runtime_error_message(
     *,
     runtime: str,
-    raw_config_dir: str,
     config_dir: Path,
     install_scope: str,
     explicit_target: bool,
@@ -299,7 +297,6 @@ def _malformed_manifest_runtime_error_message(
         target_dir=config_dir,
         explicit_target=_uses_effective_explicit_target(
             runtime=runtime,
-            raw_config_dir=raw_config_dir,
             config_dir=config_dir,
             install_scope=install_scope,
             explicit_target=explicit_target,
@@ -316,7 +313,6 @@ def _malformed_manifest_runtime_error_message(
 def _missing_manifest_runtime_error_message(
     *,
     runtime: str,
-    raw_config_dir: str,
     config_dir: Path,
     install_scope: str,
     explicit_target: bool,
@@ -329,7 +325,6 @@ def _missing_manifest_runtime_error_message(
         target_dir=config_dir,
         explicit_target=_uses_effective_explicit_target(
             runtime=runtime,
-            raw_config_dir=raw_config_dir,
             config_dir=config_dir,
             install_scope=install_scope,
             explicit_target=explicit_target,
@@ -346,7 +341,6 @@ def _missing_manifest_runtime_error_message(
 def _missing_manifest_error_message(
     *,
     runtime: str,
-    raw_config_dir: str,
     config_dir: Path,
     install_scope: str,
     explicit_target: bool,
@@ -359,7 +353,6 @@ def _missing_manifest_error_message(
         target_dir=config_dir,
         explicit_target=_uses_effective_explicit_target(
             runtime=runtime,
-            raw_config_dir=raw_config_dir,
             config_dir=config_dir,
             install_scope=install_scope,
             explicit_target=explicit_target,
@@ -377,7 +370,6 @@ def _missing_manifest_error_message(
 def _untrusted_manifest_error_message(
     *,
     runtime: str,
-    raw_config_dir: str,
     config_dir: Path,
     install_scope: str,
     explicit_target: bool,
@@ -390,7 +382,6 @@ def _untrusted_manifest_error_message(
         target_dir=config_dir,
         explicit_target=_uses_effective_explicit_target(
             runtime=runtime,
-            raw_config_dir=raw_config_dir,
             config_dir=config_dir,
             install_scope=install_scope,
             explicit_target=explicit_target,
@@ -431,7 +422,6 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(
             _missing_manifest_error_message(
                 runtime=runtime,
-                raw_config_dir=options.config_dir,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
                 explicit_target=bool(options.explicit_target),
@@ -443,7 +433,6 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(
             _untrusted_manifest_error_message(
                 runtime=runtime,
-                raw_config_dir=options.config_dir,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
                 explicit_target=bool(options.explicit_target),
@@ -455,7 +444,6 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(
             _missing_manifest_runtime_error_message(
                 runtime=runtime,
-                raw_config_dir=options.config_dir,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
                 explicit_target=bool(options.explicit_target),
@@ -467,7 +455,6 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(
             _malformed_manifest_runtime_error_message(
                 runtime=runtime,
-                raw_config_dir=options.config_dir,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
                 explicit_target=bool(options.explicit_target),
@@ -481,7 +468,6 @@ def main(argv: list[str] | None = None) -> int:
                 runtime=runtime,
                 manifest_runtime=manifest_runtime,
                 manifest_install_scope=manifest_install_scope,
-                raw_config_dir=options.config_dir,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
                 explicit_target=bool(options.explicit_target),
@@ -495,7 +481,6 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(
             _install_error_message(
                 runtime=adapter.runtime_name,
-                raw_config_dir=options.config_dir,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
                 explicit_target=bool(options.explicit_target),

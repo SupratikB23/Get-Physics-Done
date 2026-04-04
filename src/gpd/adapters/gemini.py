@@ -1522,24 +1522,6 @@ class GeminiAdapter(RuntimeAdapter):
                     del settings["experimental"]
                 modified = True
 
-            # Remove legacy tools.allowed entries GPD may have written before
-            # migrating to the Policy Engine (manifests from older installs).
-            legacy_allowed_tools = _normalize_string_list(
-                managed_config.get("tools.allowed") if isinstance(managed_config, dict) else None
-            )
-            if legacy_allowed_tools:
-                tools = settings.get("tools")
-                if isinstance(tools, dict):
-                    allowed_tools, changed = _remove_strings(tools.get("allowed"), legacy_allowed_tools)
-                    if changed:
-                        modified = True
-                        if allowed_tools:
-                            tools["allowed"] = allowed_tools
-                        else:
-                            tools.pop("allowed", None)
-                    if not tools:
-                        settings.pop("tools", None)
-
             policy_paths = _normalize_string_list(settings.get("policyPaths"))
             if policy_paths:
                 candidate_policy_paths = set(managed_policy_paths)

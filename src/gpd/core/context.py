@@ -67,6 +67,7 @@ from gpd.core.protocol_bundles import render_protocol_bundle_context, select_pro
 from gpd.core.reference_ingestion import ingest_manuscript_reference_status, ingest_reference_artifacts
 from gpd.core.results import result_list
 from gpd.core.resume_surface import (
+    RESUME_COMPATIBILITY_ALIAS_FIELDS,
     build_resume_candidate,
     build_resume_segment_candidate,
     canonicalize_resume_public_payload,
@@ -2108,7 +2109,9 @@ def init_resume(cwd: Path, *, data_root: Path | None = None) -> dict:
     }
     result.update(_build_reference_runtime_context(effective_cwd))
     execution_public = {
-        key: value for key, value in execution_context.items() if key != "resume_projection"
+        key: value
+        for key, value in execution_context.items()
+        if key != "resume_projection" and key not in RESUME_COMPATIBILITY_ALIAS_FIELDS
     }
     result.update(execution_public)
     if recent_bounded_segment_promoted and not bool(result.get("execution_resumable")):

@@ -1027,6 +1027,49 @@ def test_init_resume_normalizes_project_local_absolute_current_execution_resume_
     assert "compat_resume_surface" not in ctx
 
 
+def test_init_resume_does_not_build_legacy_resume_aliases_before_public_canonicalization(
+    tmp_path: Path, state_project_factory, monkeypatch
+) -> None:
+    cwd = state_project_factory(tmp_path)
+    absolute_resume_path = cwd / "GPD" / "phases" / "03-analysis" / ".continue-here.md"
+    absolute_resume_path.parent.mkdir(parents=True, exist_ok=True)
+    absolute_resume_path.write_text("resume\n", encoding="utf-8")
+    _write_current_execution(
+        cwd,
+        {
+            "session_id": "sess-1",
+            "phase": "03",
+            "plan": "02",
+            "segment_id": "seg-4",
+            "segment_status": "paused",
+            "resume_file": str(absolute_resume_path),
+            "updated_at": "2026-03-10T12:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(
+        context_module,
+        "_current_machine_identity",
+        lambda: {"hostname": "builder-01", "platform": "Linux 6.1 x86_64"},
+    )
+
+    captured: dict[str, object] = {}
+
+    def _capture_public_payload(payload: dict[str, object], *, compat_fields=RESUME_COMPATIBILITY_ALIAS_FIELDS):
+        captured["payload"] = dict(payload)
+        return dict(payload)
+
+    monkeypatch.setattr(context_module, "canonicalize_resume_public_payload", _capture_public_payload)
+
+    ctx = init_resume(tmp_path)
+
+    raw_payload = captured["payload"]
+    assert isinstance(raw_payload, dict)
+    _assert_no_resume_compat_aliases(raw_payload)
+    assert raw_payload["derived_execution_head_resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
+    assert raw_payload["active_resume_pointer"] == "GPD/phases/03-analysis/.continue-here.md"
+    assert ctx == raw_payload
+
+
 def test_init_resume_ignores_nonportable_current_execution_resume_file_and_uses_session_handoff(
     tmp_path: Path, state_project_factory, monkeypatch
 ) -> None:

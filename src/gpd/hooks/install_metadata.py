@@ -36,12 +36,11 @@ def _infer_missing_explicit_target(runtime: str, *, install_scope: str, config_d
 
     runtime_catalog = import_module("gpd.adapters.runtime_catalog")
     adapter = get_adapter(runtime)
-    canonical_global_dir = runtime_catalog.resolve_global_config_dir(
+    global_config_dirs = runtime_catalog.resolve_global_config_dir_candidates(
         adapter.runtime_descriptor,
         home=Path.home(),
-        environ={},
     )
-    if _paths_equal(config_dir, canonical_global_dir):
+    if any(_paths_equal(config_dir, global_dir) for global_dir in global_config_dirs):
         return None
     return True
 

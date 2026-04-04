@@ -727,6 +727,13 @@ def get_runtime_capabilities(runtime: str) -> RuntimeCapabilityPolicy:
     return get_runtime_descriptor(runtime).capabilities
 
 
+def _paths_equal(left: Path, right: Path) -> bool:
+    try:
+        return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
+    except OSError:
+        return left.expanduser() == right.expanduser()
+
+
 def resolve_global_config_dir(
     descriptor: RuntimeDescriptor,
     *,
@@ -759,6 +766,31 @@ def resolve_global_config_dir(
     raise ValueError(f"Unsupported global config strategy: {policy.strategy}")
 
 
+def resolve_global_config_dir_candidates(
+    descriptor: RuntimeDescriptor,
+    *,
+    home: Path | None = None,
+    environ: dict[str, str] | None = None,
+) -> tuple[Path, ...]:
+    """Return every authoritative global config dir for the current environment.
+
+    Some flows need to recognize both the canonical home-based location and the
+    currently effective env-overridden location as global runtime roots. That
+    lets local/runtime ownership checks stay fail-closed when manifests drift,
+    without treating one authoritative global root as a workspace-local install.
+    """
+
+    candidates: list[Path] = []
+    for candidate in (
+        resolve_global_config_dir(descriptor, home=home, environ=environ),
+        resolve_global_config_dir(descriptor, home=home, environ={}),
+    ):
+        if any(_paths_equal(candidate, existing) for existing in candidates):
+            continue
+        candidates.append(candidate)
+    return tuple(candidates)
+
+
 __all__ = [
     "GlobalConfigPolicy",
     "HookPayloadPolicy",
@@ -775,5 +807,6 @@ __all__ = [
     "iter_runtime_descriptors",
     "list_runtime_names",
     "normalize_runtime_name",
+    "resolve_global_config_dir_candidates",
     "resolve_global_config_dir",
 ]
