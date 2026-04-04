@@ -46,6 +46,30 @@ def test_validate_project_contract_command_accepts_valid_fixture_via_stdin() -> 
     assert payload["reference_count"] > 0
 
 
+def test_validate_project_contract_command_stdin_matches_file_mode_outside_project() -> None:
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+
+    with runner.isolated_filesystem():
+        contract_path = Path("project-contract.json")
+        contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+        file_result = runner.invoke(
+            app,
+            ["--raw", "validate", "project-contract", str(contract_path)],
+            catch_exceptions=False,
+        )
+        stdin_result = runner.invoke(
+            app,
+            ["--raw", "validate", "project-contract", "-"],
+            input=json.dumps(contract),
+            catch_exceptions=False,
+        )
+
+    assert file_result.exit_code == 0, file_result.output
+    assert stdin_result.exit_code == 0, stdin_result.output
+    assert json.loads(stdin_result.output) == json.loads(file_result.output)
+
+
 def test_validate_project_contract_command_warns_when_user_guidance_is_missing(tmp_path: Path) -> None:
     contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
     contract["context_intake"] = {
