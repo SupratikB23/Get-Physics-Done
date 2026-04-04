@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from gpd.core.recent_projects import list_recent_projects, record_recent_project
-from gpd.core.recovery_advice import build_recovery_advice, serialize_recovery_orientation
+from gpd.core.recovery_advice import (
+    build_recovery_advice,
+    serialize_recovery_advice,
+    serialize_recovery_orientation,
+)
+from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
 
 
 def _project(tmp_path: Path, name: str = "project") -> Path:
@@ -33,7 +38,7 @@ def test_build_recovery_advice_prefers_current_workspace_recovery_state(tmp_path
     assert advice.project_reentry_mode == "current-workspace"
     assert advice.primary_command == "gpd resume"
     assert advice.active_resume_kind == "bounded_segment"
-    assert advice.active_resume_origin == "compat.current_execution"
+    assert advice.active_resume_origin == "continuation.bounded_segment"
     assert advice.current_workspace_has_recovery is True
     assert advice.current_workspace_resumable is True
     assert [action.availability for action in advice.actions] == ["now", "now", "now"]
@@ -66,7 +71,7 @@ def test_build_recovery_advice_treats_canonical_bounded_segment_as_authoritative
     assert advice.current_workspace_has_resume_file is True
     assert advice.has_local_recovery_target is True
     assert advice.active_resume_kind == "bounded_segment"
-    assert advice.active_resume_origin == "compat.current_execution"
+    assert advice.active_resume_origin == "continuation.bounded_segment"
     assert advice.active_resume_pointer == "GPD/phases/06/.continue-here.md"
     assert advice.resume_candidates_count == 0
 
@@ -110,7 +115,7 @@ def test_serialize_recovery_orientation_is_canonical_first_and_omits_legacy_resu
         "fast_next_reason",
     ]
     assert orientation["active_resume_kind"] == "bounded_segment"
-    assert orientation["active_resume_origin"] == "compat.current_execution"
+    assert orientation["active_resume_origin"] == "continuation.bounded_segment"
     assert orientation["active_resume_pointer"] == "GPD/phases/06/.continue-here.md"
     assert orientation["missing_continuity_handoff"] is False
     assert orientation["resume_candidates_count"] == 1
@@ -119,6 +124,56 @@ def test_serialize_recovery_orientation_is_canonical_first_and_omits_legacy_resu
     assert "execution_resume_file_source" not in orientation
     assert "has_session_resume_file" not in orientation
     assert "missing_session_resume_file" not in orientation
+
+
+def test_serialize_recovery_advice_is_canonical_first_and_omits_legacy_resume_aliases(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path)
+
+    advice = build_recovery_advice(
+        project,
+        recent_rows=[],
+        resume_payload={
+            "resume_candidates": [
+                {
+                    "kind": "bounded_segment",
+                    "origin": "compat.current_execution",
+                    "resume_file": "GPD/phases/06/.continue-here.md",
+                }
+            ],
+            "active_resume_kind": "bounded_segment",
+            "active_resume_origin": "compat.current_execution",
+            "active_resume_pointer": "GPD/phases/06/.continue-here.md",
+            "execution_resumable": True,
+            "has_live_execution": True,
+        },
+    )
+
+    public = serialize_recovery_advice(advice)
+
+    assert list(public)[:10] == [
+        "resume_surface_schema_version",
+        "mode",
+        "status",
+        "decision_source",
+        "primary_command",
+        "primary_reason",
+        "continue_command",
+        "continue_reason",
+        "fast_next_command",
+        "fast_next_reason",
+    ]
+    assert public["resume_surface_schema_version"] == 1
+    assert public["active_resume_kind"] == "bounded_segment"
+    assert public["active_resume_origin"] == "continuation.bounded_segment"
+    assert public["active_resume_pointer"] == "GPD/phases/06/.continue-here.md"
+    assert public["actions"][0]["kind"] == "primary"
+    assert public["actions"][0]["command"] == "gpd resume"
+    assert public["actions"][-1]["kind"] == "fast-next"
+    assert "compat_resume_surface" not in public
+    for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+        assert key not in public
 
 
 def test_build_recovery_advice_marks_auto_selected_recent_project_recovery(
@@ -164,7 +219,7 @@ def test_build_recovery_advice_marks_auto_selected_recent_project_recovery(
     assert advice.primary_command == "gpd resume --recent"
     assert advice.project_reentry_reason == "GPD found the only recoverable recent project on this machine and selected it automatically."
     assert advice.active_resume_kind == "bounded_segment"
-    assert advice.active_resume_origin == "compat.current_execution"
+    assert advice.active_resume_origin == "continuation.bounded_segment"
     assert advice.current_workspace_has_recovery is True
     assert advice.actions[0].availability == "now"
     assert advice.actions[1].availability == "now"
@@ -754,7 +809,7 @@ def test_build_recovery_advice_recovers_continuity_handoff_from_candidate_only_p
     assert advice.status == "session-handoff"
     assert advice.decision_source == "current-workspace"
     assert advice.active_resume_kind == "continuity_handoff"
-    assert advice.active_resume_origin == "compat.session_resume_file"
+    assert advice.active_resume_origin == "continuation.handoff"
     assert advice.has_continuity_handoff is True
     assert advice.current_workspace_has_resume_file is True
 

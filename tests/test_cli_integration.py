@@ -1384,7 +1384,7 @@ class TestResume:
         parsed = json.loads(result.output)
 
         assert parsed["active_resume_kind"] == "continuity_handoff"
-        assert parsed["active_resume_origin"] == "continuation.handoff"
+        assert parsed["active_resume_origin"] == "canonical_continuation"
         assert parsed["active_resume_pointer"] == "GPD/phases/01-test-phase/.continue-here.md"
         assert parsed["execution_resumable"] is False
         assert parsed["has_live_execution"] is False
@@ -1392,20 +1392,10 @@ class TestResume:
         assert parsed["recovery_status_label"] == "Continuity handoff"
         assert parsed["resume_candidates"][0]["last_result_id"] == "R-bridge-01"
         assert parsed["resume_candidates"][0]["kind"] == "continuity_handoff"
-        assert parsed["resume_candidates"][0]["origin"] == "continuation.handoff"
+        assert parsed["resume_candidates"][0]["origin"] == "canonical_continuation"
         assert parsed["recovery_candidates"][0]["kind"] == "continuity_handoff"
-        assert parsed["recovery_candidates"][0]["origin"] == "continuation.handoff"
-        compat = parsed["compat_resume_surface"]
-        _assert_resume_compat_surface_inventory(compat)
-        assert compat["execution_resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
-        assert compat["execution_resume_file_source"] == "session_resume_file"
-        assert compat["resume_mode"] == "continuity_handoff"
-        assert len(compat["segment_candidates"]) == 1
-        assert compat["segment_candidates"][0]["source"] == "session_resume_file"
-        assert compat["segment_candidates"][0]["status"] == "handoff"
-        assert compat["segment_candidates"][0]["resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
-        assert compat["segment_candidates"][0]["last_result_id"] == "R-bridge-01"
-        assert compat["segment_candidates"][0]["resumable"] is False
+        assert parsed["recovery_candidates"][0]["origin"] == "canonical_continuation"
+        assert "compat_resume_surface" not in parsed
 
     def test_resume_raw_surfaces_hydrated_active_resume_result_from_nested_cwd(
         self, gpd_project: Path, monkeypatch: pytest.MonkeyPatch
@@ -1449,7 +1439,7 @@ class TestResume:
         assert parsed["project_root_source"] == "current_workspace"
         assert parsed["project_root_auto_selected"] is False
         assert parsed["active_resume_kind"] == "continuity_handoff"
-        assert parsed["active_resume_origin"] == "continuation.handoff"
+        assert parsed["active_resume_origin"] == "canonical_continuation"
         assert parsed["active_resume_pointer"] == "GPD/phases/01-test-phase/.continue-here.md"
         assert parsed["active_resume_result"]["id"] == "R-bridge-01"
         assert parsed["active_resume_result"]["description"] == "Benchmark reproduction"
@@ -1493,7 +1483,7 @@ class TestResume:
         assert parsed["recovery_status"] == "missing-handoff"
         assert parsed["recovery_status_label"] == "Missing continuity handoff"
         assert parsed["recovery_advice"]["active_resume_kind"] == "continuity_handoff"
-        assert parsed["recovery_advice"]["active_resume_origin"] == "continuation.handoff"
+        assert parsed["recovery_advice"]["active_resume_origin"] == "canonical_continuation"
         assert parsed["recovery_advice"]["active_resume_pointer"] is None
         assert parsed["recovery_advice"]["missing_continuity_handoff"] is True
         assert parsed["recovery_advice"]["missing_continuity_handoff_file"] == "GPD/phases/01-test-phase/.continue-here.md"
@@ -1502,17 +1492,7 @@ class TestResume:
         assert parsed["recovery_candidates"][0]["status"] == "missing"
         assert parsed["recovery_candidates"][0]["advisory"] is True
 
-        compat = parsed["compat_resume_surface"]
-        _assert_resume_compat_surface_inventory(compat)
-        assert compat["execution_resume_file"] is None
-        assert compat["execution_resume_file_source"] is None
-        assert compat["missing_session_resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
-        assert compat["recorded_session_resume_file"] == "GPD/phases/01-test-phase/.continue-here.md"
-        assert compat["resume_mode"] is None
-        assert len(compat["segment_candidates"]) == 1
-        assert compat["segment_candidates"][0]["source"] == "session_resume_file"
-        assert compat["segment_candidates"][0]["status"] == "missing"
-        assert compat["segment_candidates"][0]["advisory"] is True
+        assert "compat_resume_surface" not in parsed
 
     def test_resume_raw_uses_canonical_bounded_segment_without_live_snapshot(
         self, gpd_project: Path, monkeypatch: pytest.MonkeyPatch
@@ -1548,29 +1528,22 @@ class TestResume:
         assert parsed["active_bounded_segment"]["resume_file"] == canonical_resume_file
         assert parsed["active_bounded_segment"]["segment_id"] == "seg-canonical"
         assert parsed["active_resume_kind"] == "bounded_segment"
-        assert parsed["active_resume_origin"] == "continuation.bounded_segment"
+        assert parsed["active_resume_origin"] == "canonical_continuation"
         assert parsed["active_resume_pointer"] == canonical_resume_file
         assert parsed["execution_resumable"] is True
         assert parsed["has_live_execution"] is False
         assert parsed["resume_candidates"][0]["kind"] == "bounded_segment"
-        assert parsed["resume_candidates"][0]["origin"] == "continuation.bounded_segment"
+        assert parsed["resume_candidates"][0]["origin"] == "canonical_continuation"
         assert parsed["recovery_status"] == "bounded-segment"
         assert parsed["recovery_status_label"] == "Bounded segment"
+        assert parsed["recovery_advice"]["resume_surface_schema_version"] == 1
+        assert parsed["recovery_advice"]["actions"][0]["kind"] == "primary"
+        assert "compat_resume_surface" not in parsed["recovery_advice"]
+        for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+            assert key not in parsed["recovery_advice"]
         assert parsed["primary_recovery_target"]["kind"] == "bounded_segment"
-        assert parsed["primary_recovery_target"]["origin"] == "continuation.bounded_segment"
-        compat = parsed["compat_resume_surface"]
-        _assert_resume_compat_surface_inventory(compat)
-        assert compat["execution_resume_file"] == canonical_resume_file
-        assert compat["execution_resume_file_source"] == "current_execution"
-        assert compat["resume_mode"] == "bounded_segment"
-        assert compat["active_execution_segment"]["resume_file"] == canonical_resume_file
-        candidate = compat["segment_candidates"][0]
-        assert candidate["source"] == "current_execution"
-        assert candidate["status"] == "paused"
-        assert candidate["phase"] == "01"
-        assert candidate["plan"] == "01"
-        assert candidate["segment_id"] == "seg-canonical"
-        assert candidate["resume_file"] == canonical_resume_file
+        assert parsed["primary_recovery_target"]["origin"] == "canonical_continuation"
+        assert "compat_resume_surface" not in parsed
 
     def test_resume_raw_prefers_canonical_bounded_segment_over_conflicting_live_snapshot(
         self, gpd_project: Path, monkeypatch: pytest.MonkeyPatch
@@ -1625,21 +1598,14 @@ class TestResume:
 
         assert parsed["active_bounded_segment"]["resume_file"] == canonical_resume_file
         assert parsed["active_resume_kind"] == "bounded_segment"
-        assert parsed["active_resume_origin"] == "continuation.bounded_segment"
+        assert parsed["active_resume_origin"] == "canonical_continuation"
         assert parsed["active_resume_pointer"] == canonical_resume_file
         assert parsed["derived_execution_head"]["resume_file"] == overlay_resume_file
         assert parsed["execution_resumable"] is True
         assert parsed["has_live_execution"] is True
         assert parsed["resume_candidates"][0]["resume_file"] == canonical_resume_file
-        assert parsed["resume_candidates"][0]["origin"] == "continuation.bounded_segment"
-        compat = parsed["compat_resume_surface"]
-        _assert_resume_compat_surface_inventory(compat)
-        assert compat["current_execution"]["resume_file"] == overlay_resume_file
-        assert compat["current_execution_resume_file"] == overlay_resume_file
-        assert compat["active_execution_segment"]["resume_file"] == canonical_resume_file
-        assert compat["segment_candidates"][0]["resume_file"] == canonical_resume_file
-        assert compat["execution_resume_file"] == canonical_resume_file
-        assert compat["execution_resume_file_source"] == "current_execution"
+        assert parsed["resume_candidates"][0]["origin"] == "canonical_continuation"
+        assert "compat_resume_surface" not in parsed
 
     def test_resume_human_output_surfaces_public_and_backend_commands(self, gpd_project: Path) -> None:
         handoff = gpd_project / "GPD" / "phases" / "01-test-phase" / ".continue-here.md"
@@ -1759,19 +1725,15 @@ class TestResume:
         assert parsed["active_bounded_segment"]["phase"] == "02"
         assert parsed["active_bounded_segment"]["plan"] == "01"
         assert parsed["active_resume_kind"] == "bounded_segment"
-        assert parsed["active_resume_origin"] == "continuation.bounded_segment"
+        assert parsed["active_resume_origin"] == "canonical_continuation"
         assert parsed["active_resume_pointer"] == resume_file
         assert parsed["execution_resumable"] is True
         assert parsed["resume_candidates"][0]["kind"] == "bounded_segment"
-        assert parsed["resume_candidates"][0]["origin"] == "continuation.bounded_segment"
+        assert parsed["resume_candidates"][0]["origin"] == "canonical_continuation"
         assert parsed["recovery_status"] == "bounded-segment"
         assert parsed["recovery_status_label"] == "Bounded segment"
         assert parsed["primary_recovery_target"]["kind"] == "bounded_segment"
-        compat = parsed["compat_resume_surface"]
-        _assert_resume_compat_surface_inventory(compat)
-        assert compat["resume_mode"] == "bounded_segment"
-        assert compat["active_execution_segment"]["resume_file"] == resume_file
-        assert compat["segment_candidates"][0]["source"] == "recent_project"
+        assert "compat_resume_surface" not in parsed
 
     def test_resume_human_output_surfaces_auto_selected_recent_bounded_segment(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

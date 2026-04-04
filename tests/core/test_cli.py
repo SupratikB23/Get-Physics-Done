@@ -23,6 +23,7 @@ import gpd.runtime_cli as runtime_cli
 from gpd.adapters import get_adapter, list_runtimes
 from gpd.cli import app
 from gpd.core import cli_args as cli_args_module
+from gpd.core.constants import STATE_JSON_BACKUP_FILENAME
 from gpd.core.costs import (
     CostBudgetThresholdSummary,
     CostProjectSummary,
@@ -39,11 +40,14 @@ from gpd.core.health import (
     UnattendedReadinessResult,
 )
 from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
+from gpd.core.state import default_state_dict, generate_state_markdown, save_state_json, save_state_markdown
+from tests.latex_test_support import toolchain_capability as _toolchain_capability
 from tests.runtime_test_support import (
     FOREIGN_RUNTIME,
     PRIMARY_RUNTIME,
     runtime_config_dir_name,
     runtime_display_name,
+    runtime_prompt_free_mode_value,
     runtime_target_dir,
     runtime_with_permissions_surface,
 )
@@ -66,6 +70,7 @@ def _normalize_cli_output(text: str) -> str:
 _COST_TEST_RUNTIME = "runtime-under-test"
 _COST_TEST_MODEL = "model-under-test"
 _CONFIG_FILE_RUNTIME = runtime_with_permissions_surface("config-file")
+_CONFIG_FILE_PROMPT_FREE_MODE = runtime_prompt_free_mode_value(_CONFIG_FILE_RUNTIME)
 _LAUNCH_WRAPPER_RUNTIME = runtime_with_permissions_surface("launch-wrapper")
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
 
@@ -73,10 +78,6 @@ FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
 def _assert_no_top_level_resume_aliases(payload: dict[str, object]) -> None:
     for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
         assert key not in payload
-
-
-def _assert_resume_compat_surface_inventory(compat_surface: dict[str, object]) -> None:
-    assert tuple(compat_surface) == RESUME_COMPATIBILITY_ALIAS_KEYS
 
 
 def _make_checkout(tmp_path: Path, version: str = "9.9.9") -> Path:
@@ -811,11 +812,14 @@ def test_permissions_status_marks_known_more_permissive_runtime_not_ready() -> N
             return {
                 "runtime": runtime,
                 "desired_mode": "default",
-                "configured_mode": "bypassPermissions",
+                "configured_mode": _CONFIG_FILE_PROMPT_FREE_MODE,
                 "config_aligned": True,
                 "requires_relaunch": False,
                 "managed_by_gpd": False,
-                "message": "Runtime is still configured for bypassPermissions, but GPD left it untouched because that setting was not created by a prior GPD yolo sync.",
+                "message": (
+                    f"Runtime is still configured for {_CONFIG_FILE_PROMPT_FREE_MODE}, "
+                    "but GPD left it untouched because that setting was not created by a prior GPD yolo sync."
+                ),
             }
 
     with (
@@ -1072,6 +1076,10 @@ def test_resume_recovery_advice_keeps_recent_projects_fallbacks_distinct(monkeyp
     assert advice.primary_command == "gpd resume --recent"
 
 
+def test_resume_origin_label_no_longer_exposes_legacy_session_alias() -> None:
+    assert cli_module._resume_origin_label("legacy_session") == "legacy session"
+
+
 def test_resume_recent_raw_surfaces_machine_local_recent_projects(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -1202,6 +1210,8 @@ def test_resume_recent_raw_downgrades_missing_handoff_rows_to_non_resumable(
     assert parsed["projects"][0]["resume_file_available"] is False
     assert parsed["projects"][0]["resume_file_reason"] == "resume file missing"
     assert parsed["projects"][0]["resumable"] is False
+    assert parsed["recovery_advice"]["resume_surface_schema_version"] == 1
+    assert "compat_resume_surface" not in parsed["recovery_advice"]
 
 
 def test_resume_plain_output_hints_recent_when_workspace_is_missing(tmp_path: Path, monkeypatch) -> None:
@@ -1466,6 +1476,27 @@ def test_resume_candidate_notes_prefers_hydrated_result_context() -> None:
 
     assert "Benchmark reproduction" in notes
     assert "R-bridge-01" in notes
+
+
+def test_resume_candidate_origin_uses_canonical_user_facing_labels() -> None:
+    origin, label = cli_module._resume_candidate_origin(
+        {"source": "current_execution"},
+        active_execution={"resume_file": "GPD/phases/02/.continue-here.md"},
+        current_execution={"resume_file": "GPD/phases/02/alternate.md"},
+    )
+
+    assert origin == "canonical_continuation"
+    assert label == "canonical continuation; current execution points at a different handoff file"
+
+
+def test_resume_candidate_notes_use_canonical_continuation_wording_for_missing_handoff() -> None:
+    notes = cli_module._resume_candidate_notes(
+        {"kind": "continuity_handoff", "status": "missing"},
+        active_execution=None,
+        current_execution=None,
+    )
+
+    assert notes == "Recorded in canonical continuation state, but the handoff file is missing from this workspace."
 
 
 def test_resume_plain_output_surfaces_hydrated_last_result_context(
@@ -1862,6 +1893,10 @@ def test_resume_raw_adds_canonical_recovery_projection_fields(tmp_path: Path, mo
     assert result.exit_code == 0
     payload = json.loads(result.output)
     _assert_no_top_level_resume_aliases(payload)
+    assert payload["recovery_advice"]["resume_surface_schema_version"] == 1
+    assert "compat_resume_surface" not in payload["recovery_advice"]
+    for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+        assert key not in payload["recovery_advice"]
     assert payload["active_resume_kind"] == "continuity_handoff"
     assert payload["active_resume_origin"] == "canonical_continuation"
     assert payload["active_resume_pointer"] == resume_file
@@ -1870,17 +1905,126 @@ def test_resume_raw_adds_canonical_recovery_projection_fields(tmp_path: Path, mo
     assert payload["recovery_summary"] == (
         "A continuity handoff is available, but no resumable bounded segment is currently active."
     )
+    assert "compat_resume_surface" not in payload
     assert payload.get("resume_mode_label", "none") == "none"
-    _assert_resume_compat_surface_inventory(payload["compat_resume_surface"])
-    assert payload["compat_resume_surface"]["execution_resume_file"] == "GPD/phases/01/.continue-here.md"
-    assert payload["compat_resume_surface"]["execution_resume_file_source"] == "session_resume_file"
-    assert payload["compat_resume_surface"]["resume_mode"] == "continuity_handoff"
-    assert payload["compat_resume_surface"]["segment_candidates"][0]["source"] == "session_resume_file"
+    assert payload["resume_candidates"][0]["origin"] == "canonical_continuation"
     assert payload["recovery_candidates"][0]["kind"] == "continuity_handoff"
     assert payload["recovery_candidates"][0]["kind_label"] == "Continuity handoff"
     assert payload["recovery_candidates"][0]["origin"] == "canonical_continuation"
     assert payload["primary_recovery_target"]["target"] == "./GPD/phases/01/.continue-here.md"
-    assert list(payload)[-1] == "compat_resume_surface"
+
+
+def test_resume_raw_keeps_derived_execution_head_origin_when_only_live_snapshot_exists(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    resume_file = "GPD/phases/03/.continue-here.md"
+    monkeypatch.setattr(
+        "gpd.core.context.init_resume",
+        lambda _cwd: {
+            "planning_exists": True,
+            "state_exists": True,
+            "roadmap_exists": True,
+            "project_exists": True,
+            "resume_candidates": [
+                {
+                    "source": "current_execution",
+                    "status": "paused",
+                    "resume_file": resume_file,
+                    "resumable": True,
+                    "kind": "bounded_segment",
+                    "origin": "compat.current_execution",
+                    "resume_pointer": resume_file,
+                }
+            ],
+            "derived_execution_head": {
+                "phase": "03",
+                "plan": "01",
+                "segment_id": "seg-derived",
+                "segment_status": "paused",
+                "resume_file": resume_file,
+            },
+            "has_live_execution": True,
+            "execution_resumable": True,
+            "active_resume_kind": "bounded_segment",
+            "active_resume_origin": "compat.current_execution",
+            "active_resume_pointer": resume_file,
+            "execution_paused_at": None,
+            "autonomy": None,
+            "research_mode": None,
+        },
+    )
+
+    result = runner.invoke(app, ["--raw", "resume"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    _assert_no_top_level_resume_aliases(payload)
+    assert payload["active_resume_kind"] == "bounded_segment"
+    assert payload["active_resume_origin"] == "derived_execution_head"
+    assert payload["resume_candidates"][0]["origin"] == "derived_execution_head"
+    assert payload["recovery_candidates"][0]["origin"] == "derived_execution_head"
+    assert payload["primary_recovery_target"]["origin"] == "derived_execution_head"
+    assert "compat_resume_surface" not in payload
+
+
+def test_resume_raw_keeps_compat_current_execution_origin_when_active_bounded_segment_is_projected(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    resume_file = "GPD/phases/03/.continue-here.md"
+    monkeypatch.setattr(
+        "gpd.core.context.init_resume",
+        lambda _cwd: {
+            "planning_exists": True,
+            "state_exists": True,
+            "roadmap_exists": True,
+            "project_exists": True,
+            "resume_candidates": [
+                {
+                    "source": "current_execution",
+                    "status": "paused",
+                    "resume_file": resume_file,
+                    "resumable": True,
+                    "kind": "bounded_segment",
+                    "origin": "compat.current_execution",
+                    "resume_pointer": resume_file,
+                }
+            ],
+            "active_bounded_segment": {
+                "phase": "03",
+                "plan": "01",
+                "segment_id": "seg-projected",
+                "segment_status": "paused",
+                "resume_file": resume_file,
+            },
+            "derived_execution_head": {
+                "phase": "03",
+                "plan": "01",
+                "segment_id": "seg-projected",
+                "segment_status": "paused",
+                "resume_file": resume_file,
+            },
+            "has_live_execution": True,
+            "execution_resumable": True,
+            "active_resume_kind": "bounded_segment",
+            "active_resume_origin": "compat.current_execution",
+            "active_resume_pointer": resume_file,
+            "execution_paused_at": None,
+            "autonomy": None,
+            "research_mode": None,
+        },
+    )
+
+    result = runner.invoke(app, ["--raw", "resume"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    _assert_no_top_level_resume_aliases(payload)
+    assert payload["active_resume_origin"] == "derived_execution_head"
+    assert payload["resume_candidates"][0]["origin"] == "derived_execution_head"
+    assert payload["recovery_candidates"][0]["origin"] == "derived_execution_head"
+    assert payload["primary_recovery_target"]["origin"] == "derived_execution_head"
 
 
 def test_command_supports_project_reentry_prefers_explicit_metadata() -> None:
@@ -2723,8 +2867,23 @@ def test_result_show_help_surfaces_required_result_id_argument() -> None:
     assert "Canonical result ID [required]" in normalized_output
 
 
+def _write_recoverable_result_state(tmp_path: Path, state: dict[str, object]) -> None:
+    planning = tmp_path / "GPD"
+    planning.mkdir(parents=True, exist_ok=True)
+    (planning / "state.json").write_text("{not valid json", encoding="utf-8")
+    (planning / STATE_JSON_BACKUP_FILENAME).write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_markdown_recoverable_result_state(tmp_path: Path, state: dict[str, object]) -> None:
+    save_state_json(tmp_path, state)
+    save_state_markdown(tmp_path, generate_state_markdown(state))
+    planning = tmp_path / "GPD"
+    (planning / "state.json").write_text("{not valid json", encoding="utf-8")
+    (planning / STATE_JSON_BACKUP_FILENAME).write_text("{also not valid json", encoding="utf-8")
+
+
 @patch("gpd.core.results.result_upsert", create=True)
-def test_result_upsert_with_explicit_id(mock_upsert):
+def test_result_upsert_with_explicit_id(mock_upsert, tmp_path: Path):
     mock_result = MagicMock()
     mock_result.model_dump.return_value = {
         "action": "updated",
@@ -2739,10 +2898,15 @@ def test_result_upsert_with_explicit_id(mock_upsert):
         "updated_fields": ["equation", "description"],
     }
     mock_upsert.return_value = mock_result
+    planning = tmp_path / "GPD"
+    planning.mkdir()
+    (planning / "state.json").write_text("{}", encoding="utf-8")
 
     result = runner.invoke(
         app,
         [
+            "--cwd",
+            str(tmp_path),
             "result",
             "upsert",
             "--id",
@@ -2814,6 +2978,54 @@ def test_result_upsert_without_explicit_id(mock_upsert, tmp_path: Path):
     assert kwargs["description"] == "Canonical quantity"
     assert kwargs["phase"] == "2"
     assert kwargs["depends_on"] == ["R-01"]
+
+
+@patch("gpd.core.results.result_upsert", create=True)
+def test_result_upsert_recovers_from_malformed_primary_state(mock_upsert, tmp_path: Path) -> None:
+    backup_state = default_state_dict()
+    backup_state["position"]["current_phase"] = "07"
+    backup_state["session"]["last_result_id"] = "R-backup"
+    _write_recoverable_result_state(tmp_path, backup_state)
+
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {
+        "action": "updated",
+        "updated_fields": ["equation"],
+        "result": {
+            "id": "R-07",
+            "equation": "E = mc^2",
+            "description": "Recovered state",
+            "phase": "07",
+            "depends_on": [],
+            "verified": False,
+        },
+    }
+    mock_upsert.return_value = mock_result
+
+    result = runner.invoke(
+        app,
+        [
+            "--cwd",
+            str(tmp_path),
+            "result",
+            "upsert",
+            "--id",
+            "R-07",
+            "--equation",
+            "E = mc^2",
+            "--description",
+            "Recovered state",
+            "--phase",
+            "07",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_upsert.assert_called_once()
+    state_arg = mock_upsert.call_args.args[0]
+    assert state_arg["position"]["current_phase"] == "07"
+    assert state_arg["session"]["last_result_id"] == "R-backup"
 
 
 @patch("gpd.core.state.save_state_json_locked")
@@ -2929,6 +3141,52 @@ def test_result_upsert_continues_when_visibility_projection_fails(
     assert payload["action"] == "updated"
     assert payload["result"]["id"] == "R-02"
     assert payload["result"]["description"] == "Canonical quantity"
+
+
+@patch("gpd.core.results.result_verify", create=True)
+def test_result_verify_recovers_from_malformed_primary_state(mock_verify, tmp_path: Path) -> None:
+    backup_state = default_state_dict()
+    backup_state["position"]["current_phase"] = "08"
+    backup_state["intermediate_results"] = [
+        {
+            "id": "R-08",
+            "equation": "a = b",
+            "description": "Recoverable result",
+            "phase": "08",
+            "depends_on": [],
+            "verified": False,
+        }
+    ]
+    _write_recoverable_result_state(tmp_path, backup_state)
+
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {
+        "id": "R-08",
+        "equation": "a = b",
+        "description": "Recoverable result",
+        "phase": "08",
+        "depends_on": [],
+        "verified": True,
+    }
+    mock_verify.return_value = mock_result
+
+    result = runner.invoke(
+        app,
+        [
+            "--cwd",
+            str(tmp_path),
+            "result",
+            "verify",
+            "R-08",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_verify.assert_called_once()
+    state_arg = mock_verify.call_args.args[0]
+    assert state_arg["position"]["current_phase"] == "08"
+    assert state_arg["intermediate_results"][0]["id"] == "R-08"
 
 
 @patch("gpd.cli._resolve_derived_result_id")
@@ -3152,6 +3410,225 @@ def test_result_persist_derived_uses_resolved_result_id_for_real_state_write(
     assert [item["id"] for item in state["intermediate_results"]] == ["R-02-effective-mass"]
     assert state["session"]["last_result_id"] is None
     assert state["continuation"]["handoff"]["last_result_id"] is None
+
+
+@patch("gpd.core.results.result_upsert_derived", create=True)
+def test_result_persist_derived_recovers_from_markdown_when_json_and_backup_are_unreadable(
+    mock_upsert_derived,
+    tmp_path: Path,
+) -> None:
+    recovered_state = default_state_dict()
+    recovered_state["position"]["current_phase"] = "11"
+    recovered_state["position"]["status"] = "Executing"
+    _write_markdown_recoverable_result_state(tmp_path, recovered_state)
+
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {
+        "status": "persisted",
+        "result": {
+            "id": "R-11-effective-mass",
+            "equation": "a = b + c",
+            "description": "Markdown recovery",
+            "phase": "11",
+            "depends_on": [],
+            "verified": False,
+        },
+        "updated_fields": ["equation", "description"],
+    }
+    mock_upsert_derived.return_value = mock_result
+
+    result = runner.invoke(
+        app,
+        [
+            "--cwd",
+            str(tmp_path),
+            "result",
+            "persist-derived",
+            "--equation",
+            "a = b + c",
+            "--description",
+            "Markdown recovery",
+            "--phase",
+            "11",
+            "--derivation-slug",
+            "effective-mass",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_upsert_derived.assert_called_once()
+    state_arg = mock_upsert_derived.call_args.args[0]
+    assert state_arg["position"]["current_phase"] == "11"
+    assert state_arg["position"]["status"] == "Executing"
+
+
+@patch("gpd.core.results.result_update", create=True)
+def test_result_update_recovers_from_malformed_primary_state(mock_result_update, tmp_path: Path) -> None:
+    backup_state = default_state_dict()
+    backup_state["position"]["current_phase"] = "09"
+    backup_state["intermediate_results"] = [
+        {
+            "id": "R-09",
+            "equation": "a = b + c",
+            "description": "Recoverable update target",
+            "phase": "09",
+            "depends_on": ["R-08"],
+            "verified": False,
+        }
+    ]
+    _write_recoverable_result_state(tmp_path, backup_state)
+
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {
+        "id": "R-09",
+        "equation": "a = b + c",
+        "description": "Updated recoverable result",
+        "phase": "09",
+        "depends_on": ["R-08"],
+        "verified": False,
+    }
+    mock_result_update.return_value = (["description"], mock_result)
+
+    result = runner.invoke(
+        app,
+        [
+            "--cwd",
+            str(tmp_path),
+            "result",
+            "update",
+            "R-09",
+            "--description",
+            "Updated recoverable result",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_result_update.assert_called_once()
+    state_arg = mock_result_update.call_args.args[0]
+    assert state_arg["position"]["current_phase"] == "09"
+    assert state_arg["intermediate_results"][0]["id"] == "R-09"
+
+
+@patch("gpd.core.results.result_add", create=True)
+def test_result_add_recovers_from_malformed_primary_state(mock_result_add, tmp_path: Path) -> None:
+    backup_state = default_state_dict()
+    backup_state["position"]["current_phase"] = "10"
+    backup_state["session"]["last_result_id"] = "R-recovered"
+    _write_recoverable_result_state(tmp_path, backup_state)
+
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {
+        "id": "R-10",
+        "equation": "a = b + c",
+        "description": "Recovered add target",
+        "phase": "10",
+        "depends_on": [],
+        "verified": False,
+    }
+    mock_result_add.return_value = mock_result
+
+    result = runner.invoke(
+        app,
+        [
+            "--cwd",
+            str(tmp_path),
+            "result",
+            "add",
+            "--id",
+            "R-10",
+            "--equation",
+            "a = b + c",
+            "--description",
+            "Recovered add target",
+            "--phase",
+            "10",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_result_add.assert_called_once()
+    state_arg = mock_result_add.call_args.args[0]
+    assert state_arg["position"]["current_phase"] == "10"
+    assert state_arg["session"]["last_result_id"] == "R-recovered"
+
+
+@pytest.mark.parametrize(
+    ("patch_target", "argv"),
+    [
+        ("gpd.core.extras.approximation_add", ["approximation", "add", "adiabatic"]),
+        ("gpd.core.extras.uncertainty_add", ["uncertainty", "add", "mass", "--phase", "10"]),
+        ("gpd.core.extras.question_add", ["question", "add", "Why", "does", "it", "drift?"]),
+        ("gpd.core.extras.question_resolve", ["question", "resolve", "Why", "does", "it", "drift?"]),
+        ("gpd.core.extras.calculation_add", ["calculation", "add", "Evaluate", "kernel"]),
+        ("gpd.core.extras.calculation_complete", ["calculation", "complete", "Evaluate", "kernel"]),
+    ],
+)
+def test_auxiliary_mutation_commands_recover_from_malformed_primary_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    patch_target: str,
+    argv: list[str],
+) -> None:
+    backup_state = default_state_dict()
+    backup_state["position"]["current_phase"] = "10"
+    backup_state["session"]["last_result_id"] = "R-recovered"
+    _write_recoverable_result_state(tmp_path, backup_state)
+
+    captured: dict[str, object] = {}
+
+    def _fake_mutation(state: dict[str, object], *args: object, **kwargs: object) -> str:
+        captured["state"] = state
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return "ok"
+
+    monkeypatch.setattr(patch_target, _fake_mutation)
+
+    result = runner.invoke(
+        app,
+        ["--cwd", str(tmp_path), *argv],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    state_arg = captured["state"]
+    assert isinstance(state_arg, dict)
+    assert state_arg["position"]["current_phase"] == "10"
+    assert state_arg["session"]["last_result_id"] == "R-recovered"
+
+
+@patch("gpd.core.state.save_state_json_locked")
+def test_convention_set_recovers_from_malformed_primary_state(
+    mock_save_state_json_locked,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backup_state = default_state_dict()
+    backup_state["position"]["current_phase"] = "10"
+    backup_state["session"]["last_result_id"] = "R-recovered"
+    _write_recoverable_result_state(tmp_path, backup_state)
+
+    def _fake_convention_set(lock: object, key: str, value: str, *, force: bool = False) -> object:
+        setattr(lock, key, value)
+        return SimpleNamespace(updated=True)
+
+    monkeypatch.setattr("gpd.core.conventions.convention_set", _fake_convention_set)
+
+    result = runner.invoke(
+        app,
+        ["--cwd", str(tmp_path), "convention", "set", "metric_signature", "mostly-plus"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_save_state_json_locked.assert_called_once()
+    state_arg = mock_save_state_json_locked.call_args.args[1]
+    assert state_arg["position"]["current_phase"] == "10"
+    assert state_arg["session"]["last_result_id"] == "R-recovered"
+    assert state_arg["convention_lock"]["metric_signature"] == "mostly-plus"
 
 
 @patch("gpd.core.state.save_state_json_locked")
@@ -4623,18 +5100,9 @@ def test_paper_build_uses_default_config_surface(tmp_path: Path):
     result_payload.errors = []
 
     with (
-        patch("gpd.cli.shutil.which", side_effect=lambda binary: {
-            "latexmk": "/usr/bin/latexmk",
-            "bibtex": "/usr/bin/bibtex",
-            "kpsewhich": "/usr/bin/kpsewhich",
-        }.get(binary)),
-        patch("gpd.mcp.paper.compiler.detect_latex_toolchain") as mock_detect,
+        patch("gpd.mcp.paper.compiler.detect_latex_toolchain", return_value=_toolchain_capability()),
         patch("gpd.mcp.paper.compiler.build_paper", new=AsyncMock(return_value=result_payload)) as mock_build,
     ):
-        mock_detect.return_value.available = True
-        mock_detect.return_value.compiler_path = "/usr/bin/pdflatex"
-        mock_detect.return_value.distribution = "TeX Live"
-        mock_detect.return_value.message = "pdflatex found (TeX Live): /usr/bin/pdflatex"
         result = runner.invoke(app, ["--raw", "--cwd", str(tmp_path), "paper-build"], catch_exceptions=False)
 
     assert result.exit_code == 0
@@ -4647,13 +5115,18 @@ def test_paper_build_uses_default_config_surface(tmp_path: Path):
     assert payload["manifest_path"] == "./paper/ARTIFACT-MANIFEST.json"
     assert payload["pdf_path"] == "./paper/configured_paper.pdf"
     assert payload["toolchain"] == {
+        "compiler": "pdflatex",
+        "available": True,
         "compiler_available": True,
+        "full_toolchain_available": True,
         "compiler_path": "/usr/bin/pdflatex",
         "distribution": "TeX Live",
         "latexmk_available": True,
         "bibtex_available": True,
+        "bibliography_support_available": True,
         "kpsewhich_available": True,
-        "compile_checks_available": True,
+        "readiness_state": "ready",
+        "message": "pdflatex found (TeX Live): /usr/bin/pdflatex",
         "paper_build_ready": True,
         "arxiv_submission_ready": True,
         "warnings": [],
@@ -4670,7 +5143,7 @@ def test_paper_build_uses_default_config_surface(tmp_path: Path):
     assert kwargs["enrich_bibliography"] is True
 
 
-def test_paper_build_prefers_paper_dir_before_later_config_roots(tmp_path: Path) -> None:
+def test_paper_build_rejects_ambiguous_supported_config_roots_without_a_resolved_manuscript(tmp_path: Path) -> None:
     paper_dir = tmp_path / "paper"
     paper_dir.mkdir()
     manuscript_dir = tmp_path / "manuscript"
@@ -4715,24 +5188,16 @@ def test_paper_build_prefers_paper_dir_before_later_config_roots(tmp_path: Path)
         encoding="utf-8",
     )
 
-    result_payload = MagicMock()
-    result_payload.manifest_path = paper_dir / "ARTIFACT-MANIFEST.json"
-    result_payload.bibliography_audit_path = None
-    result_payload.bibliography_audit = None
-    result_payload.pdf_path = paper_dir / "paper_uppercase.pdf"
-    result_payload.success = True
-    result_payload.errors = []
+    with patch("gpd.mcp.paper.compiler.build_paper", new=AsyncMock()) as mock_build:
+        result = runner.invoke(app, ["--raw", "--cwd", str(tmp_path), "paper-build"])
 
-    with patch("gpd.mcp.paper.compiler.build_paper", new=AsyncMock(return_value=result_payload)) as mock_build:
-        result = runner.invoke(app, ["--raw", "--cwd", str(tmp_path), "paper-build"], catch_exceptions=False)
-
-    assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["config_path"] == "./paper/PAPER-CONFIG.json"
-    assert mock_build.await_args.args[0].title == "paper-uppercase"
+    assert result.exit_code == 1
+    assert isinstance(result.exception, cli_module.GPDError)
+    assert "Ambiguous paper config across supported manuscript roots" in str(result.exception)
+    mock_build.assert_not_called()
 
 
-def test_paper_build_prefers_manuscript_before_draft(tmp_path: Path) -> None:
+def test_paper_build_rejects_manuscript_vs_draft_ambiguity_without_a_resolved_manuscript(tmp_path: Path) -> None:
     manuscript_dir = tmp_path / "manuscript"
     manuscript_dir.mkdir()
     draft_dir = tmp_path / "draft"
@@ -4763,20 +5228,77 @@ def test_paper_build_prefers_manuscript_before_draft(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    result_payload = MagicMock()
-    result_payload.manifest_path = manuscript_dir / "ARTIFACT-MANIFEST.json"
-    result_payload.bibliography_audit_path = None
-    result_payload.pdf_path = manuscript_dir / "manuscript_uppercase.pdf"
-    result_payload.success = True
-    result_payload.errors = []
+    with patch("gpd.mcp.paper.compiler.build_paper", new=AsyncMock()) as mock_build:
+        result = runner.invoke(app, ["--raw", "--cwd", str(tmp_path), "paper-build"])
 
-    with patch("gpd.mcp.paper.compiler.build_paper", new=AsyncMock(return_value=result_payload)) as mock_build:
-        result = runner.invoke(app, ["--raw", "--cwd", str(tmp_path), "paper-build"], catch_exceptions=False)
+    assert result.exit_code == 1
+    assert isinstance(result.exception, cli_module.GPDError)
+    assert "Ambiguous paper config across supported manuscript roots" in str(result.exception)
+    mock_build.assert_not_called()
 
-    assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["config_path"] == "./manuscript/PAPER-CONFIG.json"
-    assert mock_build.await_args.args[0].title == "manuscript-uppercase"
+
+def test_validate_paper_quality_from_project_rejects_ambiguous_manuscript_roots(tmp_path: Path) -> None:
+    def write_manuscript_root(root_name: str, stem: str) -> None:
+        manuscript_dir = tmp_path / root_name
+        manuscript_dir.mkdir()
+        (manuscript_dir / f"{stem}.tex").write_text("\\documentclass{article}\\begin{document}Hi\\end{document}\n")
+        (manuscript_dir / "PAPER-CONFIG.json").write_text(
+            json.dumps(
+                {
+                    "title": f"{root_name.title()} Manuscript",
+                    "output_filename": stem,
+                    "authors": [{"name": "A. Researcher"}],
+                    "abstract": "Abstract.",
+                    "sections": [{"title": "Intro", "content": "Hello."}],
+                    "figures": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (manuscript_dir / "ARTIFACT-MANIFEST.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "paper_title": f"{root_name.title()} Manuscript",
+                    "journal": "jhep",
+                    "created_at": "2026-04-03T00:00:00Z",
+                    "artifacts": [
+                        {
+                            "artifact_id": f"{root_name}-manuscript",
+                            "category": "tex",
+                            "path": f"{stem}.tex",
+                            "sha256": "0" * 64,
+                            "produced_by": "test",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    write_manuscript_root("paper", "paper_manuscript")
+    write_manuscript_root("manuscript", "manuscript_manuscript")
+
+    result = runner.invoke(app, ["--raw", "validate", "paper-quality", "--from-project", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, cli_module.GPDError)
+    assert "validate paper-quality --from-project requires exactly one resolved manuscript root" in str(
+        result.exception
+    )
+    assert "multiple manuscript roots resolve" in str(result.exception)
+
+
+def test_validate_paper_quality_from_project_rejects_missing_manuscript_root(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["--raw", "validate", "paper-quality", "--from-project", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, cli_module.GPDError)
+    assert "validate paper-quality --from-project requires exactly one resolved manuscript root" in str(
+        result.exception
+    )
+    assert "found missing" in str(result.exception)
+    assert "no manuscript entrypoint found under paper/, manuscript/, or draft/" in str(result.exception)
 
 
 def test_paper_build_does_not_discover_legacy_planning_configs(tmp_path: Path, capsys) -> None:
@@ -5009,6 +5531,49 @@ def test_resolve_review_preflight_manuscript_reports_ambiguous_project_state(tmp
     assert "multiple manuscript roots resolve" in detail
 
 
+def test_resolve_review_preflight_manuscript_explicit_supported_root_bypasses_project_ambiguity(
+    tmp_path: Path,
+) -> None:
+    for root_name in ("paper", "manuscript"):
+        root = tmp_path / root_name
+        root.mkdir()
+        manuscript = root / "curvature_flow_bounds.tex"
+        manuscript.write_text("\\documentclass{article}\\begin{document}Hello\\end{document}", encoding="utf-8")
+        (root / "ARTIFACT-MANIFEST.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "paper_title": "Curvature Flow Bounds",
+                    "journal": "prl",
+                    "created_at": "2026-04-02T00:00:00+00:00",
+                    "artifacts": [
+                        {
+                            "artifact_id": f"tex-{root_name}",
+                            "category": "tex",
+                            "path": "curvature_flow_bounds.tex",
+                            "sha256": "0" * 64,
+                            "produced_by": "test",
+                            "sources": [],
+                            "metadata": {},
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    resolved, detail = cli_module._resolve_review_preflight_manuscript(
+        tmp_path,
+        "paper",
+        allow_markdown=True,
+        restrict_to_supported_roots=True,
+    )
+
+    assert resolved == tmp_path / "paper" / "curvature_flow_bounds.tex"
+    assert "resolved to" in detail
+    assert "curvature_flow_bounds.tex" in detail
+
+
 def test_resolve_review_preflight_manuscript_reports_inconsistent_project_state(tmp_path: Path) -> None:
     manuscript_dir = tmp_path / "paper"
     manuscript_dir.mkdir()
@@ -5186,18 +5751,9 @@ def test_paper_build_auto_discovers_single_literature_citation_sources_sidecar(t
     result_payload.errors = []
 
     with (
-        patch("gpd.cli.shutil.which", side_effect=lambda binary: {
-            "latexmk": "/usr/bin/latexmk",
-            "bibtex": "/usr/bin/bibtex",
-            "kpsewhich": "/usr/bin/kpsewhich",
-        }.get(binary)),
-        patch("gpd.mcp.paper.compiler.detect_latex_toolchain") as mock_detect,
+        patch("gpd.mcp.paper.compiler.detect_latex_toolchain", return_value=_toolchain_capability()),
         patch("gpd.mcp.paper.compiler.build_paper", new=AsyncMock(return_value=result_payload)) as mock_build,
     ):
-        mock_detect.return_value.available = True
-        mock_detect.return_value.compiler_path = "/usr/bin/pdflatex"
-        mock_detect.return_value.distribution = "TeX Live"
-        mock_detect.return_value.message = "pdflatex found (TeX Live): /usr/bin/pdflatex"
         result = runner.invoke(app, ["--raw", "--cwd", str(tmp_path), "paper-build"], catch_exceptions=False)
 
     assert result.exit_code == 0
@@ -5250,18 +5806,9 @@ def test_paper_build_warns_when_multiple_literature_citation_sidecars_exist(tmp_
     result_payload.errors = []
 
     with (
-        patch("gpd.cli.shutil.which", side_effect=lambda binary: {
-            "latexmk": "/usr/bin/latexmk",
-            "bibtex": "/usr/bin/bibtex",
-            "kpsewhich": "/usr/bin/kpsewhich",
-        }.get(binary)),
-        patch("gpd.mcp.paper.compiler.detect_latex_toolchain") as mock_detect,
+        patch("gpd.mcp.paper.compiler.detect_latex_toolchain", return_value=_toolchain_capability()),
         patch("gpd.mcp.paper.compiler.build_paper", new=AsyncMock(return_value=result_payload)) as mock_build,
     ):
-        mock_detect.return_value.available = True
-        mock_detect.return_value.compiler_path = "/usr/bin/pdflatex"
-        mock_detect.return_value.distribution = "TeX Live"
-        mock_detect.return_value.message = "pdflatex found (TeX Live): /usr/bin/pdflatex"
         result = runner.invoke(app, ["--raw", "--cwd", str(tmp_path), "paper-build"], catch_exceptions=False)
 
     assert result.exit_code == 0
@@ -5294,14 +5841,19 @@ def test_paper_build_surfaces_toolchain_failure_details(tmp_path: Path) -> None:
     result_payload.success = False
     result_payload.errors = ["Compiler 'pdflatex' not found."]
 
-    mock_toolchain = MagicMock()
-    mock_toolchain.available = False
-    mock_toolchain.compiler_path = None
-    mock_toolchain.distribution = None
-    mock_toolchain.message = "No LaTeX compiler found."
+    mock_toolchain = _toolchain_capability(
+        compiler_available=False,
+        compiler_path=None,
+        distribution=None,
+        bibtex_available=False,
+        latexmk_available=False,
+        kpsewhich_available=False,
+        readiness_state="blocked",
+        message="No LaTeX compiler found.",
+        warnings=["Install a LaTeX distribution to enable paper compilation."],
+    )
 
     with (
-        patch("gpd.cli.shutil.which", return_value=None),
         patch("gpd.mcp.paper.compiler.detect_latex_toolchain", return_value=mock_toolchain),
         patch("gpd.mcp.paper.compiler.build_paper", new=AsyncMock(return_value=result_payload)),
     ):
@@ -5311,12 +5863,95 @@ def test_paper_build_surfaces_toolchain_failure_details(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["success"] is False
     assert payload["errors"] == ["Compiler 'pdflatex' not found."]
+    assert payload["toolchain"]["available"] is False
     assert payload["toolchain"]["compiler_available"] is False
+    assert payload["toolchain"]["compiler"] == "pdflatex"
+    assert payload["toolchain"]["full_toolchain_available"] is False
+    assert payload["toolchain"]["readiness_state"] == "blocked"
+    assert payload["toolchain"]["message"] == "No LaTeX compiler found."
     assert payload["toolchain"]["paper_build_ready"] is False
     assert payload["toolchain"]["arxiv_submission_ready"] is False
-    assert payload["toolchain"]["warnings"] == ["No LaTeX compiler found."]
+    assert payload["toolchain"]["warnings"] == ["Install a LaTeX distribution to enable paper compilation."]
     assert any("temporary directory" in warning for warning in payload["warnings"])
-    assert any(warning == "No LaTeX compiler found." for warning in payload["warnings"])
+    assert any(warning == "Install a LaTeX distribution to enable paper compilation." for warning in payload["warnings"])
+
+
+def test_paper_build_surfaces_partial_toolchain_warnings(tmp_path: Path) -> None:
+    paper_dir = tmp_path / "paper"
+    paper_dir.mkdir()
+    (paper_dir / "PAPER-CONFIG.json").write_text(
+        json.dumps(
+            {
+                "title": "Configured Paper",
+                "authors": [{"name": "A. Researcher"}],
+                "abstract": "Abstract.",
+                "sections": [{"title": "Intro", "content": "Hello."}],
+                "figures": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result_payload = MagicMock()
+    result_payload.manifest_path = paper_dir / "ARTIFACT-MANIFEST.json"
+    result_payload.bibliography_audit_path = None
+    result_payload.pdf_path = paper_dir / "configured-paper.pdf"
+    result_payload.success = True
+    result_payload.errors = []
+
+    mock_toolchain = _toolchain_capability(
+        latexmk_available=False,
+        kpsewhich_available=False,
+        warnings=[
+            "latexmk not found; multi-pass compilation will fall back to manual passes.",
+            "kpsewhich not found; TeX resource checks will assume installed resources.",
+        ],
+    )
+
+    with (
+        patch("gpd.mcp.paper.compiler.detect_latex_toolchain", return_value=mock_toolchain),
+        patch("gpd.mcp.paper.compiler.build_paper", new=AsyncMock(return_value=result_payload)),
+    ):
+        result = runner.invoke(app, ["--raw", "--cwd", str(tmp_path), "paper-build"], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["toolchain"]["paper_build_ready"] is True
+    assert payload["toolchain"]["arxiv_submission_ready"] is False
+    assert payload["toolchain"]["warnings"] == [
+        "latexmk not found; multi-pass compilation will fall back to manual passes.",
+        "kpsewhich not found; TeX resource checks will assume installed resources.",
+        "latexmk not found; repeated LaTeX passes may be degraded.",
+        "kpsewhich not found; TeX resource checks may be best-effort only.",
+    ]
+    assert any(
+        warning == "latexmk not found; repeated LaTeX passes may be degraded."
+        for warning in payload["warnings"]
+    )
+    assert any(
+        warning == "kpsewhich not found; TeX resource checks may be best-effort only."
+        for warning in payload["warnings"]
+    )
+
+
+def test_paper_build_toolchain_payload_surfaces_missing_bibtex_as_hard_failure_risk() -> None:
+    with patch(
+        "gpd.mcp.paper.compiler.detect_latex_toolchain",
+        return_value=_toolchain_capability(
+            bibtex_available=False,
+            warnings=[
+                "bibtex not found; bibliography-free builds may still work, but citation-bearing builds and submission prep can fail without bibtex."
+            ],
+        ),
+    ):
+        payload = cli_module._paper_build_toolchain_payload()
+
+    assert payload["paper_build_ready"] is True
+    assert payload["bibliography_support_available"] is False
+    assert (
+        "bibtex not found; bibliography-free builds may still work, but citation-bearing builds and submission prep can fail without bibtex."
+        in payload["warnings"]
+    )
 
 
 # ─── ported command subcommands ─────────────────────────────────────────────

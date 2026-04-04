@@ -23,7 +23,6 @@ from gpd.core.resume_surface import (
     resume_candidate_origin,
     resume_origin_for_bounded_segment,
     resume_origin_for_handoff,
-    resume_source_from_origin,
 )
 from gpd.core.surface_phrases import (
     recovery_continue_reason,
@@ -35,6 +34,7 @@ __all__ = [
     "RecoveryAdvice",
     "RecoveryAdviceAction",
     "build_recovery_advice",
+    "serialize_recovery_advice",
     "serialize_recovery_orientation",
 ]
 
@@ -95,32 +95,6 @@ class RecoveryAdvice(BaseModel):
     available_projects_count: int = 0
     machine_change_notice: str | None = None
     actions: list[RecoveryAdviceAction] = Field(default_factory=list)
-
-    @property
-    def resume_mode(self) -> str | None:
-        if self.active_resume_kind in {"bounded_segment", "interrupted_agent"}:
-            return self.active_resume_kind
-        return None
-
-    @property
-    def execution_resume_file(self) -> str | None:
-        return self.active_resume_pointer
-
-    @property
-    def execution_resume_file_source(self) -> str | None:
-        return resume_source_from_origin(self.active_resume_origin)
-
-    @property
-    def has_session_resume_file(self) -> bool:
-        return self.has_continuity_handoff
-
-    @property
-    def missing_session_resume_file(self) -> bool:
-        return self.missing_continuity_handoff
-
-    @property
-    def segment_candidates_count(self) -> int:
-        return self.resume_candidates_count
 
 
 def _row_value(row: object, field: str, default: object = None) -> object:
@@ -221,6 +195,14 @@ def _candidate_kind(candidate: Mapping[str, object]) -> str | None:
 
 def _candidate_origin(candidate: Mapping[str, object]) -> str | None:
     return resume_candidate_origin(candidate)
+
+
+def _canonical_resume_origin(origin: str | None) -> str | None:
+    if origin == "compat.current_execution":
+        return "continuation.bounded_segment"
+    if origin == "compat.session_resume_file":
+        return "continuation.handoff"
+    return origin
 
 
 def _has_candidate(
@@ -328,7 +310,7 @@ def _derive_active_resume_origin(
 ) -> str | None:
     explicit = lookup_resume_surface_text(payload, "active_resume_origin", compat_surface=compat_surface)
     if explicit is not None:
-        return explicit
+        return _canonical_resume_origin(explicit)
 
     legacy_source = lookup_resume_surface_text(
         payload,
@@ -345,13 +327,13 @@ def _derive_active_resume_origin(
             compat_surface=compat_surface,
             prefer_compat=True,
         ) is not None:
-            return "compat.current_execution"
+            return "continuation.bounded_segment"
         if _has_candidate(resume_candidates, origin="compat.current_execution", kind="bounded_segment"):
-            return "compat.current_execution"
+            return "continuation.bounded_segment"
         if _has_candidate(resume_candidates, origin="continuation.bounded_segment", kind="bounded_segment"):
             return "continuation.bounded_segment"
         if legacy_source == "current_execution":
-            return "compat.current_execution"
+            return "continuation.bounded_segment"
         if lookup_resume_surface_mapping(
             payload,
             "active_execution_segment",
@@ -373,25 +355,25 @@ def _derive_active_resume_origin(
         if any(value is not None for value in (continuity_handoff_file, recorded_continuity_handoff_file, missing_continuity_handoff_file)):
             return "continuation.handoff"
         if _has_candidate(resume_candidates, origin="compat.session_resume_file", kind="continuity_handoff"):
-            return "compat.session_resume_file"
+            return "continuation.handoff"
         if _has_candidate(resume_candidates, origin="continuation.handoff", kind="continuity_handoff"):
             return "continuation.handoff"
         if legacy_source == "session_resume_file":
-            return "compat.session_resume_file"
+            return "continuation.handoff"
         if missing_continuity_handoff_file is not None:
-            return "compat.session_resume_file"
+            return "continuation.handoff"
         return "continuation.handoff"
     if active_resume_kind == "interrupted_agent":
         return "interrupted_agent_marker"
     if legacy_source == "current_execution":
-        return "compat.current_execution"
+        return "continuation.bounded_segment"
     if legacy_source == "session_resume_file":
-        return "compat.session_resume_file"
+        return "continuation.handoff"
     return None
 
 
-def serialize_recovery_orientation(advice: RecoveryAdvice) -> dict[str, object]:
-    """Return the explicit public orientation surface for runtime hints."""
+def _serialize_recovery_advice_core(advice: RecoveryAdvice) -> dict[str, object]:
+    """Return the stable public recovery contract without action details."""
 
     return {
         "resume_surface_schema_version": RESUME_SURFACE_SCHEMA_VERSION,
@@ -433,6 +415,20 @@ def serialize_recovery_orientation(advice: RecoveryAdvice) -> dict[str, object]:
         "available_projects_count": advice.available_projects_count,
         "machine_change_notice": advice.machine_change_notice,
     }
+
+
+def serialize_recovery_advice(advice: RecoveryAdvice) -> dict[str, object]:
+    """Return the stable public recovery payload for raw CLI surfaces."""
+
+    payload = _serialize_recovery_advice_core(advice)
+    payload["actions"] = [action.model_dump(mode="json") for action in advice.actions]
+    return payload
+
+
+def serialize_recovery_orientation(advice: RecoveryAdvice) -> dict[str, object]:
+    """Return the explicit public orientation surface for runtime hints."""
+
+    return _serialize_recovery_advice_core(advice)
 
 
 def _status(

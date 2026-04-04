@@ -22,7 +22,6 @@ import os
 import posixpath
 import re
 import shlex
-import shutil
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -72,7 +71,11 @@ from gpd.core.proof_review import (
     resolve_manuscript_proof_review_status,
     resolve_phase_proof_review_status,
 )
-from gpd.core.recovery_advice import RecoveryAdvice, build_recovery_advice
+from gpd.core.recovery_advice import (
+    RecoveryAdvice,
+    build_recovery_advice,
+    serialize_recovery_advice,
+)
 from gpd.core.resume_surface import (
     canonicalize_resume_public_payload,
     lookup_resume_surface_list,
@@ -80,6 +83,7 @@ from gpd.core.resume_surface import (
     resolve_resume_compat_surface,
     resume_candidate_kind,
     resume_candidate_kind_from_source,
+    resume_source_from_origin,
 )
 from gpd.core.root_resolution import resolve_project_root
 from gpd.core.surface_phrases import (
@@ -1210,11 +1214,64 @@ def _resume_origin_label(origin: object) -> str:
     labels = {
         "canonical_continuation": "canonical continuation",
         "derived_execution_head": "derived execution head",
-        "legacy_session": "legacy session mirror",
         "interrupted_agent": "interrupted agent",
     }
     origin_text = str(origin).strip() if origin is not None else ""
     return labels.get(origin_text, origin_text.replace("_", " ") if origin_text else "Unknown")
+
+
+def _public_resume_origin_family(
+    origin: object,
+    *,
+    source: object = None,
+    active_execution: dict[str, object] | None = None,
+    current_execution: dict[str, object] | None = None,
+) -> str | None:
+    """Collapse internal resume-origin tokens into the public resume-origin families."""
+
+    origin_text = str(origin).strip() if origin is not None else ""
+    if origin_text in {"canonical_continuation", "derived_execution_head", "interrupted_agent"}:
+        return origin_text
+
+    normalized_source = str(source).strip() if source is not None else ""
+    if not normalized_source and origin_text:
+        mapped_source = resume_source_from_origin(origin_text)
+        normalized_source = mapped_source or ""
+
+    if normalized_source == "current_execution":
+        return "canonical_continuation" if isinstance(active_execution, dict) else "derived_execution_head"
+    if normalized_source == "session_resume_file":
+        return "canonical_continuation"
+    if normalized_source == "interrupted_agent":
+        return "interrupted_agent"
+
+    if origin_text in {"continuation.bounded_segment", "continuation.handoff"}:
+        return "canonical_continuation"
+    if origin_text == "compat.current_execution":
+        return "canonical_continuation" if isinstance(active_execution, dict) else "derived_execution_head"
+    if origin_text == "compat.session_resume_file":
+        return "canonical_continuation"
+    if origin_text == "interrupted_agent_marker":
+        return "interrupted_agent"
+    return None
+
+
+def _resume_authoritative_active_execution(
+    payload: dict[str, object],
+    compat_surface: dict[str, object] | None,
+) -> dict[str, object] | None:
+    """Return the bounded segment only when it comes from canonical continuation."""
+    active_bounded_segment_raw = _resume_surface_value(payload, compat_surface, "active_bounded_segment")
+    if not isinstance(active_bounded_segment_raw, dict):
+        return None
+
+    active_origin = payload.get("active_resume_origin")
+    if not isinstance(active_origin, str) or not active_origin.strip():
+        active_origin = _resume_surface_value(payload, compat_surface, "active_resume_origin")
+
+    if str(active_origin).strip() in {"canonical_continuation", "continuation.bounded_segment"}:
+        return active_bounded_segment_raw
+    return None
 
 
 def _resume_candidate_phase_plan(candidate: dict[str, object]) -> str:
@@ -1389,14 +1446,15 @@ def _resume_candidate_origin(
 ) -> tuple[str, str]:
     """Return a machine label and human summary for one candidate origin."""
     origin = candidate.get("origin")
-    if isinstance(origin, str) and origin.strip():
-        origin_text = origin.strip()
-        if origin_text in {"legacy_session", "continuation_metadata"}:
-            return "canonical_continuation", "canonical continuity metadata"
-        if origin_text == "compatibility_snapshot":
-            return "derived_execution_head", "derived execution compatibility snapshot"
-        return origin_text, _resume_origin_label(origin_text)
     source = str(candidate.get("source") or "").strip()
+    public_origin = _public_resume_origin_family(
+        origin,
+        source=source,
+        active_execution=active_execution,
+        current_execution=current_execution,
+    )
+    if public_origin is not None and source != "current_execution":
+        return public_origin, _resume_origin_label(public_origin)
     status = str(candidate.get("status") or "").strip()
     if source == "current_execution":
         active_resume = (
@@ -1413,16 +1471,16 @@ def _resume_candidate_origin(
             if active_resume and current_resume and active_resume != current_resume:
                 return (
                     "canonical_continuation",
-                    "canonical bounded segment; live compatibility snapshot points at a different file",
+                    "canonical continuation; current execution points at a different handoff file",
                 )
-            return ("canonical_continuation", "canonical bounded segment")
+            return ("canonical_continuation", "canonical continuation")
         if isinstance(current_execution, dict):
-            return ("derived_execution_head", "derived execution compatibility snapshot")
+            return ("derived_execution_head", "derived execution head")
         return ("derived_execution_head", "derived execution head")
     if source == "session_resume_file":
         if status == "missing":
-            return ("canonical_continuation", "canonical continuity metadata; handoff file missing")
-        return ("canonical_continuation", "canonical continuity metadata")
+            return ("canonical_continuation", "canonical continuation; handoff file missing")
+        return ("canonical_continuation", "canonical continuation")
     if source == "interrupted_agent":
         return ("interrupted_agent", "interrupted-agent marker")
     return ("unknown", "unknown origin")
@@ -1556,9 +1614,9 @@ def _resume_candidate_notes(
         kind = _resume_candidate_canonical_kind(candidate)
         status = str(candidate.get("status") or "").strip()
         if kind == "continuity_handoff" and status == "missing":
-            return "Recorded in canonical continuity metadata, but the handoff file is missing from this workspace."
+            return "Recorded in canonical continuation state, but the handoff file is missing from this workspace."
         if kind == "continuity_handoff":
-            return "Recorded in canonical continuity metadata."
+            return "Recorded in canonical continuation state."
         if kind == "interrupted_agent":
             return "Interrupted agent marker only; inspect agent output before continuing."
         return "No additional resume notes recorded."
@@ -1843,8 +1901,9 @@ def _recent_project_recovery_view(row: dict[str, object]) -> dict[str, str] | No
     execution_source = _resume_surface_value(public_payload, compat_surface, "active_resume_origin")
     if not isinstance(execution_source, str) or not execution_source.strip():
         execution_source = _resume_surface_value(public_payload, compat_surface, "execution_resume_file_source")
-    if isinstance(execution_source, str) and execution_source.strip():
-        view["recovery_origin"] = execution_source.strip()
+    public_origin = _public_resume_origin_family(execution_source, active_execution=None, current_execution=None)
+    if public_origin is not None:
+        view["recovery_origin"] = _resume_origin_label(public_origin)
     return view
 
 
@@ -1875,11 +1934,14 @@ def _resume_augmented_payload(payload: dict[str, object], *, cwd: Path | None = 
 
     recovery_advice = _resume_recovery_advice(resume_payload=public_payload, recent_rows=[], cwd=cwd)
     compat_surface = _resume_compat_surface(public_payload)
-    active_bounded_segment = _resume_surface_value(public_payload, compat_surface, "active_bounded_segment")
-    derived_execution_head = _resume_surface_value(public_payload, compat_surface, "derived_execution_head")
-    active_execution_raw = active_bounded_segment or derived_execution_head or _resume_surface_value(public_payload, compat_surface, "active_execution_segment")
-    active_execution = active_execution_raw if isinstance(active_execution_raw, dict) else None
+    derived_execution_head_raw = _resume_surface_value(public_payload, compat_surface, "derived_execution_head")
+    derived_execution_head = derived_execution_head_raw if isinstance(derived_execution_head_raw, dict) else None
+    active_execution_segment_raw = _resume_surface_value(public_payload, compat_surface, "active_execution_segment")
+    active_execution_segment = active_execution_segment_raw if isinstance(active_execution_segment_raw, dict) else None
+    active_execution = _resume_authoritative_active_execution(public_payload, compat_surface)
     current_execution_raw = _resume_surface_value(public_payload, compat_surface, "current_execution")
+    if not isinstance(current_execution_raw, dict):
+        current_execution_raw = derived_execution_head or active_execution_segment
     current_execution = current_execution_raw if isinstance(current_execution_raw, dict) else None
     active_resume_kind = public_payload.get("active_resume_kind")
     if not isinstance(active_resume_kind, str) or not active_resume_kind.strip():
@@ -1901,12 +1963,52 @@ def _resume_augmented_payload(payload: dict[str, object], *, cwd: Path | None = 
     ]
     active_resume_result = _resume_active_result(public_payload, compat_surface, segment_candidates)
     augmented = dict(public_payload)
-    compat_resume_surface = augmented.pop("compat_resume_surface", None)
+    augmented.pop("compat_resume_surface", None)
+    active_resume_origin = augmented.get("active_resume_origin")
+    if isinstance(active_resume_origin, str) and active_resume_origin.strip():
+        public_active_origin = _public_resume_origin_family(
+            active_resume_origin,
+            source=_resume_surface_value(public_payload, compat_surface, "execution_resume_file_source"),
+            active_execution=active_execution,
+            current_execution=current_execution,
+        )
+        if public_active_origin is not None:
+            augmented["active_resume_origin"] = public_active_origin
+    normalized_resume_candidates: list[dict[str, object]] = []
+    for candidate in list(augmented.get("resume_candidates") or []):
+        if not isinstance(candidate, dict):
+            normalized_resume_candidates.append(candidate)
+            continue
+        normalized_candidate = dict(candidate)
+        candidate_origin = normalized_candidate.get("origin")
+        public_candidate_origin = _public_resume_origin_family(
+            candidate_origin,
+            source=normalized_candidate.get("source"),
+            active_execution=active_execution if _resume_candidate_canonical_kind(normalized_candidate) == "bounded_segment" else None,
+            current_execution=current_execution
+            if _resume_candidate_canonical_kind(normalized_candidate) == "bounded_segment"
+            else None,
+        )
+        if public_candidate_origin is not None:
+            normalized_candidate["origin"] = public_candidate_origin
+        normalized_resume_candidates.append(normalized_candidate)
+    if normalized_resume_candidates:
+        augmented["resume_candidates"] = normalized_resume_candidates
     augmented["recovery_status"] = recovery_advice.status
     augmented["recovery_status_label"] = _resume_status_label(recovery_advice.status)
     augmented["recovery_summary"] = _resume_status_message(public_payload, recovery_advice=recovery_advice)
     augmented["active_resume_kind_label"] = _resume_mode_label(active_resume_kind)
-    augmented["recovery_advice"] = recovery_advice.model_dump(mode="json")
+    recovery_advice_payload = serialize_recovery_advice(recovery_advice)
+    advice_origin = recovery_advice_payload.get("active_resume_origin")
+    if isinstance(advice_origin, str) and advice_origin.strip():
+        public_advice_origin = _public_resume_origin_family(
+            advice_origin,
+            active_execution=active_execution,
+            current_execution=current_execution,
+        )
+        if public_advice_origin is not None:
+            recovery_advice_payload["active_resume_origin"] = public_advice_origin
+    augmented["recovery_advice"] = recovery_advice_payload
     augmented["recovery_candidates"] = projected_candidates
     if active_resume_result is not None and "active_resume_result_summary" not in augmented:
         active_resume_result_summary = _resume_result_summary(active_resume_result)
@@ -1914,8 +2016,6 @@ def _resume_augmented_payload(payload: dict[str, object], *, cwd: Path | None = 
             augmented["active_resume_result_summary"] = active_resume_result_summary
     if projected_candidates:
         augmented["primary_recovery_target"] = projected_candidates[0]
-    if compat_resume_surface is not None:
-        augmented["compat_resume_surface"] = compat_resume_surface
     return augmented
 
 
@@ -1971,13 +2071,12 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
     """Render a read-only local recovery summary for humans."""
     public_payload = canonicalize_resume_public_payload(payload)
     compat_surface = _resume_compat_surface(public_payload)
-    active_execution_raw = _resume_surface_value(public_payload, compat_surface, "active_bounded_segment")
-    if not isinstance(active_execution_raw, dict):
-        active_execution_raw = _resume_surface_value(public_payload, compat_surface, "derived_execution_head")
-    if not isinstance(active_execution_raw, dict):
-        active_execution_raw = _resume_surface_value(public_payload, compat_surface, "active_execution_segment")
-    active_execution = active_execution_raw if isinstance(active_execution_raw, dict) else None
+    active_execution = _resume_authoritative_active_execution(public_payload, compat_surface)
     current_execution_raw = _resume_surface_value(public_payload, compat_surface, "current_execution")
+    if not isinstance(current_execution_raw, dict):
+        current_execution_raw = _resume_surface_value(public_payload, compat_surface, "derived_execution_head")
+    if not isinstance(current_execution_raw, dict):
+        current_execution_raw = _resume_surface_value(public_payload, compat_surface, "active_execution_segment")
     current_execution = current_execution_raw if isinstance(current_execution_raw, dict) else None
     recovery_advice = _resume_recovery_advice(resume_payload=public_payload, recent_rows=[])
     segment_candidates = _resume_visible_candidates(public_payload, compat_surface)
@@ -2098,7 +2197,7 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
                 str(projected_candidate["status"]),
                 str(projected_candidate["phase_plan"]),
                 str(projected_candidate["target"]),
-                str(projected_candidate["origin"]),
+                str(projected_candidate["origin_label"]),
                 str(projected_candidate["notes"]),
             )
         console.print(table)
@@ -2140,7 +2239,7 @@ def resume(
                 {
                     "count": len(rows),
                     "projects": rows,
-                    "recovery_advice": recovery_advice.model_dump(mode="json"),
+                    "recovery_advice": serialize_recovery_advice(recovery_advice),
                 }
             )
             return
@@ -2180,19 +2279,13 @@ app.add_typer(convention_app, name="convention")
 
 
 def _load_lock():  # noqa: ANN202 — returns ConventionLock (imported inside)
-    """Load ConventionLock from state.json in the current working directory."""
-    import json
-
+    """Load ConventionLock from recoverable project state in the current working directory."""
     from gpd.contracts import ConventionLock
-    from gpd.core.constants import ProjectLayout
+    from gpd.core.state import load_state_json
 
-    state_path = ProjectLayout(_get_cwd()).state_json
-    try:
-        raw = json.loads(state_path.read_text(encoding="utf-8"))
-    except OSError:
+    raw = load_state_json(_get_cwd())
+    if not isinstance(raw, dict):
         return ConventionLock()
-    except json.JSONDecodeError as e:
-        _error(f"Malformed state.json: {e}")
 
     lock_data = raw.get("convention_lock", {})
     if not isinstance(lock_data, dict):
@@ -2208,8 +2301,6 @@ def convention_set(
     force: bool = typer.Option(False, "--force", help="Overwrite existing convention"),
 ) -> None:
     """Set a convention in the convention lock."""
-    import json as _json
-
     from gpd.contracts import ConventionLock
     from gpd.core.constants import ProjectLayout
     from gpd.core.conventions import convention_set
@@ -2222,12 +2313,7 @@ def convention_set(
     # Perform the entire read-modify-write under a single file lock to avoid
     # the TOCTOU race that existed when _load_lock() ran before _save_lock().
     with file_lock(state_path):
-        try:
-            raw = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            raw = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        raw = _load_mutation_state_snapshot(cwd)
 
         lock_data = raw.get("convention_lock", {})
         if not isinstance(lock_data, dict):
@@ -2283,6 +2369,15 @@ def _split_depends_on_option(depends_on: str | None) -> list[str] | None:
         return None
     parsed = [item.strip() for item in depends_on.split(",")]
     return [item for item in parsed if item]
+
+
+def _load_mutation_state_snapshot(cwd: Path) -> dict[str, object]:
+    """Load one mutable state snapshot through the recovery-aware mutation path."""
+    from gpd.core.state import _load_state_snapshot_for_mutation, _recover_intent_locked
+
+    _recover_intent_locked(cwd)
+    state = _load_state_snapshot_for_mutation(cwd, recover_intent=False)
+    return state if isinstance(state, dict) else {}
 
 
 def _resolve_derived_result_id(
@@ -2348,8 +2443,6 @@ def result_add(
     verified: bool = typer.Option(False, "--verified", help="Mark as verified"),
 ) -> None:
     """Add an intermediate result to the results registry."""
-    import json as _json
-
     from gpd.core.constants import ProjectLayout
     from gpd.core.results import result_add
     from gpd.core.state import save_state_json_locked
@@ -2360,12 +2453,7 @@ def result_add(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         res = result_add(
             state,
             result_id=id,
@@ -2398,8 +2486,6 @@ def result_persist_derived(
     verified: bool | None = typer.Option(None, "--verified/--no-verified", help="Mark as verified or un-verify"),
 ) -> None:
     """Persist a derivation result through the canonical registry writer path."""
-    import json as _json
-
     from gpd.core.constants import ProjectLayout
     from gpd.core.results import result_upsert_derived as _result_upsert_derived
     from gpd.core.state import (
@@ -2428,12 +2514,7 @@ def result_persist_derived(
         return
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = preflight_state
-        except _json.JSONDecodeError:
-            state = preflight_state
+        state = _load_mutation_state_snapshot(cwd) or preflight_state
         if not isinstance(state, dict):
             _error(f"state.json must be a JSON object, got {type(state).__name__}")
 
@@ -2483,18 +2564,12 @@ def result_persist_derived(
 
 
 def _load_state_dict() -> dict:
-    """Load state.json as a plain dict for commands that need raw state."""
-    import json
+    """Load recoverable project state as a plain dictionary for read-only commands."""
+    from gpd.core.state import load_state_json
 
-    from gpd.core.constants import ProjectLayout
-
-    state_path = ProjectLayout(_get_cwd()).state_json
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-    except OSError:
+    data = load_state_json(_get_cwd())
+    if data is None:
         return {}
-    except json.JSONDecodeError as e:
-        _error(f"Malformed state.json: {e}")
     if not isinstance(data, dict):
         _error(f"state.json must be a JSON object, got {type(data).__name__}")
     return data
@@ -2668,7 +2743,6 @@ def result_upsert(
     verified: bool | None = typer.Option(None, "--verified/--no-verified", help="Mark as verified or un-verify"),
 ) -> None:
     """Add or update a canonical result by explicit ID or exact equation match."""
-    import json as _json
 
     from gpd.core.constants import ProjectLayout
     from gpd.core.results import result_upsert as _result_upsert
@@ -2679,12 +2753,7 @@ def result_upsert(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         res = _result_upsert(
             state,
             result_id=id,
@@ -2706,7 +2775,6 @@ def result_verify(
     result_id: str = typer.Argument(..., help="Result ID to mark verified"),
 ) -> None:
     """Mark a result as verified."""
-    import json as _json
 
     from gpd.core.constants import ProjectLayout
     from gpd.core.results import result_verify
@@ -2717,12 +2785,7 @@ def result_verify(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         res = result_verify(state, result_id)
         save_state_json_locked(cwd, state)
     _output(res)
@@ -2740,7 +2803,6 @@ def result_update(
     verified: bool | None = typer.Option(None, "--verified/--no-verified", help="Mark as verified or un-verify"),
 ) -> None:
     """Update an existing result."""
-    import json as _json
 
     from gpd.core.constants import ProjectLayout
     from gpd.core.results import result_update
@@ -2767,12 +2829,7 @@ def result_update(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         _fields, updated = result_update(state, result_id, **opts)
         save_state_json_locked(cwd, state)
         _sync_execution_visibility_projection(cwd, state_obj=state)
@@ -3994,6 +4051,11 @@ def init_verify_work(
 @init_app.command("progress")
 def init_progress(
     include: str | None = typer.Option(None, "--include", help="Additional context includes"),
+    project_reentry: bool = typer.Option(
+        True,
+        "--project-reentry/--no-project-reentry",
+        help="Resolve project recovery context before assembling progress",
+    ),
 ) -> None:
     """Assemble context for progress review."""
     from gpd.core.context import init_progress
@@ -4003,7 +4065,7 @@ def init_progress(
         command_name="gpd init progress",
         allowed=_INIT_PROGRESS_INCLUDES,
     )
-    _output(init_progress(_get_cwd(), includes=includes))
+    _output(init_progress(_get_cwd(), includes=includes, include_project_reentry=project_reentry))
 
 
 @init_app.command("map-research")
@@ -4154,8 +4216,6 @@ def approximation_add(
     status: str | None = typer.Option(None, "--status", help="Status"),
 ) -> None:
     """Add an approximation to track."""
-    import json as _json
-
     from gpd.core.constants import ProjectLayout
     from gpd.core.extras import approximation_add
     from gpd.core.state import save_state_json_locked
@@ -4176,12 +4236,7 @@ def approximation_add(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         res = approximation_add(state, name=name or "", **kwargs)
         save_state_json_locked(cwd, state)
     _output(res)
@@ -4216,8 +4271,6 @@ def uncertainty_add(
     method: str | None = typer.Option(None, "--method", help="Method used"),
 ) -> None:
     """Add an uncertainty measurement."""
-    import json as _json
-
     from gpd.core.constants import ProjectLayout
     from gpd.core.extras import uncertainty_add
     from gpd.core.state import save_state_json_locked
@@ -4238,12 +4291,7 @@ def uncertainty_add(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         res = uncertainty_add(state, quantity=quantity or "", **kwargs)
         save_state_json_locked(cwd, state)
     _output(res)
@@ -4266,8 +4314,6 @@ def question_add(
     text: list[str] = typer.Argument(..., help="Question text"),
 ) -> None:
     """Add an open research question."""
-    import json as _json
-
     from gpd.core.constants import ProjectLayout
     from gpd.core.extras import question_add
     from gpd.core.state import save_state_json_locked
@@ -4277,12 +4323,7 @@ def question_add(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         res = question_add(state, " ".join(text))
         save_state_json_locked(cwd, state)
     _output(res)
@@ -4301,8 +4342,6 @@ def question_resolve(
     text: list[str] = typer.Argument(..., help="Question text to resolve"),
 ) -> None:
     """Mark a question as resolved."""
-    import json as _json
-
     from gpd.core.constants import ProjectLayout
     from gpd.core.extras import question_resolve
     from gpd.core.state import save_state_json_locked
@@ -4312,12 +4351,7 @@ def question_resolve(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         res = question_resolve(state, " ".join(text))
         save_state_json_locked(cwd, state)
     _output(res)
@@ -4332,8 +4366,6 @@ def calculation_add(
     text: list[str] = typer.Argument(..., help="Calculation description"),
 ) -> None:
     """Add a calculation to track."""
-    import json as _json
-
     from gpd.core.constants import ProjectLayout
     from gpd.core.extras import calculation_add
     from gpd.core.state import save_state_json_locked
@@ -4343,12 +4375,7 @@ def calculation_add(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         res = calculation_add(state, " ".join(text))
         save_state_json_locked(cwd, state)
     _output(res)
@@ -4367,8 +4394,6 @@ def calculation_complete(
     text: list[str] = typer.Argument(..., help="Calculation to mark complete"),
 ) -> None:
     """Mark a calculation as complete."""
-    import json as _json
-
     from gpd.core.constants import ProjectLayout
     from gpd.core.extras import calculation_complete
     from gpd.core.state import save_state_json_locked
@@ -4378,12 +4403,7 @@ def calculation_complete(
     state_path = ProjectLayout(cwd).state_json
 
     with file_lock(state_path):
-        try:
-            state = _json.loads(state_path.read_text(encoding="utf-8"))
-        except OSError:
-            state = {}
-        except _json.JSONDecodeError as e:
-            _error(f"Malformed state.json: {e}")
+        state = _load_mutation_state_snapshot(cwd)
         res = calculation_complete(state, " ".join(text))
         save_state_json_locked(cwd, state)
     _output(res)
@@ -4978,11 +4998,6 @@ def _resolve_review_preflight_manuscript(
                 None,
                 "explicit manuscript target must stay under `paper/`, `manuscript/`, or `draft/` inside the current project",
             )
-        if target_is_supported_root:
-            project_resolution = resolve_current_manuscript_resolution(cwd, allow_markdown=allow_markdown)
-            if project_resolution.status in {"ambiguous", "invalid"}:
-                return None, f"ambiguous or inconsistent manuscript roots: {project_resolution.detail}"
-
         if target.is_file():
             if target.suffix == ".tex" or (allow_markdown and target.suffix == ".md"):
                 return target, f"{_format_display_path(target)} present"
@@ -5559,6 +5574,30 @@ def _resolve_existing_input_path(input_path: str | None, *, candidates: tuple[st
     raise GPDError(f"No {label} found. Searched: {searched}")
 
 
+def _resolve_default_paper_config_path() -> Path:
+    """Resolve the default paper config without silently preferring one supported root over another."""
+    cwd = _get_cwd()
+    candidates = tuple(cwd / root / "PAPER-CONFIG.json" for root in ("paper", "manuscript", "draft"))
+    existing = [path for path in candidates if path.exists()]
+    if len(existing) == 1:
+        return existing[0]
+    if not existing:
+        searched = ", ".join(f"{root}/PAPER-CONFIG.json" for root in ("paper", "manuscript", "draft"))
+        raise GPDError(f"No paper config found. Searched: {searched}")
+
+    resolution = resolve_current_manuscript_resolution(cwd, allow_markdown=True)
+    if resolution.status == "resolved" and resolution.manuscript_root is not None:
+        resolved_config = resolution.manuscript_root / "PAPER-CONFIG.json"
+        if resolved_config in existing:
+            return resolved_config
+
+    discovered = ", ".join(_format_display_path(path) for path in existing)
+    raise GPDError(
+        "Ambiguous paper config across supported manuscript roots. "
+        f"Found: {discovered}. Pass an explicit config path or fix the manuscript-root ambiguity first."
+    )
+
+
 def _resolve_paper_config_paths(config: object, *, base_dir: Path) -> PaperConfig:
     """Resolve relative figure paths in a PaperConfig against its config file directory."""
     from gpd.mcp.paper.models import FigureRef, PaperConfig
@@ -5671,32 +5710,26 @@ def _paper_build_toolchain_payload() -> dict[str, object]:
     from gpd.mcp.paper.compiler import detect_latex_toolchain
 
     latex_status = detect_latex_toolchain()
-    latexmk_available = shutil.which("latexmk") is not None
-    bibtex_available = shutil.which("bibtex") is not None
-    kpsewhich_available = shutil.which("kpsewhich") is not None
+    toolchain = latex_status.model_dump(mode="python")
+    latexmk_available = bool(toolchain["latexmk_available"])
+    bibtex_available = bool(toolchain["bibtex_available"])
+    kpsewhich_available = bool(toolchain["kpsewhich_available"])
 
-    warnings: list[str] = []
-    if not latex_status.available and latex_status.message:
-        warnings.append(latex_status.message)
+    warnings = list(toolchain.get("warnings", [])) if isinstance(toolchain.get("warnings"), list) else []
+    if latex_status.available and not latexmk_available:
+        warnings.append("latexmk not found; repeated LaTeX passes may be degraded.")
     if latex_status.available and not bibtex_available:
-        warnings.append("bibtex not found; bibliography passes may be degraded.")
+        bibtex_warning = (
+            "bibtex not found; bibliography-free builds may still work, but citation-bearing builds and "
+            "submission prep can fail without bibtex."
+        )
+        if bibtex_warning not in warnings:
+            warnings.append(bibtex_warning)
     if latex_status.available and not kpsewhich_available:
         warnings.append("kpsewhich not found; TeX resource checks may be best-effort only.")
 
-    compiler_available = bool(latex_status.available)
-    paper_build_ready = compiler_available and bibtex_available
-    return {
-        "compiler_available": compiler_available,
-        "compiler_path": latex_status.compiler_path,
-        "distribution": latex_status.distribution,
-        "latexmk_available": latexmk_available,
-        "bibtex_available": bibtex_available,
-        "kpsewhich_available": kpsewhich_available,
-        "compile_checks_available": compiler_available,
-        "paper_build_ready": paper_build_ready,
-        "arxiv_submission_ready": paper_build_ready and kpsewhich_available,
-        "warnings": warnings,
-    }
+    toolchain["warnings"] = warnings
+    return toolchain
 
 
 def _default_paper_output_dir(config_file: Path) -> Path:
@@ -7087,7 +7120,14 @@ def validate_paper_quality(
     from gpd.core.paper_quality_artifacts import build_paper_quality_input
 
     if from_project:
-        report = score_paper_quality(build_paper_quality_input(Path(from_project)))
+        project_root = Path(from_project)
+        manuscript_resolution = resolve_current_manuscript_resolution(project_root, allow_markdown=True)
+        if manuscript_resolution.status != "resolved":
+            raise GPDError(
+                "validate paper-quality --from-project requires exactly one resolved manuscript root; "
+                f"found {manuscript_resolution.status}: {manuscript_resolution.detail}"
+            )
+        report = score_paper_quality(build_paper_quality_input(project_root))
     else:
         if not input_path:
             _error("Provide a PaperQualityInput path or use --from-project <root>")
@@ -7469,14 +7509,10 @@ def paper_build(
     from gpd.mcp.paper.compiler import build_paper
     from gpd.mcp.paper.models import derive_output_filename
 
-    config_file = _resolve_existing_input_path(
-        config_path,
-        candidates=(
-            "paper/PAPER-CONFIG.json",
-            "manuscript/PAPER-CONFIG.json",
-            "draft/PAPER-CONFIG.json",
-        ),
-        label="paper config",
+    config_file = (
+        _resolve_existing_input_path(config_path, candidates=(), label="paper config")
+        if config_path
+        else _resolve_default_paper_config_path()
     )
     _reject_legacy_paper_config_location(config_file)
     raw_config = _load_json_document(str(config_file))
