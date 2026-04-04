@@ -114,27 +114,18 @@ def _capability_value(source: object, *keys: str) -> object | None:
 
 def _normalize_latex_capability(
     latex_capability: object | None = None,
-    *,
-    legacy_available: bool | None = None,
 ) -> dict[str, object]:
-    """Normalize legacy booleans and richer LaTeX capability payloads into one contract."""
+    """Normalize structured LaTeX capability payloads into one contract."""
 
-    if isinstance(latex_capability, bool):
-        legacy_available = latex_capability
-        latex_capability = None
-
-    if latex_capability is None and legacy_available is None:
+    if latex_capability is None:
         return {**_LATEX_CAPABILITY_DEFAULTS, "warnings": []}
 
     compiler_name = _capability_value(latex_capability, "compiler")
     if not isinstance(compiler_name, str) or not compiler_name.strip():
         compiler_name = "pdflatex"
 
-    compiler_value = _capability_value(latex_capability, "compiler_available", "available", "latex_available")
-    if compiler_value is None:
-        compiler_available = bool(legacy_available) if legacy_available is not None else False
-    else:
-        compiler_available = bool(compiler_value)
+    compiler_value = _capability_value(latex_capability, "compiler_available", "available")
+    compiler_available = bool(compiler_value) if compiler_value is not None else False
 
     bibtex_value = _capability_value(latex_capability, "bibtex_available", "bibtex", "bibliography_available")
     bibtex_available = bool(bibtex_value) if bibtex_value is not None else None
@@ -438,11 +429,10 @@ def resolve_workflow_preset_readiness(
     *,
     base_ready: bool,
     latex_capability: object | None = None,
-    latex_available: bool | None = None,
 ) -> dict[str, object]:
     """Return doctor-facing preset readiness derived from explicit tool checks."""
 
-    capability = _normalize_latex_capability(latex_capability, legacy_available=latex_available)
+    capability = _normalize_latex_capability(latex_capability)
     compiler_ready = bool(capability["compiler_available"])
     bibliography_support_ready = bool(capability.get("bibliography_support_available"))
     latexmk_available = capability.get("latexmk_available")

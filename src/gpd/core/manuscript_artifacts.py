@@ -75,10 +75,50 @@ def _load_artifact_manifest(manuscript_root: Path) -> ArtifactManifest | None:
         return None
 
 
+def _load_raw_artifact_manifest_payload(manuscript_root: Path) -> dict[str, object] | None:
+    manifest_path = manuscript_root / "ARTIFACT-MANIFEST.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _raw_manifest_entrypoints(manuscript_root: Path, *, allow_markdown: bool) -> tuple[Path, ...]:
+    payload = _load_raw_artifact_manifest_payload(manuscript_root)
+    if not payload:
+        return ()
+
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list):
+        return ()
+
+    allowed_suffixes = {".tex"}
+    if allow_markdown:
+        allowed_suffixes.add(".md")
+
+    candidates: list[Path] = []
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        if artifact.get("category") != "tex":
+            continue
+        path = artifact.get("path")
+        if not isinstance(path, str) or not path.strip():
+            continue
+        candidate = manuscript_root / path
+        if candidate.exists() and candidate.suffix.lower() in allowed_suffixes:
+            candidates.append(candidate)
+    return tuple(dict.fromkeys(candidates))
+
+
 def _manifest_entrypoints(manuscript_root: Path, *, allow_markdown: bool) -> tuple[Path, ...]:
     manifest = _load_artifact_manifest(manuscript_root)
     if manifest is None:
-        return ()
+        return _raw_manifest_entrypoints(manuscript_root, allow_markdown=allow_markdown)
+
     allowed_suffixes = {".tex"}
     if allow_markdown:
         allowed_suffixes.add(".md")

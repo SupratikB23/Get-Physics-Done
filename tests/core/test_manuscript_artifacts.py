@@ -294,6 +294,57 @@ def test_resolve_current_manuscript_resolution_marks_root_mismatch_invalid(tmp_p
     assert "resolves to" in resolution.detail
 
 
+def test_resolve_current_manuscript_resolution_fails_closed_on_invalid_manifest_entrypoint_mismatch(
+    tmp_path: Path,
+) -> None:
+    _write(tmp_path / "paper" / "config-entry.tex", "\\documentclass{article}\\begin{document}Hi\\end{document}\n")
+    _write(tmp_path / "paper" / "manifest-entry.tex", "\\documentclass{article}\\begin{document}Hi\\end{document}\n")
+    _write(
+        tmp_path / "paper" / "ARTIFACT-MANIFEST.json",
+        json.dumps(
+            {
+                "version": 1,
+                "paper_title": "Curvature Flow Bounds",
+                "journal": "prd",
+                "created_at": "2026-04-02T00:00:00+00:00",
+                "artifacts": [
+                    {
+                        "artifact_id": "tex-paper",
+                        "category": "tex",
+                        "path": "manifest-entry.tex",
+                        "sha256": "0" * 64,
+                        "produced_by": "test",
+                        "sources": [],
+                        "metadata": {},
+                    }
+                ],
+            }
+        )
+        + "\n",
+    )
+    _write(
+        tmp_path / "paper" / "PAPER-CONFIG.json",
+        json.dumps(
+            {
+                "title": "Config Entry",
+                "output_filename": "config-entry",
+                "authors": [{"name": "A. Researcher"}],
+                "abstract": "Abstract.",
+                "sections": [{"heading": "Intro", "content": "Hello."}],
+            }
+        )
+        + "\n",
+    )
+
+    resolution = resolve_current_manuscript_resolution(tmp_path)
+
+    assert resolution.status == "invalid"
+    assert resolution.manuscript_entrypoint is None
+    assert any(root_resolution.status == "invalid" for root_resolution in resolution.root_resolutions)
+    assert "manifest-entry.tex" in resolution.detail
+    assert "config-entry.tex" in resolution.detail
+
+
 def test_resolve_current_manuscript_resolution_marks_missing_when_no_manuscript_exists(tmp_path: Path) -> None:
     resolution = resolve_current_manuscript_resolution(tmp_path)
 

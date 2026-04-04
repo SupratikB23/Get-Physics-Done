@@ -788,6 +788,39 @@ def test_build_recovery_advice_ignores_compat_boolean_flags_without_canonical_su
     assert advice.has_live_execution is False
 
 
+def test_build_recovery_advice_keeps_legacy_execution_overlay_advisory_without_resume_target(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path)
+
+    advice = build_recovery_advice(
+        project,
+        recent_rows=[],
+        resume_payload={
+            "resume_mode": "bounded_segment",
+            "execution_resumable": True,
+            "active_execution_segment": {
+                "segment_id": "seg-legacy",
+                "phase": "04",
+                "plan": "02",
+                "segment_status": "paused",
+            },
+            "has_live_execution": True,
+        },
+    )
+
+    assert advice.mode == "current-workspace"
+    assert advice.status == "live-execution"
+    assert advice.active_resume_kind is None
+    assert advice.active_resume_origin is None
+    assert advice.active_resume_pointer is None
+    assert advice.execution_resumable is False
+    assert advice.current_workspace_resumable is False
+    assert advice.current_workspace_has_resume_file is False
+    assert advice.has_live_execution is True
+    assert advice.has_local_recovery_target is False
+
+
 def test_build_recovery_advice_recovers_continuity_handoff_from_candidate_only_payload(tmp_path: Path) -> None:
     project = _project(tmp_path)
 

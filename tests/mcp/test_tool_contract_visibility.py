@@ -393,6 +393,7 @@ def test_run_contract_check_tool_description_surfaces_request_requirements() -> 
     assert "``supported_binding_fields``" in description
     assert "``request_template``" in description
     assert "workflow scope labels, never contract IDs" in description
+    assert "``references[].must_surface`` requires non-empty ``applies_to`` and ``required_actions`` lists" in description
     assert "make resolution ambiguous" in description
 
 
@@ -413,6 +414,7 @@ def test_suggest_contract_checks_tool_description_surfaces_contract_requirements
     assert "``supported_binding_fields``" in description
     assert "``references[].carry_forward_to`` uses workflow" in description
     assert "scope labels, never contract IDs" in description
+    assert "``references[].must_surface`` requires non-empty ``applies_to`` and ``required_actions`` lists" in description
     assert "``run_contract_check(request=...)``" in description
     assert description.count("same-kind IDs must be unique") == 1
     assert description.count("never contract IDs") == 1

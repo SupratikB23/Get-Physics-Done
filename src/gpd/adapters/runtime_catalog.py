@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
@@ -160,9 +161,7 @@ _RUNTIME_ENTRY_OPTIONAL_KEYS = frozenset(
 _RUNTIME_ENTRY_ALLOWED_KEYS = _RUNTIME_ENTRY_REQUIRED_KEYS | _RUNTIME_ENTRY_OPTIONAL_KEYS
 _RUNTIME_GLOBAL_CONFIG_STRATEGIES = frozenset({"env_or_home", "xdg_app"})
 _RUNTIME_INSTALL_HELP_EXAMPLE_SCOPES = frozenset({"global", "local"})
-_RUNTIME_VALIDATED_COMMAND_SURFACES = frozenset(
-    {"public_runtime_command_surface", "public_runtime_slash_command", "public_runtime_dollar_command"}
-)
+_RUNTIME_VALIDATED_COMMAND_SURFACE_RE = re.compile(r"^public_runtime_[a-z0-9_]+_command$")
 _RUNTIME_CAPABILITY_ENUMS = {
     "permissions_surface": frozenset({"config-file", "launch-wrapper", "unsupported"}),
     "permission_surface_kind": frozenset(
@@ -387,9 +386,8 @@ def _parse_validated_command_surface(value: object, *, label: str) -> str:
     if value is None:
         return "public_runtime_command_surface"
     surface = _require_string(value, label=label)
-    if surface not in _RUNTIME_VALIDATED_COMMAND_SURFACES:
-        allowed = ", ".join(sorted(_RUNTIME_VALIDATED_COMMAND_SURFACES))
-        raise ValueError(f"{label} must be one of: {allowed}")
+    if _RUNTIME_VALIDATED_COMMAND_SURFACE_RE.fullmatch(surface) is None:
+        raise ValueError(f"{label} must match /^public_runtime_[a-z0-9_]+_command$/")
     return surface
 
 

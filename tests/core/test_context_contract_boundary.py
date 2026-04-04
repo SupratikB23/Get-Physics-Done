@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from gpd.contracts import ResearchContract
+from gpd.contracts import ProjectContractParseResult, ResearchContract
 from gpd.core import context as context_module
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
@@ -17,19 +17,25 @@ def _load_contract_fixture() -> ResearchContract:
 def test_canonicalize_project_contract_surfaces_recoverable_salvage_findings(monkeypatch) -> None:
     contract = _load_contract_fixture()
 
-    def _recoverable_merge(
-        existing: dict[str, object],
-        derived: dict[str, object] | None,
-        *,
-        allowed_subject_ids: set[str],
-    ) -> dict[str, object]:
-        del allowed_subject_ids
-        merged = dict(existing)
-        if derived is not None:
-            merged["aliases"] = "benchmark-anchor"
-        return merged
+    recovered_contract = contract.model_copy(
+        update={
+            "references": [
+                reference.model_copy(update={"aliases": ["benchmark-anchor"]})
+                if reference.id == contract.references[0].id
+                else reference
+                for reference in contract.references
+            ]
+        }
+    )
 
-    monkeypatch.setattr(context_module, "_merge_contract_reference_payload", _recoverable_merge)
+    monkeypatch.setattr(
+        context_module,
+        "parse_project_contract_data_salvage",
+        lambda payload: ProjectContractParseResult(
+            contract=recovered_contract,
+            recoverable_errors=["references.0.aliases must be a list, not str"],
+        ),
+    )
 
     canonical, warnings = context_module._canonicalize_project_contract(
         contract,

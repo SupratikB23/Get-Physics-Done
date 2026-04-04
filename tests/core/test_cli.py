@@ -1421,6 +1421,53 @@ def test_load_recent_projects_rows_rejects_malformed_helper_rows(tmp_path: Path,
         cli_module._load_recent_projects_rows()
 
 
+def test_load_recent_projects_rows_prefers_stronger_recovery_over_newer_weaker_target(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    stronger_root = tmp_path / "stronger-project"
+    stronger_root.mkdir()
+    (stronger_root / "GPD" / "phases" / "02").mkdir(parents=True)
+    (stronger_root / "GPD" / "phases" / "02" / ".continue-here.md").write_text("resume", encoding="utf-8")
+
+    weaker_root = tmp_path / "weaker-project"
+    weaker_root.mkdir()
+    (weaker_root / "NEXT.md").write_text("handoff", encoding="utf-8")
+
+    stronger_row = SimpleNamespace(
+        model_dump=lambda mode="json": {
+            "schema_version": 1,
+            "project_root": stronger_root.resolve(strict=False).as_posix(),
+            "last_session_at": "2026-03-28T12:00:00+00:00",
+            "last_seen_at": "2026-03-28T12:00:00+00:00",
+            "resume_file": "GPD/phases/02/.continue-here.md",
+            "resume_target_kind": "bounded_segment",
+            "resume_target_recorded_at": "2026-03-28T12:05:00+00:00",
+            "resumable": True,
+        }
+    )
+    weaker_row = SimpleNamespace(
+        model_dump=lambda mode="json": {
+            "schema_version": 1,
+            "project_root": weaker_root.resolve(strict=False).as_posix(),
+            "last_session_at": "2026-03-29T12:00:00+00:00",
+            "last_seen_at": "2026-03-29T12:00:00+00:00",
+            "resume_file": "NEXT.md",
+            "resume_target_kind": "handoff",
+            "resume_target_recorded_at": "2026-03-29T12:05:00+00:00",
+            "resumable": True,
+        }
+    )
+    monkeypatch.setattr(
+        "gpd.core.recent_projects.list_recent_projects",
+        lambda store_root=None, last=None: [weaker_row, stronger_row],
+    )
+
+    rows = cli_module._load_recent_projects_rows()
+
+    assert [Path(str(row["project_root"])).name for row in rows] == ["stronger-project", "weaker-project"]
+
+
 def test_resume_plain_output_surfaces_session_handoff_status(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
@@ -5789,13 +5836,14 @@ def test_paper_build_auto_discovers_single_literature_citation_sources_sidecar(t
     literature_dir.mkdir(parents=True)
     (literature_dir / "topic-CITATION-SOURCES.json").write_text(
         json.dumps(
-            [
-                {
-                    "source_type": "paper",
-                    "title": "Auto Reference",
-                    "authors": ["A. Author"],
-                    "year": "2024",
-                }
+                [
+                    {
+                        "reference_id": "ref-auto",
+                        "source_type": "paper",
+                        "title": "Auto Reference",
+                        "authors": ["A. Author"],
+                        "year": "2024",
+                    }
             ]
         ),
         encoding="utf-8",
@@ -5846,6 +5894,7 @@ def test_paper_build_warns_when_multiple_literature_citation_sidecars_exist(tmp_
             json.dumps(
                 [
                     {
+                        "reference_id": f"ref-{name.removesuffix('-CITATION-SOURCES.json')}",
                         "source_type": "paper",
                         "title": f"Reference {name}",
                         "authors": ["A. Author"],
@@ -5874,6 +5923,54 @@ def test_paper_build_warns_when_multiple_literature_citation_sidecars_exist(tmp_
     assert payload["citation_sources_path"] == ""
     assert any("Multiple literature-review citation-source sidecars found" in warning for warning in payload["warnings"])
     assert mock_build.await_args.kwargs["citation_sources"] is None
+
+
+def test_paper_build_rejects_citation_sidecar_entries_without_reference_id(tmp_path: Path) -> None:
+    paper_dir = tmp_path / "paper"
+    paper_dir.mkdir()
+    (paper_dir / "PAPER-CONFIG.json").write_text(
+        json.dumps(
+            {
+                "title": "Configured Paper",
+                "authors": [{"name": "A. Researcher"}],
+                "abstract": "Abstract.",
+                "sections": [{"title": "Intro", "content": "Hello."}],
+                "figures": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    citation_source_path = tmp_path / "citation-sources.json"
+    citation_source_path.write_text(
+        json.dumps(
+            [
+                {
+                    "source_type": "paper",
+                    "title": "Broken Reference",
+                    "authors": ["A. Author"],
+                    "year": "2024",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--raw",
+            "--cwd",
+            str(tmp_path),
+            "paper-build",
+            "--citation-sources",
+            str(citation_source_path),
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "citation_sources[0].reference_id must be a non-empty string" in result.output
 
 
 def test_paper_build_surfaces_toolchain_failure_details(tmp_path: Path) -> None:

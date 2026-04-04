@@ -280,8 +280,6 @@ def _derive_active_resume_kind(
         return "continuity_handoff"
     if _has_candidate(resume_candidates, kind="bounded_segment"):
         return "bounded_segment"
-    if resume_mode == "bounded_segment":
-        return "bounded_segment"
     if active_resume_pointer is not None and lookup_resume_surface_text(
         payload,
         "execution_resume_file_source",
@@ -289,6 +287,8 @@ def _derive_active_resume_kind(
         prefer_compat=True,
     ) == "session_resume_file":
         return "continuity_handoff"
+    if resume_mode == "bounded_segment" and active_resume_pointer is not None:
+        return "bounded_segment"
     if continuity_handoff_file is not None:
         return "continuity_handoff"
     if _has_candidate(resume_candidates, kind="continuity_handoff", status="handoff"):
@@ -634,19 +634,12 @@ def build_recovery_advice(
     workspace_matches_project_root = workspace_root_resolved is None or workspace_root_resolved == (
         project_root_resolved or normalized_cwd.as_posix()
     )
-    active_bounded_segment = lookup_resume_surface_mapping(
-        payload,
-        "active_bounded_segment",
-        compat_surface=compat_resume_surface,
-    )
     legacy_active_execution_segment = lookup_resume_surface_mapping(
         payload,
         "active_execution_segment",
         compat_surface=compat_resume_surface,
         prefer_compat=True,
     )
-    if active_bounded_segment is None and active_resume_kind == "bounded_segment" and legacy_active_execution_segment is not None:
-        active_bounded_segment = legacy_active_execution_segment
     derived_execution_head = lookup_resume_surface_mapping(
         payload,
         "derived_execution_head",
@@ -661,22 +654,13 @@ def build_recovery_advice(
         )
 
     has_bounded_segment_candidate = _has_usable_candidate(segment_candidates, kind="bounded_segment")
-    execution_resumable_flag = _bool_field(payload, "execution_resumable")
+    has_bounded_segment_target = active_resume_pointer is not None or has_bounded_segment_candidate
     if active_resume_kind == "bounded_segment":
-        execution_resumable = bool(
-            active_resume_pointer
-            or has_bounded_segment_candidate
-            or execution_resumable_flag
-            or resume_mode == "bounded_segment"
-        )
+        execution_resumable = has_bounded_segment_target
     elif active_resume_kind == "continuity_handoff":
         execution_resumable = False
     else:
-        execution_resumable = (
-            execution_resumable_flag
-            or resume_mode == "bounded_segment"
-            or has_bounded_segment_candidate
-        )
+        execution_resumable = has_bounded_segment_candidate
     interrupted_agent_flag = _bool_field(payload, "has_interrupted_agent")
     has_interrupted_agent = (
         interrupted_agent_flag

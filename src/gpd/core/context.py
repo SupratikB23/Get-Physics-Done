@@ -8,6 +8,7 @@ resolution so that defaults and model profiles are defined in exactly one place.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Mapping
@@ -40,6 +41,7 @@ from gpd.core.constants import (
     STANDALONE_PLAN,
     STANDALONE_RESEARCH,
     STANDALONE_VALIDATION,
+    STATE_JSON_BACKUP_FILENAME,
     STATE_MD_FILENAME,
     TODOS_DIR_NAME,
     VALIDATION_SUFFIX,
@@ -299,7 +301,50 @@ def _extract_frontmatter_field(content: str, field: str) -> str | None:
 
 def _load_project_contract(cwd: Path) -> tuple[ResearchContract | None, dict[str, object]]:
     """Load the canonical project contract and return load diagnostics."""
-    return _state_module._load_project_contract_for_runtime_context(cwd)
+    contract, load_info = _state_module._load_project_contract_for_runtime_context(cwd)
+    source_path = str(load_info.get("source_path") or "")
+    if source_path.endswith(STATE_JSON_BACKUP_FILENAME):
+        primary_state_path = ProjectLayout(cwd).state_json
+        try:
+            primary_payload = json.loads(primary_state_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            logger.warning(
+                "Using project_contract from %s because the primary state.json was missing",
+                source_path,
+            )
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            logger.warning(
+                "Using project_contract from %s because the primary state.json was unavailable or unreadable",
+                source_path,
+            )
+        else:
+            if not isinstance(primary_payload, dict):
+                logger.warning(
+                    "Using project_contract from %s because the primary state.json was unavailable or unreadable",
+                    source_path,
+                )
+            elif any(
+                "primary state.json was unavailable or unreadable" in str(item)
+                for item in load_info.get("warnings") or []
+            ):
+                logger.warning(
+                    "Using project_contract from %s because the primary state.json was unavailable or unreadable",
+                    source_path,
+                )
+            elif any(
+                "primary state.json was missing" in str(item)
+                for item in load_info.get("warnings") or []
+            ):
+                logger.warning(
+                    "Using project_contract from %s because the primary state.json was missing",
+                    source_path,
+                )
+            else:
+                logger.warning(
+                    "Using project_contract from %s because the primary state.json was unavailable or unreadable",
+                    source_path,
+                )
+    return contract, load_info
 
 
 def _sorted_markdown_files(directory: Path) -> list[Path]:

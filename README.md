@@ -404,7 +404,7 @@ When you set explicit tier overrides, the model string is runtime-native. GPD pa
 - **Gemini CLI**: use the exact Gemini model name accepted by your install.
 - **OpenCode**: use the exact `provider/model` string accepted by your install.
 
-If you are unsure, keep the runtime defaults and tune tiers later through `gpd:set-tier-models`.
+If you are unsure, keep the runtime defaults and tune tiers later through your runtime's `set-tier-models` command.
 
 </details>
 

@@ -3684,9 +3684,7 @@ def run_contract_check(request: RunContractCheckPayload) -> dict:
     instead of being guessed. Recoverable scalar-to-list drift is normalized by
     the shared contract parser before verification, and benchmark prose may
     still surface a warning when direct evidence is incomplete. Contract
-    payloads must also satisfy the shared semantic integrity rules: same-kind IDs must be unique; target IDs must not be reused across claim/deliverable/acceptance-test/reference kinds when that would make resolution ambiguous; ``references[].carry_forward_to`` uses workflow scope labels, never contract IDs; and contract context must stay consistent with metadata defaults and explicit metadata fields, so benchmark anchors,
-    regime labels, and family selections cannot contradict the resolved
-    binding. For plan-style contract payloads, ``context_intake`` must be
+    payloads must also satisfy the shared semantic integrity rules: same-kind IDs must be unique; target IDs must not be reused across claim/deliverable/acceptance-test/reference kinds when that would make resolution ambiguous; ``references[].carry_forward_to`` uses workflow scope labels, never contract IDs; ``references[].must_surface`` requires non-empty ``applies_to`` and ``required_actions`` lists; and contract context must stay consistent with metadata defaults and explicit metadata fields, so benchmark anchors, regime labels, and family selections cannot contradict the resolved binding. For plan-style contract payloads, ``context_intake`` must be
     present and non-empty, and the contract must satisfy the same plan semantic
     requirements GPD enforces in plan frontmatter. Limited recoverable
     structural drift may still be salvaged, and any such recovery is surfaced
@@ -4426,10 +4424,7 @@ def suggest_contract_checks(contract: SuggestContractPayload, active_checks: Str
     same-kind IDs must be unique; target IDs must not be reused across
     claim/deliverable/acceptance-test/reference kinds when that would make
     resolution ambiguous; ``references[].carry_forward_to`` uses workflow
-    scope labels, never contract IDs; and contract context must stay consistent
-    with metadata defaults and explicit metadata fields, so benchmark anchors,
-    regime labels, and family selections cannot contradict the resolved
-    binding.
+    scope labels, never contract IDs; ``references[].must_surface`` requires non-empty ``applies_to`` and ``required_actions`` lists; and contract context must stay consistent with metadata defaults and explicit metadata fields, so benchmark anchors, regime labels, and family selections cannot contradict the resolved binding.
 
     For plan-style contract payloads, ``context_intake`` must be present and
     non-empty, and the contract must satisfy the same plan semantic

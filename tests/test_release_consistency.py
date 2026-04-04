@@ -438,7 +438,7 @@ def test_readme_documents_runtime_specific_tier_model_formats() -> None:
     assert "Runtime-specific model string examples" in readme
     assert "<runtime-native-model-id>" in readme
     assert "use the exact model or deployment identifier accepted by your install" in readme
-    assert "keep the runtime defaults and tune tiers later through `gpd:set-tier-models`" in readme
+    assert "keep the runtime defaults and tune tiers later through your runtime's `set-tier-models` command" in readme
     assert "gpt-5.4" not in readme
     assert "opus" not in readme
     assert "sonnet" not in readme
@@ -934,7 +934,8 @@ def test_public_bootstrap_help_examples_cover_install_and_readiness_handoff() ->
     assert "# Interactive uninstall" in content
     assert "# Uninstall from all runtimes globally" in content
     assert "# Equivalent uninstall subcommand form" in content
-    assert "settingsCommandTail()" in content
+    assert "settingsCommandFollowUp(" in content
+    assert "SHARED_PUBLIC_SURFACE_TEXT.settingsCommandSentence" in content
     assert "SHARED_PUBLIC_SURFACE_TEXT.settingsRecommendationSentence" in content
     assert_beginner_preflight_notice_contract(content)
     assert_beginner_caveat_follow_up_contract(content)

@@ -14,9 +14,22 @@ def test_new_project_minimal_contract_guidance_surfaces_contract_enum_vocabulary
     workflow_text = (WORKFLOWS_DIR / "new-project.md").read_text(encoding="utf-8")
 
     assert "`observables[].kind`: `scalar | curve | map | classification | proof_obligation | other`" in workflow_text
+    assert (
+        "`acceptance_tests[].kind`: `existence | schema | benchmark | consistency | cross_method | limiting_case | "
+        "symmetry | dimensional_analysis | convergence | oracle | proxy | reproducibility | "
+        "proof_hypothesis_coverage | proof_parameter_coverage | proof_quantifier_domain | "
+        "claim_to_proof_alignment | lemma_dependency_closure | counterexample_search | human_review | other`"
+    ) in workflow_text
     assert "`acceptance_tests[].automation`: `automated | hybrid | human`" in workflow_text
     assert "`references[].role`: `definition | benchmark | method | must_consider | background | other`" in workflow_text
-    assert "`links[].relation`: `supports | computes | visualizes | benchmarks | depends_on | evaluated_by | other`" in workflow_text
+    assert (
+        "`links[].relation`: `supports | computes | visualizes | benchmarks | depends_on | evaluated_by | "
+        "proves | uses_hypothesis | depends_on_lemma | other`"
+    ) in workflow_text
+    assert (
+        "if `references[].must_surface` is `true`, both `references[].applies_to[]` and "
+        "`references[].required_actions[]` must be non-empty"
+    ) in workflow_text
 
 
 def test_settings_and_planning_config_keep_conventions_outside_config_json() -> None:

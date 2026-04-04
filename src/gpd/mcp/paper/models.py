@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import Counter
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal, get_args
@@ -17,6 +18,7 @@ from gpd.mcp.paper.bibliography import BibliographyAudit
 Sha256Hex = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 ClaimId = Annotated[str, Field(pattern=r"^CLM-[A-Za-z0-9][A-Za-z0-9_-]*$")]
 ReviewIssueId = Annotated[str, Field(pattern=r"^REF-[A-Za-z0-9][A-Za-z0-9_-]*$")]
+BuilderJournalKey = Literal["prl", "apj", "mnras", "nature", "jhep", "jfm"]
 
 
 class Author(BaseModel):
@@ -81,9 +83,29 @@ class ArtifactManifest(BaseModel):
 
     version: Literal[1] = 1
     paper_title: str
-    journal: str
+    journal: BuilderJournalKey
     created_at: str
     artifacts: list[ArtifactRecord] = Field(default_factory=list)
+
+    @field_validator("paper_title")
+    @classmethod
+    def _validate_paper_title(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("paper_title must be a non-empty string")
+        return normalized
+
+    @field_validator("created_at")
+    @classmethod
+    def _validate_created_at(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("created_at must be a non-empty ISO 8601 timestamp")
+        try:
+            datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("created_at must be an ISO 8601 timestamp") from exc
+        return normalized
 
 
 class ClaimType(StrEnum):
@@ -415,7 +437,7 @@ class PaperConfig(BaseModel):
     figures: list[FigureRef] = Field(default_factory=list)
     acknowledgments: str = ""
     bib_file: str = "references"
-    journal: Literal["prl", "apj", "mnras", "nature", "jhep", "jfm"] = "prl"
+    journal: BuilderJournalKey = "prl"
     appendix_sections: list[Section] = Field(default_factory=list)
     attribution_footer: str = "Generated with Get Physics Done"
     output_filename: str | None = None

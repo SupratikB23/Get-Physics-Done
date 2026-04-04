@@ -191,6 +191,32 @@ def test_runtime_catalog_rejects_non_boolean_native_include_support(
         _iter_runtime_descriptors_from_payload(payload, tmp_path=tmp_path, monkeypatch=monkeypatch)
 
 
+def test_runtime_catalog_accepts_future_validated_command_surface(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = deepcopy(json.loads(_RUNTIME_CATALOG_PATH.read_text(encoding="utf-8")))
+    payload[0]["validated_command_surface"] = "public_runtime_semicolon_command"
+
+    descriptors = _iter_runtime_descriptors_from_payload(payload, tmp_path=tmp_path, monkeypatch=monkeypatch)
+
+    assert descriptors[0].validated_command_surface == "public_runtime_semicolon_command"
+
+
+def test_runtime_catalog_rejects_invalid_capability_enum_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = deepcopy(json.loads(_RUNTIME_CATALOG_PATH.read_text(encoding="utf-8")))
+    payload[0]["capabilities"]["telemetry_source"] = "webhook"
+
+    with pytest.raises(
+        ValueError,
+        match=r"runtime catalog entry 0\.capabilities\.telemetry_source must be one of: none, notify-hook",
+    ):
+        _iter_runtime_descriptors_from_payload(payload, tmp_path=tmp_path, monkeypatch=monkeypatch)
+
+
 def test_hook_payload_policy_uses_runtime_specific_overrides_and_merged_fallback() -> None:
     codex_policy = get_hook_payload_policy("codex")
     merged_policy = get_hook_payload_policy()

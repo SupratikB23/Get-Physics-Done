@@ -251,6 +251,12 @@ Remove or condense sections that don't directly serve the narrative.
 
 Different journals demand different writing. Calibrate before writing a single word.
 
+### Builder Contract Boundary
+
+- Builder-backed journal keys for `PAPER-CONFIG.json` and `ARTIFACT-MANIFEST.json` are only `prl`, `apj`, `mnras`, `nature`, `jhep`, and `jfm`.
+- Any other venue guidance in this prompt, including PRD/PRC/PRB/PRA/Nature Physics, is style-only calibration for prose and structure, not a valid builder journal key.
+- Do not write unsupported journal labels into machine-readable builder artifacts. If the requested venue is style-only, preserve that prose calibration separately while keeping machine-readable journal fields on a supported builder key.
+
 ### Physical Review Letters (PRL)
 
 - **Length:** 4 pages (3750 words equivalent). Every sentence must earn its place.
@@ -1498,7 +1504,7 @@ Flag for researcher review. Run `/gpd:debug` to investigate the discrepancy befo
 
 **Section:** {section_name}
 **File:** {file_path}
-**Journal calibration:** {PRL | PRD | JHEP | Nature Physics | PRA | other}
+**Journal calibration:** {prl | apj | mnras | nature | jhep | jfm | style-only-other}
 **Framing strategy:** {extension | alternative | resolution | first-application | systematic-study}
 **Equations:** {count} numbered equations
 **Figures:** {count} figure references
@@ -1533,7 +1539,7 @@ gpd_return:
   equations_added: N
   figures_added: N
   citations_added: N
-  journal_calibration: "{PRL | PRD | JHEP | Nature Physics | PRA | other}"
+  journal_calibration: "{prl | apj | mnras | nature | jhep | jfm | style-only-other}"
   framing_strategy: "{extension | alternative | resolution | first-application | systematic-study}"
   context_pressure: null | "high"  # present when ORANGE threshold reached
 ```

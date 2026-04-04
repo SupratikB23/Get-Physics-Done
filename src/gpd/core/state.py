@@ -871,7 +871,7 @@ def _load_project_contract_for_runtime_context(cwd: Path) -> tuple[ResearchContr
             provenance="raw",
         )
 
-    state, _state_issues, state_source = peek_state_json(cwd, surface_blocked_project_contract=True)
+    state, state_issues, state_source = peek_state_json(cwd, surface_blocked_project_contract=True)
     default_source = _project_contract_source_path(cwd, layout.state_json)
     if not isinstance(state, dict):
         return None, _project_contract_load_payload(status="missing", source_path=default_source)
@@ -883,12 +883,30 @@ def _load_project_contract_for_runtime_context(cwd: Path) -> tuple[ResearchContr
         if state_source == "state.json.bak"
         else layout.state_md
     )
-    return _classify_project_contract_payload(
+    contract, load_info = _classify_project_contract_payload(
         cwd=cwd,
         source_path=source_path,
         raw_contract=state.get("project_contract"),
         provenance="fallback",
     )
+    fallback_warning = next(
+        (
+            issue
+            for issue in state_issues
+            if isinstance(issue, str)
+            and (
+                "primary state.json was unavailable or unreadable" in issue
+                or "primary state.json was missing" in issue
+            )
+        ),
+        None,
+    )
+    if fallback_warning:
+        load_info = {
+            **load_info,
+            "warnings": [*list(load_info.get("warnings") or []), fallback_warning],
+        }
+    return contract, load_info
 
 
 def _project_contract_gate_payload(
@@ -1789,7 +1807,7 @@ def _normalize_state_schema_with_backup_project_contract(
     backup_raw: dict | None,
     *,
     allow_project_contract_salvage: bool = True,
-) -> tuple[dict, list[str], bool, bool, bool]:
+) -> tuple[dict, list[str], bool, bool, bool, bool]:
     """Normalize state and recover backup state when the primary root is unreadable."""
 
     normalized, integrity_issues = _normalize_state_schema(
@@ -1797,6 +1815,7 @@ def _normalize_state_schema_with_backup_project_contract(
         allow_project_contract_salvage=allow_project_contract_salvage,
     )
     recovered_root_from_backup = False
+    recovered_position_from_backup = False
     recovered_continuation_from_backup = False
     recovered_session_from_backup = False
 
@@ -1807,16 +1826,20 @@ def _normalize_state_schema_with_backup_project_contract(
             backup_raw,
             allow_project_contract_salvage=allow_project_contract_salvage,
         )
+
+    def _state_reset_issue_present(issues: list[str]) -> bool:
+        return "schema normalization: irrecoverable validation failure; reset to defaults" in issues
+
     if (
         backup_normalized is not None
-        and not backup_issues
+        and not _state_reset_issue_present(backup_issues)
         and (
             not isinstance(raw, dict)
-            or "schema normalization: irrecoverable validation failure; reset to defaults" in integrity_issues
+            or _state_reset_issue_present(integrity_issues)
         )
     ):
         normalized = backup_normalized
-        integrity_issues = []
+        integrity_issues = list(backup_issues)
         recovered_root_from_backup = True
         logger.warning("Recovered state.json from state.json.bak after primary state.json required normalization")
     else:
@@ -1843,16 +1866,14 @@ def _normalize_state_schema_with_backup_project_contract(
         if (
             isinstance(raw, dict)
             and backup_normalized is not None
+            and not recovered_root_from_backup
             and primary_position_issues
+            and isinstance(backup_normalized.get("position"), dict)
         ):
-            normalized = backup_normalized
-            integrity_issues = [
-                issue
-                for issue in integrity_issues
-                if issue not in primary_position_issues
-            ]
-            recovered_root_from_backup = True
-            logger.warning("Recovered state.json from state.json.bak after primary position state required normalization")
+            normalized = copy.deepcopy(normalized)
+            normalized["position"] = copy.deepcopy(backup_normalized["position"])
+            integrity_issues = [issue for issue in integrity_issues if issue not in primary_position_issues]
+            recovered_position_from_backup = True
         if (
             isinstance(raw, dict)
             and backup_normalized is not None
@@ -1883,6 +1904,7 @@ def _normalize_state_schema_with_backup_project_contract(
         normalized,
         integrity_issues,
         recovered_root_from_backup,
+        recovered_position_from_backup,
         recovered_continuation_from_backup,
         recovered_session_from_backup,
     )
@@ -2938,12 +2960,17 @@ def _load_state_json_with_integrity_issues(
                 bak_parsed = None
             if isinstance(bak_parsed, dict):
                 backup_parsed = bak_parsed
-            normalized, integrity_issues, recovered_root_from_backup, recovered_continuation_from_backup, recovered_session_from_backup = (
-                _normalize_state_schema_with_backup_project_contract(
-                    parsed,
-                    backup_parsed,
-                    allow_project_contract_salvage=allow_project_contract_salvage,
-                )
+            (
+                normalized,
+                integrity_issues,
+                recovered_root_from_backup,
+                recovered_position_from_backup,
+                recovered_continuation_from_backup,
+                recovered_session_from_backup,
+            ) = _normalize_state_schema_with_backup_project_contract(
+                parsed,
+                backup_parsed,
+                allow_project_contract_salvage=allow_project_contract_salvage,
             )
             if surface_blocked_project_contract:
                 normalized = _restore_visible_project_contract(normalized, parsed.get("project_contract"))
@@ -2952,18 +2979,25 @@ def _load_state_json_with_integrity_issues(
                 integrity_issues.append(
                     "state.json root was recovered from state.json.bak after primary state.json required normalization"
                 )
-            elif recovered_continuation_from_backup and integrity_mode != "review":
+            if recovered_position_from_backup:
+                integrity_issues.append(
+                    "state.json position was recovered from state.json.bak after primary position required normalization"
+                )
+            if recovered_continuation_from_backup and integrity_mode != "review":
                 integrity_issues.append(
                     "state.json continuation was recovered from state.json.bak after primary continuation required normalization"
                 )
-            elif recovered_session_from_backup and integrity_mode != "review":
+            if recovered_session_from_backup and integrity_mode != "review":
                 integrity_issues.append(
                     "state.json session was recovered from state.json.bak after primary session required normalization"
                 )
             if integrity_mode == "review" and integrity_issues:
                 logger.warning("state.json failed review-mode integrity checks: %s", "; ".join(integrity_issues))
             if persist_recovery and (
-                state_source != "state.json" or recovered_continuation_from_backup or recovered_session_from_backup
+                state_source != "state.json"
+                or recovered_position_from_backup
+                or recovered_continuation_from_backup
+                or recovered_session_from_backup
             ):
                 _write_state_pair_locked(
                     cwd,
@@ -3121,12 +3155,17 @@ def _load_state_json_from_backup(
         bak_parsed = json.loads(bak_raw)
         if not isinstance(bak_parsed, dict):
             raise TypeError(f"state root must be an object, got {type(bak_parsed).__name__}")
-        restored, integrity_issues, _recovered_root_from_backup, _recovered_continuation_from_backup, _recovered_session_from_backup = (
-            _normalize_state_schema_with_backup_project_contract(
-                bak_parsed,
-                None,
-                allow_project_contract_salvage=allow_project_contract_salvage,
-            )
+        (
+            restored,
+            integrity_issues,
+            _recovered_root_from_backup,
+            _recovered_position_from_backup,
+            _recovered_continuation_from_backup,
+            _recovered_session_from_backup,
+        ) = _normalize_state_schema_with_backup_project_contract(
+            bak_parsed,
+            None,
+            allow_project_contract_salvage=allow_project_contract_salvage,
         )
         if surface_blocked_project_contract:
             restored = _restore_visible_project_contract(restored, bak_parsed.get("project_contract"))
@@ -4293,7 +4332,7 @@ def state_validate(
                 if warning not in warnings:
                     warnings.append(warning)
 
-    if isinstance(state_json, dict) and isinstance(state_md, dict):
+    if isinstance(state_json, dict) and isinstance(state_md, dict) and state_source != "state.json.bak":
         issues.extend(_state_md_mirror_mismatches(state_json, state_md))
 
     json_pos = state_json.get("position") if isinstance(state_json, dict) else None

@@ -1796,16 +1796,27 @@ def _normalize_recent_project_row(row: object) -> dict[str, object] | None:
     return normalized
 
 
-def _recent_project_sort_key(row: dict[str, object]) -> tuple[int, str, str]:
-    """Sort resumable rows first, then by most recent session timestamp."""
-    resumable_rank = 0 if bool(row.get("resumable")) else 1
+def _recent_project_sort_key(row: dict[str, object]) -> tuple[int, int, int, int, str, str]:
+    """Sort recent rows by recovery strength first, then by recency."""
+    from gpd.core.recent_projects import classify_recent_project_recovery
+
+    recovery = classify_recent_project_recovery(row)
     timestamp = _recent_project_text(
         row,
+        "resume_target_recorded_at",
         "last_session_at",
         "last_seen_at",
+        "source_recorded_at",
     ) or ""
     workspace = str(row.get("workspace") or row.get("project_root") or "")
-    return resumable_rank, timestamp, workspace
+    return (
+        int(bool(row.get("resumable"))),
+        recovery.target_priority,
+        int(recovery.has_concrete_target),
+        int(bool(row.get("available"))),
+        timestamp,
+        workspace,
+    )
 
 
 def _load_recent_projects_rows() -> list[dict[str, object]]:
@@ -1829,7 +1840,6 @@ def _load_recent_projects_rows() -> list[dict[str, object]]:
         rows.append(normalized)
 
     rows.sort(key=_recent_project_sort_key, reverse=True)
-    rows.sort(key=lambda row: 0 if bool(row.get("resumable")) else 1)
     return rows
 
 
@@ -5697,7 +5707,26 @@ def _load_citation_sources_payload(citation_source_path: Path) -> list[CitationS
     raw_sources = _load_json_document(str(citation_source_path))
     if not isinstance(raw_sources, list):
         raise GPDError(f"Citation sources must be a JSON array: {_format_display_path(citation_source_path)}")
-    return [CitationSource.model_validate(item) for item in raw_sources]
+    sources: list[CitationSource] = []
+    for index, item in enumerate(raw_sources):
+        try:
+            source = CitationSource.model_validate(item)
+        except PydanticValidationError as exc:
+            formatted = "; ".join(
+                _format_pydantic_schema_error(error, root_label=f"citation_sources[{index}]")
+                for error in exc.errors()[:3]
+            )
+            raise GPDError(
+                f"Invalid citation source in {_format_display_path(citation_source_path)}: {formatted}"
+            ) from exc
+        reference_id = source.reference_id.strip() if isinstance(source.reference_id, str) else ""
+        if not reference_id:
+            raise GPDError(
+                f"Invalid citation source in {_format_display_path(citation_source_path)}: "
+                f"citation_sources[{index}].reference_id must be a non-empty string"
+            )
+        sources.append(source.model_copy(update={"reference_id": reference_id}))
+    return sources
 
 
 def _paper_build_reference_bibtex_bridge(result: object) -> list[dict[str, str]]:
@@ -7579,6 +7608,7 @@ def paper_build(
     bib_data = None
     if bib_source is not None:
         from pybtex.database import parse_file
+
         try:
             bib_data = parse_file(str(bib_source))
         except Exception as exc:  # noqa: BLE001
@@ -7589,11 +7619,17 @@ def paper_build(
     citation_source_warning: str | None = None
     if citation_sources is not None:
         citation_source_path = _resolve_existing_input_path(citation_sources, candidates=(), label="citation sources")
-        citation_payload = _load_citation_sources_payload(citation_source_path)
+        try:
+            citation_payload = _load_citation_sources_payload(citation_source_path)
+        except GPDError as exc:
+            _error(str(exc))
     else:
         citation_source_path, citation_source_warning = _discover_literature_review_citation_sources(_get_cwd())
         if citation_source_path is not None:
-            citation_payload = _load_citation_sources_payload(citation_source_path)
+            try:
+                citation_payload = _load_citation_sources_payload(citation_source_path)
+            except GPDError as exc:
+                _error(str(exc))
 
     toolchain = _paper_build_toolchain_payload()
     result = asyncio.run(
@@ -7605,6 +7641,7 @@ def paper_build(
             enrich_bibliography=enrich_bibliography,
         )
     )
+
     result_tex_path = result.tex_path if isinstance(result.tex_path, Path) else None
     if result_tex_path is None:
         result_tex_path = output_path / f"{derive_output_filename(paper_config)}.tex"

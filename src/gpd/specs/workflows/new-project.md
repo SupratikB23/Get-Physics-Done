@@ -159,11 +159,12 @@ Before you show the approval gate, build the raw contract as a literal JSON obje
 - for enum fields, use only the exact schema vocabulary:
   - `observables[].kind`: `scalar | curve | map | classification | proof_obligation | other`
   - `deliverables[].kind`: `figure | table | dataset | data | derivation | code | note | report | other`
-  - `acceptance_tests[].kind`: `existence | schema | benchmark | consistency | cross_method | limiting_case | symmetry | dimensional_analysis | convergence | oracle | proxy | reproducibility | human_review | other`
+  - `acceptance_tests[].kind`: `existence | schema | benchmark | consistency | cross_method | limiting_case | symmetry | dimensional_analysis | convergence | oracle | proxy | reproducibility | proof_hypothesis_coverage | proof_parameter_coverage | proof_quantifier_domain | claim_to_proof_alignment | lemma_dependency_closure | counterexample_search | human_review | other`
   - `acceptance_tests[].automation`: `automated | hybrid | human`
   - `references[].kind`: `paper | dataset | prior_artifact | spec | user_anchor | other`
   - `references[].role`: `definition | benchmark | method | must_consider | background | other`
-  - `links[].relation`: `supports | computes | visualizes | benchmarks | depends_on | evaluated_by | other`
+  - `links[].relation`: `supports | computes | visualizes | benchmarks | depends_on | evaluated_by | proves | uses_hypothesis | depends_on_lemma | other`
+- if `references[].must_surface` is `true`, both `references[].applies_to[]` and `references[].required_actions[]` must be non-empty; do not leave must-surface anchors implicit
 - `references[].carry_forward_to[]` is free-text workflow scope such as `planning`, `execution`, `verification`, or `writing`; it is not an enum and must not match any declared contract ID from `observables[]`, `claims[]`, `deliverables[]`, `acceptance_tests[]`, `references[]`, `forbidden_proxies[]`, or `links[]`
 - do **not** invent near-miss enum values such as `anchor`, `manual`, `content-check`, `benchmark-record`, or `anchors`; rewrite them to the exact schema term before approval
 - the contract schema is closed: do not add invented top-level or nested keys, and do not use scalar shortcuts for list fields
@@ -822,6 +823,15 @@ Before you ask for approval, build the raw contract as a literal JSON object tha
 - `claims[].observables`, `claims[].deliverables`, `claims[].acceptance_tests`, and `claims[].references` must point only to declared IDs
 - `acceptance_tests[].subject`, `references[].applies_to`, and `forbidden_proxies[].subject` must point to a claim ID or deliverable ID, never an observable label or free text
 - `acceptance_tests[].evidence_required`, `links[].source`, and `links[].target` may only point to declared claim, deliverable, acceptance-test, or reference IDs
+- for enum fields, use only the exact schema vocabulary:
+  - `observables[].kind`: `scalar | curve | map | classification | proof_obligation | other`
+  - `deliverables[].kind`: `figure | table | dataset | data | derivation | code | note | report | other`
+  - `acceptance_tests[].kind`: `existence | schema | benchmark | consistency | cross_method | limiting_case | symmetry | dimensional_analysis | convergence | oracle | proxy | reproducibility | proof_hypothesis_coverage | proof_parameter_coverage | proof_quantifier_domain | claim_to_proof_alignment | lemma_dependency_closure | counterexample_search | human_review | other`
+  - `acceptance_tests[].automation`: `automated | hybrid | human`
+  - `references[].kind`: `paper | dataset | prior_artifact | spec | user_anchor | other`
+  - `references[].role`: `definition | benchmark | method | must_consider | background | other`
+  - `links[].relation`: `supports | computes | visualizes | benchmarks | depends_on | evaluated_by | proves | uses_hypothesis | depends_on_lemma | other`
+- if `references[].must_surface` is `true`, both `references[].applies_to[]` and `references[].required_actions[]` must be non-empty; do not leave must-surface anchors implicit
 - if the user chooses "Review raw contract", show the exact JSON object that will be validated and persisted
 
 Present a concise scoping summary and require explicit approval before downstream artifact generation:

@@ -3007,6 +3007,25 @@ class TestReviewValidationCommands:
         assert checks["artifact_manifest"]["passed"] is False
         assert "could not parse artifact manifest" in checks["artifact_manifest"]["detail"]
 
+    def test_review_preflight_peer_review_strict_rejects_blank_artifact_manifest_title(self, gpd_project: Path) -> None:
+        paper_dir = gpd_project / "paper"
+        manifest = json.loads((paper_dir / "ARTIFACT-MANIFEST.json").read_text(encoding="utf-8"))
+        manifest["paper_title"] = "   "
+        (paper_dir / "ARTIFACT-MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        result = runner.invoke(
+            app,
+            ["--raw", "validate", "review-preflight", "peer-review", "--strict"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["artifact_manifest"]["passed"] is False
+        assert "artifact manifest is invalid" in checks["artifact_manifest"]["detail"]
+        assert "artifact_manifest.paper_title" in checks["artifact_manifest"]["detail"]
+
     def test_review_preflight_peer_review_accepts_explicit_manuscript_path(self, gpd_project: Path) -> None:
         canonical_manuscript_path(gpd_project).unlink()
 

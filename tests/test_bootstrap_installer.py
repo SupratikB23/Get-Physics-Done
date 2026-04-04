@@ -800,6 +800,20 @@ const futureSurfaceCatalog = JSON.parse(JSON.stringify(catalog));
 futureSurfaceCatalog[0].validated_command_surface = "public_runtime_semicolon_command";
 assert.equal(validateRuntimeCatalog(futureSurfaceCatalog)[0].validated_command_surface, "public_runtime_semicolon_command");
 
+const badTelemetryCatalog = JSON.parse(JSON.stringify(catalog));
+badTelemetryCatalog[0].capabilities.telemetry_source = "webhook";
+assert.throws(
+  () => validateRuntimeCatalog(badTelemetryCatalog),
+  /runtime catalog entry 0\.capabilities\.telemetry_source must be one of: none, notify-hook/
+);
+
+const badStatuslineCatalog = JSON.parse(JSON.stringify(catalog));
+badStatuslineCatalog[0].capabilities.statusline_surface = "implicit";
+assert.throws(
+  () => validateRuntimeCatalog(badStatuslineCatalog),
+  /runtime catalog entry 0\.capabilities\.statusline_surface must be one of: explicit, none/
+);
+
 const mismatchedSurfaceCatalog = JSON.parse(JSON.stringify(catalog));
 mismatchedSurfaceCatalog[0].public_command_surface_prefix = `${mismatchedSurfaceCatalog[0].command_prefix}x`;
 assert.throws(

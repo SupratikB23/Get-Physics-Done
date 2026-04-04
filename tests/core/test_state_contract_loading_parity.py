@@ -184,7 +184,8 @@ def test_state_and_context_restore_backup_project_contract_when_primary_state_is
     assert ctx["project_contract_load_info"]["status"] == "loaded"
     assert ctx["project_contract_gate"]["authoritative"] is True
     assert any(
-        "the primary state.json was unavailable or unreadable" in record.message
+        "the primary state.json was missing" in record.message
+        or "the primary state.json was unavailable or unreadable" in record.message
         for record in caplog.records
     )
 

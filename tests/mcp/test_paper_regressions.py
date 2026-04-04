@@ -133,6 +133,47 @@ def test_artifact_manifest_models_reject_extra_fields_and_invalid_sha256() -> No
         )
 
 
+def test_artifact_manifest_rejects_unsupported_builder_journal() -> None:
+    from gpd.mcp.paper.models import ArtifactManifest
+
+    with pytest.raises(ValidationError, match="journal"):
+        ArtifactManifest.model_validate(
+            {
+                "version": 1,
+                "paper_title": "Strict Manifest",
+                "journal": "prd",
+                "created_at": "2026-03-17T00:00:00+00:00",
+                "artifacts": [],
+            }
+        )
+
+
+def test_artifact_manifest_models_reject_blank_titles_and_invalid_timestamps() -> None:
+    from gpd.mcp.paper.models import ArtifactManifest
+
+    with pytest.raises(ValidationError, match=r"paper_title[\s\S]*non-empty string"):
+        ArtifactManifest.model_validate(
+            {
+                "version": 1,
+                "paper_title": "   ",
+                "journal": "prl",
+                "created_at": "2026-03-17T00:00:00+00:00",
+                "artifacts": [],
+            }
+        )
+
+    with pytest.raises(ValidationError, match=r"created_at[\s\S]*ISO 8601 timestamp"):
+        ArtifactManifest.model_validate(
+            {
+                "version": 1,
+                "paper_title": "Strict Manifest",
+                "journal": "prl",
+                "created_at": "not-a-timestamp",
+                "artifacts": [],
+            }
+        )
+
+
 def test_build_artifact_manifest_preserves_absolute_source_paths(tmp_path) -> None:
     from gpd.mcp.paper.artifact_manifest import build_artifact_manifest
     from gpd.mcp.paper.models import Author, FigureRef, PaperConfig, Section

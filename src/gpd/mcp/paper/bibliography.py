@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Literal
 
 from pybtex.database import BibliographyData, Entry
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,13 @@ logger = logging.getLogger(__name__)
 class CitationSource(BaseModel):
     """A citation source from the research provenance chain."""
 
+    model_config = ConfigDict(extra="forbid")
+
     source_type: Literal["paper", "tool", "data", "website"]
     reference_id: str | None = None
     bibtex_key: str | None = None
     title: str
-    authors: list[str] = []
+    authors: list[str] = Field(default_factory=list)
     year: str = ""
     arxiv_id: str | None = None
     doi: str | None = None
@@ -46,22 +48,26 @@ CitationVerificationStatus = Literal["verified", "partial", "unverified"]
 class CitationAuditRecord(BaseModel):
     """Machine-readable audit record for a citation source."""
 
+    model_config = ConfigDict(extra="forbid")
+
     key: str
     source_type: Literal["paper", "tool", "data", "website"]
     reference_id: str | None = None
     title: str
     resolution_status: CitationResolutionStatus
     verification_status: CitationVerificationStatus
-    verification_sources: list[str] = []
-    canonical_identifiers: list[str] = []
-    missing_core_fields: list[str] = []
-    enriched_fields: list[str] = []
-    warnings: list[str] = []
-    errors: list[str] = []
+    verification_sources: list[str] = Field(default_factory=list)
+    canonical_identifiers: list[str] = Field(default_factory=list)
+    missing_core_fields: list[str] = Field(default_factory=list)
+    enriched_fields: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class BibliographyAudit(BaseModel):
     """Summary audit artifact for a bibliography emission batch."""
+
+    model_config = ConfigDict(extra="forbid")
 
     generated_at: str
     total_sources: int

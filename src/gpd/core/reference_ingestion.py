@@ -34,6 +34,7 @@ _ACTION_ALIASES = {
     "reuse": "use",
     "review": "read",
 }
+_CITATION_SOURCE_TYPES = frozenset({"paper", "tool", "data", "website"})
 _ROLE_MAP = {
     "benchmark": "benchmark",
     "benchmark target": "benchmark",
@@ -497,13 +498,12 @@ def _citation_source_from_payload(
 
     reference_id = _clean_text(payload.get("reference_id"))
     title = _clean_text(payload.get("title"))
-    source_type = _clean_text(payload.get("source_type")).casefold() or "paper"
+    source_type = _clean_text(payload.get("source_type")).casefold()
     if not reference_id:
-        fallback_seed = title or _clean_text(payload.get("doi")) or _clean_text(payload.get("arxiv_id")) or source_path
-        reference_id = _reference_id(fallback_seed, fallback_seed, "citation")
-        warning = f"citation source {source_path}[{index}] missing reference_id; synthesized {reference_id}"
-    else:
-        warning = None
+        return None, f"citation source {source_path}[{index}] is missing reference_id"
+    if source_type not in _CITATION_SOURCE_TYPES:
+        allowed = ", ".join(sorted(_CITATION_SOURCE_TYPES))
+        return None, f"citation source {source_path}[{index}] source_type must be one of: {allowed}"
     if not title:
         return None, f"citation source {source_path}[{index}] is missing a title"
 
@@ -522,7 +522,7 @@ def _citation_source_from_payload(
         bibtex_key=_clean_text(payload.get("bibtex_key")),
         source_artifacts=[source_path],
     )
-    return record, warning
+    return record, None
 
 
 def _ingest_citation_source_sidecar(cwd: Path, path: Path, result: ArtifactReferenceIngestion) -> None:

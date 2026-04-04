@@ -255,6 +255,20 @@ def test_workflow_preset_readiness_does_not_backfill_legacy_paper_build_flag_to_
     assert publication["blocked_workflows"] == ["paper-build", "arxiv-submission"]
 
 
+@pytest.mark.parametrize("latex_capability", [True, {"legacy_available": True}])
+def test_workflow_preset_readiness_ignores_legacy_compiler_availability_shapes(
+    latex_capability: object,
+) -> None:
+    readiness = resolve_workflow_preset_readiness(base_ready=True, latex_capability=latex_capability)
+    publication = next(preset for preset in readiness["presets"] if preset["id"] == "publication-manuscript")
+
+    assert readiness["latex_capability"]["available"] is False
+    assert readiness["latex_capability"]["compiler_available"] is False
+    assert readiness["latex_capability"]["paper_build_ready"] is False
+    assert readiness["latex_capability"]["arxiv_submission_ready"] is False
+    assert publication["status"] == "degraded"
+
+
 def test_workflow_preset_readiness_normalizes_unknown_bibtex_without_none_full_toolchain() -> None:
     readiness = resolve_workflow_preset_readiness(
         base_ready=True,

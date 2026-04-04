@@ -188,6 +188,15 @@ const RUNTIME_CATALOG_CAPABILITY_KEYS = new Set([
   "supports_cost_usd",
   "supports_context_meter",
 ]);
+const RUNTIME_CATALOG_CAPABILITY_ENUMS = {
+  permissions_surface: new Set(["config-file", "launch-wrapper", "unsupported"]),
+  statusline_surface: new Set(["explicit", "none"]),
+  statusline_config_surface: new Set(["settings.json:statusLine", "none"]),
+  notify_surface: new Set(["explicit", "none"]),
+  notify_config_surface: new Set(["config.toml:notify", "none"]),
+  telemetry_source: new Set(["notify-hook", "none"]),
+  telemetry_completeness: new Set(["best-effort", "none"]),
+};
 const RUNTIME_CATALOG_HOOK_PAYLOAD_KEYS = new Set([
   "notify_event_types",
   "workspace_keys",
@@ -269,6 +278,14 @@ function requireStrictString(value, label) {
     throw new Error(`${label} must be a non-empty string`);
   }
   return value;
+}
+
+function requireStrictEnumString(value, label, allowedValues) {
+  const normalized = requireStrictString(value, label);
+  if (!allowedValues.has(normalized)) {
+    throw new Error(`${label} must be one of: ${[...allowedValues].sort().join(", ")}`);
+  }
+  return normalized;
 }
 
 function requireStrictBoolean(value, label) {
@@ -354,11 +371,12 @@ function validateRuntimeCatalogCapabilities(capabilities, label) {
   requirePresentKeys(payload, RUNTIME_CATALOG_CAPABILITY_KEYS, label);
 
   return {
-    permissions_surface: requireStrictString(payload.permissions_surface, `${label}.permissions_surface`),
-    permission_surface_kind: requireStrictString(
-      payload.permission_surface_kind,
-      `${label}.permission_surface_kind`
+    permissions_surface: requireStrictEnumString(
+      payload.permissions_surface,
+      `${label}.permissions_surface`,
+      RUNTIME_CATALOG_CAPABILITY_ENUMS.permissions_surface
     ),
+    permission_surface_kind: requireStrictString(payload.permission_surface_kind, `${label}.permission_surface_kind`),
     prompt_free_mode_value: requireStrictString(payload.prompt_free_mode_value, `${label}.prompt_free_mode_value`),
     supports_runtime_permission_sync: requireStrictBoolean(
       payload.supports_runtime_permission_sync,
@@ -372,15 +390,36 @@ function validateRuntimeCatalogCapabilities(capabilities, label) {
       payload.prompt_free_requires_relaunch,
       `${label}.prompt_free_requires_relaunch`
     ),
-    statusline_surface: requireStrictString(payload.statusline_surface, `${label}.statusline_surface`),
-    statusline_config_surface: requireStrictString(
-      payload.statusline_config_surface,
-      `${label}.statusline_config_surface`
+    statusline_surface: requireStrictEnumString(
+      payload.statusline_surface,
+      `${label}.statusline_surface`,
+      RUNTIME_CATALOG_CAPABILITY_ENUMS.statusline_surface
     ),
-    notify_surface: requireStrictString(payload.notify_surface, `${label}.notify_surface`),
-    notify_config_surface: requireStrictString(payload.notify_config_surface, `${label}.notify_config_surface`),
-    telemetry_source: requireStrictString(payload.telemetry_source, `${label}.telemetry_source`),
-    telemetry_completeness: requireStrictString(payload.telemetry_completeness, `${label}.telemetry_completeness`),
+    statusline_config_surface: requireStrictEnumString(
+      payload.statusline_config_surface,
+      `${label}.statusline_config_surface`,
+      RUNTIME_CATALOG_CAPABILITY_ENUMS.statusline_config_surface
+    ),
+    notify_surface: requireStrictEnumString(
+      payload.notify_surface,
+      `${label}.notify_surface`,
+      RUNTIME_CATALOG_CAPABILITY_ENUMS.notify_surface
+    ),
+    notify_config_surface: requireStrictEnumString(
+      payload.notify_config_surface,
+      `${label}.notify_config_surface`,
+      RUNTIME_CATALOG_CAPABILITY_ENUMS.notify_config_surface
+    ),
+    telemetry_source: requireStrictEnumString(
+      payload.telemetry_source,
+      `${label}.telemetry_source`,
+      RUNTIME_CATALOG_CAPABILITY_ENUMS.telemetry_source
+    ),
+    telemetry_completeness: requireStrictEnumString(
+      payload.telemetry_completeness,
+      `${label}.telemetry_completeness`,
+      RUNTIME_CATALOG_CAPABILITY_ENUMS.telemetry_completeness
+    ),
     supports_usage_tokens: requireStrictBoolean(payload.supports_usage_tokens, `${label}.supports_usage_tokens`),
     supports_cost_usd: requireStrictBoolean(payload.supports_cost_usd, `${label}.supports_cost_usd`),
     supports_context_meter: requireStrictBoolean(payload.supports_context_meter, `${label}.supports_context_meter`),
@@ -658,18 +697,17 @@ function loadSharedPublicSurfaceText() {
 }
 
 const SHARED_PUBLIC_SURFACE_TEXT = loadSharedPublicSurfaceText();
-const SETTINGS_COMMAND_PREFIX = "After your first successful start or later, use the runtime `settings` command ";
 
 function beginnerStartupLadderText() {
   return `\`${SHARED_PUBLIC_SURFACE_TEXT.beginnerStartupLadder.join(" -> ")}\``;
 }
 
-function settingsCommandTail() {
-  const { settingsCommandSentence } = SHARED_PUBLIC_SURFACE_TEXT;
-  if (settingsCommandSentence.startsWith(SETTINGS_COMMAND_PREFIX)) {
-    return settingsCommandSentence.slice(SETTINGS_COMMAND_PREFIX.length);
+function settingsCommandFollowUp(runtime = null) {
+  const sentence = SHARED_PUBLIC_SURFACE_TEXT.settingsCommandSentence;
+  if (!runtime) {
+    return sentence;
   }
-  return "to review autonomy, workflow defaults, and model-cost posture.";
+  return `${sentence} For ${runtimeDisplayName(runtime)}, that command is \`${runtimeSurfaceCommand(runtime, "settings")}\`.`;
 }
 
 function sharedLocalCliCommand(prefix, fallback) {
@@ -1701,16 +1739,13 @@ function printUnattendedConfigurationReminder(runtimes, targetDir = null) {
   log("Recommended unattended default: Balanced autonomy (`balanced`).");
   if (runtimes.length === 1) {
     const runtime = runtimes[0];
-    log(
-      `Inside ${runtimeDisplayName(runtime)}, use \`${runtimeSurfaceCommand(runtime, "settings")}\` `
-      + settingsCommandTail()
-    );
+    log(settingsCommandFollowUp(runtime));
     log(SHARED_PUBLIC_SURFACE_TEXT.settingsRecommendationSentence);
     log(`Check the unattended or overnight verdict with \`${runtimeUnattendedReadinessHint(runtime, "balanced", targetDir)}\`.`);
     log(`If it reports \`not-ready\`, run \`${runtimePermissionsHint("sync", runtime, "balanced", targetDir)}\`.`);
     warn("If it reports `relaunch-required`, the runtime is not ready for unattended use until you exit and relaunch it.");
   } else {
-    log(`Inside each runtime, use \`settings\` ${settingsCommandTail()}`);
+    log(settingsCommandFollowUp());
     log(SHARED_PUBLIC_SURFACE_TEXT.settingsRecommendationSentence);
     for (const runtime of runtimes) {
       log(
@@ -1825,7 +1860,7 @@ function printHelp() {
   console.log(` First-run order: ${beginnerStartupLadderText()}`);
   console.log(" Open your runtime, run its help command first, use `start` if you are not sure what fits this folder, and use `tour` if you want a read-only overview of the broader command surface before choosing.");
   console.log(" Then use your runtime's `new-project` command for new work or `map-research` for existing work. When you come back later, use `gpd resume` for the current-workspace read-only recovery snapshot or `gpd resume --recent` to find a different workspace first, then continue in the runtime with `resume-work`.");
-  console.log(` Later, use the runtime-specific \`settings\` command after your first successful start or later ${settingsCommandTail()}`);
+  console.log(` ${SHARED_PUBLIC_SURFACE_TEXT.settingsCommandSentence}`);
   console.log(` Recommended unattended default: Balanced autonomy (\`balanced\`). ${SHARED_PUBLIC_SURFACE_TEXT.settingsRecommendationSentence}`);
   console.log(
     ` ${recoveryLadderNote({

@@ -450,7 +450,6 @@ def build_runtime_hint_payload(
     data_root: Path | None = None,
     base_ready: bool = True,
     latex_capability: object | None = None,
-    latex_available: bool | None = None,
     recent_projects_last: int = 5,
     cost_last_sessions: int = 5,
     include_recovery: bool = True,
@@ -549,7 +548,7 @@ def build_runtime_hint_payload(
     if cost_advisory is not None:
         cost["advisory"] = cost_advisory
 
-    normalized_latex_capability = _normalize_latex_capability(latex_capability, legacy_available=latex_available)
+    normalized_latex_capability = _normalize_latex_capability(latex_capability)
 
     workflow_presets = (
         resolve_workflow_preset_readiness(base_ready=base_ready, latex_capability=normalized_latex_capability)
@@ -567,7 +566,6 @@ def build_runtime_hint_payload(
         "model_profile": cost_summary.model_profile if cost_summary is not None else None,
         "base_ready": base_ready,
         "latex_capability": normalized_latex_capability,
-        "latex_available": bool(normalized_latex_capability.get("compiler_available")),
         "recent_projects_last": max(recent_projects_last, 0),
         "cost_last_sessions": max(cost_last_sessions, 0),
         "include_recovery": include_recovery,

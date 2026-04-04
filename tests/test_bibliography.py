@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from pybtex.database import BibliographyData, Entry, Person
+from pydantic import ValidationError
 
 from gpd.mcp.paper.bibliography import (
     BibliographyAudit,
@@ -219,6 +220,63 @@ class TestBuildBibliography:
         ]
         bib = build_bibliography(sources, enrich=False)
         assert len(bib.entries) == 2
+
+
+class TestStrictBibliographyContracts:
+    def test_citation_source_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError, match=r"legacy_note[\s\S]*Extra inputs are not permitted"):
+            CitationSource(
+                source_type="paper",
+                title="Test Paper",
+                authors=["A. Einstein"],
+                year="1905",
+                legacy_note="stale",
+            )
+
+    def test_bibliography_audit_rejects_nested_extra_fields(self) -> None:
+        with pytest.raises(ValidationError, match=r"entries\.0\.unexpected[\s\S]*Extra inputs are not permitted"):
+            BibliographyAudit.model_validate(
+                {
+                    "generated_at": "2026-03-10T00:00:00+00:00",
+                    "total_sources": 1,
+                    "resolved_sources": 1,
+                    "partial_sources": 0,
+                    "unverified_sources": 0,
+                    "failed_sources": 0,
+                    "entries": [
+                        {
+                            "key": "einstein1905",
+                            "source_type": "paper",
+                            "reference_id": "ref-einstein",
+                            "title": "Relativity",
+                            "resolution_status": "provided",
+                            "verification_status": "partial",
+                            "verification_sources": [],
+                            "canonical_identifiers": [],
+                            "missing_core_fields": [],
+                            "enriched_fields": [],
+                            "warnings": [],
+                            "errors": [],
+                            "unexpected": "boom",
+                        }
+                    ],
+                }
+            )
+
+    def test_bibliography_audit_rejects_top_level_extra_fields(self) -> None:
+        with pytest.raises(ValidationError, match=r"unexpected[\s\S]*Extra inputs are not permitted"):
+            BibliographyAudit.model_validate(
+                {
+                    "generated_at": "2026-03-10T00:00:00+00:00",
+                    "total_sources": 1,
+                    "resolved_sources": 1,
+                    "partial_sources": 0,
+                    "unverified_sources": 0,
+                    "failed_sources": 0,
+                    "entries": [],
+                    "unexpected": True,
+                }
+            )
 
 
 class TestBibliographyAudit:

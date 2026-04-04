@@ -236,7 +236,7 @@ def test_build_runtime_hint_payload_merges_source_sections_and_actions(tmp_path:
     assert payload.source_meta["latex_capability"]["kpsewhich_available"] is False
     assert payload.source_meta["latex_capability"]["readiness_state"] == "ready"
     assert payload.source_meta["latex_capability"]["message"] == "pdflatex found (TeX Live): /usr/bin/pdflatex"
-    assert payload.source_meta["latex_available"] is True
+    assert "latex_available" not in payload.source_meta
 
     assert payload.execution is not None
     assert payload.execution["status_classification"] == "waiting"
@@ -1248,6 +1248,50 @@ def test_build_runtime_hint_payload_uses_canonical_bounded_resume_mode_without_l
     assert any(action.startswith("Run `gpd resume`") for action in payload.next_actions)
     assert any("resume-work" in action for action in payload.next_actions)
     assert any("suggest-next" in action for action in payload.next_actions)
+
+
+def test_build_runtime_hint_payload_keeps_legacy_execution_overlay_advisory_without_resume_target(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _bootstrap_project(tmp_path)
+    data_root = tmp_path / "data"
+    monkeypatch.setattr(
+        "gpd.core.runtime_hints._resume_context",
+        lambda _cwd, data_root=None: {
+            "planning_exists": True,
+            "state_exists": True,
+            "roadmap_exists": True,
+            "project_exists": True,
+            "resume_mode": "bounded_segment",
+            "execution_resumable": True,
+            "active_execution_segment": {
+                "segment_id": "seg-legacy",
+                "phase": "04",
+                "plan": "02",
+                "segment_status": "paused",
+            },
+            "has_live_execution": True,
+        },
+    )
+
+    payload = build_runtime_hint_payload(
+        project,
+        data_root=data_root,
+        include_cost=False,
+        include_workflow_presets=False,
+    )
+
+    assert payload.orientation["mode"] == "current-workspace"
+    assert payload.orientation["status"] == "live-execution"
+    assert payload.orientation["active_resume_kind"] is None
+    assert payload.orientation["active_resume_origin"] is None
+    assert payload.orientation["active_resume_pointer"] is None
+    assert payload.orientation["execution_resumable"] is False
+    assert payload.orientation["has_local_recovery_target"] is False
+    _assert_no_resume_compat_aliases(payload.orientation)
+    assert any(action.startswith("Run `gpd resume`") for action in payload.next_actions)
+    assert not any("resume-work" in action for action in payload.next_actions)
+    assert not any("suggest-next" in action for action in payload.next_actions)
 
 
 def test_build_runtime_hint_payload_prefers_canonical_continuity_fields_over_conflicting_legacy_execution_flags(

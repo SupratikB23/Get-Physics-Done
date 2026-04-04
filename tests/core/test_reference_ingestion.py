@@ -184,6 +184,36 @@ def test_ingest_reference_artifacts_ignores_malformed_citation_source_sidecar(tm
     ]
 
 
+def test_ingest_reference_artifacts_ignores_citation_source_without_reference_id(tmp_path: Path) -> None:
+    _bootstrap_project(tmp_path)
+    literature_dir = tmp_path / "GPD" / "literature"
+    literature_dir.mkdir(parents=True)
+    (literature_dir / "REVIEW.md").write_text("# Review\n", encoding="utf-8")
+    _write_citation_sources_sidecar(
+        literature_dir,
+        "REVIEW.md",
+        [
+            {
+                "source_type": "paper",
+                "title": "Broken Sidecar",
+                "year": "2024",
+            }
+        ],
+    )
+
+    result = ingest_reference_artifacts(
+        tmp_path,
+        literature_review_files=["GPD/literature/REVIEW.md"],
+        research_map_reference_files=[],
+    )
+
+    assert result.citation_sources == []
+    assert result.citation_source_files == ["GPD/literature/REVIEW-CITATION-SOURCES.json"]
+    assert result.citation_source_warnings == [
+        "citation source GPD/literature/REVIEW-CITATION-SOURCES.json[0] is missing reference_id"
+    ]
+
+
 def test_ingest_reference_artifacts_handles_sidecars_deterministically(tmp_path: Path) -> None:
     _bootstrap_project(tmp_path)
     literature_dir = tmp_path / "GPD" / "literature"

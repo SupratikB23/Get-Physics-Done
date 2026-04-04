@@ -29,3 +29,12 @@ def test_paper_writer_prompt_treats_missing_confidence_tags_as_calibration_warni
     assert "downgrade claim language" in source
     assert "gpd_return.issues" in source
     assert "If any contributing phase lacks contract-backed outcome evidence or confidence tags" not in source
+
+
+def test_paper_writer_prompt_surfaces_builder_journal_boundary() -> None:
+    source = _read_paper_writer()
+
+    assert "Builder-backed journal keys for `PAPER-CONFIG.json` and `ARTIFACT-MANIFEST.json` are only" in source
+    assert "`prl`, `apj`, `mnras`, `nature`, `jhep`, and `jfm`" in source
+    assert "style-only calibration for prose and structure" in source
+    assert "Do not write unsupported journal labels into machine-readable builder artifacts." in source
