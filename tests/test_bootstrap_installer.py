@@ -708,7 +708,7 @@ def _run_node_contract_validation(script: str) -> subprocess.CompletedProcess[st
     )
 
 
-def test_bootstrap_public_surface_contract_validator_matches_canonical_shape() -> None:
+def test_bootstrap_public_surface_contract_validator_tolerates_additive_keys_and_rejects_missing_required_fields() -> None:
     result = _run_node_contract_validation(
         r"""
 const assert = require("node:assert/strict");
@@ -721,18 +721,23 @@ assert.equal(sharedText.resumeAuthority.publicVocabularyIntro, payload.resume_au
 assert.deepEqual(sharedText.resumeAuthority.publicFields, payload.resume_authority.public_fields);
 assert.equal(sharedText.resumeAuthority.topLevelBoundaryPhrase, payload.resume_authority.top_level_boundary_phrase);
 
-const blankPublicFields = JSON.parse(JSON.stringify(payload));
-blankPublicFields.resume_authority.public_fields = [];
+const additivePayload = JSON.parse(JSON.stringify(payload));
+additivePayload.legacy_note = "unexpected";
+additivePayload.resume_authority.legacy_note = "unexpected";
+assert.doesNotThrow(() => validateSharedPublicSurfaceContract(additivePayload));
+
+const missingRequiredPayload = JSON.parse(JSON.stringify(payload));
+delete missingRequiredPayload.resume_authority.public_vocabulary_intro;
 assert.throws(
-  () => validateSharedPublicSurfaceContract(blankPublicFields),
-  /resume_authority\.public_fields must be a non-empty list/
+  () => validateSharedPublicSurfaceContract(missingRequiredPayload),
+  /resume_authority is missing required key\(s\): public_vocabulary_intro/
 );
 
-const extraResumeKey = JSON.parse(JSON.stringify(payload));
-extraResumeKey.resume_authority.legacy_note = "unexpected";
+const invalidRequiredPayload = JSON.parse(JSON.stringify(payload));
+invalidRequiredPayload.resume_authority.public_fields = "unexpected";
 assert.throws(
-  () => validateSharedPublicSurfaceContract(extraResumeKey),
-  /resume_authority must contain exactly/
+  () => validateSharedPublicSurfaceContract(invalidRequiredPayload),
+  /resume_authority\.public_fields must be a non-empty list/
 );
 """
     )

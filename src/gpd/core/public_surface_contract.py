@@ -131,20 +131,11 @@ def _require_object(payload: object, *, label: str) -> dict[str, object]:
     return payload
 
 
-def _require_exact_keys(payload: dict[str, object], *, label: str, keys: tuple[str, ...]) -> None:
-    expected = set(keys)
-    actual = set(payload)
-    missing = sorted(expected - actual)
-    extra = sorted(actual - expected)
-    if not missing and not extra:
+def _require_present_keys(payload: dict[str, object], *, label: str, keys: tuple[str, ...]) -> None:
+    missing = sorted(key for key in keys if key not in payload)
+    if not missing:
         return
-
-    problems: list[str] = []
-    if missing:
-        problems.append(f"missing keys: {', '.join(missing)}")
-    if extra:
-        problems.append(f"unexpected keys: {', '.join(extra)}")
-    raise ValueError(f"{label} must contain exactly {', '.join(keys)} ({'; '.join(problems)})")
+    raise ValueError(f"{label} is missing required key(s): {', '.join(missing)}")
 
 
 def _require_string(payload: dict[str, object], key: str, *, label: str) -> str:
@@ -171,7 +162,7 @@ def load_public_surface_contract() -> PublicSurfaceContract:
     contract_path = files("gpd.core").joinpath("public_surface_contract.json")
     raw_payload = json.loads(contract_path.read_text(encoding="utf-8"))
     payload = _require_object(raw_payload, label="public_surface_contract")
-    _require_exact_keys(
+    _require_present_keys(
         payload,
         label="public_surface_contract",
         keys=(
@@ -189,25 +180,25 @@ def load_public_surface_contract() -> PublicSurfaceContract:
         raise ValueError(f"Unsupported public surface contract schema_version: {schema_version!r}")
 
     beginner_payload = _require_object(payload.get("beginner_onboarding"), label="beginner_onboarding")
-    _require_exact_keys(
+    _require_present_keys(
         beginner_payload,
         label="beginner_onboarding",
         keys=("hub_url", "preflight_requirements", "caveats", "startup_ladder"),
     )
     bridge_payload = _require_object(payload.get("local_cli_bridge"), label="local_cli_bridge")
-    _require_exact_keys(
+    _require_present_keys(
         bridge_payload,
         label="local_cli_bridge",
         keys=("commands", "terminal_phrase", "purpose_phrase"),
     )
     settings_payload = _require_object(payload.get("post_start_settings"), label="post_start_settings")
-    _require_exact_keys(
+    _require_present_keys(
         settings_payload,
         label="post_start_settings",
         keys=("primary_sentence", "default_sentence"),
     )
     resume_authority_payload = _require_object(payload.get("resume_authority"), label="resume_authority")
-    _require_exact_keys(
+    _require_present_keys(
         resume_authority_payload,
         label="resume_authority",
         keys=(
@@ -218,7 +209,7 @@ def load_public_surface_contract() -> PublicSurfaceContract:
         ),
     )
     recovery_payload = _require_object(payload.get("recovery_ladder"), label="recovery_ladder")
-    _require_exact_keys(
+    _require_present_keys(
         recovery_payload,
         label="recovery_ladder",
         keys=(

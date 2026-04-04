@@ -232,24 +232,6 @@ function requireJsonArray(payload, label) {
   return payload;
 }
 
-function requireExactKeys(payload, keys, label) {
-  const actualKeys = Object.keys(payload);
-  const expectedKeys = [...keys];
-  const missing = expectedKeys.filter((key) => !Object.prototype.hasOwnProperty.call(payload, key));
-  const extra = actualKeys.filter((key) => !expectedKeys.includes(key));
-  if (missing.length === 0 && extra.length === 0) {
-    return;
-  }
-  const details = [];
-  if (missing.length > 0) {
-    details.push(`missing keys: ${missing.join(", ")}`);
-  }
-  if (extra.length > 0) {
-    details.push(`unexpected keys: ${extra.join(", ")}`);
-  }
-  throw new Error(`${label} must contain exactly ${keys.join(", ")} (${details.join("; ")})`);
-}
-
 function requireNonEmptyString(payload, key, label) {
   const value = payload[key];
   if (typeof value !== "string" || !value.trim()) {
@@ -578,21 +560,21 @@ RUNTIME_BY_NAME = Object.fromEntries(RUNTIME_CATALOG.map((runtime) => [runtime.r
 
 function validateSharedPublicSurfaceContract(contractPayload) {
   const contract = requireJsonObject(contractPayload, "public surface contract");
-  requireExactKeys(contract, PUBLIC_SURFACE_CONTRACT_KEYS, "public surface contract");
+  requirePresentKeys(contract, PUBLIC_SURFACE_CONTRACT_KEYS, "public surface contract");
   if (contract.schema_version !== 1) {
     throw new Error(`Unsupported public surface contract schema_version: ${JSON.stringify(contract.schema_version)}`);
   }
 
   const beginnerPayload = requireJsonObject(contract.beginner_onboarding, "beginner_onboarding");
-  requireExactKeys(beginnerPayload, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.beginner_onboarding, "beginner_onboarding");
+  requirePresentKeys(beginnerPayload, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.beginner_onboarding, "beginner_onboarding");
   const localCliBridge = requireJsonObject(contract.local_cli_bridge, "local_cli_bridge");
-  requireExactKeys(localCliBridge, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.local_cli_bridge, "local_cli_bridge");
+  requirePresentKeys(localCliBridge, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.local_cli_bridge, "local_cli_bridge");
   const postStartSettings = requireJsonObject(contract.post_start_settings, "post_start_settings");
-  requireExactKeys(postStartSettings, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.post_start_settings, "post_start_settings");
+  requirePresentKeys(postStartSettings, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.post_start_settings, "post_start_settings");
   const resumeAuthority = requireJsonObject(contract.resume_authority, "resume_authority");
-  requireExactKeys(resumeAuthority, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.resume_authority, "resume_authority");
+  requirePresentKeys(resumeAuthority, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.resume_authority, "resume_authority");
   const recoveryLadder = requireJsonObject(contract.recovery_ladder, "recovery_ladder");
-  requireExactKeys(recoveryLadder, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.recovery_ladder, "recovery_ladder");
+  requirePresentKeys(recoveryLadder, PUBLIC_SURFACE_CONTRACT_SECTION_KEYS.recovery_ladder, "recovery_ladder");
 
   const beginnerHubUrl = requireNonEmptyString(beginnerPayload, "hub_url", "beginner_onboarding");
   const beginnerPreflightRequirements = requireNonEmptyStringList(

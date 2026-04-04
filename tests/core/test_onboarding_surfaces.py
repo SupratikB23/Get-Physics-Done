@@ -23,6 +23,25 @@ from gpd.core.public_surface_contract import (
 )
 
 
+def _load_public_surface_contract_with_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    payload: dict[str, object],
+) -> None:
+    class _FakeFiles:
+        def __init__(self, contract_path: Path) -> None:
+            self._contract_path = contract_path
+
+        def joinpath(self, name: str) -> Path:
+            assert name == "public_surface_contract.json"
+            return self._contract_path
+
+    contract_path = tmp_path / "public_surface_contract.json"
+    contract_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(public_surface_contract_module, "files", lambda package: _FakeFiles(contract_path))
+    load_public_surface_contract.cache_clear()
+
+
 def test_beginner_onboarding_surface_contract_exposes_hub_and_ladder() -> None:
     assert beginner_onboarding_hub_url().endswith("/docs/README.md")
     assert beginner_startup_ladder_text() == "`help -> start -> tour -> new-project / map-research -> resume-work`"
@@ -90,34 +109,45 @@ def test_resume_authority_contract_exposes_full_validated_surface() -> None:
     assert not hasattr(contract, "compatibility_phrase")
 
 
-def test_public_surface_contract_loader_rejects_shape_drift(monkeypatch, tmp_path: Path) -> None:
+def test_public_surface_contract_loader_tolerates_additive_keys(monkeypatch, tmp_path: Path) -> None:
     canonical_path = Path(__file__).resolve().parents[2] / "src" / "gpd" / "core" / "public_surface_contract.json"
     canonical_payload = json.loads(canonical_path.read_text(encoding="utf-8"))
+    additive_payload = copy.deepcopy(canonical_payload)
+    additive_payload["legacy_note"] = "unexpected"
+    additive_payload["beginner_onboarding"]["legacy_note"] = "unexpected"
+    additive_payload["resume_authority"]["legacy_note"] = "unexpected"
+    additive_payload["recovery_ladder"]["legacy_note"] = "unexpected"
 
-    class _FakeFiles:
-        def __init__(self, contract_path: Path) -> None:
-            self._contract_path = contract_path
+    _load_public_surface_contract_with_payload(monkeypatch, tmp_path, additive_payload)
+    contract = load_public_surface_contract()
 
-        def joinpath(self, name: str) -> Path:
-            assert name == "public_surface_contract.json"
-            return self._contract_path
+    assert contract.beginner_onboarding.hub_url == canonical_payload["beginner_onboarding"]["hub_url"]
+    assert contract.resume_authority.public_fields == tuple(canonical_payload["resume_authority"]["public_fields"])
+    assert contract.recovery_ladder.title == canonical_payload["recovery_ladder"]["title"]
+    load_public_surface_contract.cache_clear()
 
-    def _load_with_payload(payload: dict[str, object]) -> None:
-        contract_path = tmp_path / "public_surface_contract.json"
-        contract_path.write_text(json.dumps(payload), encoding="utf-8")
-        monkeypatch.setattr(public_surface_contract_module, "files", lambda package: _FakeFiles(contract_path))
-        load_public_surface_contract.cache_clear()
 
-    drifted_payload = copy.deepcopy(canonical_payload)
-    drifted_payload["resume_authority"]["public_fields"] = []
-    _load_with_payload(drifted_payload)
-    with pytest.raises(ValueError, match=r"resume_authority\.public_fields must be a non-empty list"):
+def test_public_surface_contract_loader_rejects_missing_required_fields(monkeypatch, tmp_path: Path) -> None:
+    canonical_path = Path(__file__).resolve().parents[2] / "src" / "gpd" / "core" / "public_surface_contract.json"
+    canonical_payload = json.loads(canonical_path.read_text(encoding="utf-8"))
+    missing_payload = copy.deepcopy(canonical_payload)
+    del missing_payload["resume_authority"]["public_vocabulary_intro"]
+
+    _load_public_surface_contract_with_payload(monkeypatch, tmp_path, missing_payload)
+    with pytest.raises(ValueError, match=r"resume_authority is missing required key\(s\): public_vocabulary_intro"):
         load_public_surface_contract()
 
-    unknown_key_payload = copy.deepcopy(canonical_payload)
-    unknown_key_payload["resume_authority"]["legacy_note"] = "unexpected"
-    _load_with_payload(unknown_key_payload)
-    with pytest.raises(ValueError, match=r"resume_authority must contain exactly"):
+    load_public_surface_contract.cache_clear()
+
+
+def test_public_surface_contract_loader_rejects_invalid_required_field_types(monkeypatch, tmp_path: Path) -> None:
+    canonical_path = Path(__file__).resolve().parents[2] / "src" / "gpd" / "core" / "public_surface_contract.json"
+    canonical_payload = json.loads(canonical_path.read_text(encoding="utf-8"))
+    invalid_payload = copy.deepcopy(canonical_payload)
+    invalid_payload["resume_authority"]["public_fields"] = "unexpected"
+
+    _load_public_surface_contract_with_payload(monkeypatch, tmp_path, invalid_payload)
+    with pytest.raises(ValueError, match=r"resume_authority\.public_fields must be a non-empty list"):
         load_public_surface_contract()
 
     load_public_surface_contract.cache_clear()
@@ -126,19 +156,8 @@ def test_public_surface_contract_loader_rejects_shape_drift(monkeypatch, tmp_pat
 def test_public_surface_contract_loader_rejects_boolean_schema_version(monkeypatch, tmp_path: Path) -> None:
     canonical_path = Path(__file__).resolve().parents[2] / "src" / "gpd" / "core" / "public_surface_contract.json"
     canonical_payload = json.loads(canonical_path.read_text(encoding="utf-8"))
-
-    class _FakeFiles:
-        def __init__(self, contract_path: Path) -> None:
-            self._contract_path = contract_path
-
-        def joinpath(self, name: str) -> Path:
-            assert name == "public_surface_contract.json"
-            return self._contract_path
-
-    contract_path = tmp_path / "public_surface_contract.json"
     canonical_payload["schema_version"] = True
-    contract_path.write_text(json.dumps(canonical_payload), encoding="utf-8")
-    monkeypatch.setattr(public_surface_contract_module, "files", lambda package: _FakeFiles(contract_path))
+    _load_public_surface_contract_with_payload(monkeypatch, tmp_path, canonical_payload)
     load_public_surface_contract.cache_clear()
 
     with pytest.raises(ValueError, match=r"Unsupported public surface contract schema_version: True"):
