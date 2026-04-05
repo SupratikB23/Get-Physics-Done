@@ -159,6 +159,50 @@ def _normalize_allowed_tools(tools: list[str]) -> list[str]:
     return normalized
 
 
+def _normalize_route_text(value: str) -> str:
+    """Return a comparison-friendly string for skill routing."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s-]", "", value.lower()).replace("-", " ")).strip()
+
+
+def _task_words(normalized_task: str) -> set[str]:
+    return {word for word in normalized_task.split() if word}
+
+
+def _contains_route_phrase(normalized_task: str, phrase: str) -> bool:
+    normalized_phrase = _normalize_route_text(phrase)
+    return bool(normalized_phrase) and normalized_phrase in normalized_task
+
+
+def _score_new_project_route(normalized_task: str, words: set[str]) -> int:
+    """Return a score only when the task shows real new-project lifecycle evidence."""
+    lifecycle_words = {
+        "new",
+        "create",
+        "start",
+        "initialize",
+        "initialise",
+        "launch",
+        "bootstrap",
+        "scaffold",
+    }
+    lifecycle_phrases = (
+        "new project",
+        "create project",
+        "start project",
+        "initialize project",
+        "initialise project",
+        "launch project",
+        "bootstrap project",
+        "scaffold project",
+    )
+
+    if any(_contains_route_phrase(normalized_task, phrase) for phrase in lifecycle_phrases):
+        return 3
+    if "project" in words and any(word in words for word in lifecycle_words):
+        return 2
+    return 0
+
+
 def _portable_reference_path(raw_path: str, *, base_path: Path | None = None) -> tuple[str, Path | None] | None:
     """Return a stable reference path plus its local file path, if resolvable."""
     candidate = raw_path.rstrip(".,:;")
@@ -493,7 +537,7 @@ def route_skill(task_description: str) -> dict:
             if not skills:
                 return stable_mcp_response({"suggestion": None}, error="No skills available")
             available_names = {skill.name for skill in skills}
-            normalized_task = re.sub(r"[^a-z0-9\s-]", "", task_description.lower()).strip()
+            normalized_task = _normalize_route_text(task_description)
 
             if "gpd-suggest-next" in available_names and any(
                 phrase in normalized_task
@@ -517,7 +561,10 @@ def route_skill(task_description: str) -> dict:
                 )
 
             # Keyword scoring
-            words = set(normalized_task.split())
+            words = _task_words(normalized_task)
+            new_project_score = 0
+            if "gpd-new-project" in available_names:
+                new_project_score = _score_new_project_route(normalized_task, words)
 
             # Direct command mentions (e.g., "execute phase", "plan phase")
             command_keywords: dict[str, list[str]] = {
@@ -525,7 +572,6 @@ def route_skill(task_description: str) -> dict:
                 "gpd-plan-phase": ["plan", "design", "architect", "strategy"],
                 "gpd-verify-work": ["verify", "check", "validate", "test"],
                 "gpd-debug": ["debug", "fix", "investigate", "error", "bug"],
-                "gpd-new-project": ["new", "create", "initialize", "start", "project"],
                 "gpd-write-paper": ["write", "paper", "draft", "manuscript"],
                 "gpd-peer-review": ["peer", "referee", "reviewer", "manuscript"],
                 "gpd-literature-review": ["literature", "review", "papers", "citations", "references"],
@@ -561,6 +607,9 @@ def route_skill(task_description: str) -> dict:
                         score += 1
                 if score > 0:
                     scored.append((score, skill_name))
+
+            if new_project_score > 0:
+                scored.append((new_project_score, "gpd-new-project"))
 
             scored.sort(key=lambda x: -x[0])
 
