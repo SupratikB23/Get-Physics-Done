@@ -12,7 +12,7 @@ from gpd.adapters.runtime_catalog import get_runtime_descriptor
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME
 from gpd.core.costs import UsageRecord, _profile_tier_mix, usage_ledger_path
 from gpd.core.recent_projects import record_recent_project
-from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
+from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_FIELDS
 from gpd.core.runtime_hints import (
     _hydrate_resume_context_from_recent_project,
     build_runtime_hint_payload,
@@ -198,7 +198,7 @@ def _write_usage_record(*, data_root: Path, project_root: Path, session_id: str)
 
 def _assert_no_resume_compat_aliases(orientation: dict[str, object]) -> None:
     assert "compat_resume_surface" not in orientation
-    for key in RESUME_COMPATIBILITY_ALIAS_KEYS:
+    for key in RESUME_COMPATIBILITY_ALIAS_FIELDS:
         assert key not in orientation
     assert "has_session_resume_file" not in orientation
 

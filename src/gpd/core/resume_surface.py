@@ -9,6 +9,7 @@ output, and other public surfaces do not each reinvent resume normalization.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 
 __all__ = [
     "RESUME_COMPATIBILITY_ALIAS_FIELDS",
@@ -52,6 +53,8 @@ RESUME_COMPATIBILITY_ALIAS_FIELDS: tuple[str, ...] = (
 
 # Legacy direct-import compatibility for older tests and callers.
 RESUME_COMPATIBILITY_ALIAS_KEYS: tuple[str, ...] = RESUME_COMPATIBILITY_ALIAS_FIELDS
+
+_RESUME_LEGACY_WRAPPER_KEYS: frozenset[str] = frozenset({"compat_resume_surface", "resume_surface"})
 
 RESUME_CANDIDATE_KIND_BOUNDED_SEGMENT = "bounded_segment"
 RESUME_CANDIDATE_KIND_CONTINUITY_HANDOFF = "continuity_handoff"
@@ -366,15 +369,33 @@ def resume_payload_has_local_recovery_target(payload: Mapping[str, object] | Non
         for candidate in candidates
     )
 
+def _strip_resume_surface_compatibility_keys(
+    value: object,
+    *,
+    compat_fields: frozenset[str],
+) -> object:
+    if isinstance(value, Mapping):
+        cleaned: dict[object, object] = {}
+        for key, item in value.items():
+            if isinstance(key, str) and (key in compat_fields or key in _RESUME_LEGACY_WRAPPER_KEYS):
+                continue
+            cleaned[key] = _strip_resume_surface_compatibility_keys(item, compat_fields=compat_fields)
+        return cleaned
+    if isinstance(value, list):
+        return [_strip_resume_surface_compatibility_keys(item, compat_fields=compat_fields) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_strip_resume_surface_compatibility_keys(item, compat_fields=compat_fields) for item in value)
+    return value
+
+
 def canonicalize_resume_public_payload(
     payload: Mapping[str, object],
     *,
     compat_fields: Sequence[str] = RESUME_COMPATIBILITY_ALIAS_FIELDS,
 ) -> dict[str, object]:
     """Strip legacy resume aliases from one public payload."""
-    canonical = dict(payload)
-
-    for key in compat_fields:
-        canonical.pop(key, None)
-
-    return canonical
+    canonical = deepcopy(payload)
+    return _strip_resume_surface_compatibility_keys(
+        canonical,
+        compat_fields=frozenset(compat_fields),
+    )

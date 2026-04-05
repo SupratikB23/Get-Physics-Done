@@ -238,6 +238,17 @@ def test_canonicalize_resume_public_payload_keeps_canonical_fields_and_strips_le
         "active_resume_kind": "continuity_handoff",
         "active_resume_origin": "continuation.handoff",
         "active_resume_pointer": "GPD/phases/04/.continue-here.md",
+        "compat_resume_surface": {
+            "active_resume_pointer": "GPD/phases/04/.continue-here.md",
+            "resume_candidates": [{"kind": "bounded_segment"}],
+        },
+        "resume_surface": {
+            "active_resume_result": {
+                "id": "legacy-result",
+                "description": "Legacy wrapper result",
+            },
+            "session_resume_file": "GPD/phases/04/.continue-here.md",
+        },
         "resume_mode": "continuity_handoff",
         "segment_candidates": [
             {
@@ -256,9 +267,39 @@ def test_canonicalize_resume_public_payload_keeps_canonical_fields_and_strips_le
     assert canonical["active_resume_origin"] == "continuation.handoff"
     assert canonical["active_resume_pointer"] == "GPD/phases/04/.continue-here.md"
     assert canonical["resume_candidates"] == [continuity_candidate]
+    assert canonical["active_resume_result"]["id"] == "result-canonical"
     assert "segment_candidates" not in canonical
     assert "resume_mode" not in canonical
     assert "session_resume_file" not in canonical
+    assert "compat_resume_surface" not in canonical
+    assert "resume_surface" not in canonical
+    assert payload["compat_resume_surface"]["resume_candidates"][0]["kind"] == "bounded_segment"
+    assert payload["resume_surface"]["active_resume_result"]["id"] == "legacy-result"
+
+
+def test_canonicalize_resume_public_payload_is_deeply_detached_from_input() -> None:
+    payload = {
+        "active_resume_result": {
+            "id": "result-detached",
+            "description": "Detached canonical result",
+            "details": {"nested": "original"},
+        },
+        "resume_candidates": [
+            {
+                "kind": "bounded_segment",
+                "origin": "continuation.bounded_segment",
+                "resume_file": "GPD/phases/04/.continue-here.md",
+                "notes": ["initial"],
+            }
+        ],
+    }
+
+    canonical = canonicalize_resume_public_payload(payload)
+    canonical["active_resume_result"]["details"]["nested"] = "changed"
+    canonical["resume_candidates"][0]["notes"].append("updated")
+
+    assert payload["active_resume_result"]["details"]["nested"] == "original"
+    assert payload["resume_candidates"][0]["notes"] == ["initial"]
 
 
 def test_canonicalize_resume_public_payload_is_idempotent() -> None:
