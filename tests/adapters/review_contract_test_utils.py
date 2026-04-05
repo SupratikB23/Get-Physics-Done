@@ -4,7 +4,10 @@ import re
 import tomllib
 from pathlib import Path
 
+from gpd.adapters.codex import _convert_to_codex_skill
+from gpd.adapters.gemini import _convert_to_gemini_toml
 from gpd.adapters.install_utils import compile_markdown_for_runtime
+from gpd.adapters.opencode import convert_claude_to_opencode_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMANDS_DIR = REPO_ROOT / "src/gpd/commands"
@@ -58,6 +61,29 @@ def compile_review_contract_fixture_for_runtime(
         runtime=runtime,
         path_prefix="/prefix/",
     )
+
+
+def compile_review_contract_command_for_runtime(
+    command_name: str,
+    runtime: str,
+    *,
+    path_prefix: str = "/runtime/",
+) -> str:
+    content = compile_markdown_for_runtime(
+        read_command_source(command_name),
+        runtime=runtime,
+        path_prefix=path_prefix,
+        src_root=REPO_ROOT / "src/gpd",
+    )
+    if runtime == "claude-code":
+        return content
+    if runtime == "codex":
+        return _convert_to_codex_skill(content, f"gpd-{command_name}")
+    if runtime == "gemini":
+        return _convert_to_gemini_toml(content)
+    if runtime == "opencode":
+        return convert_claude_to_opencode_frontmatter(content)
+    raise AssertionError(f"Unsupported runtime: {runtime}")
 
 
 def extract_review_contract_section(content: str) -> str:
