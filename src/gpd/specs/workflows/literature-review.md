@@ -1,7 +1,7 @@
 <purpose>
 Conduct a systematic literature review for a physics research topic. Map the intellectual landscape: foundational works, methodological approaches, key results, controversies, and open questions. Produce LITERATURE-REVIEW.md consumed by planning and paper-writing workflows.
 
-Also emit a machine-readable `GPD/literature/{slug}-CITATION-SOURCES.json` sidecar containing `CitationSource[]`-compatible records keyed by stable `reference_id` values so paper-writing can reuse the discovered references without manual transcription.
+Also emit a machine-readable `GPD/literature/{slug}-CITATION-SOURCES.json` sidecar containing strict `CitationSource` records keyed by stable `reference_id` values so paper-writing can reuse the discovered references without manual transcription.
 
 Called from /gpd:literature-review command.
 </purpose>
@@ -386,7 +386,18 @@ For someone entering this area, read in this order:
 {Formatted citations, organized by topic/method}
 ```
 
-Then write `GPD/literature/{slug}-CITATION-SOURCES.json` as a JSON array of `CitationSource`-compatible objects for the same references. Keep one stable `reference_id` per entry, include `bibtex_key` only when it is already known and verified, preserve canonical citation fields, and keep the sidecar synchronized with the review's Full Reference List so downstream `gpd paper-build --citation-sources` can consume it directly and project the final `reference_id -> bibtex_key` bridge into `BIBLIOGRAPHY-AUDIT.json`.
+Then write `GPD/literature/{slug}-CITATION-SOURCES.json` as a JSON array of strict `CitationSource` objects for the same references. The closed contract is:
+
+- `source_type`: `paper`, `tool`, `data`, or `website`
+- `reference_id`: stable project-local identifier for the canonical reference
+- `bibtex_key`: optional preferred key, only when already verified
+- `title`
+- `authors` when available
+- `year` when available
+- `arxiv_id`, `doi`, `url`, `journal`, `volume`, and `pages` when available
+
+Keep the sidecar synchronized with the review's Full Reference List, keep `reference_id` stable across reruns, and do not add extra keys. Downstream `gpd paper-build --citation-sources` rejects unknown fields, so the sidecar must stay aligned with the published contract before it reaches the build step.
+Extra keys are rejected by the downstream parser.
 
 </step>
 

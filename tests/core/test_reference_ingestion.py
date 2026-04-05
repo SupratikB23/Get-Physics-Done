@@ -210,8 +210,51 @@ def test_ingest_reference_artifacts_ignores_citation_source_without_reference_id
     assert result.citation_sources == []
     assert result.citation_source_files == ["GPD/literature/REVIEW-CITATION-SOURCES.json"]
     assert result.citation_source_warnings == [
-        "citation source GPD/literature/REVIEW-CITATION-SOURCES.json[0] is missing reference_id"
+        "citation source GPD/literature/REVIEW-CITATION-SOURCES.json[0].reference_id must be a non-empty string"
     ]
+
+
+def test_ingest_reference_artifacts_rejects_unknown_citation_source_fields(tmp_path: Path) -> None:
+    _bootstrap_project(tmp_path)
+    literature_dir = tmp_path / "GPD" / "literature"
+    literature_dir.mkdir(parents=True)
+    (literature_dir / "REVIEW.md").write_text("# Review\n", encoding="utf-8")
+    _write_citation_sources_sidecar(
+        literature_dir,
+        "REVIEW.md",
+        [
+            {
+                "reference_id": "ref-extra",
+                "source_type": "paper",
+                "title": "Extra Field Paper",
+                "legacy_note": "stale",
+            }
+        ],
+    )
+
+    result = ingest_reference_artifacts(
+        tmp_path,
+        literature_review_files=["GPD/literature/REVIEW.md"],
+        research_map_reference_files=[],
+    )
+
+    assert result.citation_sources == []
+    assert result.citation_source_files == ["GPD/literature/REVIEW-CITATION-SOURCES.json"]
+    assert any("Extra inputs are not permitted" in warning for warning in result.citation_source_warnings)
+
+
+def test_literature_review_surfaces_publish_closed_citation_source_contract() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    command_doc = (repo_root / "src/gpd/commands/literature-review.md").read_text(encoding="utf-8")
+    agent_doc = (repo_root / "src/gpd/agents/gpd-literature-reviewer.md").read_text(encoding="utf-8")
+    workflow_doc = (repo_root / "src/gpd/specs/workflows/literature-review.md").read_text(encoding="utf-8")
+
+    assert "machine-readable, strict `CITATION-SOURCES.json` sidecar" in command_doc
+    assert "strict `CitationSource` records keyed by stable `reference_id`" in command_doc
+    assert "closed contract is:" in agent_doc
+    assert "Extra keys are rejected by the downstream parser." in agent_doc
+    assert "strict `CitationSource` objects" in workflow_doc
+    assert "Extra keys are rejected" in workflow_doc
 
 
 def test_ingest_reference_artifacts_handles_sidecars_deterministically(tmp_path: Path) -> None:

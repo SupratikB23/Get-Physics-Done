@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from gpd.core.manuscript_artifacts import resolve_current_manuscript_artifacts
+from gpd.mcp.paper.bibliography import CitationSource, parse_citation_source_payload
 
 __all__ = [
     "ArtifactReference",
@@ -34,7 +35,6 @@ _ACTION_ALIASES = {
     "reuse": "use",
     "review": "read",
 }
-_CITATION_SOURCE_TYPES = frozenset({"paper", "tool", "data", "website"})
 _ROLE_MAP = {
     "benchmark": "benchmark",
     "benchmark target": "benchmark",
@@ -469,52 +469,22 @@ def _reference_identity_tokens(*values: object) -> list[str]:
     return tokens
 
 
-def _normalize_citation_authors(value: object) -> list[str]:
-    if isinstance(value, list):
-        authors = [_clean_text(item) for item in value]
-    elif isinstance(value, str):
-        authors = [part.strip() for part in re.split(r"\s*(?:;|/|\|)\s*", value)]
-    else:
-        authors = []
-    return [author for author in authors if author]
-
-
-def _citation_source_from_payload(
-    payload: object,
-    *,
-    source_path: str,
-    index: int,
-) -> tuple[CitationSourceRecord | None, str | None]:
-    if not isinstance(payload, dict):
-        return None, f"citation source {source_path}[{index}] is not an object"
-
-    reference_id = _clean_text(payload.get("reference_id"))
-    title = _clean_text(payload.get("title"))
-    source_type = _clean_text(payload.get("source_type")).casefold()
-    if not reference_id:
-        return None, f"citation source {source_path}[{index}] is missing reference_id"
-    if source_type not in _CITATION_SOURCE_TYPES:
-        allowed = ", ".join(sorted(_CITATION_SOURCE_TYPES))
-        return None, f"citation source {source_path}[{index}] source_type must be one of: {allowed}"
-    if not title:
-        return None, f"citation source {source_path}[{index}] is missing a title"
-
-    record = CitationSourceRecord(
-        reference_id=reference_id,
-        source_type=source_type,
-        title=title,
-        authors=_normalize_citation_authors(payload.get("authors")),
-        year=_clean_text(payload.get("year")),
-        arxiv_id=_clean_text(payload.get("arxiv_id")),
-        doi=_clean_text(payload.get("doi")),
-        url=_clean_text(payload.get("url")),
-        journal=_clean_text(payload.get("journal")),
-        volume=_clean_text(payload.get("volume")),
-        pages=_clean_text(payload.get("pages")),
-        bibtex_key=_clean_text(payload.get("bibtex_key")),
+def _citation_source_to_record(source: CitationSource, *, source_path: str) -> CitationSourceRecord:
+    return CitationSourceRecord(
+        reference_id=source.reference_id or "",
+        source_type=source.source_type,
+        title=source.title,
+        authors=[author for author in source.authors if isinstance(author, str) and author.strip()],
+        year=source.year,
+        arxiv_id=source.arxiv_id,
+        doi=source.doi,
+        url=source.url,
+        journal=source.journal,
+        volume=source.volume,
+        pages=source.pages,
+        bibtex_key=source.bibtex_key or "",
         source_artifacts=[source_path],
     )
-    return record, None
 
 
 def _ingest_citation_source_sidecar(cwd: Path, path: Path, result: ArtifactReferenceIngestion) -> None:
@@ -537,11 +507,12 @@ def _ingest_citation_source_sidecar(cwd: Path, path: Path, result: ArtifactRefer
 
     seen_ids: set[str] = {item.reference_id for item in result.citation_sources}
     for index, item in enumerate(payload):
-        record, warning = _citation_source_from_payload(item, source_path=rel_path, index=index)
-        if warning:
-            result.citation_source_warnings.append(warning)
-        if record is None:
+        try:
+            source = parse_citation_source_payload(item, source_path=rel_path, index=index)
+        except ValueError as exc:
+            result.citation_source_warnings.append(str(exc))
             continue
+        record = _citation_source_to_record(source, source_path=rel_path)
         if record.reference_id in seen_ids:
             continue
         result.citation_sources.append(record)

@@ -83,7 +83,7 @@ class FigureRef(BaseModel):
     caption: str
     label: str
     width: str = r"\columnwidth"
-    double_column: bool = False
+    double_column: StrictBool = False
 
     @field_validator("caption")
     @classmethod

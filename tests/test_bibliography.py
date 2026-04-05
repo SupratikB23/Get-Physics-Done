@@ -18,6 +18,8 @@ from gpd.mcp.paper.bibliography import (
     citation_keys_for_sources,
     create_bibliography,
     enrich_from_arxiv,
+    parse_citation_source_payload,
+    parse_citation_source_sidecar_payload,
     write_bib_file,
     write_bibliography_audit,
 )
@@ -145,6 +147,55 @@ class TestBibtexCreation:
         content = output.read_text()
         assert "@article" in content.lower() or "@misc" in content.lower()
         assert "Test Paper" in content
+
+
+class TestCitationSourceParsing:
+    def test_parse_citation_source_payload_normalizes_reference_id(self) -> None:
+        source = parse_citation_source_payload(
+            {
+                "reference_id": "  lit-ref-001  ",
+                "source_type": "paper",
+                "title": "Benchmark Paper",
+            }
+        )
+
+        assert source.reference_id == "lit-ref-001"
+        assert source.source_type == "paper"
+        assert source.title == "Benchmark Paper"
+
+    def test_parse_citation_source_payload_rejects_unknown_keys(self) -> None:
+        with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+            parse_citation_source_payload(
+                {
+                    "reference_id": "lit-ref-001",
+                    "source_type": "paper",
+                    "title": "Benchmark Paper",
+                    "legacy_note": "stale",
+                }
+            )
+
+    def test_parse_citation_source_payload_rejects_blank_reference_id(self) -> None:
+        with pytest.raises(ValueError, match="reference_id must be a non-empty string"):
+            parse_citation_source_payload(
+                {
+                    "reference_id": "   ",
+                    "source_type": "paper",
+                    "title": "Benchmark Paper",
+                }
+            )
+
+    def test_parse_citation_source_sidecar_payload_parses_strict_array(self) -> None:
+        sources = parse_citation_source_sidecar_payload(
+            [
+                {
+                    "reference_id": "lit-ref-001",
+                    "source_type": "paper",
+                    "title": "Benchmark Paper",
+                }
+            ]
+        )
+
+        assert [source.reference_id for source in sources] == ["lit-ref-001"]
 
 
 # ---- arXiv enrichment tests ----

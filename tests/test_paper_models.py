@@ -113,6 +113,17 @@ class TestModels:
         assert fig.width == r"\columnwidth"
         assert fig.double_column is False
 
+    def test_figure_ref_rejects_quoted_boolean(self) -> None:
+        with pytest.raises(ValidationError):
+            FigureRef.model_validate(
+                {
+                    "path": Path("fig.pdf"),
+                    "caption": "Cap",
+                    "label": "f1",
+                    "double_column": "false",
+                }
+            )
+
     @pytest.mark.parametrize(
         ("payload", "expected_fragment"),
         [

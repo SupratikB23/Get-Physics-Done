@@ -18,6 +18,7 @@ from typing import Literal
 
 from pybtex.database import BibliographyData, Entry
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ValidationError as PydanticValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,67 @@ class CitationSource(BaseModel):
     journal: str = ""
     volume: str = ""
     pages: str = ""
+
+
+def _citation_source_label(source_path: str | None = None, index: int | None = None) -> str:
+    label = "citation source"
+    if source_path:
+        label = f"{label} {source_path}"
+    if index is not None:
+        label = f"{label}[{index}]"
+    return label
+
+
+def parse_citation_source_payload(
+    payload: object,
+    *,
+    source_path: str | None = None,
+    index: int | None = None,
+) -> CitationSource:
+    """Parse one strict citation-source payload.
+
+    The model boundary stays closed through :class:`CitationSource` itself;
+    this helper only adds the non-blank ``reference_id`` requirement that the
+    sidecar contract imposes on project-local reuse.
+    """
+
+    label = _citation_source_label(source_path, index)
+    if not isinstance(payload, dict):
+        raise ValueError(f"{label} must be a JSON object")
+
+    try:
+        source = CitationSource.model_validate(payload)
+    except PydanticValidationError as exc:
+        details: list[str] = []
+        for error in exc.errors()[:3]:
+            location = ".".join(str(part) for part in error.get("loc", ()))
+            prefix = f"{label}.{location}" if location else label
+            message = str(error.get("msg", "validation failed")).strip() or "validation failed"
+            details.append(f"{prefix}: {message}")
+        raise ValueError("; ".join(details)) from exc
+
+    reference_id = source.reference_id.strip() if isinstance(source.reference_id, str) else ""
+    if not reference_id:
+        raise ValueError(f"{label}.reference_id must be a non-empty string")
+
+    return source.model_copy(update={"reference_id": reference_id})
+
+
+def parse_citation_source_sidecar_payload(
+    payload: object,
+    *,
+    source_path: str | None = None,
+) -> list[CitationSource]:
+    """Parse a citation-source sidecar payload from a JSON array."""
+
+    label = source_path or "citation source sidecar"
+    if not isinstance(payload, list):
+        raise ValueError(f"{label} must be a JSON array")
+
+    sources: list[CitationSource] = []
+    for index, item in enumerate(payload):
+        sources.append(parse_citation_source_payload(item, source_path=source_path, index=index))
+    return sources
 
 
 CitationResolutionStatus = Literal["provided", "enriched", "incomplete", "failed"]

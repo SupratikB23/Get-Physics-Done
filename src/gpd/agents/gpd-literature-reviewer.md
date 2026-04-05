@@ -905,17 +905,18 @@ status: completed | checkpoint | blocked | failed
 
 Write a machine-readable sidecar at `GPD/literature/{slug}-CITATION-SOURCES.json`.
 
-This file must be a UTF-8 JSON array whose entries are compatible with the `CitationSource` shape used by `gpd paper-build --citation-sources`, with one additional stable `reference_id` field per entry for project-local reuse.
-When a manuscript key is already known and stable, include `bibtex_key` as an optional preferred key so the downstream build can preserve the same citation identity. Do not guess or invent it.
+This file must be a UTF-8 JSON array of strict `CitationSource` records, with one additional stable `reference_id` field per entry for project-local reuse.
+The closed contract is:
 
-Each entry should include, at minimum:
-
-- `reference_id`: stable project-local identifier for the canonical reference
 - `source_type`: `paper`, `tool`, `data`, or `website`
+- `reference_id`: stable project-local identifier for the canonical reference
+- `bibtex_key`: optional preferred key, only when verified
 - `title`
 - `authors` when available
 - `year` when available
 - `arxiv_id`, `doi`, `url`, `journal`, `volume`, and `pages` when available
+
+Extra keys are rejected by the downstream parser. Do not guess or invent missing identifiers or metadata.
 
 Rules:
 
