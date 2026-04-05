@@ -345,12 +345,9 @@ _PLAN_REFERENCE_LOCATOR_PLACEHOLDER_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bplaceholder\b"),
     re.compile(r"\bto be determined\b"),
 )
+_PLAN_CITATION_LOCATOR_YEAR_PATTERN = re.compile(r"\b(?:18|19|20)\d{2}\b")
 _PLAN_REFERENCE_LOCATOR_CONCRETE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\b(?:doi\s*[:/]|https?://(?:doi\.org/|arxiv\.org/abs/)|arxiv\s*:)\S+"),
-)
-_PLAN_CITATION_LOCATOR_CONCRETE_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"\bet al\."),
-    re.compile(r"\b(?:19|20)\d{2}\b"),
 )
 _PLAN_GROUNDING_TEXT_DIRECT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*(?:need(?:s)? grounding|grounding needed)\s*$"),
@@ -380,6 +377,11 @@ _PLAN_GROUNDING_TEXT_SELECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bpick\b"),
     re.compile(r"\bdecisive\b"),
 )
+_PROJECT_ARTIFACT_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"[\\/]+"),
+    re.compile(r"^(?:\.{1,2}|~)(?:[\\/]|$)"),
+    re.compile(r"\.[A-Za-z0-9]{1,8}$"),
+)
 
 
 def _looks_like_project_artifact_path(value: str) -> bool:
@@ -394,15 +396,47 @@ def _looks_like_project_artifact_path(value: str) -> bool:
     )
 
 
+def _is_project_artifact_path(value: str, *, project_root: Path | None = None) -> bool:
+    """Return whether *value* names a concrete project-local artifact path."""
+
+    candidate = value.strip()
+    if not candidate or "://" in candidate:
+        return False
+    if project_root is None:
+        return _looks_like_project_artifact_path(candidate)
+    if not any(pattern.search(candidate) for pattern in _PROJECT_ARTIFACT_PATH_PATTERNS):
+        return False
+
+    root = project_root.expanduser().resolve(strict=False)
+    path = Path(candidate).expanduser()
+    resolved = (path if path.is_absolute() else root / path).resolve(strict=False)
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return False
+    return resolved.is_file()
+
+
 def _is_citation_like_locator(value: str) -> bool:
     """Return whether *value* looks like an explicit citation rather than a vague anchor."""
 
     lowered = value.casefold().strip()
     if not lowered:
         return False
-    if not all(pattern.search(lowered) for pattern in _PLAN_CITATION_LOCATOR_CONCRETE_PATTERNS):
+    if not _PLAN_CITATION_LOCATOR_YEAR_PATTERN.search(lowered):
         return False
-    return True
+    if re.search(r"\bet al\.?\b", lowered):
+        return True
+
+    parts = [part.strip() for part in re.split(r"[;,]", lowered) if part.strip()]
+    if len(parts) >= 3:
+        return any(" " in part for part in parts[:-1])
+    if len(parts) == 2:
+        return bool(
+            re.search(r"\(\s*(?:18|19|20)\d{2}\s*\)", parts[1])
+            and (" " in parts[0] or " " in parts[1])
+        )
+    return False
 
 
 def _is_concrete_external_http_locator(value: str, *, reference_kind: str) -> bool:
@@ -473,7 +507,12 @@ def _is_concrete_text_grounding(value: str) -> bool:
     return _looks_like_project_artifact_path(value)
 
 
-def _is_concrete_reference_locator(value: str, *, reference_kind: str = "paper") -> bool:
+def _is_concrete_reference_locator(
+    value: str,
+    *,
+    reference_kind: str = "paper",
+    project_root: Path | None = None,
+) -> bool:
     """Return whether *value* names a concrete reference locator rather than a placeholder."""
 
     lowered = value.casefold().strip()
@@ -489,7 +528,7 @@ def _is_concrete_reference_locator(value: str, *, reference_kind: str = "paper")
         return False
     if reference_kind == "user_anchor":
         return _is_concrete_text_grounding(value)
-    if _looks_like_project_artifact_path(value):
+    if _is_project_artifact_path(value, project_root=project_root):
         return reference_kind in {"dataset", "prior_artifact", "spec"}
     return False
 

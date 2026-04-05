@@ -7,7 +7,6 @@ import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Literal, get_args, get_origin
-from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
@@ -39,6 +38,12 @@ from gpd.contracts import (
     ResearchContract,
     collect_contract_integrity_errors,
     parse_project_contract_data_salvage,
+)
+from gpd.contracts import (
+    _is_concrete_reference_locator as _shared_is_concrete_reference_locator,
+)
+from gpd.contracts import (
+    _is_project_artifact_path as _shared_is_project_artifact_path,
 )
 
 __all__ = [
@@ -91,27 +96,6 @@ _USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS = (
 )
 _PLACEHOLDER_ONLY_GUIDANCE_PATTERNS = (
     re.compile(r"^\s*(?:tbd|todo|unknown|unclear|none|n/?a|placeholder)\s*$"),
-)
-_REFERENCE_LOCATOR_PLACEHOLDER_PATTERNS = (
-    re.compile(r"^\s*(?:tbd|todo|unknown|unclear|none|n/?a|placeholder)\s*$"),
-    re.compile(r"\btbd\b"),
-    re.compile(r"\btodo\b"),
-    re.compile(r"\bunknown\b"),
-    re.compile(r"\bunclear\b"),
-    re.compile(r"\bplaceholder\b"),
-    re.compile(r"\bto be determined\b"),
-)
-_REFERENCE_LOCATOR_CONCRETE_PATTERNS = (
-    re.compile(r"\b(?:doi\s*[:/]|https?://(?:doi\.org/|arxiv\.org/abs/)|arxiv\s*:)\S+"),
-)
-_CITATION_LOCATOR_CONCRETE_PATTERNS = (
-    re.compile(r"\bet al\."),
-    re.compile(r"\b(?:19|20)\d{2}\b"),
-)
-_PROJECT_ARTIFACT_PATH_PATTERNS = (
-    re.compile(r"[\\/]+"),
-    re.compile(r"^(?:\.{1,2}|~)(?:[\\/]|$)"),
-    re.compile(r"\.[A-Za-z0-9]{1,8}$"),
 )
 _RECOVERABLE_SCHEMA_WARNING_PATTERNS = (
     re.compile(r"^.+: Extra inputs are not permitted$"),
@@ -781,102 +765,6 @@ def _light_contract_consistency_errors(contract: ResearchContract) -> list[str]:
 
     return errors
 
-def _resolve_project_artifact_path(value: str, *, project_root: Path | None) -> Path | None:
-    """Resolve *value* to an existing project-local artifact path when possible."""
-
-    candidate = value.strip()
-    if not candidate or project_root is None:
-        return None
-    root = project_root.expanduser().resolve(strict=False)
-    path = Path(candidate).expanduser()
-    resolved = (path if path.is_absolute() else root / path).resolve(strict=False)
-    try:
-        resolved.relative_to(root)
-    except ValueError:
-        return None
-    if not resolved.is_file():
-        return None
-    return resolved
-
-
-def _is_concrete_external_http_locator(
-    value: str,
-    *,
-    reference_kind: str,
-) -> bool:
-    """Return whether *value* is a concrete external URL for the requested kind."""
-
-    parsed = urlparse(value.strip())
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return False
-    path = parsed.path.strip()
-    if path in {"", "/"}:
-        return False
-
-    if reference_kind in {"dataset", "prior_artifact", "spec"}:
-        return True
-    if reference_kind != "paper":
-        return False
-
-    netloc = parsed.netloc.casefold()
-    if netloc.endswith("doi.org"):
-        return True
-    if netloc.endswith("arxiv.org") and path.startswith("/abs/") and len(path) > len("/abs/"):
-        return True
-    lowered = value.casefold()
-    if not re.search(r"\b10\.\d{4,9}/\S+", lowered):
-        return False
-    return any(
-        marker in lowered
-        for marker in (
-            "/abstract/",
-            "/article/",
-            "/articles/",
-            "/doi/",
-            "/full/",
-            "/fulltext/",
-            "/pdf/",
-            "journals.",
-            "journal.",
-            "proceedings",
-            "conference",
-        )
-    )
-
-
-def _is_citation_like_locator(value: str) -> bool:
-    """Return whether *value* looks like an explicit citation rather than a vague anchor."""
-
-    lowered = value.casefold().strip()
-    if not lowered:
-        return False
-    if not all(pattern.search(lowered) for pattern in _CITATION_LOCATOR_CONCRETE_PATTERNS):
-        return False
-    return True
-
-
-def _is_project_artifact_path(value: str, *, project_root: Path | None = None) -> bool:
-    """Return whether *value* names a concrete prior-output artifact path."""
-
-    candidate = value.strip()
-    if not candidate:
-        return False
-    if not any(pattern.search(candidate) for pattern in _PROJECT_ARTIFACT_PATH_PATTERNS):
-        return False
-    return _resolve_project_artifact_path(candidate, project_root=project_root) is not None
-
-
-def _looks_like_project_artifact_path(value: str) -> bool:
-    """Return whether *value* looks like a project-local artifact path."""
-
-    candidate = value.strip()
-    if not candidate:
-        return False
-    return bool(
-        re.search(r"[\\/]+", candidate)
-        or re.search(r"^(?:\.{1,2}|~)(?:[\\/]|$)", candidate)
-    )
-
 
 def _is_placeholder_only_guidance_text(value: str) -> bool:
     """Return whether *value* is only a placeholder and not actionable guidance."""
@@ -908,45 +796,13 @@ def _is_concrete_text_grounding(
         and any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_SELECTION_PATTERNS)
     ):
         return False
-    if any(pattern.search(lowered) for pattern in _REFERENCE_LOCATOR_CONCRETE_PATTERNS):
-        return True
-    if _is_citation_like_locator(value):
-        return True
     if any(
-        _is_concrete_external_http_locator(value, reference_kind=reference_kind)
-        for reference_kind in ("paper", "dataset", "prior_artifact", "spec")
+        _shared_is_concrete_reference_locator(value, reference_kind=reference_kind, project_root=project_root)
+        for reference_kind in ("paper", "other", "dataset", "prior_artifact", "spec")
     ):
         return True
-    if _is_project_artifact_path(value, project_root=project_root):
+    if _shared_is_project_artifact_path(value, project_root=project_root):
         return True
-    return False
-
-
-def _is_concrete_reference_locator(
-    value: str,
-    *,
-    reference_kind: str = "paper",
-    project_root: Path | None = None,
-) -> bool:
-    """Return whether *value* names a concrete reference locator rather than a placeholder."""
-
-    lowered = value.casefold().strip()
-    if not lowered:
-        return False
-    if any(pattern.search(lowered) for pattern in _REFERENCE_LOCATOR_CONCRETE_PATTERNS):
-        return True
-    if reference_kind == "paper" and _is_citation_like_locator(value):
-        return True
-    if _is_concrete_external_http_locator(value, reference_kind=reference_kind):
-        return True
-    if any(pattern.search(lowered) for pattern in _REFERENCE_LOCATOR_PLACEHOLDER_PATTERNS):
-        return False
-    if reference_kind == "user_anchor":
-        return _is_concrete_text_grounding(value, project_root=project_root)
-    if any(pattern.search(lowered) for pattern in _PROJECT_ARTIFACT_PATH_PATTERNS):
-        if reference_kind in {"dataset", "prior_artifact", "spec"}:
-            return _is_project_artifact_path(value, project_root=project_root)
-        return False
     return False
 
 
@@ -959,7 +815,7 @@ def _has_concrete_grounding_entries(
     """Return whether any grounding entry is concrete for the requested field."""
 
     if field_name == "must_include_prior_outputs":
-        return any(_is_project_artifact_path(value, project_root=project_root) for value in values)
+        return any(_shared_is_project_artifact_path(value, project_root=project_root) for value in values)
     if field_name in {"user_asserted_anchors", "known_good_baselines"}:
         return any(_is_concrete_text_grounding(value, project_root=project_root) for value in values)
     raise ValueError(f"Unsupported grounding field {field_name!r}")
@@ -973,7 +829,7 @@ def _has_concrete_must_surface_reference(
     """Return whether the contract includes a concrete must_surface reference."""
 
     for reference in contract.references:
-        if reference.must_surface and _is_concrete_reference_locator(
+        if reference.must_surface and _shared_is_concrete_reference_locator(
             reference.locator,
             reference_kind=reference.kind,
             project_root=project_root,
@@ -993,7 +849,7 @@ def _must_read_ref_counts_as_guidance(
     for reference in contract.references:
         if reference.id != reference_id:
             continue
-        return _is_concrete_reference_locator(
+        return _shared_is_concrete_reference_locator(
             reference.locator,
             reference_kind=reference.kind,
             project_root=project_root,
@@ -1070,9 +926,7 @@ def _prior_output_counts_as_guidance(
 ) -> bool:
     """Return whether *value* is durable prior-output guidance."""
 
-    if project_root is not None:
-        return _is_project_artifact_path(value, project_root=project_root)
-    return _looks_like_project_artifact_path(value)
+    return _shared_is_project_artifact_path(value, project_root=project_root)
 
 
 def _has_meaningful_guidance_text(values: list[str]) -> bool:
@@ -1167,7 +1021,7 @@ def _must_surface_locator_warnings(
     for reference in contract.references:
         if not reference.must_surface:
             continue
-        if _is_concrete_reference_locator(
+        if _shared_is_concrete_reference_locator(
             reference.locator,
             reference_kind=reference.kind,
             project_root=project_root,

@@ -809,6 +809,7 @@ def test_validate_project_contract_approved_mode_accepts_prior_output_grounding(
         ("paper", "doi:10.1234/example"),
         ("paper", "arXiv:2401.12345"),
         ("paper", "https://doi.org/10.1234/unknown-example"),
+        ("other", "Einstein, Annalen der Physik, 1905"),
     ],
 )
 def test_validate_project_contract_approved_mode_accepts_concrete_reference_locator_grounding(
@@ -2467,14 +2468,24 @@ def test_collect_plan_contract_integrity_errors_rejects_placeholder_must_surface
     assert "references must include at least one must_surface=true anchor" in errors
 
 
-def test_collect_plan_contract_integrity_errors_accepts_concrete_must_surface_reference_locator() -> None:
+@pytest.mark.parametrize(
+    ("reference_kind", "locator"),
+    [
+        ("paper", "Author et al., Journal, 2024"),
+        ("other", "Einstein, Annalen der Physik, 1905"),
+    ],
+)
+def test_collect_plan_contract_integrity_errors_accepts_concrete_must_surface_reference_locator(
+    reference_kind: str,
+    locator: str,
+) -> None:
     contract = _load_contract_fixture()
     _remove_incidental_grounding(contract)
     contract["references"] = [
         {
             "id": "ref-anchor",
-            "kind": "paper",
-            "locator": "Author et al., Journal, 2024",
+            "kind": reference_kind,
+            "locator": locator,
             "aliases": [],
             "role": "benchmark",
             "why_it_matters": "Concrete locator should satisfy the hard anchor requirement.",
@@ -2489,6 +2500,42 @@ def test_collect_plan_contract_integrity_errors_accepts_concrete_must_surface_re
     errors = collect_plan_contract_integrity_errors(ResearchContract.model_validate(contract))
 
     assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("reference_kind", "locator"),
+    [
+        ("paper", "Author et al., Journal, 2024"),
+        ("other", "Einstein, Annalen der Physik, 1905"),
+    ],
+)
+def test_validate_project_contract_approved_mode_accepts_concrete_must_surface_reference_locator(
+    reference_kind: str,
+    locator: str,
+) -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    contract["references"] = [
+        {
+            "id": "ref-anchor",
+            "kind": reference_kind,
+            "locator": locator,
+            "aliases": [],
+            "role": "benchmark",
+            "why_it_matters": "Concrete locator should satisfy the hard anchor requirement.",
+            "applies_to": ["claim-benchmark"],
+            "carry_forward_to": [],
+            "must_surface": True,
+            "required_actions": ["read", "compare"],
+        }
+    ]
+    contract["scope"]["unresolved_questions"] = []
+    contract["context_intake"]["must_read_refs"] = ["ref-anchor"]
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is True
+    assert result.mode == "approved"
 
 
 def test_plan_contract_schema_example_values_validate_against_research_contract_model() -> None:
