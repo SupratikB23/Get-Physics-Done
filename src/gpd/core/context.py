@@ -116,6 +116,7 @@ _RUNTIME_IGNORED_SCAN_PATHS = frozenset(
         for descriptor in iter_runtime_descriptors()
     }
 )
+_LEADING_BLANK_LINES_BEFORE_FRONTMATTER_RE = re.compile(r"^(?:[ \t]*\r?\n)+(?=---[ \t]*\r?\n)")
 _IGNORE_DIRS = frozenset(
     {
         ".git",
@@ -299,9 +300,15 @@ def _normalize_todo_metadata_value(value: object, *, allow_typed_scalars: bool =
     return val or None
 
 
+def _normalize_todo_frontmatter_text(content: str) -> str:
+    """Return a todo text view that preserves valid frontmatter after blank lines."""
+    text = content.lstrip("\ufeff")
+    return _LEADING_BLANK_LINES_BEFORE_FRONTMATTER_RE.sub("", text, count=1)
+
+
 def _read_todo_frontmatter(content: str) -> dict[str, object] | None:
     """Read one todo's YAML frontmatter, returning ``None`` when it is malformed."""
-    text = content.lstrip("\ufeff")
+    text = _normalize_todo_frontmatter_text(content)
     if not text.startswith("---"):
         return {}
 
@@ -338,7 +345,7 @@ def _extract_frontmatter_field(
     parsed_frontmatter: dict[str, object] | None = None,
 ) -> str | None:
     """Extract a bare field from the leading todo metadata block only."""
-    text = content.lstrip("\ufeff")
+    text = _normalize_todo_frontmatter_text(content)
 
     if text.startswith("---"):
         meta = parsed_frontmatter if parsed_frontmatter is not None else _read_todo_frontmatter(text)
@@ -579,6 +586,10 @@ def _merge_reference_record(merged: dict[str, dict[str, object]], ref: dict[str,
     if ref_id and ref_id != str(target.get("id") or "").strip():
         _append_unique_strings(target.setdefault("aliases", []), [ref_id])
 
+    if str(ref.get("kind") or "").strip() and str(target.get("kind") or "other").strip() == "other":
+        incoming_kind = str(ref.get("kind") or "").strip()
+        if incoming_kind != "other":
+            target["kind"] = incoming_kind
     if str(ref.get("role") or "").strip() and str(target.get("role") or "other").strip() == "other":
         target["role"] = ref.get("role")
     why = str(ref.get("why_it_matters") or "").strip()

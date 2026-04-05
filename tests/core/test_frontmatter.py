@@ -238,6 +238,15 @@ class TestSpliceFrontmatter:
         result = splice_frontmatter(content, {"title": "New"})
         assert "\r\n" in result
 
+    def test_leading_blank_lines_before_frontmatter_are_replaced(self):
+        content = "\n\n---\ntitle: Old\n---\n\nBody."
+        result = splice_frontmatter(content, {"title": "New"})
+        meta, body = extract_frontmatter(result)
+        assert meta["title"] == "New"
+        assert body == "\nBody."
+        assert result.count("---") == 2
+        assert result.startswith("\n\n---\n")
+
 
 # ---------------------------------------------------------------------------
 # deep_merge_frontmatter
@@ -257,6 +266,15 @@ class TestDeepMergeFrontmatter:
         result = deep_merge_frontmatter(content, {"title": "New"})
         meta, _ = extract_frontmatter(result)
         assert meta["title"] == "New"
+
+    def test_leading_blank_lines_before_frontmatter_are_replaced(self):
+        content = "\n\n---\ntitle: Old\n---\n\nBody."
+        result = deep_merge_frontmatter(content, {"title": "New"})
+        meta, body = extract_frontmatter(result)
+        assert meta["title"] == "New"
+        assert body == "\nBody."
+        assert result.count("---") == 2
+        assert result.startswith("\n\n---\n")
 
     def test_add_new_key(self):
         content = "---\ntitle: Hello\n---\n\nBody."
@@ -1599,6 +1617,18 @@ class TestExtractFrontmatterEdgeCases:
         meta, body = extract_frontmatter(content)
         assert meta == {}
         assert "Body." in body
+
+
+class TestTodoFrontmatterRegression:
+    def test_leading_blank_lines_before_todo_frontmatter_are_parsed(self):
+        from gpd.core.context import _extract_frontmatter_field, _read_todo_frontmatter
+
+        content = '\n\n---\ntitle: Todo task\ncreated: "2026-01-01"\n---\nBody.\n'
+
+        meta = _read_todo_frontmatter(content)
+        assert meta == {"title": "Todo task", "created": "2026-01-01"}
+        assert _extract_frontmatter_field(content, "title") == "Todo task"
+        assert _extract_frontmatter_field(content, "created") == "2026-01-01"
 
 
 # ---------------------------------------------------------------------------

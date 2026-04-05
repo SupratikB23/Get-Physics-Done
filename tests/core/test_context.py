@@ -9,12 +9,14 @@ import pytest
 
 from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.core.context import (
+    _extract_frontmatter_field,
     _generate_slug,
     _is_phase_complete,
     _load_project_contract,
     _merge_active_references,
     _merge_reference_intake,
     _normalize_phase_name,
+    _read_todo_frontmatter,
     _should_skip_research_scan_entry,
     _state_exists,
     init_execute_phase,
@@ -1307,6 +1309,46 @@ class TestInitPlanPhase:
         assert ref["carry_forward_to"] == ["writing"]
         assert ref["aliases"] == ["benchmark-paper"]
 
+    def test_merge_active_references_upgrades_generic_kind_from_derived_reference(self) -> None:
+        contract_references = [
+            {
+                "id": "ref-benchmark",
+                "locator": "Benchmark Ref 2024",
+                "kind": "other",
+                "role": "other",
+                "why_it_matters": "Published comparison target",
+                "required_actions": [],
+                "applies_to": [],
+                "carry_forward_to": [],
+                "source_artifacts": [],
+                "aliases": [],
+                "must_surface": False,
+            }
+        ]
+        derived_references = [
+            {
+                "id": "ref-benchmark",
+                "locator": "Benchmark Ref 2024",
+                "kind": "paper",
+                "role": "benchmark",
+                "why_it_matters": "Derived metadata",
+                "required_actions": ["read"],
+                "applies_to": ["claim-benchmark"],
+                "carry_forward_to": ["writing"],
+                "source_artifacts": ["GPD/research-map/REFERENCES.md"],
+                "aliases": ["benchmark-paper"],
+                "must_surface": True,
+            }
+        ]
+
+        merged = _merge_active_references(contract_references, derived_references)
+        ref = next(item for item in merged if item["id"] == "ref-benchmark")
+
+        assert ref["kind"] == "paper"
+        assert ref["role"] == "benchmark"
+        assert contract_references[0]["kind"] == "other"
+        assert derived_references[0]["kind"] == "paper"
+
     def test_keeps_project_contract_references_raw_and_surfaces_derived_reference_fields(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)
         _create_phase_dir(tmp_path, "02-analysis")
@@ -1335,6 +1377,15 @@ class TestInitPlanPhase:
         assert active_references["prior-baseline"]["kind"] == "prior_artifact"
         assert active_references["prior-baseline"]["required_actions"] == ["use"]
         assert active_references["prior-baseline"]["carry_forward_to"] == ["planning", "execution"]
+
+    def test_todo_frontmatter_parsing_handles_blank_lines_before_frontmatter(self) -> None:
+        content = '\n\n---\ntitle: Todo task\ncreated: "2026-01-01"\n---\nBody.\n'
+
+        meta = _read_todo_frontmatter(content)
+
+        assert meta == {"title": "Todo task", "created": "2026-01-01"}
+        assert _extract_frontmatter_field(content, "title") == "Todo task"
+        assert _extract_frontmatter_field(content, "created") == "2026-01-01"
 
     def test_does_not_persist_canonical_reference_merges(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)

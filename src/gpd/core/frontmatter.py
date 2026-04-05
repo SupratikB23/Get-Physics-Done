@@ -115,6 +115,15 @@ _LEADING_BLANK_LINES_BEFORE_FRONTMATTER_RE = re.compile(r"^(?:[ \t]*\r?\n)+(?=--
 _FRONTMATTER_BLOCK_RE = re.compile(r"^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?=\r?\n|$)")
 
 
+def _split_frontmatter_rewrite_content(content: str) -> tuple[str, str]:
+    """Return any preserved leading blank-line prefix plus rewriteable content."""
+    clean = content.lstrip("\ufeff")
+    prefix_match = _LEADING_BLANK_LINES_BEFORE_FRONTMATTER_RE.match(clean)
+    if prefix_match is None:
+        return "", clean
+    return clean[: prefix_match.end()], clean[prefix_match.end() :]
+
+
 def extract_frontmatter(content: str) -> tuple[dict, str]:
     """Extract YAML frontmatter and body from markdown content.
 
@@ -184,11 +193,11 @@ def splice_frontmatter(content: str, updates: dict) -> str:
     eol = "\r\n" if "\r\n" in content else "\n"
     yaml_str = _dump_yaml(meta)
 
-    clean = content.lstrip("\ufeff")
-    fm_match = _FRONTMATTER_BLOCK_RE.match(clean)
+    prefix, rewriteable = _split_frontmatter_rewrite_content(content)
+    fm_match = _FRONTMATTER_BLOCK_RE.match(rewriteable)
     if fm_match:
-        return f"---{eol}{yaml_str}{eol}---" + clean[fm_match.end() :]
-    return f"---{eol}{yaml_str}{eol}---{eol}{eol}" + clean
+        return prefix + f"---{eol}{yaml_str}{eol}---" + rewriteable[fm_match.end() :]
+    return prefix + f"---{eol}{yaml_str}{eol}---{eol}{eol}" + rewriteable
 
 
 def deep_merge_frontmatter(content: str, merge_data: dict) -> str:
@@ -211,11 +220,11 @@ def deep_merge_frontmatter(content: str, merge_data: dict) -> str:
     eol = "\r\n" if "\r\n" in content else "\n"
     yaml_str = _dump_yaml(meta)
 
-    clean = content.lstrip("\ufeff")
-    fm_match = _FRONTMATTER_BLOCK_RE.match(clean)
+    prefix, rewriteable = _split_frontmatter_rewrite_content(content)
+    fm_match = _FRONTMATTER_BLOCK_RE.match(rewriteable)
     if fm_match:
-        return f"---{eol}{yaml_str}{eol}---" + clean[fm_match.end() :]
-    return f"---{eol}{yaml_str}{eol}---{eol}{eol}" + clean
+        return prefix + f"---{eol}{yaml_str}{eol}---" + rewriteable[fm_match.end() :]
+    return prefix + f"---{eol}{yaml_str}{eol}---{eol}{eol}" + rewriteable
 
 
 @dataclass(slots=True)
