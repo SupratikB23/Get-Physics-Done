@@ -43,6 +43,7 @@ from gpd.core.execution_lineage import (
     project_execution_lineage_head,
     write_execution_lineage_head,
 )
+from gpd.core.public_surface_contract import recovery_local_snapshot_command
 from gpd.core.root_resolution import normalize_workspace_hint as _normalize_workspace_path
 from gpd.core.root_resolution import resolve_project_root as _shared_resolve_project_root
 from gpd.core.utils import atomic_write, file_lock, phase_normalize, safe_read_file
@@ -858,11 +859,12 @@ def _execution_visibility_next_commands(
     phase_plan = "-".join(part for part in (snapshot.phase, snapshot.plan) if part) or "current execution"
     session_scope = f" --session {snapshot.session_id}" if snapshot.session_id else ""
     observe_command = f"gpd observe show{session_scope} --last 20"
+    recovery_command = recovery_local_snapshot_command()
 
     if classification == "blocked":
         suggestions.append(
             ExecutionVisibilitySuggestion(
-                command="gpd resume",
+                command=recovery_command,
                 reason="inspect the current recovery snapshot and blocker context",
             )
         )
@@ -875,7 +877,7 @@ def _execution_visibility_next_commands(
     elif classification == "waiting":
         suggestions.append(
             ExecutionVisibilitySuggestion(
-                command="gpd resume",
+                command=recovery_command,
                 reason="inspect the resumable checkpoint and review context",
             )
         )
@@ -888,7 +890,7 @@ def _execution_visibility_next_commands(
     elif classification == "paused-or-resumable":
         suggestions.append(
             ExecutionVisibilitySuggestion(
-                command="gpd resume",
+                command=recovery_command,
                 reason="inspect the ranked recovery candidates before continuing inside the runtime",
             )
         )
@@ -908,7 +910,7 @@ def _execution_visibility_next_commands(
             )
             suggestions.append(
                 ExecutionVisibilitySuggestion(
-                    command="gpd resume",
+                    command=recovery_command,
                     reason="inspect the latest recovery snapshot if the run should already have paused",
                 )
             )

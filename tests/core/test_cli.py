@@ -6322,7 +6322,57 @@ def test_paper_build_rejects_citation_sidecar_entries_without_reference_id(tmp_p
     )
 
     assert result.exit_code == 1
-    assert "citation_sources[0].reference_id must be a non-empty string" in result.output
+    assert "citation source ./citation-sources.json[0].reference_id must be a non-empty string" in result.output
+
+
+def test_paper_build_rejects_citation_sidecar_entries_without_title(tmp_path: Path) -> None:
+    paper_dir = tmp_path / "paper"
+    paper_dir.mkdir()
+    (paper_dir / "PAPER-CONFIG.json").write_text(
+        json.dumps(
+            {
+                "title": "Configured Paper",
+                "authors": [{"name": "A. Researcher"}],
+                "abstract": "Abstract.",
+                "sections": [{"title": "Intro", "content": "Hello."}],
+                "figures": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    citation_source_path = tmp_path / "citation-sources.json"
+    citation_source_path.write_text(
+        json.dumps(
+            [
+                {
+                    "reference_id": "ref-broken",
+                    "source_type": "paper",
+                    "title": "   ",
+                    "authors": ["A. Author"],
+                    "year": "2024",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--raw",
+            "--cwd",
+            str(tmp_path),
+            "paper-build",
+            "--citation-sources",
+            str(citation_source_path),
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "citation source" in result.output
+    assert "title must be a non-empty string" in result.output
 
 
 def test_paper_build_surfaces_toolchain_failure_details(tmp_path: Path) -> None:

@@ -23,9 +23,16 @@ __all__ = [
     "load_public_surface_contract",
     "local_cli_bridge_commands",
     "local_cli_bridge_contract",
+    "local_cli_cost_command",
     "local_cli_doctor_command",
     "local_cli_help_command",
+    "local_cli_integrations_status_wolfram_command",
+    "local_cli_observe_execution_command",
+    "local_cli_permissions_status_command",
     "local_cli_bridge_note",
+    "local_cli_presets_list_command",
+    "local_cli_resume_command",
+    "local_cli_resume_recent_command",
     "local_cli_permissions_sync_command",
     "local_cli_unattended_readiness_command",
     "post_start_settings_contract",
@@ -152,12 +159,26 @@ _PUBLIC_SURFACE_SECTION_KEYS = {
 _LOCAL_CLI_HELP_COMMAND = "gpd --help"
 _LOCAL_CLI_DOCTOR_COMMAND = "gpd doctor"
 _LOCAL_CLI_UNATTENDED_READINESS_COMMAND = "gpd validate unattended-readiness --runtime <runtime> --autonomy balanced"
+_LOCAL_CLI_PERMISSIONS_STATUS_COMMAND = "gpd permissions status --runtime <runtime> --autonomy balanced"
 _LOCAL_CLI_PERMISSIONS_SYNC_COMMAND = "gpd permissions sync --runtime <runtime> --autonomy balanced"
+_LOCAL_CLI_RESUME_COMMAND = "gpd resume"
+_LOCAL_CLI_RESUME_RECENT_COMMAND = "gpd resume --recent"
+_LOCAL_CLI_OBSERVE_EXECUTION_COMMAND = "gpd observe execution"
+_LOCAL_CLI_COST_COMMAND = "gpd cost"
+_LOCAL_CLI_PRESETS_LIST_COMMAND = "gpd presets list"
+_LOCAL_CLI_INTEGRATIONS_STATUS_WOLFRAM_COMMAND = "gpd integrations status wolfram"
 _REQUIRED_LOCAL_CLI_BRIDGE_COMMANDS = (
     _LOCAL_CLI_HELP_COMMAND,
     _LOCAL_CLI_DOCTOR_COMMAND,
     _LOCAL_CLI_UNATTENDED_READINESS_COMMAND,
+    _LOCAL_CLI_PERMISSIONS_STATUS_COMMAND,
     _LOCAL_CLI_PERMISSIONS_SYNC_COMMAND,
+    _LOCAL_CLI_RESUME_COMMAND,
+    _LOCAL_CLI_RESUME_RECENT_COMMAND,
+    _LOCAL_CLI_OBSERVE_EXECUTION_COMMAND,
+    _LOCAL_CLI_COST_COMMAND,
+    _LOCAL_CLI_PRESETS_LIST_COMMAND,
+    _LOCAL_CLI_INTEGRATIONS_STATUS_WOLFRAM_COMMAND,
 )
 
 
@@ -210,7 +231,7 @@ def _require_string_list(payload: dict[str, object], key: str, *, label: str) ->
             raise ValueError(f"{label}.{key} entries must be non-empty strings")
         normalized = item.strip()
         if normalized in seen:
-            continue
+            raise ValueError(f"{label}.{key} must not contain duplicates")
         seen.add(normalized)
         items.append(normalized)
     return tuple(items)
@@ -442,8 +463,36 @@ def local_cli_unattended_readiness_command() -> str:
     return _local_cli_bridge_command(_LOCAL_CLI_UNATTENDED_READINESS_COMMAND)
 
 
+def local_cli_permissions_status_command() -> str:
+    return _local_cli_bridge_command(_LOCAL_CLI_PERMISSIONS_STATUS_COMMAND)
+
+
 def local_cli_permissions_sync_command() -> str:
     return _local_cli_bridge_command(_LOCAL_CLI_PERMISSIONS_SYNC_COMMAND)
+
+
+def local_cli_resume_command() -> str:
+    return _local_cli_bridge_command(_LOCAL_CLI_RESUME_COMMAND)
+
+
+def local_cli_resume_recent_command() -> str:
+    return _local_cli_bridge_command(_LOCAL_CLI_RESUME_RECENT_COMMAND)
+
+
+def local_cli_observe_execution_command() -> str:
+    return _local_cli_bridge_command(_LOCAL_CLI_OBSERVE_EXECUTION_COMMAND)
+
+
+def local_cli_cost_command() -> str:
+    return _local_cli_bridge_command(_LOCAL_CLI_COST_COMMAND)
+
+
+def local_cli_presets_list_command() -> str:
+    return _local_cli_bridge_command(_LOCAL_CLI_PRESETS_LIST_COMMAND)
+
+
+def local_cli_integrations_status_wolfram_command() -> str:
+    return _local_cli_bridge_command(_LOCAL_CLI_INTEGRATIONS_STATUS_WOLFRAM_COMMAND)
 
 
 def local_cli_bridge_note() -> str:

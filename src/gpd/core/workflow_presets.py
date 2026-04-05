@@ -112,6 +112,12 @@ def _capability_value(source: object, *keys: str) -> object | None:
     return None
 
 
+def _strict_bool_value(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
+
+
 def _normalize_latex_capability(
     latex_capability: object | None = None,
 ) -> dict[str, object]:
@@ -125,14 +131,17 @@ def _normalize_latex_capability(
         compiler_name = "pdflatex"
 
     compiler_value = _capability_value(latex_capability, "compiler_available", "available")
-    compiler_available = bool(compiler_value) if compiler_value is not None else False
+    compiler_available = _strict_bool_value(compiler_value)
+    if compiler_available is None:
+        compiler_available = False
 
     bibtex_value = _capability_value(latex_capability, "bibtex_available", "bibtex", "bibliography_available")
-    bibtex_available = bool(bibtex_value) if bibtex_value is not None else None
+    bibtex_available = _strict_bool_value(bibtex_value)
 
     latexmk_value = _capability_value(latex_capability, "latexmk_available", "latexmk")
     kpsewhich_value = _capability_value(latex_capability, "kpsewhich_available", "kpsewhich")
     full_toolchain_value = _capability_value(latex_capability, "full_toolchain_available", "full_toolchain_ready")
+    full_toolchain_available = _strict_bool_value(full_toolchain_value)
     compiler_path = _capability_value(latex_capability, "compiler_path")
     distribution = _capability_value(latex_capability, "distribution")
     readiness_value = _capability_value(latex_capability, "readiness_state")
@@ -171,15 +180,17 @@ def _normalize_latex_capability(
         "compiler": compiler_name,
         "available": compiler_available,
         "compiler_available": compiler_available,
-        "full_toolchain_available": bool(full_toolchain_value)
-        if full_toolchain_value is not None
-        else compiler_available and bibtex_ready and bool(latexmk_value) and bool(kpsewhich_value),
+        "full_toolchain_available": (
+            full_toolchain_available
+            if full_toolchain_available is not None
+            else compiler_available and bibtex_ready and latexmk_value is True and kpsewhich_value is True
+        ),
         "compiler_path": compiler_path,
         "distribution": distribution,
         "bibtex_available": bibtex_available,
         "bibliography_support_available": bibliography_support_available,
-        "latexmk_available": bool(latexmk_value) if latexmk_value is not None else None,
-        "kpsewhich_available": bool(kpsewhich_value) if kpsewhich_value is not None else None,
+        "latexmk_available": _strict_bool_value(latexmk_value),
+        "kpsewhich_available": _strict_bool_value(kpsewhich_value),
         "readiness_state": readiness_state,
         "message": message,
         "warnings": warnings,
@@ -433,12 +444,12 @@ def resolve_workflow_preset_readiness(
     """Return doctor-facing preset readiness derived from explicit tool checks."""
 
     capability = _normalize_latex_capability(latex_capability)
-    compiler_ready = bool(capability["compiler_available"])
-    bibliography_support_ready = bool(capability.get("bibliography_support_available"))
+    compiler_ready = capability["compiler_available"] is True
+    bibliography_support_ready = capability.get("bibliography_support_available") is True
     latexmk_available = capability.get("latexmk_available")
     kpsewhich_available = capability.get("kpsewhich_available")
-    paper_build_ready = bool(capability["paper_build_ready"])
-    arxiv_submission_ready = bool(capability["arxiv_submission_ready"])
+    paper_build_ready = capability["paper_build_ready"] is True
+    arxiv_submission_ready = capability["arxiv_submission_ready"] is True
 
     entries: list[dict[str, object]] = []
     ready = 0

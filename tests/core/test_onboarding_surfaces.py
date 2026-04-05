@@ -214,7 +214,7 @@ def test_public_surface_contract_loader_requires_recovery_ladder_commands_to_sta
     load_public_surface_contract.cache_clear()
 
 
-def test_public_surface_contract_loader_normalizes_whitespace_and_dedupes_lists(
+def test_public_surface_contract_loader_normalizes_whitespace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -226,12 +226,10 @@ def test_public_surface_contract_loader_normalizes_whitespace_and_dedupes_lists(
     noisy_payload["beginner_onboarding"]["startup_ladder"] = [
         f"  {canonical_payload['beginner_onboarding']['startup_ladder'][0]}  ",
         *canonical_payload["beginner_onboarding"]["startup_ladder"][1:],
-        canonical_payload["beginner_onboarding"]["startup_ladder"][1],
     ]
     noisy_payload["local_cli_bridge"]["commands"] = [
         f"  {canonical_payload['local_cli_bridge']['commands'][0]}  ",
         *canonical_payload["local_cli_bridge"]["commands"][1:],
-        canonical_payload["local_cli_bridge"]["commands"][0],
     ]
     noisy_payload["post_start_settings"]["primary_sentence"] = (
         f"  {canonical_payload['post_start_settings']['primary_sentence']}  "
@@ -240,7 +238,6 @@ def test_public_surface_contract_loader_normalizes_whitespace_and_dedupes_lists(
         canonical_payload["resume_authority"]["public_fields"][0],
         f"  {canonical_payload['resume_authority']['public_fields'][1]}  ",
         *canonical_payload["resume_authority"]["public_fields"][2:],
-        canonical_payload["resume_authority"]["public_fields"][1],
     ]
     noisy_payload["recovery_ladder"]["title"] = f"  {canonical_payload['recovery_ladder']['title']}  "
 
@@ -253,6 +250,22 @@ def test_public_surface_contract_loader_normalizes_whitespace_and_dedupes_lists(
     assert contract.post_start_settings.primary_sentence == canonical_payload["post_start_settings"]["primary_sentence"]
     assert contract.resume_authority.public_fields == tuple(canonical_payload["resume_authority"]["public_fields"])
     assert contract.recovery_ladder.title == canonical_payload["recovery_ladder"]["title"]
+    load_public_surface_contract.cache_clear()
+
+
+def test_public_surface_contract_loader_rejects_duplicate_entries(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    canonical_path = Path(__file__).resolve().parents[2] / "src" / "gpd" / "core" / "public_surface_contract.json"
+    canonical_payload = json.loads(canonical_path.read_text(encoding="utf-8"))
+    duplicate_payload = copy.deepcopy(canonical_payload)
+    duplicate_payload["local_cli_bridge"]["commands"].append(canonical_payload["local_cli_bridge"]["commands"][0])
+
+    _load_public_surface_contract_with_payload(monkeypatch, tmp_path, duplicate_payload)
+    with pytest.raises(ValueError, match=r"local_cli_bridge\.commands must not contain duplicates"):
+        load_public_surface_contract()
+
     load_public_surface_contract.cache_clear()
 
 

@@ -106,6 +106,7 @@ Rules:
 - `references[]` may only reference declared `references[].id`.
 - `claim_kind` is optional and defaults to `other`; set it explicitly for theorem-bearing claims.
 - For theorem/proof work, enumerate `parameters[]`, `hypotheses[]`, `quantifiers[]`, `conclusion_clauses[]`, and `proof_deliverables[]` so the proof audit can detect dropped assumptions, silently specialized parameters, and narrowed conclusions.
+- Nested proof lists stay list-shaped even for one item: `parameters[].aliases`, `hypotheses[].symbols`, `quantifiers`, and `proof_deliverables` must stay YAML arrays, not scalar strings.
 - `proof_deliverables[]` may only reference declared `deliverables[].id`.
 - When a claim is theorem-bearing or references an `observables[].kind: proof_obligation`, the contract must declare at least one proof-specific acceptance test in `acceptance_tests[]`.
 - `required_in_proof` must be a literal JSON boolean (`true` or `false`), not a quoted string or synonym such as `"yes"` / `"no"`.

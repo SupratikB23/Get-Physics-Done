@@ -54,8 +54,8 @@ from gpd.adapters.install_utils import (
 )
 from gpd.adapters.runtime_catalog import get_runtime_descriptor
 from gpd.adapters.tool_names import build_runtime_alias_map, reference_translation_map, translate_for_runtime
-from gpd.mcp import managed_integrations as _managed_integrations
 from gpd.core.observability import gpd_span
+from gpd.mcp import managed_integrations as _managed_integrations
 from gpd.registry import AgentDef, load_agents_from_dir
 
 WOLFRAM_MANAGED_INTEGRATION = _managed_integrations.WOLFRAM_MANAGED_INTEGRATION

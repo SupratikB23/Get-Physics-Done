@@ -42,6 +42,7 @@ from gpd.core.proof_review import (
     manuscript_requires_theorem_bearing_review,
     resolve_manuscript_proof_review_status,
 )
+from gpd.core.public_surface_contract import recovery_local_snapshot_command
 from gpd.core.publication_review_paths import (
     manuscript_matches_review_artifact_path,
     review_artifact_round,
@@ -224,8 +225,8 @@ _LOCAL_CLI_INIT_COMMANDS: dict[str, str] = {
 _LOCAL_CLI_PUBLIC_COMMANDS: dict[str, str] = {
     # Resume is a user-facing recovery command even when the local CLI still
     # routes most workflow assembly through `gpd init ...`.
-    "resume": "gpd resume",
-    "resume-work": "gpd resume",
+    "resume": recovery_local_snapshot_command(),
+    "resume-work": recovery_local_snapshot_command(),
 }
 
 

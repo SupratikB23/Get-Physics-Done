@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Literal
 
 from pybtex.database import BibliographyData, Entry
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic import ValidationError as PydanticValidationError
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,22 @@ class CitationSource(BaseModel):
     journal: str = ""
     volume: str = ""
     pages: str = ""
+
+    @field_validator("authors", mode="before")
+    @classmethod
+    def _normalize_authors(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        normalized: list[object] = []
+        for item in value:
+            if not isinstance(item, str):
+                normalized.append(item)
+                continue
+            stripped = item.strip()
+            if not stripped:
+                raise ValueError("authors must not contain blank entries")
+            normalized.append(stripped)
+        return normalized
 
 
 def _citation_source_label(source_path: str | None = None, index: int | None = None) -> str:
@@ -82,6 +98,10 @@ def parse_citation_source_payload(
     reference_id = source.reference_id.strip() if isinstance(source.reference_id, str) else ""
     if not reference_id:
         raise ValueError(f"{label}.reference_id must be a non-empty string")
+    if not source.title.strip():
+        raise ValueError(f"{label}.title must be a non-empty string")
+    if any(not author.strip() for author in source.authors):
+        raise ValueError(f"{label}.authors entries must be non-empty strings")
 
     return source.model_copy(update={"reference_id": reference_id})
 

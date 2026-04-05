@@ -255,6 +255,31 @@ def test_workflow_preset_readiness_does_not_backfill_legacy_paper_build_flag_to_
     assert publication["blocked_workflows"] == ["paper-build", "arxiv-submission"]
 
 
+def test_workflow_preset_readiness_rejects_string_booleans_in_latex_capability() -> None:
+    readiness = resolve_workflow_preset_readiness(
+        base_ready=True,
+        latex_capability={
+            "compiler_available": "false",
+            "bibtex_available": "false",
+            "latexmk_available": "false",
+            "kpsewhich_available": "false",
+        },
+    )
+    publication = next(preset for preset in readiness["presets"] if preset["id"] == "publication-manuscript")
+
+    assert readiness["latex_capability"]["available"] is False
+    assert readiness["latex_capability"]["compiler_available"] is False
+    assert readiness["latex_capability"]["bibtex_available"] is None
+    assert readiness["latex_capability"]["latexmk_available"] is None
+    assert readiness["latex_capability"]["kpsewhich_available"] is None
+    assert readiness["latex_capability"]["bibliography_support_available"] is False
+    assert readiness["latex_capability"]["paper_build_ready"] is False
+    assert readiness["latex_capability"]["arxiv_submission_ready"] is False
+    assert readiness["latex_capability"]["full_toolchain_available"] is False
+    assert publication["status"] == "degraded"
+    assert any("No LaTeX compiler detected" in warning for warning in publication["warnings"])
+
+
 @pytest.mark.parametrize("latex_capability", [True, {"legacy_available": True}])
 def test_workflow_preset_readiness_ignores_legacy_compiler_availability_shapes(
     latex_capability: object,

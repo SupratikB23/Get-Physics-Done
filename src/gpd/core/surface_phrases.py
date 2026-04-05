@@ -10,10 +10,16 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 from gpd.core.public_surface_contract import (
-    local_cli_bridge_commands as _public_local_cli_bridge_commands,
+    local_cli_bridge_note as _public_local_cli_bridge_note,
 )
 from gpd.core.public_surface_contract import (
-    local_cli_bridge_note as _public_local_cli_bridge_note,
+    local_cli_cost_command as _public_local_cli_cost_command,
+)
+from gpd.core.public_surface_contract import (
+    local_cli_observe_execution_command as _public_local_cli_observe_execution_command,
+)
+from gpd.core.public_surface_contract import (
+    local_cli_presets_list_command as _public_local_cli_presets_list_command,
 )
 from gpd.core.public_surface_contract import (
     post_start_settings_note as _public_post_start_settings_note,
@@ -22,7 +28,13 @@ from gpd.core.public_surface_contract import (
     post_start_settings_recommendation as _public_post_start_settings_recommendation,
 )
 from gpd.core.public_surface_contract import (
+    recovery_cross_workspace_command as _public_recovery_cross_workspace_command,
+)
+from gpd.core.public_surface_contract import (
     recovery_ladder_note as _public_recovery_ladder_note,
+)
+from gpd.core.public_surface_contract import (
+    recovery_local_snapshot_command as _public_recovery_local_snapshot_command,
 )
 from gpd.core.workflow_presets import list_workflow_presets
 
@@ -64,18 +76,12 @@ def command_follow_up_action(*, command: str, reason: str) -> str:
     return f"Run `{command}` to {reason}."
 
 
-def _public_recovery_command(command: str) -> str:
-    if command not in _public_local_cli_bridge_commands():
-        raise ValueError(f"recovery command {command!r} must remain part of the public local CLI bridge contract")
-    return command
-
-
 def _recovery_resume_command() -> str:
-    return _public_recovery_command("gpd resume")
+    return _public_recovery_local_snapshot_command()
 
 
 def _recovery_recent_command() -> str:
-    return _public_recovery_command("gpd resume --recent")
+    return _public_recovery_cross_workspace_command()
 
 
 def recovery_resume_action() -> str:
@@ -244,7 +250,10 @@ def recovery_next_actions(
 
 
 def observe_execution_action() -> str:
-    return "Run `gpd observe execution` for read-only long-run visibility from your normal terminal."
+    return (
+        f"Run `{_public_local_cli_observe_execution_command()}` for read-only long-run visibility "
+        "from your normal terminal."
+    )
 
 
 def observe_execution_surface_note() -> str:
@@ -258,7 +267,8 @@ def observe_tangent_routing_note(*, tangent_phrase: str, branch_phrase: str) -> 
     tangent_text = tangent_phrase if tangent_phrase.startswith(("runtime `", "the runtime `", "`")) else f"`{tangent_phrase}`"
     branch_text = branch_phrase if branch_phrase.startswith(("runtime `", "the runtime `", "`")) else f"`{branch_phrase}`"
     return (
-        "If `gpd observe execution` surfaces an alternative-path follow-up or `branch later` recommendation, "
+        f"If `{_public_local_cli_observe_execution_command()}` surfaces an alternative-path follow-up "
+        "or `branch later` recommendation, "
         f"route it through {tangent_text} first; use {branch_text} only after that explicit choice."
     )
 
@@ -297,17 +307,18 @@ def tangent_branch_later_follow_up_lines(
 
 
 def cost_inspect_action() -> str:
-    return "Run `gpd cost` for the local usage/cost summary and any USD budget warnings."
+    return f"Run `{_public_local_cli_cost_command()}` for the local usage/cost summary and any USD budget warnings."
 
 
 def cost_after_run_action() -> str:
-    return "After a run, check `gpd cost` for local usage/cost and any USD budget warnings."
+    return f"After a run, check `{_public_local_cli_cost_command()}` for local usage/cost and any USD budget warnings."
 
 
 def cost_after_runs_guidance() -> str:
     return (
-        "Use `gpd cost` after runs to inspect recorded local usage / cost, optional USD budget guardrails, "
-        "and the current profile tier mix instead of treating posture labels as billing truth."
+        f"Use `{_public_local_cli_cost_command()}` after runs to inspect recorded local usage / cost, "
+        "optional USD budget guardrails, and the current profile tier mix instead of treating posture "
+        "labels as billing truth."
     )
 
 
@@ -351,7 +362,7 @@ def workflow_preset_storage_note() -> str:
 def workflow_preset_surface_note() -> str:
     preset_labels = ", ".join(preset.id for preset in list_workflow_presets())
     return (
-        "Use `gpd presets list` to inspect the workflow preset catalog "
+        f"Use `{_public_local_cli_presets_list_command()}` to inspect the workflow preset catalog "
         f"({preset_labels}), `gpd presets show <preset>` to preview one bundle, "
         "and `gpd presets apply <preset> --dry-run` to preview the changed knobs "
         "before writing them."

@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gpd.core.constants import ProjectLayout
 from gpd.core.recent_projects import (
+    _strict_bool_value,
     classify_recent_project_recovery,
     list_recent_projects,
 )
@@ -171,7 +172,7 @@ def project_reentry_candidate_summary(
     elif platform is not None:
         bits.append(f"on {platform}")
 
-    resumable = bool(_summary_value(candidate, "resumable"))
+    resumable = _strict_bool_value(_summary_value(candidate, "resumable")) is True
     if resumable:
         bits.append("resume file ready")
     elif resume_file_reason is not None:
@@ -239,13 +240,15 @@ def _candidate_from_recent_row(row: Mapping[str, object]) -> ProjectReentryCandi
 
     project_root = Path(project_root_text).expanduser().resolve(strict=False)
     state_exists, roadmap_exists, project_exists = recoverable_project_context(project_root)
-    available = bool(row.get("available", project_root.is_dir()))
+    available_value = row.get("available")
+    if available_value is None:
+        available = project_root.is_dir()
+    else:
+        available = _strict_bool_value(available_value) is True
     recoverable = available and (state_exists or roadmap_exists or project_exists)
     resume_file = _normalize_recent_text(row, "resume_file")
-    resume_file_available = row.get("resume_file_available")
-    if not isinstance(resume_file_available, bool):
-        resume_file_available = None
-    resumable = bool(row.get("resumable", False)) or resume_file_available is True
+    resume_file_available = _strict_bool_value(row.get("resume_file_available"))
+    resumable = _strict_bool_value(row.get("resumable")) is True or resume_file_available is True
     recovery = classify_recent_project_recovery(row)
     candidate = ProjectReentryCandidate(
         source="recent_project",
@@ -293,10 +296,10 @@ def _enrich_candidate_from_recent_row(
     row: Mapping[str, object],
 ) -> ProjectReentryCandidate:
     """Overlay advisory recent-project metadata onto an already-selected candidate."""
-    resume_file_available = row.get("resume_file_available")
-    if not isinstance(resume_file_available, bool):
-        resume_file_available = None
-    resumable = bool(row.get("resumable", candidate.resumable))
+    resume_file_available = _strict_bool_value(row.get("resume_file_available"))
+    resumable = _strict_bool_value(row.get("resumable"))
+    if resumable is None:
+        resumable = candidate.resumable
     if resume_file_available is True:
         resumable = True
     recovery = classify_recent_project_recovery(row)

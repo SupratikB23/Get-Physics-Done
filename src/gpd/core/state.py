@@ -3177,12 +3177,18 @@ def _restore_visible_project_contract(state_obj: dict, raw_project_contract: obj
         return state_obj, []
 
     parsed = parse_project_contract_data_salvage(raw_project_contract)
-    if parsed.contract is None or parsed.blocking_errors:
+    if parsed.contract is None:
+        return state_obj, []
+
+    integrity_errors = set(collect_contract_integrity_errors(parsed.contract))
+    schema_blockers = [error for error in parsed.blocking_errors if error not in integrity_errors]
+    if schema_blockers:
         return state_obj, []
 
     restored_state = dict(state_obj)
     restored_state["project_contract"] = parsed.contract.model_dump(mode="python")
-    return restored_state, list(parsed.recoverable_errors)
+    surfaced_findings = [*parsed.recoverable_errors, *parsed.blocking_errors]
+    return restored_state, list(dict.fromkeys(surfaced_findings))
 
 
 def _load_state_json_from_backup(

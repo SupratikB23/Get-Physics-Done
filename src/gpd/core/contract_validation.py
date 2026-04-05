@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import re
+from collections import defaultdict
 from pathlib import Path
 from typing import Literal, get_args, get_origin
 from urllib.parse import urlparse
@@ -124,6 +125,7 @@ _PROJECT_ARTIFACT_PATH_PATTERNS = (
 _RECOVERABLE_SCHEMA_WARNING_PATTERNS = (
     re.compile(r"^.+: Extra inputs are not permitted$"),
     re.compile(r"^.+\.\d+ must be a valid list member$"),
+    re.compile(r"^.+\.\d+: Input should .+$"),
 )
 _CASE_DRIFT_SCHEMA_WARNING_PATTERNS = (
     re.compile(r"^.+ must use exact canonical value: .+$"),
@@ -347,6 +349,7 @@ def _salvage_model_mapping(
                 if isinstance(field_value, list) and len(loc) > 1 and isinstance(loc[1], int):
                     item_model = _list_item_model(field)
                     item_indexes: set[int] = set()
+                    item_errors_by_index: dict[int, list[str]] = defaultdict(list)
                     for item_error in exc.errors():
                         item_loc = tuple(item_error.get("loc", ()))
                         if (
@@ -356,6 +359,15 @@ def _salvage_model_mapping(
                         ):
                             item_index = int(item_loc[1])
                             item_indexes.add(item_index)
+                            formatted_item_error = _format_schema_error(
+                                {
+                                    "loc": (path_prefix, *item_loc),
+                                    "msg": item_error.get("msg"),
+                                    "input": item_error.get("input"),
+                                }
+                            )
+                            if formatted_item_error not in item_errors_by_index[item_index]:
+                                item_errors_by_index[item_index].append(formatted_item_error)
                     salvaged_items = copy.deepcopy(field_value)
                     for index in sorted(item_indexes, reverse=True):
                         if not (0 <= index < len(salvaged_items)):
@@ -372,7 +384,10 @@ def _salvage_model_mapping(
                                 salvaged_items[index] = salvaged_item
                                 progress = True
                                 continue
-                        errors.append(f"{path_prefix}.{key}.{index} must be a valid list member")
+                        item_errors = item_errors_by_index.get(index) or [f"{path_prefix}.{key}.{index} must be a valid list member"]
+                        for item_error in item_errors:
+                            if item_error not in errors:
+                                errors.append(item_error)
                         del salvaged_items[index]
                         progress = True
                     cleaned[key] = salvaged_items

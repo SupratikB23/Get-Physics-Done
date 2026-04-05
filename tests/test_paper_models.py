@@ -19,6 +19,10 @@ class TestModels:
         assert author.email == ""
         assert author.affiliation == ""
 
+    def test_author_rejects_blank_name(self):
+        with pytest.raises(ValidationError, match=r"name[\s\S]*non-empty string"):
+            Author(name="   ")
+
     @pytest.mark.parametrize(
         ("payload", "expected_fragment"),
         [

@@ -13,7 +13,11 @@ from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME
 from gpd.core.costs import UsageRecord, _profile_tier_mix, usage_ledger_path
 from gpd.core.recent_projects import record_recent_project
 from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
-from gpd.core.runtime_hints import build_runtime_hint_payload, workflow_preset_surface_note
+from gpd.core.runtime_hints import (
+    _hydrate_resume_context_from_recent_project,
+    build_runtime_hint_payload,
+    workflow_preset_surface_note,
+)
 from gpd.core.surface_phrases import (
     cost_inspect_action,
     recovery_continue_reason,
@@ -640,6 +644,32 @@ def test_build_runtime_hint_payload_recent_missing_handoff_stays_non_auto_select
     assert payload.orientation["current_workspace_resumable"] is False
     assert payload.orientation["primary_command"] == "gpd resume --recent"
     assert "resume-work" in str(payload.orientation["continue_command"])
+
+
+def test_hydrate_resume_context_from_recent_project_rejects_string_booleans() -> None:
+    payload = {
+        "resume_candidates": [],
+    }
+    reentry = SimpleNamespace(auto_selected=True, mode="auto-recent-project")
+    current_project = {
+        "project_root": "/tmp/recent-project",
+        "resume_file": "GPD/phases/05/.continue-here.md",
+        "resume_file_available": "false",
+        "resumable": "false",
+    }
+
+    hydrated = _hydrate_resume_context_from_recent_project(
+        payload,
+        reentry=reentry,
+        current_project=current_project,
+    )
+
+    assert hydrated["active_resume_kind"] == "continuity_handoff"
+    assert hydrated["active_resume_origin"] == "continuation.handoff"
+    assert hydrated["missing_continuity_handoff_file"] == "GPD/phases/05/.continue-here.md"
+    assert "active_resume_pointer" not in hydrated
+    assert hydrated["resume_candidates"][0]["status"] == "missing"
+    assert hydrated["resume_candidates"][0]["advisory"] is True
 
 
 def test_build_runtime_hint_payload_prefers_selected_project_resume_state_for_auto_selected_recent_project(

@@ -475,6 +475,37 @@ class TestRecentProjectsIndexPersistence:
         assert classification.target_priority == 1
         assert classification.candidate_reason(recoverable=True) == "recent project cache entry with confirmed resume target"
 
+    def test_classify_recent_project_recovery_rejects_string_booleans(self) -> None:
+        classification = classify_recent_project_recovery(
+            {
+                "project_root": "/tmp/recent-project",
+                "available": "false",
+                "resume_file": "GPD/phases/03/.continue-here.md",
+                "resume_file_available": "false",
+                "resumable": "false",
+            }
+        )
+
+        assert classification.has_recorded_target is True
+        assert classification.has_concrete_target is False
+        assert classification.target_priority == 0
+
+    def test_classify_recent_project_recovery_treats_missing_resume_file_available_as_recorded_target_only(
+        self,
+    ) -> None:
+        classification = classify_recent_project_recovery(
+            {
+                "project_root": "/tmp/recent-project",
+                "available": True,
+                "resume_file": "GPD/phases/03/.continue-here.md",
+                "resume_target_kind": "bounded_segment",
+            }
+        )
+
+        assert classification.has_recorded_target is True
+        assert classification.has_concrete_target is True
+        assert classification.target_priority == 2
+
 
 class TestRecentProjectsListing:
     def test_list_sorts_newest_first_and_preserves_missing_projects(self, tmp_path: Path) -> None:

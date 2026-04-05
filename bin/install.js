@@ -278,7 +278,7 @@ function requireNonEmptyStringList(payload, key, label) {
     }
     const normalized = item.trim();
     if (seen.has(normalized)) {
-      continue;
+      throw new Error(`${label}.${key} must not contain duplicates`);
     }
     seen.add(normalized);
     items.push(normalized);
@@ -784,6 +784,17 @@ function validateSharedPublicSurfaceContract(contractPayload) {
     "local_cli_bridge",
     PUBLIC_SURFACE_LOCAL_CLI_PERMISSIONS_SYNC_COMMAND
   );
+  requireListedCommand(
+    localCliBridgeCommands,
+    "local_cli_bridge",
+    "gpd permissions status --runtime <runtime> --autonomy balanced"
+  );
+  requireListedCommand(localCliBridgeCommands, "local_cli_bridge", "gpd resume");
+  requireListedCommand(localCliBridgeCommands, "local_cli_bridge", "gpd resume --recent");
+  requireListedCommand(localCliBridgeCommands, "local_cli_bridge", "gpd observe execution");
+  requireListedCommand(localCliBridgeCommands, "local_cli_bridge", "gpd cost");
+  requireListedCommand(localCliBridgeCommands, "local_cli_bridge", "gpd presets list");
+  requireListedCommand(localCliBridgeCommands, "local_cli_bridge", "gpd integrations status wolfram");
   const terminalPhrase = requireNonEmptyString(localCliBridge, "terminal_phrase", "local_cli_bridge");
   const purposePhrase = requireNonEmptyString(localCliBridge, "purpose_phrase", "local_cli_bridge");
   const settingsCommandSentence = requireNonEmptyString(postStartSettings, "primary_sentence", "post_start_settings");
@@ -2055,9 +2066,7 @@ function printHelp() {
   console.log(` First-run order: ${beginnerStartupLadderText()}`);
   console.log(" Open your runtime, run its help command first, use `start` if you are not sure what fits this folder, and use `tour` if you want a read-only overview of the broader command surface before choosing.");
   console.log(
-    " Then use your runtime's `new-project` command for new work or `map-research` for existing work. When you come back later, use "
-    + `\`${sharedResumeCommand()}\` for the current-workspace read-only recovery snapshot or \`${sharedRecentRecoveryCommand()}\` `
-    + "to find a different workspace first, then continue in the runtime with `resume-work`."
+    " Then use your runtime's `new-project` command for new work or `map-research` for existing work. When you come back later, use `gpd resume` for the current-workspace read-only recovery snapshot or `gpd resume --recent` to find a different workspace first, then continue in the runtime with `resume-work`."
   );
   console.log(` ${SHARED_PUBLIC_SURFACE_TEXT.settingsCommandSentence}`);
   console.log(` Recommended unattended default: Balanced autonomy (\`balanced\`). ${SHARED_PUBLIC_SURFACE_TEXT.settingsRecommendationSentence}`);

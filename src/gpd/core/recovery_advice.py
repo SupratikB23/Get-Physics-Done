@@ -13,6 +13,10 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from gpd.core.context import init_resume
+from gpd.core.public_surface_contract import (
+    recovery_cross_workspace_command,
+    recovery_local_snapshot_command,
+)
 from gpd.core.recent_projects import list_recent_projects
 from gpd.core.resume_surface import (
     RESUME_CANDIDATE_KIND_CONTINUITY_HANDOFF,
@@ -118,8 +122,21 @@ def _normalized_path_text(value: str | None) -> str | None:
     return Path(stripped).expanduser().resolve(strict=False).as_posix()
 
 
+def _strict_bool_value(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
+
+
 def _bool_field(payload: Mapping[str, object], field: str) -> bool:
-    return bool(payload.get(field))
+    return _strict_bool_value(payload.get(field)) is True
+
+
+def _row_bool(row: object, field: str, *, default: bool = False) -> bool:
+    parsed = _strict_bool_value(_row_value(row, field, None))
+    if parsed is None:
+        return default
+    return parsed
 
 
 def _text_field(payload: Mapping[str, object], field: str) -> str | None:
@@ -492,8 +509,8 @@ def build_recovery_advice(
             else rows
         )
     recent_projects_count = len(recent_project_rows)
-    resumable_projects_count = sum(1 for row in recent_project_rows if bool(_row_value(row, "resumable", False)))
-    available_projects_count = sum(1 for row in recent_project_rows if bool(_row_value(row, "available", False)))
+    resumable_projects_count = sum(1 for row in recent_project_rows if _row_bool(row, "resumable"))
+    available_projects_count = sum(1 for row in recent_project_rows if _row_bool(row, "available"))
     segment_candidates_raw = lookup_resume_surface_list(
         payload,
         "resume_candidates",
@@ -651,25 +668,27 @@ def build_recovery_advice(
     )
 
     decision_source: str
+    local_snapshot_command = recovery_local_snapshot_command()
+    cross_workspace_command = recovery_cross_workspace_command()
     if force_recent:
         if recent_projects_count > 0:
             decision_source = "forced-recent-projects"
-            primary_command = "gpd resume --recent"
+            primary_command = cross_workspace_command
         else:
             decision_source = "no-recovery"
             primary_command = None
     elif auto_selected_recent_project:
         decision_source = "auto-selected-recent-project"
-        primary_command = "gpd resume --recent"
+        primary_command = cross_workspace_command
     elif current_workspace_has_recovery:
         decision_source = "current-workspace"
-        primary_command = "gpd resume"
+        primary_command = local_snapshot_command
     elif ambiguous_recent_projects:
         decision_source = "ambiguous-recent-projects"
-        primary_command = "gpd resume --recent" if recent_projects_count > 0 else None
+        primary_command = cross_workspace_command if recent_projects_count > 0 else None
     elif recent_projects_count > 0:
         decision_source = "recent-projects"
-        primary_command = "gpd resume --recent"
+        primary_command = cross_workspace_command
     else:
         decision_source = "no-recovery"
         primary_command = None

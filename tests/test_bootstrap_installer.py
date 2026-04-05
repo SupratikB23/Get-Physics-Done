@@ -790,7 +790,7 @@ assert.throws(
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
 
 
-def test_bootstrap_public_surface_contract_validator_normalizes_whitespace_and_duplicate_entries() -> None:
+def test_bootstrap_public_surface_contract_validator_normalizes_whitespace() -> None:
     result = _run_node_contract_validation(
         r"""
 const assert = require("node:assert/strict");
@@ -802,19 +802,16 @@ noisyPayload.beginner_onboarding.hub_url = `  ${payload.beginner_onboarding.hub_
 noisyPayload.beginner_onboarding.startup_ladder = [
   `  ${payload.beginner_onboarding.startup_ladder[0]}  `,
   ...payload.beginner_onboarding.startup_ladder.slice(1),
-  payload.beginner_onboarding.startup_ladder[1],
 ];
 noisyPayload.local_cli_bridge.commands = [
   `  ${payload.local_cli_bridge.commands[0]}  `,
   ...payload.local_cli_bridge.commands.slice(1),
-  payload.local_cli_bridge.commands[0],
 ];
 noisyPayload.post_start_settings.primary_sentence = `  ${payload.post_start_settings.primary_sentence}  `;
 noisyPayload.resume_authority.public_fields = [
   payload.resume_authority.public_fields[0],
   `  ${payload.resume_authority.public_fields[1]}  `,
   ...payload.resume_authority.public_fields.slice(2),
-  payload.resume_authority.public_fields[1],
 ];
 noisyPayload.recovery_ladder.title = `  ${payload.recovery_ladder.title}  `;
 
@@ -826,6 +823,25 @@ assert.deepEqual(normalized.localCliBridgeCommands, payload.local_cli_bridge.com
 assert.equal(normalized.settingsCommandSentence, payload.post_start_settings.primary_sentence);
 assert.deepEqual(normalized.resumeAuthority.publicFields, payload.resume_authority.public_fields);
 assert.equal(normalized.recoveryLadder.title, payload.recovery_ladder.title);
+"""
+    )
+
+    assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+
+
+def test_bootstrap_public_surface_contract_validator_rejects_duplicate_entries() -> None:
+    result = _run_node_contract_validation(
+        r"""
+const assert = require("node:assert/strict");
+const { validateSharedPublicSurfaceContract } = require("./bin/install.js");
+const payload = require("./src/gpd/core/public_surface_contract.json");
+
+const duplicatePayload = JSON.parse(JSON.stringify(payload));
+duplicatePayload.local_cli_bridge.commands.push(payload.local_cli_bridge.commands[0]);
+assert.throws(
+  () => validateSharedPublicSurfaceContract(duplicatePayload),
+  /local_cli_bridge\.commands must not contain duplicates/
+);
 """
     )
 

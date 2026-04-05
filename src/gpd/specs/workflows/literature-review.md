@@ -390,7 +390,7 @@ Then write `GPD/literature/{slug}-CITATION-SOURCES.json` as a JSON array of stri
 
 - `source_type`: `paper`, `tool`, `data`, or `website`
 - `reference_id`: stable project-local identifier for the canonical reference
-- `bibtex_key`: optional preferred key, only when already verified
+- `bibtex_key`: optional preferred key, only when already verified; include `bibtex_key` only when it is already known and verified
 - `title`
 - `authors` when available
 - `year` when available

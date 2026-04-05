@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch
 from gpd.hooks.payload_roots import (
     _coerce_root_pair,
     _resolve_with_shared_service,
-    payload_uses_alias_only_workspace_mapping,
     normalize_workspace_text,
+    payload_uses_alias_only_workspace_mapping,
     project_root_from_payload,
     resolve_payload_roots,
     workspace_dir_from_payload,

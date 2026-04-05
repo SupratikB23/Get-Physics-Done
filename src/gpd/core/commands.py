@@ -19,7 +19,7 @@ from gpd.contracts import (
     ComparisonVerdict,
     ContractResults,
     parse_comparison_verdicts_data_strict,
-    parse_contract_results_data_strict,
+    parse_contract_results_data_artifact,
 )
 from gpd.core.constants import (
     PHASES_DIR_NAME,
@@ -314,7 +314,7 @@ def _parse_contract_results(value: object, summary_path: str) -> ContractResults
     if value is _MISSING:
         return None
     try:
-        return parse_contract_results_data_strict(value)
+        return parse_contract_results_data_artifact(value)
     except Exception as exc:  # pragma: no cover - pydantic version specifics
         raise ValidationError(f"Invalid contract_results in {summary_path}: {exc}") from exc
 

@@ -1152,10 +1152,10 @@ def milestone_complete(
 
 def _resume_status_message(payload: dict[str, object], *, recovery_advice: RecoveryAdvice) -> str:
     """Return a concise human summary of resume readiness for this workspace."""
-    auto_selected = bool(payload.get("project_root_auto_selected"))
-    if not bool(payload.get("planning_exists")):
+    auto_selected = _payload_flag(payload, "project_root_auto_selected")
+    if not _payload_flag(payload, "planning_exists"):
         return "No GPD planning directory is present in this workspace."
-    if not any(bool(payload.get(key)) for key in ("state_exists", "roadmap_exists", "project_exists")):
+    if not any(_payload_flag(payload, key) for key in ("state_exists", "roadmap_exists", "project_exists")):
         return "Planning scaffolding exists, but there is no recoverable project state yet."
 
     if recovery_advice.status == "bounded-segment":
@@ -1181,8 +1181,8 @@ def _resume_status_message(payload: dict[str, object], *, recovery_advice: Recov
 
 def _resume_recent_hint(payload: dict[str, object]) -> str | None:
     """Return a cross-project recovery hint when the current workspace has nothing to resume."""
-    if bool(payload.get("planning_exists")) and any(
-        bool(payload.get(key)) for key in ("state_exists", "roadmap_exists", "project_exists")
+    if _payload_flag(payload, "planning_exists") and any(
+        _payload_flag(payload, key) for key in ("state_exists", "roadmap_exists", "project_exists")
     ):
         return None
     return "If this is the wrong workspace, run `gpd resume --recent` to search other recent projects on this machine."
@@ -1192,10 +1192,19 @@ def _resume_runtime_commands(*, cwd: Path | None = None) -> tuple[str | None, st
     """Return runtime-specific resume/suggest commands when they can be resolved."""
     try:
         from gpd.adapters import get_adapter
-        from gpd.hooks.runtime_detect import detect_active_runtime_with_gpd_install
+        from gpd.hooks.runtime_detect import (
+            RUNTIME_UNKNOWN,
+            detect_runtime_for_gpd_use,
+            detect_runtime_install_target,
+        )
 
-        runtime_name = detect_active_runtime_with_gpd_install(cwd=cwd or _get_cwd())
-        if not runtime_name:
+        runtime_name = detect_runtime_for_gpd_use(cwd=cwd or _get_cwd())
+        if (
+            not isinstance(runtime_name, str)
+            or not runtime_name.strip()
+            or runtime_name == RUNTIME_UNKNOWN
+            or detect_runtime_install_target(runtime_name, cwd=cwd or _get_cwd()) is None
+        ):
             return None, None
         adapter = get_adapter(runtime_name)
         resume_work_command = str(adapter.format_command("resume-work")).strip()
@@ -1370,6 +1379,16 @@ def _resume_surface_value(
     return lookup_resume_surface_value(payload, key)
 
 
+def _strict_bool_value(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def _payload_flag(payload: dict[str, object], key: str) -> bool:
+    return _strict_bool_value(payload.get(key)) is True
+
+
 def _resume_visible_candidates(payload: dict[str, object]) -> list[dict[str, object]]:
     """Return the canonical candidate list to render."""
     candidates = lookup_resume_surface_list(payload, "resume_candidates")
@@ -1439,7 +1458,7 @@ def _resume_result_summary(result: Mapping[str, object] | None, *, include_id: b
 
     if include_id and result_id and summary != result_id:
         summary = f"{summary} ({result_id})"
-    if bool(result.get("verified")) or bool(result.get("verification_records")):
+    if _strict_bool_value(result.get("verified")) is True or bool(result.get("verification_records")):
         summary = f"{summary} · verified"
     return summary
 
@@ -1591,12 +1610,12 @@ def _recent_project_current_state(row: dict[str, object]) -> str | None:
 
 def _recent_project_selection_reason(row: dict[str, object]) -> str:
     """Return a plain-language explanation for why a recent-project row is shown."""
-    if not bool(row.get("available")):
+    if _strict_bool_value(row.get("available")) is not True:
         reason = row.get("availability_reason")
         if isinstance(reason, str) and reason.strip():
             return reason.strip()
         return "shown because the project root is missing on this machine"
-    if bool(row.get("resumable")):
+    if _strict_bool_value(row.get("resumable")) is True:
         reason = row.get("resume_file_reason")
         if isinstance(reason, str) and reason.strip():
             return f"shown because it still has a usable handoff target ({reason.strip()})"
@@ -1639,13 +1658,13 @@ def _resume_candidate_notes(
         if rerun_anchor is not None:
             notes.append(rerun_anchor)
 
-    if bool(candidate.get("first_result_gate_pending")):
+    if _strict_bool_value(candidate.get("first_result_gate_pending")) is True:
         notes.append("first-result gate pending")
-    if bool(candidate.get("pre_fanout_review_pending")):
+    if _strict_bool_value(candidate.get("pre_fanout_review_pending")) is True:
         notes.append("pre-fanout review pending")
-    if bool(candidate.get("skeptical_requestioning_required")):
+    if _strict_bool_value(candidate.get("skeptical_requestioning_required")) is True:
         notes.append("skeptical re-questioning required")
-    if bool(candidate.get("downstream_locked")):
+    if _strict_bool_value(candidate.get("downstream_locked")) is True:
         notes.append("downstream locked")
 
     execution_view = current_execution or active_execution
@@ -1825,24 +1844,22 @@ def _normalize_recent_project_row(row: object) -> dict[str, object] | None:
     if resume_file_reason is not None:
         normalized["resume_file_reason"] = resume_file_reason
 
-    status = _recent_project_text(normalized, "status")
-    if not bool(normalized["available"]):
-        status = "unavailable"
-    elif status is None:
-        if bool(normalized.get("resumable")):
-            status = "resumable"
-        else:
-            status = "recent"
-    normalized["status"] = status
-
     resumable_value = normalized.get("resumable")
     if resumable_value is None:
-        resumable_value = bool(normalized.get("resume_file"))
+        resumable_value = normalized.get("resume_file") if isinstance(normalized.get("resume_file"), str) else False
+    else:
+        resumable_value = _strict_bool_value(resumable_value) is True
     normalized["resumable"] = (
         bool(resumable_value)
-        and bool(normalized["available"])
+        and _strict_bool_value(normalized["available"]) is True
         and normalized.get("resume_file_available") is not False
     )
+    status = _recent_project_text(normalized, "status")
+    if _strict_bool_value(normalized["available"]) is not True:
+        status = "unavailable"
+    elif status is None:
+        status = "resumable" if normalized["resumable"] else "recent"
+    normalized["status"] = status
 
     return normalized
 
@@ -1861,10 +1878,10 @@ def _recent_project_sort_key(row: dict[str, object]) -> tuple[int, int, int, int
     ) or ""
     workspace = str(row.get("workspace") or row.get("project_root") or "")
     return (
-        int(bool(row.get("resumable"))),
+        int(_strict_bool_value(row.get("resumable")) is True),
         recovery.target_priority,
         int(recovery.has_concrete_target),
-        int(bool(row.get("available"))),
+        int(_strict_bool_value(row.get("available")) is True),
         timestamp,
         workspace,
     )
@@ -1908,12 +1925,12 @@ def _resume_recent_project_notes(row: dict[str, object]) -> str:
     recovery_note = _recent_project_text(row, "recovery_note")
     if recovery_note is not None:
         return recovery_note
-    if not bool(row.get("available")):
+    if _strict_bool_value(row.get("available")) is not True:
         reason = row.get("availability_reason")
         if isinstance(reason, str) and reason.strip():
             return reason.strip()
         return "project unavailable on this machine"
-    if bool(row.get("resumable")):
+    if _strict_bool_value(row.get("resumable")) is True:
         return "ready to reopen"
     reason = row.get("resume_file_reason")
     if isinstance(reason, str) and reason.strip():
@@ -1991,13 +2008,8 @@ def _resume_augmented_payload(payload: dict[str, object], *, cwd: Path | None = 
     recovery_advice = _resume_recovery_advice(resume_payload=public_payload, recent_rows=[], cwd=cwd)
     derived_execution_head_raw = _resume_surface_value(public_payload, "derived_execution_head")
     derived_execution_head = derived_execution_head_raw if isinstance(derived_execution_head_raw, dict) else None
-    active_execution_segment_raw = _resume_surface_value(public_payload, "active_execution_segment")
-    active_execution_segment = active_execution_segment_raw if isinstance(active_execution_segment_raw, dict) else None
     active_execution = _resume_authoritative_active_execution(public_payload)
-    current_execution_raw = _resume_surface_value(public_payload, "current_execution")
-    if not isinstance(current_execution_raw, dict):
-        current_execution_raw = derived_execution_head or active_execution_segment
-    current_execution = current_execution_raw if isinstance(current_execution_raw, dict) else None
+    current_execution = derived_execution_head
     active_resume_kind = public_payload.get("active_resume_kind")
     if isinstance(active_resume_kind, str) and active_resume_kind.strip():
         active_resume_kind = _resume_candidate_canonical_kind({"kind": active_resume_kind})
@@ -2103,7 +2115,7 @@ def _render_recent_resume_summary(rows: list[dict[str, object]]) -> None:
         recovery_label = _recent_project_text(row, "recovery_status_label")
         if recovery_label is not None:
             console.print(f"   Recovery: {recovery_label}")
-        console.print(f"   Resumable: {'yes' if bool(row.get('resumable')) else 'no'}")
+        console.print(f"   Resumable: {'yes' if _strict_bool_value(row.get('resumable')) is True else 'no'}")
         console.print(f"   Why shown: {_recent_project_selection_reason(row)}")
         console.print(f"   Notes: {_resume_recent_project_notes(row)}")
         console.print(f"   Resume: {_resume_recent_project_command(row)}")
@@ -2119,11 +2131,7 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
     """Render a read-only local recovery summary for humans."""
     public_payload = canonicalize_resume_public_payload(payload)
     active_execution = _resume_authoritative_active_execution(public_payload)
-    current_execution_raw = _resume_surface_value(public_payload, "current_execution")
-    if not isinstance(current_execution_raw, dict):
-        current_execution_raw = _resume_surface_value(public_payload, "derived_execution_head")
-    if not isinstance(current_execution_raw, dict):
-        current_execution_raw = _resume_surface_value(public_payload, "active_execution_segment")
+    current_execution_raw = _resume_surface_value(public_payload, "derived_execution_head")
     current_execution = current_execution_raw if isinstance(current_execution_raw, dict) else None
     recovery_advice = _resume_recovery_advice(resume_payload=public_payload, recent_rows=[])
     segment_candidates = _resume_visible_candidates(public_payload)
@@ -2146,7 +2154,7 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
         summary.add_row("Project label", project_label.strip())
     if isinstance(project_summary, str) and project_summary.strip():
         summary.add_row("Project summary", project_summary.strip())
-    if bool(public_payload.get("project_root_auto_selected")):
+    if _payload_flag(public_payload, "project_root_auto_selected"):
         summary.add_row(
             "Re-entry",
             _project_root_source_label(public_payload.get("project_root_source"), auto_selected=True),
@@ -2163,7 +2171,7 @@ def _render_resume_summary(payload: dict[str, object]) -> None:
         active_resume_kind = _resume_candidate_canonical_kind({"kind": active_resume_kind})
     summary.add_row("Primary resume kind", _resume_mode_label(active_resume_kind))
     summary.add_row("Candidates", str(len(segment_candidates)))
-    summary.add_row("Live execution", "yes" if bool(public_payload.get("has_live_execution")) else "no")
+    summary.add_row("Live execution", "yes" if _payload_flag(public_payload, "has_live_execution") else "no")
     summary.add_row("Autonomy", str(public_payload.get("autonomy") or "unknown"))
     summary.add_row("Research mode", str(public_payload.get("research_mode") or "unknown"))
 
@@ -5646,31 +5654,18 @@ def _discover_literature_review_citation_sources(project_root: Path) -> tuple[Pa
 
 def _load_citation_sources_payload(citation_source_path: Path) -> list[CitationSource]:
     """Load a CitationSource[] payload from JSON."""
-    from gpd.mcp.paper.bibliography import CitationSource
+    from gpd.mcp.paper.bibliography import parse_citation_source_sidecar_payload
 
     raw_sources = _load_json_document(str(citation_source_path))
-    if not isinstance(raw_sources, list):
-        raise GPDError(f"Citation sources must be a JSON array: {_format_display_path(citation_source_path)}")
-    sources: list[CitationSource] = []
-    for index, item in enumerate(raw_sources):
-        try:
-            source = CitationSource.model_validate(item)
-        except PydanticValidationError as exc:
-            formatted = "; ".join(
-                _format_pydantic_schema_error(error, root_label=f"citation_sources[{index}]")
-                for error in exc.errors()[:3]
-            )
-            raise GPDError(
-                f"Invalid citation source in {_format_display_path(citation_source_path)}: {formatted}"
-            ) from exc
-        reference_id = source.reference_id.strip() if isinstance(source.reference_id, str) else ""
-        if not reference_id:
-            raise GPDError(
-                f"Invalid citation source in {_format_display_path(citation_source_path)}: "
-                f"citation_sources[{index}].reference_id must be a non-empty string"
-            )
-        sources.append(source.model_copy(update={"reference_id": reference_id}))
-    return sources
+    try:
+        return parse_citation_source_sidecar_payload(
+            raw_sources,
+            source_path=_format_display_path(citation_source_path),
+        )
+    except ValueError as exc:
+        raise GPDError(
+            f"Invalid citation source in {_format_display_path(citation_source_path)}: {exc}"
+        ) from exc
 
 
 def _paper_build_reference_bibtex_bridge(result: object) -> list[dict[str, str]]:
@@ -7423,8 +7418,10 @@ def validate_reproducibility_manifest_cmd(
 
     payload = _load_json_document(input_path)
     result = validate_reproducibility_manifest(payload)
+    result_payload = result.model_dump(mode="json")
+    result_payload["reproducibility_ready"] = result_payload.pop("ready_for_review")
     if not kernel_verdict:
-        _output(result)
+        _output(result_payload if _raw else result)
     else:
         manifest_obj: ReproducibilityManifest | None = None
         if isinstance(payload, dict):
@@ -7442,7 +7439,7 @@ def validate_reproducibility_manifest_cmd(
         if _raw:
             _output(
                 {
-                    "validation": result.model_dump(mode="json"),
+                    "validation": result_payload,
                     "kernel_verdict": verdict,
                 }
             )
@@ -7451,7 +7448,7 @@ def validate_reproducibility_manifest_cmd(
             if verdict is not None:
                 console.print()
                 print_verdict(verdict, domain="Reproducibility")
-    if not result.valid or (strict and (not result.ready_for_review or bool(result.warnings))):
+    if not result.valid or (strict and not result.ready_for_review):
         raise typer.Exit(code=1)
 
 

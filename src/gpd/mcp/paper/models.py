@@ -53,6 +53,11 @@ class Author(BaseModel):
     email: str = ""
     affiliation: str = ""
 
+    @field_validator("name")
+    @classmethod
+    def _validate_nonempty_name(cls, value: str) -> str:
+        return _require_nonempty_text(value, field_name="name")
+
 
 class Section(BaseModel):
     """A paper section with title and LaTeX content."""

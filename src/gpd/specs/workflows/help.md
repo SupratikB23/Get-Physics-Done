@@ -495,7 +495,7 @@ Resume research from previous session with full context restoration.
 
 - `state.json.continuation` is the durable authority for resume state; the shared resume resolver projects the public recovery view from it first
 - Restores canonical continuation state, recent progress, and recorded handoff context through the shared resume resolver
-  - Public resume vocabulary centers on canonical continuation fields: `active_resume_kind`, `active_resume_origin`, `active_resume_pointer`, `continuity_handoff_file`, `recorded_continuity_handoff_file`, `missing_continuity_handoff_file`, and `resume_candidates`
+  - Public resume vocabulary centers on canonical continuation fields: `active_resume_kind`, `active_resume_origin`, `active_resume_pointer`, `active_bounded_segment`, `derived_execution_head`, `active_resume_result`, `continuity_handoff_file`, `recorded_continuity_handoff_file`, `missing_continuity_handoff_file`, and `resume_candidates`
   - Those fields are the public top-level resume vocabulary only.
   - Compatibility-only intake fields stay internal and are not part of the public top-level resume vocabulary
 - Uses the recovery ladder (`gpd resume` -> `gpd resume --recent` when needed -> `/gpd:resume-work`) to pick up where you left off

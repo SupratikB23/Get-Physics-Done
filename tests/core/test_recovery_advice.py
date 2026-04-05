@@ -54,6 +54,36 @@ def test_build_recovery_advice_prefers_current_workspace_recovery_state(tmp_path
     assert [action.availability for action in advice.actions] == ["now", "now", "now"]
 
 
+def test_build_recovery_advice_rejects_truthy_string_bools_in_payload(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+
+    advice = build_recovery_advice(
+        project,
+        recent_rows=[
+            {
+                "project_root": (tmp_path / "recent-project").as_posix(),
+                "available": "false",
+                "resumable": "false",
+            }
+        ],
+        resume_payload={
+            "planning_exists": True,
+            "has_live_execution": "false",
+            "has_interrupted_agent": "false",
+            "project_root_auto_selected": "false",
+            "project_reentry_requires_selection": "false",
+            "resume_candidates": [],
+        },
+    )
+
+    assert advice.has_live_execution is False
+    assert advice.has_interrupted_agent is False
+    assert advice.project_root_auto_selected is False
+    assert advice.project_reentry_requires_selection is False
+    assert advice.available_projects_count == 0
+    assert advice.resumable_projects_count == 0
+
+
 def test_build_recovery_advice_treats_canonical_bounded_segment_as_authoritative_without_live_overlay(
     tmp_path: Path,
 ) -> None:

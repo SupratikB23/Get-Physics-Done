@@ -5334,7 +5334,8 @@ class TestReviewValidationCommands:
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["valid"] is True
-        assert payload["ready_for_review"] is True
+        assert payload["reproducibility_ready"] is True
+        assert "ready_for_review" not in payload
 
     def test_validate_reproducibility_manifest_reports_shape_errors_without_traceback(self, gpd_project: Path) -> None:
         manifest_path = gpd_project / "reproducibility-invalid.json"
@@ -5386,7 +5387,8 @@ class TestReviewValidationCommands:
         assert result.exit_code == 1, result.output
         payload = json.loads(result.output)
         assert payload["valid"] is True
-        assert payload["ready_for_review"] is False
+        assert payload["reproducibility_ready"] is False
+        assert "ready_for_review" not in payload
 
     def test_validate_reproducibility_manifest_can_emit_kernel_verdict(self, gpd_project: Path) -> None:
         manifest_path = gpd_project / "reproducibility-kernel.json"
@@ -5427,6 +5429,8 @@ class TestReviewValidationCommands:
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["validation"]["valid"] is True
+        assert payload["validation"]["reproducibility_ready"] is True
+        assert "ready_for_review" not in payload["validation"]
         assert payload["kernel_verdict"]["overall"] == "PASS"
         assert payload["kernel_verdict"]["verdict_hash"].startswith("sha256:")
 

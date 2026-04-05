@@ -227,12 +227,20 @@ def _assert_installed_contract_visibility(
     verifier: str,
     executor: str,
     new_project: str,
+    plan_phase: str,
+    plan_schema: str,
+    execute_phase: str,
+    verify_work: str,
     *,
     runtime: str,
 ) -> None:
     verifier = _canonicalize_runtime_markdown(verifier, runtime=runtime)
     executor = _canonicalize_runtime_markdown(executor, runtime=runtime)
     new_project = _canonicalize_runtime_markdown(new_project, runtime=runtime)
+    plan_phase = _canonicalize_runtime_markdown(plan_phase, runtime=runtime)
+    plan_schema = _canonicalize_runtime_markdown(plan_schema, runtime=runtime)
+    execute_phase = _canonicalize_runtime_markdown(execute_phase, runtime=runtime)
+    verify_work = _canonicalize_runtime_markdown(verify_work, runtime=runtime)
 
     assert "templates/contract-results-schema.md" in verifier
     assert "plan_contract_ref" in verifier
@@ -253,6 +261,26 @@ def _assert_installed_contract_visibility(
     assert "`schema_version` must be the integer `1`" in new_project
     assert "`references[].must_surface` must be a boolean `true` or `false`" in new_project
     assert "`context_intake`, `approach_policy`, and `uncertainty_markers` are objects, not strings or lists" in new_project
+    assert "proof-bearing claims (theorem-like claim kinds, or claims linked to `proof_obligation` observables)" in new_project
+    assert "`references[].carry_forward_to[]` is free-text workflow scope such as `planning`, `execution`, `verification`, or `writing`" in new_project
+
+    assert "Use `templates/plan-contract-schema.md` as the canonical contract schema reference." in plan_phase
+    assert "If the phase is proof-bearing, the plan must expose the theorem inventory directly in the contract and task/verification surface" in plan_phase
+
+    assert "`contract.context_intake` is required and must be a non-empty object" in plan_schema
+    assert "`must_surface` is a boolean scalar. Use the YAML literals `true` and `false`" in plan_schema
+    assert "If `must_surface: true`, `required_actions` must not be empty." in plan_schema
+    assert "If `must_surface: true`, `applies_to[]` must not be empty." in plan_schema
+    assert "`carry_forward_to[]` is optional free-text workflow scope" in plan_schema
+    assert "`uncertainty_markers` must be a YAML object, not a string or list." in plan_schema
+
+    assert "workflow.verifier=false" in execute_phase
+    assert "skip verification" in execute_phase
+    assert "proof red-teaming" in execute_phase
+    assert "{plan_id}-PROOF-REDTEAM.md" in execute_phase
+    assert "Targeted flags narrow the optional check mix only." in verify_work
+    assert "proof red-teaming" in verify_work
+    assert "For proof-bearing or `proof_obligation` work, an additional mandatory floor applies" in verify_work
 
 
 @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
@@ -904,8 +932,21 @@ def test_installed_prompt_contract_visibility_survives_adapter_projection(
     verifier = _read_runtime_agent_prompt(target, runtime, "gpd-verifier")
     executor = _read_runtime_agent_prompt(target, runtime, "gpd-executor")
     new_project = _read_runtime_command_prompt(tmp_path, target, runtime, "new-project")
+    plan_phase = _read_runtime_command_prompt(tmp_path, target, runtime, "plan-phase")
+    plan_schema = (target / "get-physics-done" / "templates" / "plan-contract-schema.md").read_text(encoding="utf-8")
+    execute_phase = _read_runtime_command_prompt(tmp_path, target, runtime, "execute-phase")
+    verify_work = _read_runtime_command_prompt(tmp_path, target, runtime, "verify-work")
 
-    _assert_installed_contract_visibility(verifier, executor, new_project, runtime=runtime)
+    _assert_installed_contract_visibility(
+        verifier,
+        executor,
+        new_project,
+        plan_phase,
+        plan_schema,
+        execute_phase,
+        verify_work,
+        runtime=runtime,
+    )
 
 
 # ---------------------------------------------------------------------------

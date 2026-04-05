@@ -905,7 +905,7 @@ status: completed | checkpoint | blocked | failed
 
 Write a machine-readable sidecar at `GPD/literature/{slug}-CITATION-SOURCES.json`.
 
-This file must be a UTF-8 JSON array of strict `CitationSource` records, with one additional stable `reference_id` field per entry for project-local reuse.
+This file must be a UTF-8 JSON array compatible with the `CitationSource` shape, with one additional stable `reference_id` field per entry for project-local reuse.
 The closed contract is:
 
 - `source_type`: `paper`, `tool`, `data`, or `website`
@@ -916,7 +916,9 @@ The closed contract is:
 - `year` when available
 - `arxiv_id`, `doi`, `url`, `journal`, `volume`, and `pages` when available
 
+Downstream `gpd paper-build --citation-sources` consumes this sidecar directly.
 Extra keys are rejected by the downstream parser. Do not guess or invent missing identifiers or metadata.
+When available, include `bibtex_key` as an optional preferred key.
 
 Rules:
 

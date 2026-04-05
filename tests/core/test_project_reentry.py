@@ -143,6 +143,33 @@ def test_resolve_project_reentry_does_not_prefer_unrecoverable_state_file_over_r
     assert resolution.project_root == recent.resolve(strict=False).as_posix()
 
 
+def test_resolve_project_reentry_rejects_string_booleans_on_recent_project_rows(tmp_path: Path) -> None:
+    workspace = _make_gpd_workspace(tmp_path / "workspace")
+    recent = _make_gpd_workspace(tmp_path / "recent-project", project=True, roadmap=True, state=True)
+
+    resolution = resolve_project_reentry(
+        workspace,
+        recent_rows=[
+            {
+                "project_root": recent.resolve(strict=False).as_posix(),
+                "available": "false",
+                "resumable": "false",
+                "resume_file": "GPD/phases/02/.continue-here.md",
+                "resume_file_available": "false",
+            }
+        ],
+    )
+
+    assert resolution.mode == "recent-projects"
+    assert resolution.source is None
+    assert resolution.auto_selected is False
+    assert resolution.requires_user_selection is False
+    assert resolution.selected_candidate is None
+    assert resolution.candidates[0].available is False
+    assert resolution.candidates[0].resumable is False
+    assert resolution.candidates[0].resume_file_available is None
+
+
 def test_resolve_project_reentry_treats_backup_only_state_as_recoverable_current_workspace(tmp_path: Path) -> None:
     from gpd.core.state import default_state_dict
 

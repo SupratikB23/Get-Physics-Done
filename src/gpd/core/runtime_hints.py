@@ -21,7 +21,8 @@ from gpd.core.project_reentry import (
     recoverable_project_context,
     resolve_project_reentry,
 )
-from gpd.core.recent_projects import list_recent_projects
+from gpd.core.public_surface_contract import recovery_local_snapshot_command
+from gpd.core.recent_projects import _strict_bool_value, list_recent_projects
 from gpd.core.recovery_advice import (
     RecoveryAdvice,
     build_recovery_advice,
@@ -169,7 +170,9 @@ def _selected_reentry_candidate(
                         )
                     }
                 )
-                if row_payload.get("resume_file_available") is True or bool(row_payload.get("resumable")):
+                if _strict_bool_value(row_payload.get("resume_file_available")) is True or _strict_bool_value(
+                    row_payload.get("resumable")
+                ) is True:
                     candidate_payload["resumable"] = True
                 break
     if not isinstance(candidate_payload, dict):
@@ -203,16 +206,16 @@ def _project_reentry_summary(
     *,
     recovery_reason: str | None = None,
 ) -> str | None:
-    auto_selected = bool(getattr(reentry, "auto_selected", False))
-    requires_selection = bool(getattr(reentry, "requires_user_selection", False))
+    auto_selected = _strict_bool_value(getattr(reentry, "auto_selected", None)) is True
+    requires_selection = _strict_bool_value(getattr(reentry, "requires_user_selection", None)) is True
     mode = _suggestion_text(reentry, "mode")
     candidates = list(getattr(reentry, "candidates", []) or [])
     recent_candidates = [candidate for candidate in candidates if _suggestion_text(candidate, "source") == "recent_project"]
 
     def _candidate_bool(candidate: object, field: str) -> bool:
         if isinstance(candidate, dict):
-            return bool(candidate.get(field))
-        return bool(getattr(candidate, field, False))
+            return _strict_bool_value(candidate.get(field)) is True
+        return _strict_bool_value(getattr(candidate, field, None)) is True
 
     if auto_selected:
         summary = "GPD auto-selected the only recoverable recent project on this machine."
@@ -225,14 +228,14 @@ def _project_reentry_summary(
     if (
         current_project is not None
         and current_project.get("source") == "current_workspace"
-        and not bool(current_project.get("recoverable"))
+        and _strict_bool_value(current_project.get("recoverable")) is not True
         and (recent_candidates or _recent_project_summary(current_project) is not None)
     ):
         if any(_candidate_bool(candidate, "resumable") for candidate in recent_candidates):
             return "GPD found recent projects on this machine, but none are selected automatically."
         return "GPD found recent projects on this machine, but none are ready to reopen automatically."
     if mode == "recent-projects":
-        if current_project is not None and bool(current_project.get("resumable")):
+        if current_project is not None and _strict_bool_value(current_project.get("resumable")) is True:
             return "GPD found recent projects on this machine, but none are selected automatically."
         return "GPD found recent projects on this machine, but none are ready to reopen automatically."
     if recovery_reason is not None:
@@ -294,7 +297,7 @@ def _hydrate_resume_context_from_recent_project(
     current_project: dict[str, object] | None,
 ) -> dict[str, object]:
     """Fill the selected-recent-project resume gap when local state has not been loaded yet."""
-    if not bool(getattr(reentry, "auto_selected", False)):
+    if _strict_bool_value(getattr(reentry, "auto_selected", None)) is not True:
         return payload
     if current_project is None:
         return payload
@@ -305,7 +308,7 @@ def _hydrate_resume_context_from_recent_project(
     if not isinstance(resume_file, str) or not resume_file.strip():
         return payload
     resume_file = resume_file.strip()
-    resume_file_available = bool(current_project.get("resume_file_available"))
+    resume_file_available = _strict_bool_value(current_project.get("resume_file_available")) is True
     candidate_status = "handoff" if resume_file_available else "missing"
     hydration_kind, hydration_origin = _recent_project_resume_family(current_project)
 
@@ -363,11 +366,12 @@ def _recovery_next_actions(
 ) -> list[str]:
     existing = list(existing_actions or [])
     actions = list(advice.actions)
-    if any("`gpd resume`" in action for action in existing):
+    local_snapshot_command = recovery_local_snapshot_command()
+    if any(f"`{local_snapshot_command}`" in action for action in existing):
         actions = [
             action
             for action in actions
-            if not (str(action.kind) == "primary" and str(action.command) == "gpd resume")
+            if not (str(action.kind) == "primary" and str(action.command) == local_snapshot_command)
         ]
     return recovery_action_lines(
         actions=actions,
@@ -546,7 +550,7 @@ def build_runtime_hint_payload(
         orientation["workspace_root"] = workspace_hint.as_posix()
         orientation["project_root"] = _path_text(reentry.resolved_project_root)
         orientation["project_root_source"] = _suggestion_text(reentry, "source")
-        orientation["project_root_auto_selected"] = bool(getattr(reentry, "auto_selected", False))
+        orientation["project_root_auto_selected"] = _strict_bool_value(getattr(reentry, "auto_selected", None)) is True
         orientation["project_reentry_mode"] = _suggestion_text(reentry, "mode")
     cost_summary = build_cost_summary(project_root, data_root=data_root, last_sessions=cost_last_sessions) if include_cost else None
     cost = _cost_payload(cost_summary) if cost_summary is not None else {}
@@ -587,7 +591,7 @@ def build_runtime_hint_payload(
             _recovery_next_actions(
                 recovery_advice,
                 existing_actions=execution_actions,
-                allow_after_selection=bool(getattr(reentry, "auto_selected", False)),
+                allow_after_selection=_strict_bool_value(getattr(reentry, "auto_selected", None)) is True,
             )
         )
     if cost_summary is not None:

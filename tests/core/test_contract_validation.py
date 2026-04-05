@@ -217,6 +217,82 @@ def test_contract_from_data_salvage_rejects_missing_uncertainty_marker_subfields
     assert contract_from_data_salvage(contract) is None
 
 
+def test_parse_project_contract_data_strict_rejects_nested_proof_list_scalar_drift() -> None:
+    contract = _load_contract_fixture()
+    contract["claims"][0]["parameters"] = [
+        {
+            "symbol": "r_0",
+            "aliases": "r0",
+            "required_in_proof": True,
+        }
+    ]
+    contract["claims"][0]["hypotheses"] = [
+        {
+            "id": "hyp-r0",
+            "text": "r_0 >= 0",
+            "symbols": "r_0",
+            "required_in_proof": True,
+        }
+    ]
+
+    parsed = parse_project_contract_data_strict(contract)
+
+    assert parsed.contract is None
+    assert "claims.0.parameters.0.aliases must be a list, not str" in parsed.errors
+    assert "claims.0.hypotheses.0.symbols must be a list, not str" in parsed.errors
+
+
+def test_parse_contract_results_data_strict_rejects_evidence_scalar_and_case_drift() -> None:
+    with pytest.raises(ValidationError):
+        ContractResults.model_validate(
+            normalize_contract_results_input(
+                {
+                    "claims": {
+                        "claim-main": {
+                            "status": "Passed",
+                            "evidence": [
+                                {
+                                    "confidence": "High",
+                                    "covered_hypothesis_ids": "hyp-main",
+                                }
+                            ],
+                        }
+                    },
+                    "uncertainty_markers": {
+                        "weakest_anchors": ["anchor-1"],
+                        "unvalidated_assumptions": [],
+                        "competing_explanations": [],
+                        "disconfirming_observations": ["obs-1"],
+                    },
+                },
+                strict=True,
+            )
+        )
+
+    with pytest.raises(ValueError, match=r"claims\.claim-main\.status must use exact literal 'passed'"):
+        parse_contract_results_data_strict(
+            {
+                "claims": {
+                    "claim-main": {
+                        "status": "Passed",
+                        "evidence": [
+                            {
+                                "confidence": "High",
+                                "covered_hypothesis_ids": "hyp-main",
+                            }
+                        ],
+                    }
+                },
+                "uncertainty_markers": {
+                    "weakest_anchors": ["anchor-1"],
+                    "unvalidated_assumptions": [],
+                    "competing_explanations": [],
+                    "disconfirming_observations": ["obs-1"],
+                },
+            }
+        )
+
+
 def test_parse_project_contract_data_salvage_reports_recoverable_findings() -> None:
     contract = _load_contract_fixture()
     contract["scope"]["legacy_notes"] = "nested extra field"

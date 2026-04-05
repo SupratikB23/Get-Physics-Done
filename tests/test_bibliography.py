@@ -184,6 +184,27 @@ class TestCitationSourceParsing:
                 }
             )
 
+    def test_parse_citation_source_payload_rejects_blank_title(self) -> None:
+        with pytest.raises(ValueError, match=r"title must be a non-empty string"):
+            parse_citation_source_payload(
+                {
+                    "reference_id": "lit-ref-001",
+                    "source_type": "paper",
+                    "title": "   ",
+                }
+            )
+
+    def test_parse_citation_source_payload_rejects_blank_author_entries(self) -> None:
+        with pytest.raises(ValueError, match=r"authors must not contain blank entries"):
+            parse_citation_source_payload(
+                {
+                    "reference_id": "lit-ref-001",
+                    "source_type": "paper",
+                    "title": "Benchmark Paper",
+                    "authors": ["A. Author", "   "],
+                }
+            )
+
     def test_parse_citation_source_sidecar_payload_parses_strict_array(self) -> None:
         sources = parse_citation_source_sidecar_payload(
             [

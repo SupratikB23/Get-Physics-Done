@@ -9,6 +9,7 @@ Read these files using the file_read tool:
 - {GPD_INSTALL_DIR}/references/ui/ui-brand.md
 - {GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md -- Template for spawning gpd-planner agents (placeholders, continuation format, failure protocol)
 - {GPD_INSTALL_DIR}/templates/phase-prompt.md -- PLAN.md output format (frontmatter, task XML, contract-native wiring)
+- {GPD_INSTALL_DIR}/templates/plan-contract-schema.md -- Canonical contract schema and hard validation rules that the planner must satisfy before `gpd validate plan-contract`
 </required_reading>
 
 <process>

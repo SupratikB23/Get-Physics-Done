@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import re
 from collections import defaultdict
@@ -40,6 +41,7 @@ __all__ = [
     "ContractForbiddenProxyStatus",
     "ContractForbiddenProxyResult",
     "ContractResults",
+    "parse_contract_results_data_artifact",
     "parse_contract_results_data_strict",
     "parse_comparison_verdicts_data_strict",
     "SuggestedContractCheck",
@@ -269,6 +271,28 @@ def _normalize_strict_string_list(value: object) -> object:
     return normalized
 
 
+def _normalize_strict_literal_choice_list(value: object, choices: tuple[str, ...]) -> object:
+    normalized = _normalize_strict_string_list(value)
+    if not isinstance(normalized, list):
+        return normalized
+
+    canonicalized: list[object] = []
+    seen: set[str] = set()
+    for item in normalized:
+        if not isinstance(item, str):
+            canonicalized.append(item)
+            continue
+        choice = _normalize_literal_choice(item, choices)
+        if not isinstance(choice, str):
+            canonicalized.append(choice)
+            continue
+        if choice in seen:
+            raise ValueError(f"duplicate entry not allowed: {choice}")
+        seen.add(choice)
+        canonicalized.append(choice)
+    return canonicalized
+
+
 def statement_looks_theorem_like(statement: str | None) -> bool:
     if not isinstance(statement, str):
         return False
@@ -359,6 +383,31 @@ def _collect_project_contract_list_member_errors(data: object) -> list[str]:
         for index, item in enumerate(raw_collection):
             if isinstance(item, dict):
                 _check_mapping_lists(item, path_prefix=f"{collection_name}.{index}", field_names=field_names)
+                if collection_name == "claims":
+                    parameters = item.get("parameters")
+                    if isinstance(parameters, list):
+                        for param_index, parameter in enumerate(parameters):
+                            if isinstance(parameter, dict) and isinstance(parameter.get("aliases"), str):
+                                errors.append(
+                                    f"{collection_name}.{index}.parameters.{param_index}.aliases must be a list, not str"
+                                )
+                            if isinstance(parameter, dict) and "aliases" in parameter:
+                                _check_string_list(
+                                    parameter["aliases"],
+                                    path=f"{collection_name}.{index}.parameters.{param_index}.aliases",
+                                )
+                    hypotheses = item.get("hypotheses")
+                    if isinstance(hypotheses, list):
+                        for hypothesis_index, hypothesis in enumerate(hypotheses):
+                            if isinstance(hypothesis, dict) and isinstance(hypothesis.get("symbols"), str):
+                                errors.append(
+                                    f"{collection_name}.{index}.hypotheses.{hypothesis_index}.symbols must be a list, not str"
+                                )
+                            if isinstance(hypothesis, dict) and "symbols" in hypothesis:
+                                _check_string_list(
+                                    hypothesis["symbols"],
+                                    path=f"{collection_name}.{index}.hypotheses.{hypothesis_index}.symbols",
+                                )
 
     for section_name, field_names in PROJECT_CONTRACT_MAPPING_LIST_FIELDS.items():
         _check_mapping_lists(data.get(section_name), path_prefix=section_name, field_names=field_names)
@@ -444,6 +493,48 @@ def _collect_strict_contract_results_errors(value: _StrictContractResultsInput) 
 
     errors: list[str] = []
 
+    def _require_exact_literal(raw_value: object, *, path: str, choices: tuple[str, ...]) -> None:
+        if not isinstance(raw_value, str):
+            return
+        stripped = raw_value.strip()
+        if not stripped:
+            return
+        for choice in choices:
+            if stripped.casefold() == choice.casefold() and stripped != choice:
+                errors.append(f"{path} must use exact literal {choice!r}")
+                return
+
+    def _check_evidence_items(entries: object, *, path_prefix: str) -> None:
+        if not isinstance(entries, list):
+            return
+        for index, item in enumerate(entries):
+            if not isinstance(item, dict):
+                continue
+            for field_name in (
+                "covered_hypothesis_ids",
+                "missing_hypothesis_ids",
+                "covered_parameter_symbols",
+                "missing_parameter_symbols",
+                "uncovered_conclusion_clause_ids",
+            ):
+                if isinstance(item.get(field_name), str):
+                    errors.append(f"{path_prefix}.{index}.{field_name} must be a list, not str")
+            _require_exact_literal(
+                item.get("confidence"),
+                path=f"{path_prefix}.{index}.confidence",
+                choices=("high", "medium", "low", "unreliable"),
+            )
+            _require_exact_literal(
+                item.get("quantifier_status"),
+                path=f"{path_prefix}.{index}.quantifier_status",
+                choices=("matched", "narrowed", "mismatched", "unclear"),
+            )
+            _require_exact_literal(
+                item.get("counterexample_status"),
+                path=f"{path_prefix}.{index}.counterexample_status",
+                choices=("none_found", "counterexample_found", "not_attempted", "narrowed_claim"),
+            )
+
     for section_name in ("claims", "deliverables", "acceptance_tests", "references", "forbidden_proxies"):
         section = value.get(section_name)
         if not isinstance(section, dict):
@@ -453,6 +544,26 @@ def _collect_strict_contract_results_errors(value: _StrictContractResultsInput) 
                 errors.append(
                     f"{section_name}.{entry_id}.status must be explicit in contract-backed contract_results"
                 )
+            if isinstance(entry, dict):
+                _check_evidence_items(entry.get("evidence"), path_prefix=f"{section_name}.{entry_id}.evidence")
+                if section_name in {"claims", "deliverables", "acceptance_tests"}:
+                    _require_exact_literal(
+                        entry.get("status"),
+                        path=f"{section_name}.{entry_id}.status",
+                        choices=("passed", "partial", "failed", "blocked", "not_attempted"),
+                    )
+                elif section_name == "references":
+                    _require_exact_literal(
+                        entry.get("status"),
+                        path=f"{section_name}.{entry_id}.status",
+                        choices=("completed", "missing", "not_applicable"),
+                    )
+                elif section_name == "forbidden_proxies":
+                    _require_exact_literal(
+                        entry.get("status"),
+                        path=f"{section_name}.{entry_id}.status",
+                        choices=("rejected", "violated", "unresolved", "not_applicable"),
+                    )
 
     for section_name, field_names in _STRICT_CONTRACT_RESULTS_STRING_LIST_FIELDS.items():
         section = value.get(section_name)
@@ -471,6 +582,11 @@ def _collect_strict_contract_results_errors(value: _StrictContractResultsInput) 
                 errors.append(
                     f"{section_name}.{entry_id}.proof_audit.completeness must be explicit in contract-backed contract_results"
                 )
+            _require_exact_literal(
+                proof_audit.get("completeness"),
+                path=f"{section_name}.{entry_id}.proof_audit.completeness",
+                choices=("complete", "incomplete"),
+            )
             for field_name in _STRICT_PROOF_AUDIT_STRING_LIST_FIELDS:
                 if isinstance(proof_audit.get(field_name), str):
                     errors.append(f"{section_name}.{entry_id}.proof_audit.{field_name} must be a list, not str")
@@ -606,7 +722,7 @@ class ContractProofParameter(BaseModel):
     model_config = ConfigDict(validate_assignment=True, extra="forbid")
 
     symbol: str
-    domain_or_type: str = ""
+    domain_or_type: str | None = None
     aliases: list[str] = Field(default_factory=list)
     required_in_proof: bool = True
     notes: str | None = None
@@ -619,9 +735,7 @@ class ContractProofParameter(BaseModel):
     @field_validator("domain_or_type", mode="before")
     @classmethod
     def _normalize_domain_or_type(cls, value: object) -> object:
-        if value is None:
-            return ""
-        return _normalize_required_str(value)
+        return _normalize_optional_str(value)
 
     @field_validator("aliases", mode="before")
     @classmethod
@@ -859,7 +973,7 @@ class ContractResultEntry(ContractEvidenceEntry):
     @field_validator("linked_ids", mode="before")
     @classmethod
     def _normalize_linked_ids(cls, value: object) -> object:
-        return _normalize_string_list(value)
+        return _normalize_strict_string_list(value)
 
     @field_validator("status", mode="before")
     @classmethod
@@ -884,7 +998,7 @@ class ContractReferenceUsage(BaseModel):
     @field_validator("completed_actions", "missing_actions", mode="before")
     @classmethod
     def _normalize_action_lists(cls, value: object) -> object:
-        return _normalize_literal_choice_list(value, CONTRACT_REFERENCE_ACTION_VALUES)
+        return _normalize_strict_literal_choice_list(value, CONTRACT_REFERENCE_ACTION_VALUES)
 
     @field_validator("status", mode="before")
     @classmethod
@@ -975,6 +1089,161 @@ def parse_contract_results_data_strict(value: object) -> ContractResults:
     if not isinstance(value, dict):
         raise ValueError("contract_results must be an object")
     return ContractResults.model_validate(normalize_contract_results_input(value, strict=True))
+
+
+def _normalize_contract_results_artifact_input(value: object) -> object:
+    """Normalize artifact ledgers without relaxing scalar/list shape checks."""
+
+    if not isinstance(value, dict):
+        return value
+
+    normalized = copy.deepcopy(value)
+
+    status_choices_by_section: dict[str, tuple[str, ...]] = {
+        "claims": ("passed", "partial", "failed", "blocked", "not_attempted"),
+        "deliverables": ("passed", "partial", "failed", "blocked", "not_attempted"),
+        "acceptance_tests": ("passed", "partial", "failed", "blocked", "not_attempted"),
+        "references": ("completed", "missing", "not_applicable"),
+        "forbidden_proxies": ("rejected", "violated", "unresolved", "not_applicable"),
+    }
+
+    for section_name, status_choices in status_choices_by_section.items():
+        section = normalized.get(section_name)
+        if not isinstance(section, dict):
+            continue
+        for entry in section.values():
+            if not isinstance(entry, dict):
+                continue
+            if "status" in entry:
+                entry["status"] = _normalize_literal_choice(entry.get("status"), status_choices)
+
+            if section_name in {"claims", "deliverables", "acceptance_tests"}:
+                if isinstance(entry.get("linked_ids"), list):
+                    entry["linked_ids"] = _normalize_string_list(entry.get("linked_ids"))
+                proof_audit = entry.get("proof_audit")
+                if isinstance(proof_audit, dict):
+                    if "completeness" in proof_audit:
+                        proof_audit["completeness"] = _normalize_literal_choice(
+                            proof_audit.get("completeness"),
+                            ("complete", "incomplete"),
+                        )
+                    if "quantifier_status" in proof_audit:
+                        proof_audit["quantifier_status"] = _normalize_literal_choice(
+                            proof_audit.get("quantifier_status"),
+                            ("matched", "narrowed", "mismatched", "unclear"),
+                        )
+                    if "scope_status" in proof_audit:
+                        proof_audit["scope_status"] = _normalize_literal_choice(
+                            proof_audit.get("scope_status"),
+                            ("matched", "narrower_than_claim", "mismatched", "unclear"),
+                        )
+                    if "counterexample_status" in proof_audit:
+                        proof_audit["counterexample_status"] = _normalize_literal_choice(
+                            proof_audit.get("counterexample_status"),
+                            ("none_found", "counterexample_found", "not_attempted", "narrowed_claim"),
+                        )
+                    for field_name in _STRICT_PROOF_AUDIT_STRING_LIST_FIELDS:
+                        if isinstance(proof_audit.get(field_name), list):
+                            proof_audit[field_name] = _normalize_string_list(proof_audit.get(field_name))
+            elif section_name == "references":
+                for field_name in ("completed_actions", "missing_actions"):
+                    if isinstance(entry.get(field_name), list):
+                        entry[field_name] = _normalize_literal_choice_list(
+                            entry.get(field_name),
+                            CONTRACT_REFERENCE_ACTION_VALUES,
+                        )
+
+    markers = normalized.get("uncertainty_markers")
+    if isinstance(markers, dict):
+        for field_name in (
+            "weakest_anchors",
+            "unvalidated_assumptions",
+            "competing_explanations",
+            "disconfirming_observations",
+        ):
+            if isinstance(markers.get(field_name), list):
+                markers[field_name] = _normalize_string_list(markers.get(field_name))
+
+    return normalized
+
+
+def _collect_contract_results_artifact_errors(value: object) -> list[str]:
+    """Return artifact-boundary shape errors before model validation."""
+
+    if not isinstance(value, dict):
+        return []
+
+    errors: list[str] = []
+    if "uncertainty_markers" not in value:
+        errors.append("uncertainty_markers must be explicit in contract-backed contract_results")
+
+    for section_name in ("claims", "deliverables", "acceptance_tests", "references", "forbidden_proxies"):
+        section = value.get(section_name)
+        if not isinstance(section, dict):
+            continue
+        for entry_id, entry in section.items():
+            if isinstance(entry, dict) and "status" not in entry:
+                errors.append(
+                    f"{section_name}.{entry_id}.status must be explicit in contract-backed contract_results"
+                )
+            if not isinstance(entry, dict):
+                continue
+            if section_name in {"claims", "deliverables", "acceptance_tests"}:
+                if isinstance(entry.get("linked_ids"), str):
+                    errors.append(f"{section_name}.{entry_id}.linked_ids must be a list, not str")
+            elif section_name == "references":
+                for field_name in ("completed_actions", "missing_actions"):
+                    if isinstance(entry.get(field_name), str):
+                        errors.append(f"{section_name}.{entry_id}.{field_name} must be a list, not str")
+
+            proof_audit = entry.get("proof_audit")
+            if not isinstance(proof_audit, dict):
+                continue
+            if "completeness" not in proof_audit:
+                errors.append(
+                    f"{section_name}.{entry_id}.proof_audit.completeness must be explicit in contract-backed contract_results"
+                )
+            for field_name in _STRICT_PROOF_AUDIT_STRING_LIST_FIELDS:
+                if isinstance(proof_audit.get(field_name), str):
+                    errors.append(f"{section_name}.{entry_id}.proof_audit.{field_name} must be a list, not str")
+
+    markers = value.get("uncertainty_markers")
+    if isinstance(markers, dict):
+        for field_name in (
+            "weakest_anchors",
+            "unvalidated_assumptions",
+            "competing_explanations",
+            "disconfirming_observations",
+        ):
+            if isinstance(markers.get(field_name), str):
+                errors.append(f"uncertainty_markers.{field_name} must be a list, not str")
+        if not markers.get("weakest_anchors"):
+            errors.append(
+                "uncertainty_markers.weakest_anchors must be non-empty in contract-backed contract_results"
+            )
+        if not markers.get("disconfirming_observations"):
+            errors.append(
+                "uncertainty_markers.disconfirming_observations must be non-empty in contract-backed contract_results"
+            )
+
+    return errors
+
+
+def parse_contract_results_data_artifact(value: object) -> ContractResults:
+    """Parse contract-results data for SUMMARY / VERIFICATION frontmatter."""
+
+    if not isinstance(value, dict):
+        raise ValueError("contract_results must be an object")
+
+    normalized = _normalize_contract_results_artifact_input(value)
+    artifact_errors = _collect_contract_results_artifact_errors(normalized)
+    if artifact_errors:
+        raise ValueError("; ".join(dict.fromkeys(artifact_errors)))
+
+    try:
+        return ContractResults.model_validate(normalized)
+    except PydanticValidationError as exc:
+        raise ValueError("; ".join(_format_pydantic_validation_errors(exc))) from exc
 
 
 def _format_pydantic_validation_errors(exc: PydanticValidationError) -> list[str]:

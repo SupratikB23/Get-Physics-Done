@@ -142,9 +142,11 @@ class ResourceRequirement(BaseModel):
 
     @field_validator("memory_gb", mode="before")
     @classmethod
-    def _reject_integer_memory_gb(cls, value: object) -> object:
-        if isinstance(value, bool) or isinstance(value, int):
+    def _normalize_memory_gb(cls, value: object) -> object:
+        if isinstance(value, bool) or isinstance(value, str):
             raise ValueError("Input should be a valid number")
+        if isinstance(value, int):
+            return float(value)
         return value
 
 
@@ -567,8 +569,7 @@ def validate_reproducibility_manifest(manifest: ReproducibilityManifest | dict) 
         )
 
     valid = len(issues) == 0
-    blocking_warnings = [w for w in warnings if "approximate" not in w.message.lower()]
-    ready = valid and checksum_coverage == 100.0 and seed_coverage == 100.0 and not blocking_warnings
+    ready = valid and checksum_coverage == 100.0 and seed_coverage == 100.0 and not warnings
     return ReproducibilityValidationResult(
         valid=valid,
         issues=issues,
@@ -622,13 +623,8 @@ def build_reproducibility_kernel_verdict(
             return Fail("reproducibility manifest registry type mismatch")
         if typed.validation.ready_for_review:
             return Pass("manifest is review-ready")
-        blocking_warnings = [
-            warning.message
-            for warning in typed.validation.warnings
-            if "approximate checksum" not in warning.message.lower()
-        ]
-        if blocking_warnings:
-            return Fail(blocking_warnings[0])
+        if typed.validation.warnings:
+            return Fail(typed.validation.warnings[0].message)
         return Fail("manifest is not review-ready")
 
     return run_kernel(

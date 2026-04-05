@@ -30,7 +30,7 @@ from gpd.contracts import (
     collect_proof_audit_alignment_errors,
     contract_has_explicit_context_intake,
     parse_comparison_verdicts_data_strict,
-    parse_contract_results_data_strict,
+    parse_contract_results_data_artifact,
     parse_project_contract_data_strict,
     statement_looks_theorem_like,
 )
@@ -429,7 +429,7 @@ def _parse_contract_results(meta: dict) -> ContractResults | None:
     if "contract_results" not in meta:
         return None
     raw = meta.get("contract_results")
-    return parse_contract_results_data_strict(raw)
+    return parse_contract_results_data_artifact(raw)
 
 
 def _parse_comparison_verdicts(meta: dict) -> list[ComparisonVerdict]:

@@ -139,15 +139,14 @@ def test_validate_reproducibility_manifest_rejects_string_numerics():
     assert any("number" in issue.message.lower() for issue in result.issues)
 
 
-def test_validate_reproducibility_manifest_rejects_integer_memory_gb():
+def test_validate_reproducibility_manifest_accepts_integer_memory_gb():
     manifest = _manifest().model_dump()
     manifest["resource_requirements"][0]["memory_gb"] = 8
 
     result = validate_reproducibility_manifest(manifest)
 
-    assert result.valid is False
-    assert any(issue.field == "resource_requirements.0.memory_gb" for issue in result.issues)
-    assert any("number" in issue.message.lower() for issue in result.issues)
+    assert result.valid is True
+    assert result.issues == []
 
 
 def test_validate_reproducibility_manifest_rejects_unknown_fields():
@@ -362,3 +361,4 @@ def test_approximate_checksum_counts_toward_coverage():
         w for w in result.warnings if "approximate checksum" in w.message
     ]
     assert len(approx_warnings) == 1
+    assert result.ready_for_review is False

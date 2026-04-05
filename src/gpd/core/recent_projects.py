@@ -41,6 +41,12 @@ class RecentProjectsError(ValueError):
     """Raised when the recent-project advisory cache cannot be parsed."""
 
 
+def _strict_bool_value(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
+
+
 def _normalize_recent_projects_index_payload(value: object) -> dict[str, object]:
     if value is None:
         return {"rows": []}
@@ -343,11 +349,12 @@ def classify_recent_project_recovery(row: object) -> RecentProjectRecoveryClassi
     resume_target_kind, resume_target_recorded_at = _backfill_recent_project_recovery_fields(row)
 
     available_value = _row_value(row, "available")
-    available = True if available_value is None else bool(available_value)
+    if available_value is None:
+        available = True
+    else:
+        available = _strict_bool_value(available_value) is True
     resume_file = _normalize_recent_text(_row_value(row, "resume_file"))
-    resume_file_available = _row_value(row, "resume_file_available")
-    if not isinstance(resume_file_available, bool):
-        resume_file_available = None
+    resume_file_available = _strict_bool_value(_row_value(row, "resume_file_available"))
 
     has_recorded_target = resume_file is not None
     has_concrete_target = bool(has_recorded_target and available and resume_file_available is not False)
