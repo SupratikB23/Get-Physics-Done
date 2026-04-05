@@ -73,7 +73,7 @@ Exit.
 Then load phase details:
 
 ```bash
-gpd roadmap get-phase "${phase_number}"
+gpd --raw roadmap get-phase "${phase_number}"
 grep -E "^| ${phase_number}" GPD/REQUIREMENTS.md 2>/dev/null
 ```
 

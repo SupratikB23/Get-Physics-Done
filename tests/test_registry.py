@@ -227,9 +227,9 @@ class TestParseAgentFile:
     def test_agent_file_unexpected_extra_fields(self, tmp_path: Path) -> None:
         f = tmp_path / "extra.md"
         f.write_text("---\nname: extra\nversion: 2\ncustom_key: hi\n---\nBody.", encoding="utf-8")
-        agent = _parse_agent_file(f, source="agents")
-        assert agent.name == "extra"
-        assert agent.system_prompt == "Body."
+
+        with pytest.raises(ValueError, match=r"unknown frontmatter keys for extra: custom_key, version"):
+            _parse_agent_file(f, source="agents")
 
     def test_agent_file_tools_as_list(self, tmp_path: Path) -> None:
         f = tmp_path / "list-tools.md"

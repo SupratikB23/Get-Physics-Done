@@ -44,6 +44,27 @@ def _run_contract_check_input_schema() -> dict[str, object]:
     return anyio.run(_load)
 
 
+def _schema_error_messages(schema: dict[str, object], payload: dict[str, object]) -> list[str]:
+    from jsonschema import Draft202012Validator
+
+    return [error.message for error in Draft202012Validator(schema).iter_errors(payload)]
+
+
+def _verification_check_id(check_key: str) -> str:
+    from gpd.mcp.servers.verification_server import get_verification_check
+
+    check = get_verification_check(check_key)
+    return check.check_id
+
+
+def test_contract_server_singleton_drift_classifier_matches_core_contract_policy() -> None:
+    from gpd.mcp.servers.verification_server import _is_defaultable_singleton_contract_error
+
+    assert _is_defaultable_singleton_contract_error("context_intake must be an object, not list") is True
+    assert _is_defaultable_singleton_contract_error("uncertainty_markers must be an object, not list") is True
+    assert _is_defaultable_singleton_contract_error("approach_policy must be an object, not list") is False
+
+
 def _derived_template_contract() -> dict[str, object]:
     contract = copy.deepcopy(_load_project_contract_fixture())
     contract["observables"][0]["regime"] = "large-k"
@@ -373,6 +394,24 @@ def _proof_obligation_contract() -> dict[str, object]:
             "disconfirming_observations": ["A proof that drops r_0 or narrows the claim invalidates the theorem."],
         },
     }
+
+
+def _proof_claim_without_proof_fields_contract() -> dict[str, object]:
+    contract = _proof_contract()
+    claim = contract["claims"][0]
+    for key in ("proof_deliverables", "parameters", "hypotheses", "conclusion_clauses"):
+        claim.pop(key, None)
+    return contract
+
+
+def _proof_obligation_claim_contract(*, include_proof_fields: bool) -> dict[str, object]:
+    contract = _proof_obligation_contract()
+    claim = contract["claims"][0]
+    claim["claim_kind"] = "claim"
+    if not include_proof_fields:
+        for key in ("proof_deliverables", "parameters", "hypotheses", "conclusion_clauses"):
+            claim.pop(key, None)
+    return contract
 
 
 def _proof_contract() -> dict[str, object]:
@@ -1702,7 +1741,7 @@ def test_suggest_contract_checks_proof_request_templates_validate_against_advert
         assert list(validator.iter_errors(request)) == []
 
 
-def test_run_contract_check_schema_allows_benchmark_requests_without_source_reference_id() -> None:
+def test_run_contract_check_schema_rejects_benchmark_requests_without_source_reference_id() -> None:
     from jsonschema import Draft202012Validator
 
     schema = _run_contract_check_input_schema()
@@ -1715,10 +1754,13 @@ def test_run_contract_check_schema_allows_benchmark_requests_without_source_refe
         }
     }
 
-    assert list(validator.iter_errors(request)) == []
+    messages = [error.message for error in validator.iter_errors(request)]
+
+    assert messages
+    assert any("metadata" in message for message in messages)
 
 
-def test_run_contract_check_schema_allows_contract_derived_limit_and_family_metadata() -> None:
+def test_run_contract_check_schema_rejects_contract_derived_limit_and_family_metadata_when_missing_metadata() -> None:
     from jsonschema import Draft202012Validator
 
     schema = _run_contract_check_input_schema()
@@ -1750,10 +1792,43 @@ def test_run_contract_check_schema_allows_contract_derived_limit_and_family_meta
     )
 
     for request in requests:
-        assert list(validator.iter_errors(request)) == []
+        messages = [error.message for error in validator.iter_errors(request)]
+
+        assert messages
+        assert any("metadata" in message for message in messages)
 
 
-def test_run_contract_check_schema_allows_soft_missing_proof_audit_fields() -> None:
+@pytest.mark.parametrize("identifier_field", ["check_key", "check_id"])
+@pytest.mark.parametrize(
+    ("check_key", "expected_required_fragments"),
+    [
+        ("contract.benchmark_reproduction", ("metadata", "observed")),
+        ("contract.limit_recovery", ("metadata", "observed")),
+        ("contract.fit_family_mismatch", ("metadata", "observed")),
+        ("contract.estimator_family_mismatch", ("metadata", "observed")),
+        ("contract.proof_parameter_coverage", ("contract", "metadata", "observed")),
+        ("contract.claim_to_proof_alignment", ("contract", "observed")),
+        ("contract.counterexample_search", ("contract", "observed")),
+    ],
+)
+def test_run_contract_check_schema_rejects_identifier_only_requests_for_mandatory_sections(
+    identifier_field: str,
+    check_key: str,
+    expected_required_fragments: tuple[str, ...],
+) -> None:
+    schema = _run_contract_check_input_schema()
+    identifier = check_key if identifier_field == "check_key" else _verification_check_id(check_key)
+    request = {"request": {identifier_field: identifier}}
+
+    messages = _schema_error_messages(schema, request)
+    combined_messages = "\n".join(messages)
+
+    assert messages
+    assert any("required" in message for message in messages)
+    assert any(fragment in combined_messages for fragment in expected_required_fragments)
+
+
+def test_run_contract_check_schema_rejects_soft_missing_proof_audit_fields() -> None:
     from jsonschema import Draft202012Validator
 
     schema = _run_contract_check_input_schema()
@@ -1777,7 +1852,103 @@ def test_run_contract_check_schema_allows_soft_missing_proof_audit_fields() -> N
     )
 
     for request in requests:
-        assert list(validator.iter_errors(request)) == []
+        messages = [error.message for error in validator.iter_errors(request)]
+
+        assert messages
+        assert any(fragment in "\n".join(messages) for fragment in ("metadata", "observed", "contract"))
+
+
+@pytest.mark.parametrize(
+    ("request_factory", "expected_valid"),
+    [
+        (
+            lambda: {
+                "request": {
+                    "check_key": "contract.proof_parameter_coverage",
+                    "contract": _proof_contract(),
+                    "metadata": {"theorem_parameter_symbols": ["r_0", "n"]},
+                    "observed": {"covered_parameter_symbols": ["r0", "n"]},
+                }
+            },
+            True,
+        ),
+        (
+            lambda: {
+                "request": {
+                    "check_key": "contract.proof_parameter_coverage",
+                    "contract": _proof_claim_without_proof_fields_contract(),
+                    "metadata": {"theorem_parameter_symbols": ["r_0", "n"]},
+                    "observed": {"covered_parameter_symbols": ["r0", "n"]},
+                }
+            },
+            False,
+        ),
+        (
+            lambda: {
+                "request": {
+                    "check_key": "contract.proof_quantifier_domain",
+                    "contract": _proof_obligation_claim_contract(include_proof_fields=True),
+                    "observed": {"quantifier_status": "matched", "scope_status": "matched"},
+                }
+            },
+            True,
+        ),
+        (
+            lambda: {
+                "request": {
+                    "check_key": "contract.proof_quantifier_domain",
+                    "contract": _proof_obligation_claim_contract(include_proof_fields=False),
+                    "observed": {"quantifier_status": "matched", "scope_status": "matched"},
+                }
+            },
+            False,
+        ),
+    ],
+)
+def test_run_contract_check_schema_and_runtime_stay_in_lockstep_for_proof_bearing_claims(
+    request_factory,
+    expected_valid: bool,
+) -> None:
+    schema = _run_contract_check_input_schema()
+    request = request_factory()
+    schema_messages = _schema_error_messages(schema, request)
+    runtime_result = _call_verification_tool("run_contract_check", request)
+
+    assert (not schema_messages) is expected_valid
+    assert (runtime_result.get("status") == "pass") is expected_valid
+
+
+def test_run_contract_check_schema_rejects_explicit_empty_optional_contract_collections_when_metadata_is_missing() -> None:
+    from jsonschema import Draft202012Validator
+
+    schema = _run_contract_check_input_schema()
+    validator = Draft202012Validator(schema)
+
+    request = {
+        "request": {
+            "check_key": "contract.limit_recovery",
+            "contract": {
+                "schema_version": 1,
+                "scope": {"question": "What is the asymptotic limit?"},
+                "context_intake": {"context_gaps": ["Need benchmark reconciliation."]},
+                "claims": [],
+                "deliverables": [],
+                "acceptance_tests": [],
+                "references": [],
+                "forbidden_proxies": [],
+                "links": [],
+                "uncertainty_markers": {
+                    "weakest_anchors": ["No validated benchmark yet."],
+                    "disconfirming_observations": ["Large-k behavior could still flip sign."],
+                },
+            },
+        }
+    }
+
+    messages = [error.message for error in validator.iter_errors(request)]
+
+    assert messages
+    assert any("metadata" in message for message in messages)
 
 
 def test_run_contract_check_schema_surfaces_duplicate_contract_string_list_rejection() -> None:
@@ -2290,6 +2461,21 @@ def test_suggest_contract_checks_rejects_non_list_active_checks(active_checks: o
     ],
 )
 def test_contract_tools_preserve_stable_error_envelopes_at_mcp_boundary(
+    tool_name: str,
+    arguments: dict[str, object],
+    expected: dict[str, object],
+) -> None:
+    assert _call_verification_tool(tool_name, arguments) == expected
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "expected"),
+    [
+        ("run_contract_check", {}, {"error": "request is required", "schema_version": 1}),
+        ("suggest_contract_checks", {}, {"error": "contract is required", "schema_version": 1}),
+    ],
+)
+def test_contract_tools_normalize_missing_top_level_mcp_arguments(
     tool_name: str,
     arguments: dict[str, object],
     expected: dict[str, object],

@@ -12,6 +12,15 @@ from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 
 from gpd.contracts import (
+    CONTRACT_ACCEPTANCE_AUTOMATION_VALUES,
+    CONTRACT_ACCEPTANCE_TEST_KIND_VALUES,
+    CONTRACT_CLAIM_KIND_VALUES,
+    CONTRACT_DELIVERABLE_KIND_VALUES,
+    CONTRACT_LINK_RELATION_VALUES,
+    CONTRACT_OBSERVABLE_KIND_VALUES,
+    CONTRACT_REFERENCE_ACTION_VALUES,
+    CONTRACT_REFERENCE_KIND_VALUES,
+    CONTRACT_REFERENCE_ROLE_VALUES,
     PROJECT_CONTRACT_COLLECTION_LIST_FIELDS,
     PROJECT_CONTRACT_MAPPING_LIST_FIELDS,
     PROJECT_CONTRACT_TOP_LEVEL_LIST_FIELDS,
@@ -31,7 +40,14 @@ from gpd.contracts import (
     parse_project_contract_data_salvage,
 )
 
-__all__ = ["ProjectContractValidationResult", "salvage_project_contract", "validate_project_contract"]
+__all__ = [
+    "ProjectContractValidationResult",
+    "is_authoritative_project_contract_schema_finding",
+    "is_defaultable_singleton_project_contract_schema_finding",
+    "salvage_project_contract",
+    "split_project_contract_schema_findings",
+    "validate_project_contract",
+]
 
 
 _ANCHOR_UNKNOWN_DIRECT_PATTERNS = (
@@ -108,6 +124,9 @@ _PROJECT_ARTIFACT_PATH_PATTERNS = (
 _RECOVERABLE_SCHEMA_WARNING_PATTERNS = (
     re.compile(r"^.+: Extra inputs are not permitted$"),
 )
+_CASE_DRIFT_SCHEMA_WARNING_PATTERNS = (
+    re.compile(r"^.+ must use exact canonical value: .+$"),
+)
 _DEFAULTABLE_SINGLETON_SCHEMA_WARNING_PATTERNS = (
     re.compile(r"^(?:context_intake|uncertainty_markers) must be an object, not .+$"),
 )
@@ -171,24 +190,6 @@ def _format_schema_error(error: dict[str, object]) -> str:
         return f"{location} must be a non-empty string"
 
     return f"{location}: {message}"
-
-
-def _schema_error_result(
-    exc: PydanticValidationError,
-    *,
-    mode: Literal["draft", "approved"],
-) -> ProjectContractValidationResult:
-    """Convert Pydantic validation errors into a machine-readable contract result."""
-
-    errors: list[str] = []
-    seen: set[str] = set()
-    for error in exc.errors():
-        formatted = _format_schema_error(error)
-        if formatted in seen:
-            continue
-        seen.add(formatted)
-        errors.append(formatted)
-    return ProjectContractValidationResult(valid=False, errors=errors, mode=mode)
 
 
 def _sanitize_contract_scalars(
@@ -395,6 +396,7 @@ def _normalize_blank_list_fields(contract: dict[str, object]) -> None:
 
 def salvage_project_contract(contract: dict[str, object]) -> tuple[ResearchContract | None, list[str]]:
     errors: list[str] = []
+    errors.extend(_collect_literal_case_drift_errors(contract))
     raw_required_section_presence = {
         field_name: field_name in contract for field_name in ("schema_version", "context_intake", "uncertainty_markers")
     }
@@ -493,7 +495,7 @@ def salvage_project_contract(contract: dict[str, object]) -> tuple[ResearchContr
         return None, errors
 
 
-def _split_project_contract_schema_findings(
+def split_project_contract_schema_findings(
     errors: list[str],
     *,
     allow_singleton_defaults: bool = True,
@@ -504,7 +506,7 @@ def _split_project_contract_schema_findings(
     blocking: list[str] = []
     recoverable_patterns = _RECOVERABLE_SCHEMA_WARNING_PATTERNS
     if allow_singleton_defaults:
-        recoverable_patterns += _DEFAULTABLE_SINGLETON_SCHEMA_WARNING_PATTERNS
+        recoverable_patterns += _DEFAULTABLE_SINGLETON_SCHEMA_WARNING_PATTERNS + _CASE_DRIFT_SCHEMA_WARNING_PATTERNS
     for error in errors:
         if any(pattern.fullmatch(error) for pattern in recoverable_patterns):
             recoverable.append(error)
@@ -512,13 +514,22 @@ def _split_project_contract_schema_findings(
             blocking.append(error)
     return recoverable, blocking
 
+def is_authoritative_project_contract_schema_finding(error: str) -> bool:
+    """Return whether one schema finding touches an authoritative scalar field."""
+
+    return any(pattern.fullmatch(error) for pattern in _AUTHORITATIVE_SCALAR_FINDING_PATTERNS)
+
+
+def is_defaultable_singleton_project_contract_schema_finding(error: str) -> bool:
+    """Return whether one schema finding is the defaultable-singleton drift class."""
+
+    return any(pattern.fullmatch(error) for pattern in _DEFAULTABLE_SINGLETON_SCHEMA_WARNING_PATTERNS)
+
 
 def _has_authoritative_scalar_schema_findings(errors: list[str]) -> bool:
     """Return whether salvage findings touched authoritative scalar fields."""
 
-    return any(
-        pattern.fullmatch(error) for error in errors for pattern in _AUTHORITATIVE_SCALAR_FINDING_PATTERNS
-    )
+    return any(is_authoritative_project_contract_schema_finding(error) for error in errors)
 
 
 def _collect_list_shape_drift_errors(contract: dict[str, object]) -> list[str]:
@@ -575,6 +586,61 @@ def _collect_list_shape_drift_errors(contract: dict[str, object]) -> list[str]:
         _check_collection_item_lists(collection_name, field_names)
 
     return _dedupe_findings(errors)
+
+
+_LITERAL_CASE_DRIFT_FIELD_PATTERNS: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = (
+    (re.compile(r"^observables\.\d+\.kind$"), CONTRACT_OBSERVABLE_KIND_VALUES),
+    (re.compile(r"^claims\.\d+\.claim_kind$"), CONTRACT_CLAIM_KIND_VALUES),
+    (
+        re.compile(r"^claims\.\d+\.hypotheses\.\d+\.category$"),
+        ("assumption", "precondition", "regime", "definition", "lemma", "other"),
+    ),
+    (re.compile(r"^deliverables\.\d+\.kind$"), CONTRACT_DELIVERABLE_KIND_VALUES),
+    (re.compile(r"^acceptance_tests\.\d+\.kind$"), CONTRACT_ACCEPTANCE_TEST_KIND_VALUES),
+    (re.compile(r"^acceptance_tests\.\d+\.automation$"), CONTRACT_ACCEPTANCE_AUTOMATION_VALUES),
+    (re.compile(r"^references\.\d+\.kind$"), CONTRACT_REFERENCE_KIND_VALUES),
+    (re.compile(r"^references\.\d+\.role$"), CONTRACT_REFERENCE_ROLE_VALUES),
+    (re.compile(r"^references\.\d+\.required_actions\.\d+$"), CONTRACT_REFERENCE_ACTION_VALUES),
+    (re.compile(r"^links\.\d+\.relation$"), CONTRACT_LINK_RELATION_VALUES),
+)
+
+
+def _collect_literal_case_drift_errors(contract: object) -> list[str]:
+    """Return recoverable findings for case-insensitive literal drift."""
+
+    if not isinstance(contract, dict):
+        return []
+
+    errors: list[str] = []
+
+    def _walk(value: object, *, path: str) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                next_path = f"{path}.{key}" if path else str(key)
+                _walk(item, path=next_path)
+            return
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                next_path = f"{path}.{index}" if path else str(index)
+                _walk(item, path=next_path)
+            return
+        if not isinstance(value, str):
+            return
+
+        stripped = value.strip()
+        if not stripped:
+            return
+
+        for pattern, choices in _LITERAL_CASE_DRIFT_FIELD_PATTERNS:
+            if not pattern.fullmatch(path):
+                continue
+            canonical_choice = next((choice for choice in choices if stripped.casefold() == choice.casefold()), None)
+            if canonical_choice is not None and value != canonical_choice:
+                errors.append(f"{path} must use exact canonical value: {canonical_choice}")
+            return
+
+    _walk(contract, path="")
+    return errors
 
 
 def _light_contract_consistency_errors(contract: ResearchContract) -> list[str]:
@@ -730,7 +796,10 @@ def _looks_like_project_artifact_path(value: str) -> bool:
     candidate = value.strip()
     if not candidate:
         return False
-    return any(pattern.search(candidate) for pattern in _PROJECT_ARTIFACT_PATH_PATTERNS)
+    return bool(
+        re.search(r"[\\/]+", candidate)
+        or re.search(r"^(?:\.{1,2}|~)(?:[\\/]|$)", candidate)
+    )
 
 
 def _is_placeholder_only_guidance_text(value: str) -> bool:
@@ -803,15 +872,6 @@ def _is_concrete_reference_locator(
             return _is_project_artifact_path(value, project_root=project_root)
         return False
     return False
-
-
-def _is_placeholder_reference_locator(value: str) -> bool:
-    """Return whether *value* is a placeholder locator that cannot ground approval."""
-
-    lowered = value.casefold().strip()
-    if not lowered:
-        return True
-    return any(pattern.search(lowered) for pattern in _REFERENCE_LOCATOR_PLACEHOLDER_PATTERNS)
 
 
 def _has_concrete_grounding_entries(
@@ -980,9 +1040,6 @@ def _context_intake_guidance_warnings(
     ):
         for value in values:
             if _is_concrete_text_grounding(value, project_root=project_root):
-                continue
-            lowered = value.casefold().strip()
-            if not any(pattern.search(lowered) for pattern in _USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS):
                 continue
             warnings.append(
                 f"context_intake.{field_name} entry is not concrete enough to preserve as durable guidance: {value}"

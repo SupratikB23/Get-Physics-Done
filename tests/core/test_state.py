@@ -1127,7 +1127,9 @@ def test_save_state_markdown_does_not_promote_backup_project_contract_when_prima
     assert backup["position"]["status"] == "Paused"
 
 
-def test_save_state_markdown_does_not_preserve_draft_invalid_primary_project_contract(tmp_path: Path) -> None:
+def test_save_state_markdown_preserves_visible_blocked_primary_project_contract_even_with_empty_backup(
+    tmp_path: Path,
+) -> None:
     baseline = default_state_dict()
     baseline["position"]["status"] = "Executing"
     save_state_json(tmp_path, baseline)
@@ -1144,10 +1146,10 @@ def test_save_state_markdown_does_not_preserve_draft_invalid_primary_project_con
     persisted = json.loads(layout.state_json.read_text(encoding="utf-8"))
     backup = json.loads(layout.state_json_backup.read_text(encoding="utf-8"))
 
-    assert result["project_contract"] is None
-    assert persisted["project_contract"] is None
+    assert result["project_contract"]["claims"][0]["references"] == ["missing-ref"]
+    assert persisted["project_contract"]["claims"][0]["references"] == ["missing-ref"]
     assert persisted["position"]["status"] == "Paused"
-    assert backup["project_contract"] is None
+    assert backup["project_contract"]["claims"][0]["references"] == ["missing-ref"]
 
 
 def test_load_state_json_backup_restore_preserves_project_contract_when_backup_requires_salvage(

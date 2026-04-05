@@ -72,11 +72,11 @@ Default depth: `medium` (Level 2).
 
 Follow the discover workflow for the determined depth level.
 
-## Step 3: Commit (if Level 2-3 produced RESEARCH.md)
+## Step 3: Persistence Policy (if Level 2-3 produced RESEARCH.md)
 
-```bash
-gpd commit "discover(${phase_number}): ${depth} discovery for ${phase_name}" --files "GPD/phases/${padded_phase}-${phase_slug}/RESEARCH.md"
-```
+Do not commit `RESEARCH.md` separately.
+If discovery ran phase-scoped, leave the phase `RESEARCH.md` in the working tree for the later phase-completion commit.
+If discovery ran in standalone mode, report the findings directly and do not emit phase-only commit messages or file paths.
 
 ## Step 4: Present Results and Next Steps
 

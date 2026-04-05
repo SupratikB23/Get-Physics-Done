@@ -45,7 +45,7 @@ Normalize phase input in step 1 before any directory lookups.
 ## 0. Initialize Context
 
 ```bash
-INIT=$(gpd init phase-op "$ARGUMENTS")
+INIT=$(gpd init phase-op --include state,config "$ARGUMENTS")
 ```
 
 Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `project_contract`, `project_contract_gate`, `project_contract_load_info`, `project_contract_validation`, `active_reference_context`, `reference_artifacts_content`. Treat `project_contract` as authoritative only when `project_contract_gate.authoritative` is true.
@@ -59,7 +59,7 @@ RESEARCHER_MODEL=$(gpd resolve-model gpd-phase-researcher)
 ## 1. Validate Phase
 
 ```bash
-PHASE_INFO=$(gpd roadmap get-phase "${phase_number}")
+PHASE_INFO=$(gpd --raw roadmap get-phase "${phase_number}")
 ```
 
 **If `found` is false:** Error and exit. **If `found` is true:** Extract `phase_number`, `phase_name`, `goal` from JSON.
@@ -67,7 +67,7 @@ PHASE_INFO=$(gpd roadmap get-phase "${phase_number}")
 ## 2. Check Existing Research
 
 ```bash
-ls GPD/phases/${PHASE}-*/RESEARCH.md 2>/dev/null
+ls "${phase_dir}/"*-RESEARCH.md 2>/dev/null
 ```
 
 **If exists:** Offer: 1) Update research, 2) View existing, 3) Skip. Wait for response.
@@ -80,8 +80,8 @@ ls GPD/phases/${PHASE}-*/RESEARCH.md 2>/dev/null
 # Phase section already loaded in PHASE_INFO
 echo "$PHASE_INFO" | gpd json get .section --default ""
 cat GPD/REQUIREMENTS.md 2>/dev/null
-cat GPD/phases/${PHASE}-*/*-CONTEXT.md 2>/dev/null
-grep -A30 "### Decisions" GPD/STATE.md 2>/dev/null
+cat "${phase_dir}/"*-CONTEXT.md 2>/dev/null
+gpd --raw state snapshot | gpd json get .decisions --default "[]"
 ```
 
 Present summary with phase description, requirements, prior decisions.
@@ -153,7 +153,7 @@ Before declaring complete, verify:
       </quality_gate>
 
 <output>
-Write to: GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md
+Write to: {phase_dir}/{phase_number}-RESEARCH.md
 </output>
 ```
 
@@ -183,7 +183,7 @@ Continue research for Phase {phase_number}: {phase_name}
 </objective>
 
 <prior_state>
-Research file path: GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md
+Research file path: {phase_dir}/{phase_number}-RESEARCH.md
 Read that file before continuing so you inherit the prior research state instead of relying on an inline `@...` attachment.
 </prior_state>
 

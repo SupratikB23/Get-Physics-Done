@@ -27,6 +27,12 @@ def _bootstrap_project(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _draft_invalid_project_contract() -> dict[str, object]:
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["claims"][0]["references"] = ["missing-ref"]
+    return contract
+
+
 def test_sync_state_json_core_uses_markdown_bullet_sections_as_authority(tmp_path: Path) -> None:
     cwd = _bootstrap_project(tmp_path)
     planning = cwd / "GPD"
@@ -148,6 +154,46 @@ def test_save_state_markdown_preserves_existing_project_contract_in_primary_stat
     assert result["project_contract"]["scope"]["question"] == contract["scope"]["question"]
     assert stored["project_contract"]["scope"]["question"] == contract["scope"]["question"]
     assert stored["project_contract"]["references"][0]["id"] == contract["references"][0]["id"]
+
+
+def test_save_state_markdown_preserves_visible_blocked_project_contract_in_primary_state_json(tmp_path: Path) -> None:
+    cwd = _bootstrap_project(tmp_path)
+    planning = cwd / "GPD"
+    contract = _draft_invalid_project_contract()
+
+    existing_state = default_state_dict()
+    existing_state["project_contract"] = contract
+    (planning / "state.json").write_text(json.dumps(existing_state, indent=2), encoding="utf-8")
+
+    markdown_state = default_state_dict()
+    markdown_state["position"]["current_phase"] = "03"
+    markdown_state["position"]["status"] = "Executing"
+    md_content = generate_state_markdown(markdown_state)
+    (planning / "STATE.md").write_text(md_content, encoding="utf-8")
+
+    result = save_state_markdown(cwd, md_content)
+    stored = json.loads((planning / "state.json").read_text(encoding="utf-8"))
+
+    assert result["project_contract"]["claims"][0]["references"] == ["missing-ref"]
+    assert stored["project_contract"]["claims"][0]["references"] == ["missing-ref"]
+
+
+def test_save_state_json_preserves_visible_blocked_project_contract_on_unrelated_updates(tmp_path: Path) -> None:
+    cwd = _bootstrap_project(tmp_path)
+    planning = cwd / "GPD"
+    state = default_state_dict()
+    state["project_contract"] = _draft_invalid_project_contract()
+    (planning / "state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+    state["position"]["current_phase"] = "03"
+    state["position"]["status"] = "Executing"
+    save_state_json(cwd, state)
+
+    stored = json.loads((planning / "state.json").read_text(encoding="utf-8"))
+
+    assert stored["position"]["current_phase"] == "03"
+    assert stored["position"]["status"] == "Executing"
+    assert stored["project_contract"]["claims"][0]["references"] == ["missing-ref"]
 
 
 def test_sync_state_json_core_bootstrap_preserves_progress_and_metrics(tmp_path: Path) -> None:

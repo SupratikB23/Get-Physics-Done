@@ -1378,7 +1378,7 @@ class TestUninstall:
 
         assert all(not (skills / name).exists() for name in tracked_skill_names)
 
-    def test_uninstall_falls_back_to_packaged_skill_surface_when_manifest_and_install_metadata_drift(
+    def test_uninstall_fails_closed_when_manifest_and_install_metadata_drift_past_live_skill_tracking(
         self,
         adapter: CodexAdapter,
         gpd_root: Path,
@@ -1398,10 +1398,37 @@ class TestUninstall:
         manifest.pop("files", None)
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         shutil.rmtree(target / "get-physics-done")
+        for name in tracked_skill_names:
+            (skills / name / "SKILL.md").write_text("user-customized skill\n", encoding="utf-8")
 
         adapter.uninstall(target, skills_dir=skills)
 
-        assert all(not (skills / name).exists() for name in tracked_skill_names)
+        assert all((skills / name).exists() for name in tracked_skill_names)
+
+    def test_uninstall_fails_closed_when_generated_skill_ownership_is_ambiguous(
+        self,
+        adapter: CodexAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / ".codex"
+        target.mkdir()
+        skills = tmp_path / "skills"
+        skills.mkdir()
+
+        adapter.install(gpd_root, target, skills_dir=skills)
+        tracked_skill_names = {d.name for d in skills.iterdir() if d.is_dir() and d.name.startswith("gpd-")}
+
+        monkeypatch.setattr(
+            "gpd.adapters.codex._load_manifest_codex_generated_skill_dirs",
+            lambda target_dir: ("gpd-phantom",),
+        )
+
+        adapter.uninstall(target, skills_dir=skills)
+
+        assert tracked_skill_names
+        assert all((skills / name).exists() for name in tracked_skill_names)
 
     def test_uninstall_removes_agents(self, adapter: CodexAdapter, gpd_root: Path, tmp_path: Path) -> None:
         target = tmp_path / ".codex"

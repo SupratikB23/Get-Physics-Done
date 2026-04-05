@@ -23,10 +23,10 @@ import os
 import re
 import shutil
 import tempfile
-import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
+from gpd._python_compat import load_optional_module, load_tomllib
 from gpd.adapters.base import RuntimeAdapter
 from gpd.adapters.install_utils import (
     CACHE_DIR_NAME,
@@ -57,16 +57,16 @@ from gpd.adapters.tool_names import build_runtime_alias_map, reference_translati
 from gpd.core.observability import gpd_span
 from gpd.registry import AgentDef, load_agents_from_dir
 
-try:
-    from gpd.mcp.managed_integrations import (
-        WOLFRAM_MANAGED_INTEGRATION,
-        WOLFRAM_MANAGED_SERVER_KEY,
-    )
-except ImportError:  # pragma: no cover - partial checkout fallback
+_managed_integrations = load_optional_module("gpd.mcp.managed_integrations")
+if _managed_integrations is None:  # pragma: no cover - partial checkout fallback
     WOLFRAM_MANAGED_INTEGRATION = None
     WOLFRAM_MANAGED_SERVER_KEY = "gpd-wolfram"
+else:
+    WOLFRAM_MANAGED_INTEGRATION = _managed_integrations.WOLFRAM_MANAGED_INTEGRATION
+    WOLFRAM_MANAGED_SERVER_KEY = _managed_integrations.WOLFRAM_MANAGED_SERVER_KEY
 
 logger = logging.getLogger(__name__)
+tomllib = load_tomllib()
 
 _TOOL_NAME_MAP: dict[str, str] = {
     "file_read": "read_file",
@@ -329,21 +329,43 @@ def _load_manifest_tracked_codex_skill_dirs(target_dir: Path) -> tuple[str, ...]
     return tuple(dict.fromkeys(names))
 
 
-def _tracked_codex_generated_skill_dirs(target_dir: Path, *, skills_dir: Path | None = None) -> tuple[str, ...]:
-    """Return generated skill names, preferring live/manifest-tracked install surface."""
-    planned = _planned_installed_codex_skill_dirs(target_dir)
-    if planned:
-        return planned
+def _tracked_codex_generated_skill_dirs(
+    target_dir: Path,
+    *,
+    skills_dir: Path | None = None,
+    allow_packaged_source_fallback: bool = True,
+) -> tuple[str, ...]:
+    """Return generated skill names when ownership evidence is unambiguous."""
+    candidates: list[set[str]] = []
+
     live_managed = _load_live_managed_codex_skill_dirs(skills_dir)
     if live_managed:
-        return live_managed
+        candidates.append(set(live_managed))
+
     tracked_from_files = _load_manifest_tracked_codex_skill_dirs(target_dir)
     if tracked_from_files:
-        return tracked_from_files
+        candidates.append(set(tracked_from_files))
+
     tracked_from_manifest = _load_manifest_codex_generated_skill_dirs(target_dir)
     if tracked_from_manifest:
-        return tracked_from_manifest
-    return _planned_source_codex_skill_dirs()
+        candidates.append(set(tracked_from_manifest))
+
+    if candidates:
+        first = candidates[0]
+        if any(candidate != first for candidate in candidates[1:]):
+            return ()
+        return tuple(sorted(first))
+
+    planned = _planned_installed_codex_skill_dirs(target_dir)
+    if planned:
+        return tuple(sorted(planned))
+
+    if allow_packaged_source_fallback:
+        planned_source = _planned_source_codex_skill_dirs()
+        if planned_source:
+            return tuple(sorted(planned_source))
+
+    return ()
 
 
 def _load_manifest_install_scope(target_dir: Path) -> str | None:
@@ -1187,7 +1209,11 @@ class CodexAdapter(RuntimeAdapter):
             removed: list[str] = []
             counts: dict[str, int] = {"skills": 0, "agents": 0, "hooks": 0}
             managed_hooks = managed_hook_paths(target_dir)
-            tracked_skill_dirs = _tracked_codex_generated_skill_dirs(target_dir, skills_dir=skills_dir)
+            tracked_skill_dirs = _tracked_codex_generated_skill_dirs(
+                target_dir,
+                skills_dir=skills_dir,
+                allow_packaged_source_fallback=False,
+            )
 
             # 1. Remove generated GPD skill directories tracked in the manifest,
             # or inferred from installed command sources when metadata drifted.

@@ -80,13 +80,14 @@ gpd phase list
 
 ## 2. Read All Phase Verifications
 
-For each phase directory, read the canonical `*-VERIFICATION.md` artifact:
+Use the canonical phase helpers instead of raw phase-path globbing:
 
 ```bash
-cat GPD/phases/01-*/*-VERIFICATION.md
-cat GPD/phases/02-*/*-VERIFICATION.md
-# etc.
+gpd phase list
+gpd show-phase <phase-number>
 ```
+
+For each phase in the milestone, use `gpd show-phase <phase-number>` to surface the canonical `*-VERIFICATION.md` artifact and its verification status, then read the artifact itself only when you need blocker-level detail. Do not `find_files` `GPD/phases/*/*-VERIFICATION.md` by hand.
 
 From each `*-VERIFICATION.md`, extract:
 
@@ -192,15 +193,7 @@ If `project_contract_load_info.status` starts with `blocked` or `project_contrac
 **Check config or ask user:**
 
 ```bash
-REFEREE_ENABLED=$(python3 -c "
-import json, pathlib
-try:
-    c = json.loads(pathlib.Path('GPD/config.json').read_text())
-    v = c.get('referee_review')
-    print('unset' if v is None else str(v).lower())
-except Exception:
-    print('unset')
-")
+REFEREE_ENABLED=$(gpd --raw config get referee_review 2>/dev/null | gpd json get .value --default unset 2>/dev/null || echo "unset")
 ```
 
 - If `true`: proceed with referee review

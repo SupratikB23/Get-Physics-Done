@@ -1003,12 +1003,12 @@ def test_discuss_and_plan_workflows_resolve_roadmap_only_phases() -> None:
     plan_text = (WORKFLOWS_DIR / "plan-phase.md").read_text(encoding="utf-8")
 
     assert "Phase [X] not found in roadmap." not in discuss_text
-    assert 'ROADMAP_INFO=$(gpd roadmap get-phase "${PHASE}")' in discuss_text
+    assert 'ROADMAP_INFO=$(gpd --raw roadmap get-phase "${PHASE}")' in discuss_text
     assert 'phase_slug=$(gpd slug "$phase_name")' in discuss_text
     assert "Continue to check_existing using the roadmap-derived phase metadata." in discuss_text
     assert 'REQUESTED_PHASE="${PHASE}"' in plan_text
     assert 'PHASE=$(echo "$INIT" | gpd json get .phase_number --default "${REQUESTED_PHASE}")' in plan_text
-    assert 'PHASE_INFO=$(gpd roadmap get-phase "${PHASE}")' in plan_text
+    assert 'PHASE_INFO=$(gpd --raw roadmap get-phase "${PHASE}")' in plan_text
     assert 'PHASE_SLUG=$(gpd slug "$PHASE_NAME")' in plan_text
     assert "Use these resolved values for all later references to `PHASE_DIR`, `PHASE_SLUG`, and `PADDED_PHASE`." in plan_text
 
@@ -1176,7 +1176,7 @@ def test_file_producing_command_surfaces_use_canonical_spawn_contract() -> None:
     for content, agent_name, file_token in (
         (literature, "gpd-literature-reviewer", "GPD/literature/{slug}-REVIEW.md"),
         (debug, "gpd-debugger", "GPD/debug/{slug}.md"),
-        (research, "gpd-phase-researcher", "GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md"),
+        (research, "gpd-phase-researcher", "{phase_dir}/{phase_number}-RESEARCH.md"),
     ):
         assert f'read {{GPD_AGENTS_DIR}}/{agent_name}.md for your role and instructions' in content
         assert "readonly=false" in content
@@ -1213,6 +1213,99 @@ def test_audit_milestone_surfaces_contract_gate_and_milestone_review_namespace()
     assert "Project contract load info: {project_contract_load_info}" in audit
     assert "Project contract validation: {project_contract_validation}" in audit
     assert "Active references: {active_reference_context}" in audit
+
+
+def test_audit_milestone_uses_canonical_phase_helpers_instead_of_raw_glob_discovery() -> None:
+    audit = (WORKFLOWS_DIR / "audit-milestone.md").read_text(encoding="utf-8")
+
+    assert "gpd phase list" in audit
+    assert "gpd show-phase <phase-number>" in audit
+    assert "`find_files` `GPD/phases/*/*-VERIFICATION.md` by hand" in audit
+    assert "cat GPD/phases/01-*/*-VERIFICATION.md" not in audit
+    assert "cat GPD/phases/02-*/*-VERIFICATION.md" not in audit
+
+
+def test_discover_command_does_not_emit_phase_only_commit_placeholders_for_standalone_mode() -> None:
+    discover = (COMMANDS_DIR / "discover.md").read_text(encoding="utf-8")
+
+    assert "Do not commit `RESEARCH.md` separately." in discover
+    assert "phase-only commit messages or file paths" in discover
+    assert 'gpd commit "discover(${phase_number})' not in discover
+    assert 'GPD/phases/${padded_phase}-${phase_slug}/RESEARCH.md' not in discover
+
+
+def test_workflows_use_raw_json_when_shell_snippets_pipe_cli_output_into_gpd_json_get() -> None:
+    research_workflow = (WORKFLOWS_DIR / "research-phase.md").read_text(encoding="utf-8")
+    research_command = (COMMANDS_DIR / "research-phase.md").read_text(encoding="utf-8")
+    progress_workflow = (WORKFLOWS_DIR / "progress.md").read_text(encoding="utf-8")
+    progress_command = (COMMANDS_DIR / "progress.md").read_text(encoding="utf-8")
+    gaps_workflow = (WORKFLOWS_DIR / "plan-milestone-gaps.md").read_text(encoding="utf-8")
+    execute_workflow = (WORKFLOWS_DIR / "execute-phase.md").read_text(encoding="utf-8")
+    milestone_workflow = (WORKFLOWS_DIR / "complete-milestone.md").read_text(encoding="utf-8")
+    graph_workflow = (WORKFLOWS_DIR / "graph.md").read_text(encoding="utf-8")
+    validate_conventions = (WORKFLOWS_DIR / "validate-conventions.md").read_text(encoding="utf-8")
+    transition_workflow = (WORKFLOWS_DIR / "transition.md").read_text(encoding="utf-8")
+    export_workflow = (WORKFLOWS_DIR / "export.md").read_text(encoding="utf-8")
+    show_phase = (WORKFLOWS_DIR / "show-phase.md").read_text(encoding="utf-8")
+    verify_phase = (WORKFLOWS_DIR / "verify-phase.md").read_text(encoding="utf-8")
+    verify_work = (WORKFLOWS_DIR / "verify-work.md").read_text(encoding="utf-8")
+
+    assert 'PHASE_INFO=$(gpd --raw roadmap get-phase "${phase_number}")' in research_workflow
+    assert 'gpd --raw state snapshot | gpd json get .decisions --default "[]"' in research_workflow
+    assert 'PHASE_INFO=$(gpd --raw roadmap get-phase "${phase_number}")' in research_command
+    assert 'gpd --raw state snapshot | gpd json get .decisions --default "[]"' in research_command
+    assert 'ROADMAP=$(gpd --raw roadmap analyze)' in progress_workflow
+    assert 'ROADMAP=$(gpd --raw roadmap analyze)' in progress_command
+    assert 'gpd --raw summary-extract <path> --field one_liner | gpd json get .one_liner --default ""' in progress_workflow
+    assert 'PHASES=$(gpd --raw phase list)' in gaps_workflow
+    assert 'PHASE_GOAL=$(gpd --raw roadmap get-phase "${phase_number}" | gpd json get .goal --default "")' in execute_workflow
+    assert 'gpd --raw summary-extract "$summary" --field one_liner | gpd json get .one_liner --default ""' in execute_workflow
+    assert 'ROADMAP=$(gpd --raw roadmap analyze)' in milestone_workflow
+    assert 'gpd --raw summary-extract "$summary" --field one_liner | gpd json get .one_liner --default ""' in milestone_workflow
+    assert 'ROADMAP=$(gpd --raw roadmap analyze)' in graph_workflow
+    assert 'ROADMAP=$(gpd --raw roadmap analyze)' in validate_conventions
+    assert transition_workflow.count('ROADMAP=$(gpd --raw roadmap analyze)') == 2
+    assert 'ROADMAP=$(gpd --raw roadmap analyze)' in export_workflow
+    assert 'PHASE_INFO=$(gpd --raw roadmap get-phase "${phase_number}")' in show_phase
+    assert 'ROADMAP=$(gpd --raw roadmap analyze)' in show_phase
+    assert 'gpd --raw roadmap get-phase "${phase_number}"' in verify_phase
+    assert 'gpd --raw roadmap get-phase "${phase_number}"' in verify_work
+
+
+def test_research_phase_uses_resolved_phase_dir_for_artifact_paths_and_context_lookups() -> None:
+    research_workflow = (WORKFLOWS_DIR / "research-phase.md").read_text(encoding="utf-8")
+    research_command = (COMMANDS_DIR / "research-phase.md").read_text(encoding="utf-8")
+
+    assert 'INIT=$(gpd init phase-op --include state,config "$ARGUMENTS")' in research_command
+    assert 'ls "${phase_dir}/"*-RESEARCH.md 2>/dev/null' in research_command
+    assert 'cat "${phase_dir}/"*-CONTEXT.md 2>/dev/null' in research_command
+    assert "Write to: {phase_dir}/{phase_number}-RESEARCH.md" in research_workflow
+    assert "Write to: {phase_dir}/{phase_number}-RESEARCH.md" in research_command
+    assert "Research file path: {phase_dir}/{phase_number}-RESEARCH.md" in research_command
+    assert "GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md" not in research_workflow
+    assert "GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md" not in research_command
+
+
+def test_audit_milestone_command_does_not_preload_raw_verification_globs() -> None:
+    audit_command = (COMMANDS_DIR / "audit-milestone.md").read_text(encoding="utf-8")
+
+    assert "find_files: GPD/phases/*/*SUMMARY.md" in audit_command
+    assert "gpd phase list" in audit_command
+    assert "gpd show-phase <phase-number>" in audit_command
+    assert "find_files: GPD/phases/*/*-VERIFICATION.md" not in audit_command
+
+
+def test_sensitivity_analysis_workflow_uses_canonical_cli_commands() -> None:
+    workflow = (WORKFLOWS_DIR / "sensitivity-analysis.md").read_text(encoding="utf-8")
+
+    assert "gpd init progress --include state,config" in workflow
+    assert "gpd init phase-op" in workflow
+    assert "gpd uncertainty add" in workflow
+    assert "gpd commit" in workflow
+    assert "gpd CLI init progress" not in workflow
+    assert "gpd CLI init phase-op" not in workflow
+    assert "gpd CLI uncertainty add" not in workflow
+    assert "gpd CLI commit" not in workflow
 
 
 def test_phase_research_and_verification_surfaces_keep_anchor_checks_mandatory() -> None:
@@ -1881,6 +1974,7 @@ def test_publication_prompts_surface_strict_semantic_manuscript_gates() -> None:
     write_paper = (COMMANDS_DIR / "write-paper.md").read_text(encoding="utf-8")
     peer_review = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
     arxiv = (COMMANDS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
+    respond = (COMMANDS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
     peer_review_workflow = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
     write_paper_workflow = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
     arxiv_workflow = (WORKFLOWS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
@@ -1889,6 +1983,43 @@ def test_publication_prompts_surface_strict_semantic_manuscript_gates() -> None:
         assert "reproducibility_ready" in content
     for content in (write_paper, peer_review, arxiv, peer_review_workflow, write_paper_workflow, arxiv_workflow):
         assert "bibliography_audit_clean" in content
+    for content in (peer_review, write_paper, arxiv, respond):
+        assert "templates/paper/review-ledger-schema.md" in content
+        assert "templates/paper/referee-decision-schema.md" in content
+        assert "references/publication/peer-review-reliability.md" in content
+    assert "references/publication/peer-review-panel.md" in peer_review
+    assert "references/publication/peer-review-panel.md" in write_paper
+    assert "Do not invent fields, relax round-suffix alignment, or accept blank `manuscript_path` placeholders." in peer_review
+    assert "schema-governed artifacts" in respond
+    assert "Do not invent fallback review heuristics, blank `manuscript_path` placeholders" in arxiv
+    assert "use the loaded review-ledger/referee-decision schemas" in respond
+    assert "use the loaded review-ledger/referee-decision schemas plus `peer-review-panel.md` / `peer-review-reliability.md`" in write_paper
+
+
+def test_publication_command_contexts_surface_schema_docs_before_generation() -> None:
+    write_paper = (COMMANDS_DIR / "write-paper.md").read_text(encoding="utf-8")
+    peer_review = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
+    arxiv = (COMMANDS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
+    respond = (COMMANDS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
+
+    for content in (write_paper, peer_review, arxiv):
+        assert "templates/paper/paper-config-schema.md" in content
+        assert "templates/paper/artifact-manifest-schema.md" in content
+        assert "templates/paper/bibliography-audit-schema.md" in content
+    assert "templates/paper/reproducibility-manifest.md" in peer_review
+    assert "templates/paper/review-ledger-schema.md" in write_paper
+    assert "templates/paper/referee-decision-schema.md" in write_paper
+    assert "templates/paper/review-ledger-schema.md" in peer_review
+    assert "templates/paper/referee-decision-schema.md" in peer_review
+    assert "templates/paper/bibliography-audit-schema.md" in respond
+    assert "Do not invent hidden fields" in write_paper
+    assert "Do not invent hidden fields" in peer_review
+    assert "Do not invent hidden fields" in respond
+    assert "Do not invent hidden fields" in arxiv
+    assert "placeholder `manuscript_path` fallbacks" in write_paper
+    assert "placeholder `manuscript_path` fallbacks" in peer_review
+    assert "placeholder `manuscript_path` fallbacks" in respond
+    assert "blank `manuscript_path` placeholders" in arxiv
 
 
 def test_research_verification_body_scaffold_keeps_body_only_subject_labels_distinct() -> None:
@@ -1940,22 +2071,45 @@ def test_skill_surface_exposes_contract_references_for_paper_and_review_workflow
 
     write_paper = get_skill("gpd-write-paper")
     peer_review = get_skill("gpd-peer-review")
+    arxiv_submission = get_skill("gpd-arxiv-submission")
+    respond_to_referees = get_skill("gpd-respond-to-referees")
     write_paper_schema_documents = {Path(entry["path"]).name: entry for entry in write_paper["schema_documents"]}
     peer_review_contract_documents = {Path(entry["path"]).name: entry for entry in peer_review["contract_documents"]}
+    arxiv_contract_documents = {Path(entry["path"]).name: entry for entry in arxiv_submission["contract_documents"]}
+    respond_contract_documents = {Path(entry["path"]).name: entry for entry in respond_to_referees["contract_documents"]}
 
     assert "error" not in write_paper
     assert "error" not in peer_review
+    assert "error" not in arxiv_submission
+    assert "error" not in respond_to_referees
     assert any(path.endswith("paper-config-schema.md") for path in write_paper["schema_references"])
     assert any(path.endswith("artifact-manifest-schema.md") for path in write_paper["schema_references"])
     assert any(path.endswith("bibliography-audit-schema.md") for path in write_paper["schema_references"])
+    assert any(path.endswith("review-ledger-schema.md") for path in write_paper["schema_references"])
+    assert any(path.endswith("referee-decision-schema.md") for path in write_paper["schema_references"])
+    assert any(path.endswith("paper-config-schema.md") for path in peer_review["schema_references"])
+    assert any(path.endswith("artifact-manifest-schema.md") for path in peer_review["schema_references"])
+    assert any(path.endswith("bibliography-audit-schema.md") for path in peer_review["schema_references"])
+    assert any(path.endswith("reproducibility-manifest.md") for path in peer_review["schema_references"])
+    assert any(path.endswith("paper-config-schema.md") for path in arxiv_submission["schema_references"])
+    assert any(path.endswith("bibliography-audit-schema.md") for path in arxiv_submission["schema_references"])
+    assert any(path.endswith("bibliography-audit-schema.md") for path in respond_to_referees["schema_references"])
     assert any(path.endswith("reproducibility-manifest.md") for path in write_paper["contract_references"])
     assert any(path.endswith("peer-review-panel.md") for path in write_paper["contract_references"])
     assert any(path.endswith("peer-review-panel.md") for path in peer_review["contract_references"])
+    assert any(path.endswith("review-ledger-schema.md") for path in arxiv_submission["schema_references"])
+    assert any(path.endswith("referee-decision-schema.md") for path in arxiv_submission["schema_references"])
+    assert any(path.endswith("artifact-manifest-schema.md") for path in arxiv_submission["schema_references"])
+    assert any(path.endswith("bibliography-audit-schema.md") for path in arxiv_submission["schema_references"])
+    assert any(path.endswith("review-ledger-schema.md") for path in respond_to_referees["schema_references"])
+    assert any(path.endswith("referee-decision-schema.md") for path in respond_to_referees["schema_references"])
     assert "Paper Config Schema" in write_paper_schema_documents["paper-config-schema.md"]["body"]
     assert "Artifact Manifest Schema" in write_paper_schema_documents["artifact-manifest-schema.md"]["body"]
     assert "Bibliography Audit Schema" in write_paper_schema_documents["bibliography-audit-schema.md"]["body"]
     assert "Reproducibility Manifest Template" in write_paper_schema_documents["reproducibility-manifest.md"]["body"]
     assert "Peer Review Panel Protocol" in peer_review_contract_documents["peer-review-panel.md"]["body"]
+    assert "Peer Review Phase Reliability" in arxiv_contract_documents["peer-review-reliability.md"]["body"]
+    assert "Peer Review Phase Reliability" in respond_contract_documents["peer-review-reliability.md"]["body"]
     assert "schema_documents and contract_documents already include" in write_paper["loading_hint"]
 
 
@@ -2260,7 +2414,7 @@ def test_execute_phase_and_related_agents_surface_only_plan_scoped_verification_
     assert '"$phase_dir"/VERIFICATION.md "$phase_dir"/*-VERIFICATION.md' not in execute_phase
     assert 'ls "$phase_dir"/*-VERIFICATION.md 2>/dev/null' in planner
     assert 'find_files("$PHASE_DIR/*-VERIFICATION.md")' in verifier
-    assert 'cat GPD/phases/01-*/*-VERIFICATION.md' in audit_milestone
+    assert "`find_files` `GPD/phases/*/*-VERIFICATION.md` by hand" in audit_milestone
     assert 'GPD/phases/01-*/VERIFICATION.md' not in audit_milestone
 
 

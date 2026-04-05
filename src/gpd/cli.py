@@ -413,7 +413,7 @@ def _supported_runtime_names() -> list[str]:
 
     try:
         return list_runtimes()
-    except Exception:
+    except RuntimeError:
         return []
 
 
@@ -850,6 +850,49 @@ def state_snapshot() -> None:
     _output(state_snapshot(_state_command_cwd()))
 
 
+@state_app.command("active-hypothesis")
+def state_active_hypothesis() -> None:
+    """Extract the active hypothesis branch note from STATE.md, if present."""
+    from gpd.core.state import state_get
+
+    result = state_get(_state_command_cwd(), "Active Hypothesis")
+    section = result.value or ""
+    if result.error or not section.strip():
+        _output(
+            {
+                "found": False,
+                "branch": None,
+                "branch_slug": None,
+                "section": None,
+                "error": result.error or "Active Hypothesis section not found",
+            }
+        )
+        return
+
+    branch_match = re.search(r"^\*\*Branch:\*\*\s*(?:hypothesis/)?([^\s]+)", section, re.IGNORECASE | re.MULTILINE)
+    if not branch_match:
+        _output(
+            {
+                "found": False,
+                "branch": None,
+                "branch_slug": None,
+                "section": section,
+                "error": "Active Hypothesis section is missing a hypothesis branch",
+            }
+        )
+        return
+
+    branch_slug = branch_match.group(1).strip()
+    _output(
+        {
+            "found": True,
+            "branch": f"hypothesis/{branch_slug}",
+            "branch_slug": branch_slug,
+            "section": section,
+        }
+    )
+
+
 @state_app.command("validate")
 def state_validate() -> None:
     """Validate state consistency and schema compliance."""
@@ -1033,6 +1076,16 @@ def phase_next_decimal(
     _output(next_decimal_phase(_get_cwd(), base_phase))
 
 
+@phase_app.command("normalize")
+def phase_normalize_cmd(
+    phase_num: str = typer.Argument(..., help="Phase number to normalize"),
+) -> None:
+    """Normalize a phase number to canonical zero-padded form."""
+    from gpd.core.utils import phase_normalize
+
+    _output(phase_normalize(phase_num))
+
+
 @phase_app.command("validate-waves")
 def phase_validate_waves(
     phase_num: str = typer.Argument(..., help="Phase number to validate"),
@@ -1208,17 +1261,6 @@ def _project_root_source_label(source: object, *, auto_selected: bool = False) -
             return f"auto-selected recent project (unique recoverable match from the {label})"
         return f"recent project selected explicitly from the {label}"
     return label
-
-
-def _resume_candidate_source_label(source: object) -> str:
-    """Map internal resume candidate sources to canonical user-facing labels."""
-    labels = {
-        "current_execution": "Bounded segment",
-        "session_resume_file": "Continuity handoff",
-        "interrupted_agent": "Interrupted agent",
-    }
-    source_text = str(source).strip() if source is not None else ""
-    return labels.get(source_text, source_text or "Unknown")
 
 
 def _resume_candidate_canonical_kind(candidate: dict[str, object]) -> str:
@@ -5414,7 +5456,7 @@ def _has_any_phase_summary(phases_dir: Path) -> bool:
 
 def _validate_phase_artifacts(phases_dir: Path, schema_name: str) -> list[str]:
     """Return per-file frontmatter validation failures for phase artifacts."""
-    from gpd.core.frontmatter import validate_frontmatter
+    from gpd.core.frontmatter import FrontmatterParseError, FrontmatterValidationError, validate_frontmatter
 
     if not phases_dir.exists():
         return []
@@ -5425,7 +5467,7 @@ def _validate_phase_artifacts(phases_dir: Path, schema_name: str) -> list[str]:
         try:
             content = path.read_text(encoding="utf-8")
             validation = validate_frontmatter(content, schema_name, source_path=path)
-        except Exception as exc:  # pragma: no cover - defensive file parsing guard
+        except (OSError, UnicodeDecodeError, FrontmatterParseError, FrontmatterValidationError) as exc:
             failures.append(f"{_format_display_path(path)}: could not validate frontmatter ({exc})")
             continue
         if validation.valid:
@@ -6053,18 +6095,6 @@ def _runtime_surface_dispatch_note(*, cwd: Path | None = None) -> str:
         f"This preflight validates {surface_text} from the command registry. "
         "It does not guarantee a same-name local `gpd` subcommand exists."
     )
-
-
-def _unique_preserving_order(values: list[str]) -> list[str]:
-    """Return unique strings from *values* without reordering first appearances."""
-    seen: set[str] = set()
-    unique: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        unique.append(value)
-    return unique
 
 
 def _canonical_command_name(command_name: str) -> str:
@@ -6905,13 +6935,6 @@ def _build_review_preflight(
                         persist_manifest=True,
                     )
                     theorem_bearing_review_required = _requires_theorem_bearing_manuscript_review(project_cwd, manuscript)
-                    manuscript_proof_review_blocking_states = {
-                        "stale",
-                        "invalid_manifest",
-                        "missing_required_artifact",
-                        "invalid_required_artifact",
-                        "open_required_artifact",
-                    }
                     manuscript_proof_review_passed = (
                         manuscript_proof_review.can_rely_on_prior_review
                         or manuscript_proof_review.state == "not_reviewed"
@@ -6929,16 +6952,14 @@ def _build_review_preflight(
                                 "or staged math review; manuscript proof review is not required for submission"
                             )
                     elif _command_allows_manuscript_bootstrap(command):
+                        manuscript_proof_review_passed = manuscript_proof_review.can_rely_on_prior_review
+                        manuscript_proof_review_blocking = False
                         if theorem_bearing_review_required:
-                            manuscript_proof_review_passed = manuscript_proof_review.can_rely_on_prior_review
-                            manuscript_proof_review_blocking = False
                             if not manuscript_proof_review_passed:
                                 manuscript_proof_review_detail = (
                                     manuscript_proof_review.detail
                                     + "; write-paper will run its own staged proof-review loop"
                                 )
-                        elif manuscript_proof_review.state in manuscript_proof_review_blocking_states:
-                            manuscript_proof_review_blocking = True
                     add_check(
                         "manuscript_proof_review",
                         manuscript_proof_review_passed,
@@ -6959,7 +6980,7 @@ def _build_review_preflight(
                     try:
                         repro_payload = json.loads(reproducibility_manifest.read_text(encoding="utf-8"))
                         repro_validation = validate_reproducibility_manifest(repro_payload)
-                    except Exception as exc:  # pragma: no cover - defensive parsing guard
+                    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                         add_check("reproducibility_ready", False, f"could not validate reproducibility manifest: {exc}")
                     else:
                         ready = (

@@ -41,7 +41,7 @@ STATE_PHASE=$(echo "$PROGRESS_JSON" | gpd json get .current_phase.number --defau
 STATE_PLAN=$(echo "$PROGRESS_JSON" | gpd json get .current_execution.plan --default "")
 
 # Count actual disk state from the canonical roadmap inventory
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 echo "$ROADMAP" | gpd json get .phases --default "[]"
 ```
 
@@ -124,7 +124,7 @@ fi
 **Get comprehensive roadmap analysis (replaces manual parsing):**
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 ```
 
 This returns structured JSON with:
@@ -144,7 +144,7 @@ Use this instead of manually reading/parsing ROADMAP.md.
 - Find the 2-3 most recent summary artifacts (`SUMMARY.md` and `*-SUMMARY.md`)
 - Use `summary-extract` for efficient parsing:
   ```bash
-  gpd summary-extract <path> --field one_liner
+  gpd --raw summary-extract <path> --field one_liner | gpd json get .one_liner --default ""
   ```
 - This shows "what we've been working on"
   </step>

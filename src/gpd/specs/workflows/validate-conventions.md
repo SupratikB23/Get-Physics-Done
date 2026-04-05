@@ -100,7 +100,7 @@ update the lock: gpd convention set {field} "{value}"
 **Scan all completed phases for convention declarations:**
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 ```
 
 For each phase with `disk_status: "complete"` or `disk_status: "partial"`:

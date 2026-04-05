@@ -245,11 +245,17 @@ def _runtime_command(action: str, *, cwd: Path) -> str | None:
         from gpd.adapters import get_adapter
         from gpd.hooks.runtime_detect import (
             RUNTIME_UNKNOWN,
-            detect_local_runtime_with_gpd_install,
+            detect_runtime_for_gpd_use,
+            detect_runtime_install_target,
         )
 
-        runtime_name = detect_local_runtime_with_gpd_install(cwd=cwd)
-        if not isinstance(runtime_name, str) or not runtime_name.strip() or runtime_name == RUNTIME_UNKNOWN:
+        runtime_name = detect_runtime_for_gpd_use(cwd=cwd)
+        if (
+            not isinstance(runtime_name, str)
+            or not runtime_name.strip()
+            or runtime_name == RUNTIME_UNKNOWN
+            or detect_runtime_install_target(runtime_name, cwd=cwd) is None
+        ):
             return None
         return str(get_adapter(runtime_name).format_command(action)).strip()
     except Exception:

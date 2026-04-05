@@ -40,7 +40,11 @@ Version: $ARGUMENTS (optional — defaults to current milestone)
 
 **Completed Work:**
 find_files: GPD/phases/*/*SUMMARY.md
-find_files: GPD/phases/*/*-VERIFICATION.md
+
+Use canonical phase helpers for verification artifacts:
+- `gpd phase list`
+- `gpd show-phase <phase-number>`
+- Do not preload raw `*-VERIFICATION.md` globs here.
 </context>
 
 <inline_guidance>

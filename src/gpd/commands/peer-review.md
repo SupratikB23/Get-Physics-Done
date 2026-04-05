@@ -91,6 +91,14 @@ Peer review is not the same as verification. Verification asks whether a derivat
 
 <execution_context>
 @{GPD_INSTALL_DIR}/workflows/peer-review.md
+@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md
+@{GPD_INSTALL_DIR}/references/publication/peer-review-reliability.md
+@{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/artifact-manifest-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/bibliography-audit-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/reproducibility-manifest.md
+@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md
 </execution_context>
 
 <context>
@@ -125,6 +133,8 @@ fi
 
 The workflow forwards the resolved `$ARGUMENTS` manuscript target into review preflight and keeps manuscript-root-relative support artifacts anchored to that same explicit root instead of falling back to `paper/...`.
 In strict mode the preflight gate is semantic, not just file-presence based: the manuscript-root bibliography audit must clear `bibliography_audit_clean`, and the reproducibility manifest must clear `reproducibility_ready` before the staged panel proceeds.
+When Stage 6 writes `GPD/review/REVIEW-LEDGER{round_suffix}.json` and `GPD/review/REFEREE-DECISION{round_suffix}.json`, use the loaded `review-ledger-schema.md`, `referee-decision-schema.md`, and `peer-review-reliability.md` as the authoritative contract. Do not invent fields, relax round-suffix alignment, or accept blank `manuscript_path` placeholders.
+Do not invent hidden fields or placeholder `manuscript_path` fallbacks when repairing review-ledger or referee-decision artifacts.
 
 When announcing the panel to the user, say what each stage does in one concise sentence, for example:
 

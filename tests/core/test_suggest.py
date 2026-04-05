@@ -316,6 +316,32 @@ def test_no_project_with_runtime_dir_but_no_install_uses_plain_gpd_command(tmp_p
     assert result.top_action.command == "gpd init new-project"
 
 
+@pytest.mark.parametrize("include_local_conflict", [False, True])
+def test_no_project_uses_global_runtime_command_when_global_install_is_effective(
+    tmp_path: Path, include_local_conflict: bool
+) -> None:
+    """A verified global install should surface adapter-formatted commands even with local clutter present."""
+    runtime = _RUNTIME_NAMES[0]
+    adapter = get_adapter(runtime)
+    home_dir = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    seed_complete_runtime_install(
+        adapter.resolve_global_config_dir(home=home_dir),
+        runtime=runtime,
+        install_scope="global",
+        home=home_dir,
+    )
+    if include_local_conflict:
+        (workspace / adapter.local_config_dir_name).mkdir(parents=True, exist_ok=True)
+
+    result = suggest_next(workspace)
+
+    assert result.top_action is not None
+    assert result.top_action.command == adapter.format_command("new-project")
+    assert result.top_action.command != "gpd init new-project"
+
+
 # ─── Empty Project ─────────────────────────────────────────────────────────────
 
 

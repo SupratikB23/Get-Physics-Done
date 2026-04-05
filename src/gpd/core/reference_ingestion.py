@@ -432,14 +432,6 @@ def _normalize_multi_value(value: object) -> list[str]:
     return result
 
 
-def _first_non_empty(mapping: dict[str, str], *keys: str) -> str:
-    for key in keys:
-        value = _clean_text(mapping.get(key))
-        if value:
-            return value
-    return ""
-
-
 def _looks_like_path(value: str | None) -> bool:
     return bool(_extract_paths(value))
 

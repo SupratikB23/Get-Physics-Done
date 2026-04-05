@@ -32,6 +32,7 @@ from gpd.contracts import (
     VerificationEvidence,
     _collect_project_contract_list_member_errors,
     collect_contract_integrity_errors,
+    parse_project_contract_data_salvage,
     parse_project_contract_data_strict,
 )
 from gpd.core.constants import (
@@ -58,8 +59,8 @@ from gpd.core.contract_validation import (
     _collect_list_shape_drift_errors,
     _has_authoritative_scalar_schema_findings,
     _project_contract_schema_version_missing_error,
-    _split_project_contract_schema_findings,
     salvage_project_contract,
+    split_project_contract_schema_findings,
     validate_project_contract,
 )
 from gpd.core.conventions import KNOWN_CONVENTIONS, is_bogus_value
@@ -831,23 +832,26 @@ def _classify_project_contract_payload(
             warnings=list(dict.fromkeys([*list_shape_drift_errors, *list_member_errors])),
         )
     normalized_contract, schema_findings = salvage_project_contract(raw_contract)
-    schema_warnings, schema_errors = _split_project_contract_schema_findings(
+    schema_warnings, schema_errors = split_project_contract_schema_findings(
         schema_findings,
-        allow_singleton_defaults=False,
+        allow_singleton_defaults=True,
     )
     schema_warnings = list(dict.fromkeys([*schema_warnings, *list_shape_drift_errors, *list_member_errors]))
-    if schema_errors or normalized_contract is None:
+    blocking_schema_errors = list(schema_errors)
+    if normalized_contract is None and not blocking_schema_errors:
+        blocking_schema_errors = list(parse_project_contract_data_salvage(raw_contract).blocking_errors)
+    if blocking_schema_errors or normalized_contract is None:
         logger.warning(
             "Skipping project_contract from %s because blocking schema normalization would be required: %s",
             source_path,
-            "; ".join(schema_errors) if schema_errors else "validation failed",
+            "; ".join(blocking_schema_errors) if blocking_schema_errors else "validation failed",
         )
         return None, _project_contract_load_payload(
             status="blocked_schema",
             source_path=source_label,
             provenance=provenance,
             raw_project_contract_classified=provenance == "raw",
-            errors=schema_errors or ["blocking schema normalization would be required"],
+            errors=blocking_schema_errors or ["blocking schema normalization would be required"],
             warnings=schema_warnings,
         )
 
@@ -1980,6 +1984,7 @@ def _normalize_project_contract_section(
     integrity_issues: list[str],
     *,
     allow_project_contract_salvage: bool,
+    project_root: Path | None = None,
 ) -> object:
     if value is None or not isinstance(value, dict):
         return value
@@ -2015,7 +2020,7 @@ def _normalize_project_contract_section(
                 'schema normalization: dropped "project_contract" because authoritative scalar fields required normalization'
             )
             return None
-        _schema_warnings, schema_errors = _split_project_contract_schema_findings(
+        _schema_warnings, schema_errors = split_project_contract_schema_findings(
             combined_errors,
             allow_singleton_defaults=allow_project_contract_salvage,
         )
@@ -2024,7 +2029,7 @@ def _normalize_project_contract_section(
                 'schema normalization: dropped "project_contract" because contract schema required normalization'
             )
             return None
-    draft_validation = validate_project_contract(normalized_contract, mode="draft")
+    draft_validation = validate_project_contract(normalized_contract, mode="draft", project_root=project_root)
     if not draft_validation.valid:
         for error in draft_validation.errors:
             issue = f"project_contract: {error}"
@@ -2107,6 +2112,7 @@ def _salvage_state_sections(
             normalized.get("project_contract"),
             integrity_issues,
             allow_project_contract_salvage=allow_project_contract_salvage,
+            project_root=project_root,
         )
     if normalized.get("intermediate_results") is not None:
         normalized["intermediate_results"] = _normalize_intermediate_results_section(
@@ -3165,9 +3171,9 @@ def _restore_visible_project_contract(state_obj: dict, raw_project_contract: obj
         return state_obj
 
     normalized_contract, schema_findings = salvage_project_contract(raw_project_contract)
-    _schema_warnings, schema_errors = _split_project_contract_schema_findings(
+    _schema_warnings, schema_errors = split_project_contract_schema_findings(
         schema_findings,
-        allow_singleton_defaults=False,
+        allow_singleton_defaults=True,
     )
     if normalized_contract is None or schema_errors:
         return state_obj
@@ -3340,19 +3346,68 @@ def save_state_json_locked(cwd: Path, state_obj: dict) -> None:
     """
     _recover_intent_locked(cwd)
     normalized = _normalize_state_for_persistence(state_obj, project_root=cwd)
-    _write_state_pair_locked(cwd, state_obj=normalized, md_content=generate_state_markdown(normalized))
+    preserved_contract = _preserved_visible_project_contract_for_json_save(cwd, state_obj=state_obj)
+    _write_state_pair_locked(
+        cwd,
+        state_obj=normalized,
+        md_content=generate_state_markdown(normalized),
+        preserve_raw_project_contract=preserved_contract,
+    )
+
+
+def _preserved_visible_project_contract_for_json_save(cwd: Path, *, state_obj: dict) -> dict[str, object] | None:
+    """Preserve an already-persisted visible contract across routine JSON saves.
+
+    This guards the `load_state_json` -> mutate unrelated fields -> `save_state_json`
+    path from erasing a visible-but-non-authoritative contract. Fresh writes and
+    markdown-only resyncs still fail closed on malformed raw contract payloads.
+    """
+
+    candidate = state_obj.get("project_contract")
+    if not isinstance(candidate, dict):
+        return None
+
+    raw_contract = _raw_persisted_project_contract(cwd)
+    if not isinstance(raw_contract, dict):
+        return None
+
+    layout = ProjectLayout(cwd)
+    visible_contract, load_info = _classify_project_contract_payload(
+        cwd=cwd,
+        source_path=layout.state_json,
+        raw_contract=raw_contract,
+    )
+    if visible_contract is None:
+        return None
+
+    if load_info.get("status") not in {"blocked_integrity", "loaded_with_schema_normalization", "loaded_with_approval_blockers"}:
+        return None
+
+    candidate_contract, _candidate_schema_findings = salvage_project_contract(candidate)
+    if candidate_contract is None:
+        return None
+
+    # Compare semantic contract content instead of raw dict shape so callers
+    # that still hold the persisted raw payload (for example with omitted
+    # defaulted arrays/scalars) do not spuriously look "changed".
+    if candidate_contract.model_dump(mode="python") != visible_contract.model_dump(mode="python"):
+        return None
+
+    return copy.deepcopy(raw_contract)
 
 
 def _preserved_project_contract_for_markdown_save(cwd: Path) -> dict[str, object] | None:
-    """Return a strict canonical project contract to carry through a markdown save.
+    """Return a schema-strict raw project contract to carry through a markdown save.
 
-    Markdown-only saves should not salvage malformed project-contract payloads.
-    A readable primary ``state.json`` must already contain a strict-safe
-    contract to be preserved. The backup is consulted only when the primary
-    file is unavailable or unreadable.
+    Markdown-only saves should not salvage malformed project-contract payloads
+    or promote backup-only contract state when the primary file is readable.
+    Preserve only contracts that are already strict at the raw-schema layer so
+    visible blocked-integrity contracts remain durable without resurrecting
+    singleton/list drift or other schema-normalized payloads. The backup is
+    consulted only when the primary file is unavailable or unreadable.
     """
 
-    def _strict_contract_payload(raw_contract: object) -> dict[str, object] | None:
+    def _preservable_contract_payload(raw_contract: object) -> dict[str, object] | None:
         strict_result = parse_project_contract_data_strict(raw_contract)
         if strict_result.contract is None or strict_result.errors:
             return None
@@ -3372,7 +3427,7 @@ def _preserved_project_contract_for_markdown_save(cwd: Path) -> dict[str, object
             primary_unreadable = True
 
     if isinstance(existing, dict):
-        return _strict_contract_payload(existing.get("project_contract"))
+        return _preservable_contract_payload(existing.get("project_contract"))
 
     if not primary_unreadable:
         return None
@@ -3384,7 +3439,7 @@ def _preserved_project_contract_for_markdown_save(cwd: Path) -> dict[str, object
     if not isinstance(backup, dict):
         return None
 
-    return _strict_contract_payload(backup.get("project_contract"))
+    return _preservable_contract_payload(backup.get("project_contract"))
 
 
 def save_state_markdown_locked(cwd: Path, md_content: str) -> dict:
@@ -3394,10 +3449,12 @@ def save_state_markdown_locked(cwd: Path, md_content: str) -> dict:
     preserved_contract = None
     if merged.get("project_contract") is None:
         preserved_contract = _preserved_project_contract_for_markdown_save(cwd)
-    if preserved_contract is not None:
-        merged = copy.deepcopy(merged)
-        merged["project_contract"] = preserved_contract
-    return _write_state_pair_locked(cwd, state_obj=merged, md_content=md_content)
+    return _write_state_pair_locked(
+        cwd,
+        state_obj=merged,
+        md_content=md_content,
+        preserve_raw_project_contract=preserved_contract,
+    )
 
 
 @instrument_gpd_function("state.save")

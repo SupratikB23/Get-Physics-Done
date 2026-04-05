@@ -18,7 +18,7 @@ file_read:
 - `GPD/STATE.md` -- current position
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd roadmap analyze failed: $ROADMAP"
   # STOP — display the error to the user and do not proceed.

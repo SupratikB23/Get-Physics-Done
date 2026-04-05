@@ -54,6 +54,10 @@ Responding to referees is collaborative improvement: every comment, even an inco
 
 <execution_context>
 @{GPD_INSTALL_DIR}/workflows/respond-to-referees.md
+@{GPD_INSTALL_DIR}/references/publication/peer-review-reliability.md
+@{GPD_INSTALL_DIR}/templates/paper/bibliography-audit-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md
 </execution_context>
 
 <context>
@@ -80,6 +84,8 @@ Use centralized preflight to resolve the active manuscript only from the canonic
 <process>
 Execute the respond-to-referees workflow from @{GPD_INSTALL_DIR}/workflows/respond-to-referees.md end-to-end.
 If staged peer-review artifacts exist under `GPD/review/`, absorb them as structured decision context while keeping `GPD/REFEREE-REPORT{round_suffix}.md` as the canonical issue-ID source.
+Treat `GPD/review/REVIEW-LEDGER{round_suffix}.json` and `GPD/review/REFEREE-DECISION{round_suffix}.json` as schema-governed artifacts: use the loaded review-ledger/referee-decision schemas and peer-review reliability reference literally instead of inventing repair fields or accepting blank `manuscript_path` placeholders.
+Do not invent hidden fields or placeholder `manuscript_path` fallbacks when reconciling the response artifacts.
 Preserve all validation gates (report parsing, triage confirmation, compilation check, consistency verification, bounded revision loop).
 </process>
 

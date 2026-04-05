@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Literal
@@ -17,6 +18,19 @@ __all__ = [
     "ContractProofHypothesis",
     "ContractProofConclusionClause",
     "ContractProofAudit",
+    "CONTRACT_OBSERVABLE_KIND_VALUES",
+    "CONTRACT_CLAIM_KIND_VALUES",
+    "THEOREM_CLAIM_KIND_VALUES",
+    "CONTRACT_DELIVERABLE_KIND_VALUES",
+    "CONTRACT_ACCEPTANCE_TEST_KIND_VALUES",
+    "CONTRACT_ACCEPTANCE_AUTOMATION_VALUES",
+    "CONTRACT_REFERENCE_KIND_VALUES",
+    "CONTRACT_REFERENCE_ROLE_VALUES",
+    "CONTRACT_REFERENCE_ACTION_VALUES",
+    "CONTRACT_LINK_RELATION_VALUES",
+    "CONTRACT_CONTEXT_INTAKE_FIELD_NAMES",
+    "CONTRACT_APPROACH_POLICY_FIELD_NAMES",
+    "CONTRACT_UNCERTAINTY_MARKER_FIELD_NAMES",
     "PROOF_ACCEPTANCE_TEST_KINDS",
     "ContractEvidenceStatus",
     "ContractEvidenceEntry",
@@ -59,20 +73,111 @@ __all__ = [
 ]
 
 
-_THEOREM_STYLE_STATEMENT_HINTS: tuple[str, ...] = (
+_THEOREM_STYLE_STATEMENT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^\s*(?:prove|show)\s+that\b"),
+    re.compile(r"\bfor\s+all\b"),
+    re.compile(r"\bfor\s+every\b"),
+    re.compile(r"\b(?:there\s+)?exists\b"),
+    re.compile(r"\bexistence\b"),
+    re.compile(r"\bunique\b"),
+    re.compile(r"\buniqueness\b"),
+)
+
+CONTRACT_OBSERVABLE_KIND_VALUES: tuple[str, ...] = (
+    "scalar",
+    "curve",
+    "map",
+    "classification",
+    "proof_obligation",
+    "other",
+)
+CONTRACT_CLAIM_KIND_VALUES: tuple[str, ...] = (
     "theorem",
     "lemma",
     "corollary",
     "proposition",
-    "proof",
-    "prove",
-    "show that",
-    "for all",
-    "for every",
-    "exists",
+    "result",
+    "claim",
+    "other",
+)
+THEOREM_CLAIM_KIND_VALUES: tuple[str, ...] = ("theorem", "lemma", "corollary", "proposition", "claim")
+CONTRACT_DELIVERABLE_KIND_VALUES: tuple[str, ...] = (
+    "figure",
+    "table",
+    "dataset",
+    "data",
+    "derivation",
+    "code",
+    "note",
+    "report",
+    "other",
+)
+CONTRACT_ACCEPTANCE_TEST_KIND_VALUES: tuple[str, ...] = (
     "existence",
-    "unique",
-    "uniqueness",
+    "schema",
+    "benchmark",
+    "consistency",
+    "cross_method",
+    "limiting_case",
+    "symmetry",
+    "dimensional_analysis",
+    "convergence",
+    "oracle",
+    "proxy",
+    "reproducibility",
+    "proof_hypothesis_coverage",
+    "proof_parameter_coverage",
+    "proof_quantifier_domain",
+    "claim_to_proof_alignment",
+    "lemma_dependency_closure",
+    "counterexample_search",
+    "human_review",
+    "other",
+)
+CONTRACT_ACCEPTANCE_AUTOMATION_VALUES: tuple[str, ...] = ("automated", "hybrid", "human")
+CONTRACT_REFERENCE_KIND_VALUES: tuple[str, ...] = ("paper", "dataset", "prior_artifact", "spec", "user_anchor", "other")
+CONTRACT_REFERENCE_ROLE_VALUES: tuple[str, ...] = (
+    "definition",
+    "benchmark",
+    "method",
+    "must_consider",
+    "background",
+    "other",
+)
+CONTRACT_REFERENCE_ACTION_VALUES: tuple[str, ...] = ("read", "use", "compare", "cite", "avoid")
+CONTRACT_LINK_RELATION_VALUES: tuple[str, ...] = (
+    "supports",
+    "computes",
+    "visualizes",
+    "benchmarks",
+    "depends_on",
+    "evaluated_by",
+    "proves",
+    "uses_hypothesis",
+    "depends_on_lemma",
+    "other",
+)
+CONTRACT_CONTEXT_INTAKE_FIELD_NAMES: tuple[str, ...] = (
+    "must_read_refs",
+    "must_include_prior_outputs",
+    "user_asserted_anchors",
+    "known_good_baselines",
+    "context_gaps",
+    "crucial_inputs",
+)
+CONTRACT_APPROACH_POLICY_FIELD_NAMES: tuple[str, ...] = (
+    "formulations",
+    "allowed_estimator_families",
+    "forbidden_estimator_families",
+    "allowed_fit_families",
+    "forbidden_fit_families",
+    "stop_and_rethink_conditions",
+)
+CONTRACT_UNCERTAINTY_MARKER_FIELD_NAMES: tuple[str, ...] = (
+    "weakest_anchors",
+    "unvalidated_assumptions",
+    "competing_explanations",
+    "disconfirming_observations",
 )
 
 def _normalize_optional_str(value: object) -> object:
@@ -170,7 +275,7 @@ def statement_looks_theorem_like(statement: str | None) -> bool:
     normalized = " ".join(statement.lower().split())
     if not normalized:
         return False
-    return any(hint in normalized for hint in _THEOREM_STYLE_STATEMENT_HINTS)
+    return any(pattern.search(normalized) for pattern in _THEOREM_STYLE_STATEMENT_PATTERNS)
 
 
 PROJECT_CONTRACT_MAPPING_LIST_FIELDS: dict[str, tuple[str, ...]] = {
@@ -731,7 +836,6 @@ PROOF_ACCEPTANCE_TEST_KINDS: tuple[str, ...] = (
     "lemma_dependency_closure",
     "counterexample_search",
 )
-_THEOREM_CLAIM_KINDS: tuple[str, ...] = ("theorem", "lemma", "corollary", "proposition", "claim")
 
 
 class ContractEvidenceEntry(BaseModel):
@@ -780,7 +884,7 @@ class ContractReferenceUsage(BaseModel):
     @field_validator("completed_actions", "missing_actions", mode="before")
     @classmethod
     def _normalize_action_lists(cls, value: object) -> object:
-        return _normalize_literal_choice_list(value, ("read", "use", "compare", "cite", "avoid"))
+        return _normalize_literal_choice_list(value, CONTRACT_REFERENCE_ACTION_VALUES)
 
     @field_validator("status", mode="before")
     @classmethod
@@ -1100,10 +1204,7 @@ class ContractObservable(BaseModel):
     @field_validator("kind", mode="before")
     @classmethod
     def _normalize_kind(cls, value: object) -> object:
-        return _normalize_literal_choice(
-            _normalize_required_str(value),
-            ("scalar", "curve", "map", "classification", "proof_obligation", "other"),
-        )
+        return _normalize_literal_choice(_normalize_required_str(value), CONTRACT_OBSERVABLE_KIND_VALUES)
 
 
 class ContractClaim(BaseModel):
@@ -1145,10 +1246,7 @@ class ContractClaim(BaseModel):
     @field_validator("claim_kind", mode="before")
     @classmethod
     def _normalize_claim_kind(cls, value: object) -> object:
-        return _normalize_literal_choice(
-            _normalize_required_str(value),
-            ("theorem", "lemma", "corollary", "proposition", "result", "claim", "other"),
-        )
+        return _normalize_literal_choice(_normalize_required_str(value), CONTRACT_CLAIM_KIND_VALUES)
 
 
 class ContractDeliverable(BaseModel):
@@ -1170,10 +1268,7 @@ class ContractDeliverable(BaseModel):
     @field_validator("kind", mode="before")
     @classmethod
     def _normalize_kind(cls, value: object) -> object:
-        return _normalize_literal_choice(
-            _normalize_required_str(value),
-            ("figure", "table", "dataset", "data", "derivation", "code", "note", "report", "other"),
-        )
+        return _normalize_literal_choice(_normalize_required_str(value), CONTRACT_DELIVERABLE_KIND_VALUES)
 
     @field_validator("path", mode="before")
     @classmethod
@@ -1228,36 +1323,12 @@ class ContractAcceptanceTest(BaseModel):
     @field_validator("kind", mode="before")
     @classmethod
     def _normalize_kind(cls, value: object) -> object:
-        return _normalize_literal_choice(
-            _normalize_required_str(value),
-            (
-                "existence",
-                "schema",
-                "benchmark",
-                "consistency",
-                "cross_method",
-                "limiting_case",
-                "symmetry",
-                "dimensional_analysis",
-                "convergence",
-                "oracle",
-                "proxy",
-                "reproducibility",
-                "proof_hypothesis_coverage",
-                "proof_parameter_coverage",
-                "proof_quantifier_domain",
-                "claim_to_proof_alignment",
-                "lemma_dependency_closure",
-                "counterexample_search",
-                "human_review",
-                "other",
-            ),
-        )
+        return _normalize_literal_choice(_normalize_required_str(value), CONTRACT_ACCEPTANCE_TEST_KIND_VALUES)
 
     @field_validator("automation", mode="before")
     @classmethod
     def _normalize_automation(cls, value: object) -> object:
-        return _normalize_literal_choice(_normalize_required_str(value), ("automated", "hybrid", "human"))
+        return _normalize_literal_choice(_normalize_required_str(value), CONTRACT_ACCEPTANCE_AUTOMATION_VALUES)
 
     @field_validator("evidence_required", mode="before")
     @classmethod
@@ -1291,14 +1362,8 @@ class ContractReference(BaseModel):
     def _normalize_literal_fields(cls, value: object, info: ValidationInfo) -> object:
         normalized = _normalize_required_str(value)
         if info.field_name == "kind":
-            return _normalize_literal_choice(
-                normalized,
-                ("paper", "dataset", "prior_artifact", "spec", "user_anchor", "other"),
-            )
-        return _normalize_literal_choice(
-            normalized,
-            ("definition", "benchmark", "method", "must_consider", "background", "other"),
-        )
+            return _normalize_literal_choice(normalized, CONTRACT_REFERENCE_KIND_VALUES)
+        return _normalize_literal_choice(normalized, CONTRACT_REFERENCE_ROLE_VALUES)
 
     @field_validator("aliases", "applies_to", "carry_forward_to", mode="before")
     @classmethod
@@ -1308,7 +1373,7 @@ class ContractReference(BaseModel):
     @field_validator("required_actions", mode="before")
     @classmethod
     def _normalize_required_actions(cls, value: object) -> object:
-        return _normalize_literal_choice_list(value, ("read", "use", "compare", "cite", "avoid"))
+        return _normalize_literal_choice_list(value, CONTRACT_REFERENCE_ACTION_VALUES)
 
     @field_validator("must_surface", mode="before")
     @classmethod
@@ -1362,21 +1427,7 @@ class ContractLink(BaseModel):
     @field_validator("relation", mode="before")
     @classmethod
     def _normalize_relation(cls, value: object) -> object:
-        return _normalize_literal_choice(
-            _normalize_required_str(value),
-            (
-                "supports",
-                "computes",
-                "visualizes",
-                "benchmarks",
-                "depends_on",
-                "evaluated_by",
-                "proves",
-                "uses_hypothesis",
-                "depends_on_lemma",
-                "other",
-            ),
-        )
+        return _normalize_literal_choice(_normalize_required_str(value), CONTRACT_LINK_RELATION_VALUES)
 
     @field_validator("verified_by", mode="before")
     @classmethod
@@ -1446,7 +1497,7 @@ def _contract_ids_by_kind(contract: ResearchContract) -> dict[str, set[str]]:
 
 def claim_requires_proof_audit(claim: ContractClaim, observable_kind_by_id: dict[str, str]) -> bool:
     return (
-        claim.claim_kind in _THEOREM_CLAIM_KINDS
+        claim.claim_kind in THEOREM_CLAIM_KIND_VALUES
         or statement_looks_theorem_like(claim.statement)
         or bool(claim.parameters)
         or bool(claim.hypotheses)
@@ -1832,15 +1883,17 @@ def _parse_project_contract_data(
     list_shape_drift_errors = _collect_list_shape_drift_errors(data)
     if strict:
         from gpd.core.contract_validation import (
+            _collect_literal_case_drift_errors,
             _project_contract_schema_version_missing_error,
-            _split_project_contract_schema_findings,
+            split_project_contract_schema_findings,
         )
 
-        schema_warnings, schema_errors = _split_project_contract_schema_findings(
+        schema_warnings, schema_errors = split_project_contract_schema_findings(
             schema_findings,
             allow_singleton_defaults=False,
         )
         blocking_errors = [
+            *_collect_literal_case_drift_errors(data),
             *schema_errors,
             *schema_warnings,
             *list_shape_drift_errors,
@@ -1861,9 +1914,9 @@ def _parse_project_contract_data(
             return _project_contract_parse_result(blocking_errors=blocking_errors)
         return _project_contract_parse_result(contract=contract)
 
-    from gpd.core.contract_validation import _split_project_contract_schema_findings
+    from gpd.core.contract_validation import split_project_contract_schema_findings
 
-    schema_warnings, schema_errors = _split_project_contract_schema_findings(
+    schema_warnings, schema_errors = split_project_contract_schema_findings(
         schema_findings,
         allow_singleton_defaults=True,
     )

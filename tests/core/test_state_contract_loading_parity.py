@@ -476,6 +476,8 @@ def test_state_and_context_keep_salvaged_project_contract_visible_but_non_author
     raw_state = json.loads(layout.state_json.read_text(encoding="utf-8"))
     contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
     contract["context_intake"]["must_read_refs"] = "ref-benchmark"
+    contract["references"][0]["role"] = "Benchmark"
+    contract["references"][0]["required_actions"] = ["Read", "Compare", "Cite"]
     raw_state["project_contract"] = contract
     layout.state_json.write_text(json.dumps(raw_state, indent=2) + "\n", encoding="utf-8")
 
@@ -484,9 +486,17 @@ def test_state_and_context_keep_salvaged_project_contract_visible_but_non_author
 
     assert loaded.state["project_contract"] is not None
     assert loaded.state["project_contract"]["context_intake"]["must_read_refs"] == ["ref-benchmark"]
+    assert loaded.state["project_contract"]["references"][0]["role"] == "benchmark"
+    assert loaded.state["project_contract"]["references"][0]["required_actions"] == ["read", "compare", "cite"]
     assert ctx["project_contract"] is not None
     assert ctx["project_contract"]["context_intake"]["must_read_refs"] == ["ref-benchmark"]
+    assert ctx["project_contract"]["references"][0]["role"] == "benchmark"
+    assert ctx["project_contract"]["references"][0]["required_actions"] == ["read", "compare", "cite"]
     assert ctx["project_contract_load_info"]["status"] == "loaded_with_schema_normalization"
+    assert any(
+        "references.0.role must use exact canonical value: benchmark" in warning
+        for warning in ctx["project_contract_load_info"]["warnings"]
+    )
     assert loaded.project_contract_gate["status"] == "loaded_with_schema_normalization"
     assert loaded.project_contract_gate["visible"] is True
     assert loaded.project_contract_gate["load_blocked"] is False

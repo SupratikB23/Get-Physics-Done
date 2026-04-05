@@ -34,8 +34,8 @@ Exit.
 **Validate both phases exist and resolve directories:**
 
 ```bash
-SOURCE_INFO=$(gpd phase find "${SOURCE_PHASE}")
-TARGET_INFO=$(gpd phase find "${TARGET_PHASE}")
+SOURCE_INFO=$(gpd --raw phase find "${SOURCE_PHASE}")
+TARGET_INFO=$(gpd --raw phase find "${TARGET_PHASE}")
 ```
 
 **If either phase not found:** Error with available phases from roadmap.
@@ -45,8 +45,8 @@ Extract from find-phase: `source_dir` (`directory`), `source_name` (`phase_name`
 **Get goals from roadmap:**
 
 ```bash
-SOURCE_GOAL=$(gpd roadmap get-phase "${SOURCE_PHASE}" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('goal',''))")
-TARGET_GOAL=$(gpd roadmap get-phase "${TARGET_PHASE}" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('goal',''))")
+SOURCE_GOAL=$(gpd --raw roadmap get-phase "${SOURCE_PHASE}" | gpd json get .goal --default "")
+TARGET_GOAL=$(gpd --raw roadmap get-phase "${TARGET_PHASE}" | gpd json get .goal --default "")
 ```
 </step>
 
@@ -94,10 +94,10 @@ fi
 2. **Completion status check:**
 
    ```bash
-   ls "${SOURCE_DIR}"/*-SUMMARY.md 2>/dev/null | wc -l
-   ls "${SOURCE_DIR}"/*-PLAN.md 2>/dev/null | wc -l
-   ls "${TARGET_DIR}"/*-SUMMARY.md 2>/dev/null | wc -l
-   ls "${TARGET_DIR}"/*-PLAN.md 2>/dev/null | wc -l
+   SOURCE_SUMMARY_COUNT=$(gpd --raw phase list --type summaries --phase "${SOURCE_PHASE}" | gpd json get .count --default 0)
+   SOURCE_PLAN_COUNT=$(gpd --raw phase list --type plans --phase "${SOURCE_PHASE}" | gpd json get .count --default 0)
+   TARGET_SUMMARY_COUNT=$(gpd --raw phase list --type summaries --phase "${TARGET_PHASE}" | gpd json get .count --default 0)
+   TARGET_PLAN_COUNT=$(gpd --raw phase list --type plans --phase "${TARGET_PHASE}" | gpd json get .count --default 0)
    ```
 
    Report status of both phases (complete, partial, unstarted).

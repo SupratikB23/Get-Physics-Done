@@ -685,7 +685,7 @@ the same time, they are candidates for parallel execution.
 **1. Read the roadmap and collect completed phases:**
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 if [ $? -ne 0 ]; then echo "WARNING: roadmap analyze failed — parallel phase detection may be incomplete"; fi
 ```
 
@@ -908,7 +908,7 @@ The `next_phase` and `next_phase_name` fields give you the next phase details.
 If you need additional context, use:
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 ```
 
 This returns all phases with goals, disk status, and completion info.

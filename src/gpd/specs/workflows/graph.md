@@ -12,7 +12,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 **Load roadmap and phase inventory:**
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 ```
 
 Extract: phase list with names, goals, dependencies, and disk status.

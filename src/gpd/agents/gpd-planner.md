@@ -243,7 +243,7 @@ Phase 4: Compute NLO Cross Section (exploit — method validated in Phase 3)
 ### How to Read Research Mode
 
 ```bash
-RESEARCH_MODE=$(echo "$INIT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('research_mode','balanced'))")
+RESEARCH_MODE=$(echo "$INIT" | gpd json get .research_mode --default balanced)
 ```
 
 If not set in config.json, default to `balanced`.

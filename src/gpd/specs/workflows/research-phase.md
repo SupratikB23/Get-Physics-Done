@@ -38,7 +38,7 @@ RESEARCHER_MODEL=$(gpd resolve-model gpd-phase-researcher)
 ## Step 1: Validate Phase
 
 ```bash
-PHASE_INFO=$(gpd roadmap get-phase "${phase_number}")
+PHASE_INFO=$(gpd --raw roadmap get-phase "${phase_number}")
 ```
 
 If `found` is false: Error and exit. Extract `goal` and `section` from JSON.
@@ -59,7 +59,7 @@ echo "$PHASE_INFO" | gpd json get .section --default ""
 cat GPD/REQUIREMENTS.md 2>/dev/null
 cat "${phase_dir}/"*-CONTEXT.md 2>/dev/null
 # Decisions from gpd state snapshot (structured JSON)
-gpd state snapshot | gpd json get .decisions --default "[]"
+gpd --raw state snapshot | gpd json get .decisions --default "[]"
 ```
 
 ## Step 4: Spawn Researcher
@@ -120,7 +120,7 @@ Structure your research around these areas:
 </physics_research_directives>
 
 <output>
-Write to: GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md
+Write to: {phase_dir}/{phase_number}-RESEARCH.md
 </output>",
   subagent_type="gpd-phase-researcher",
   model="{researcher_model}",
@@ -135,9 +135,9 @@ Add this contract inside the spawned prompt when adapting it:
 write_scope:
   mode: scoped_write
   allowed_paths:
-    - GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md
+    - {phase_dir}/{phase_number}-RESEARCH.md
 expected_artifacts:
-  - GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md
+  - {phase_dir}/{phase_number}-RESEARCH.md
 shared_state_policy: return_only
 </spawn_contract>
 ```

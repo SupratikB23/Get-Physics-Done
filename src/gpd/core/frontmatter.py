@@ -20,6 +20,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from gpd.contracts import (
     PROOF_ACCEPTANCE_TEST_KINDS,
+    THEOREM_CLAIM_KIND_VALUES,
     ComparisonVerdict,
     ContractResults,
     ProjectContractParseResult,
@@ -342,7 +343,7 @@ _DECISIVE_ACCEPTANCE_TEST_COMPARISON_KINDS: dict[str, frozenset[str]] = {
     "benchmark": frozenset({"benchmark"}),
     "cross_method": frozenset({"cross_method"}),
 }
-_THEOREM_CLAIM_KINDS = frozenset({"theorem", "lemma", "corollary", "proposition", "claim"})
+_THEOREM_CLAIM_KINDS = frozenset(THEOREM_CLAIM_KIND_VALUES)
 # Plan contracts can omit collection fields that already have safe closed-vocabulary
 # defaults in the schema models; downstream validation should stabilize them rather
 # than reject otherwise valid model output for restating "other".

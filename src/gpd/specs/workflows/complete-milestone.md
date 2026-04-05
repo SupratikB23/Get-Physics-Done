@@ -40,7 +40,7 @@ When a research milestone completes:
 **Use `roadmap analyze` plus the on-disk phase inventory for the same readiness semantics as `gpd milestone complete`:**
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 ```
 
 `roadmap analyze` returns the roadmap-backed phase view. Compare that with the on-disk phase directories so the milestone gate sees the same roadmap-plus-disk union that `gpd milestone complete` uses. Use this to verify:
@@ -134,7 +134,7 @@ Extract one-liners from summary artifacts (`SUMMARY.md` and `*-SUMMARY.md`) usin
 ```bash
 # For each phase in milestone, extract one-liner
 for summary in GPD/phases/*/*SUMMARY.md; do
-  gpd summary-extract "$summary" --field one_liner | gpd json get .one_liner --default ""
+  gpd --raw summary-extract "$summary" --field one_liner | gpd json get .one_liner --default ""
 done
 ```
 

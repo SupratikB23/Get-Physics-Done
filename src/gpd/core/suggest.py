@@ -246,11 +246,12 @@ def _format_command(action: str, *, cwd: Path | None = None) -> str:
         from gpd.adapters import get_adapter
         from gpd.hooks.runtime_detect import (
             RUNTIME_UNKNOWN,
-            detect_local_runtime_with_gpd_install,
+            detect_runtime_for_gpd_use,
+            detect_runtime_install_target,
         )
 
-        runtime = detect_local_runtime_with_gpd_install(cwd=cwd)
-        if runtime == RUNTIME_UNKNOWN:
+        runtime = detect_runtime_for_gpd_use(cwd=cwd)
+        if runtime == RUNTIME_UNKNOWN or detect_runtime_install_target(runtime, cwd=cwd) is None:
             return _format_local_cli_command(action)
         return get_adapter(runtime).format_command(action)
     except Exception:

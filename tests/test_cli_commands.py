@@ -3352,6 +3352,25 @@ class TestReviewValidationCommands:
         assert checks["reproducibility_manifest"]["passed"] is True
         assert checks["reproducibility_ready"]["passed"] is False
 
+    def test_review_preflight_peer_review_strict_does_not_swallow_reproducibility_validator_bugs(
+        self,
+        gpd_project: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import gpd.core.reproducibility as reproducibility_module
+
+        def _raise_validator_bug(payload: object):
+            raise RuntimeError("validator bug")
+
+        monkeypatch.setattr(reproducibility_module, "validate_reproducibility_manifest", _raise_validator_bug)
+
+        with pytest.raises(RuntimeError, match="validator bug"):
+            runner.invoke(
+                app,
+                ["--raw", "validate", "review-preflight", "peer-review", "--strict"],
+                catch_exceptions=False,
+            )
+
     def test_review_preflight_arxiv_submission_strict_requires_artifact_audits(self, gpd_project: Path) -> None:
         paper_dir = gpd_project / "paper"
         (paper_dir / "ARTIFACT-MANIFEST.json").unlink()
@@ -5426,6 +5445,26 @@ def test_cli_import_survives_runtime_help_lookup_failure(monkeypatch: pytest.Mon
     try:
         reloaded = importlib.import_module("gpd.cli")
         assert reloaded._runtime_override_help() == "Runtime name override"
+    finally:
+        if original_cli is not None:
+            sys.modules["gpd.cli"] = original_cli
+            gpd_package.cli = original_cli
+
+
+def test_cli_runtime_help_lookup_does_not_swallow_programmer_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    import gpd as gpd_package
+    import gpd.adapters as adapters_module
+
+    def _raise_programmer_error() -> list[str]:
+        raise TypeError("catalog bug")
+
+    original_cli = sys.modules.get("gpd.cli")
+    monkeypatch.setattr(adapters_module, "list_runtimes", _raise_programmer_error)
+    sys.modules.pop("gpd.cli", None)
+
+    try:
+        with pytest.raises(TypeError, match="catalog bug"):
+            importlib.import_module("gpd.cli")
     finally:
         if original_cli is not None:
             sys.modules["gpd.cli"] = original_cli

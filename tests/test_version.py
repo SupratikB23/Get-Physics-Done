@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import importlib.metadata
 import importlib.util
 import json
@@ -8,6 +9,9 @@ import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+import gpd._python_compat as python_compat
 import gpd.version as gpd_version
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -93,3 +97,53 @@ def test_resolve_checkout_python_returns_none_when_no_checkout_exists(tmp_path: 
 
     with patch.object(gpd_version, "checkout_root", return_value=None):
         assert gpd_version.resolve_checkout_python(outside, fallback="/managed/python") is None
+
+
+def test_require_supported_python_rejects_older_interpreters() -> None:
+    with pytest.raises(RuntimeError, match=r"requires Python 3\.11\+; current interpreter is Python 3\.10"):
+        python_compat.require_supported_python(version_info=(3, 10, 14))
+
+
+def test_load_tomllib_surfaces_misconfigured_supported_interpreter(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_import_module = importlib.import_module
+
+    def _fake_import_module(name: str, package: str | None = None):
+        if name == "tomllib":
+            raise ModuleNotFoundError("No module named 'tomllib'")
+        return original_import_module(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", _fake_import_module)
+
+    with pytest.raises(RuntimeError, match=r"expected the Python 3\.11\+ standard-library `tomllib` module"):
+        python_compat.load_tomllib()
+
+
+def test_load_optional_module_returns_none_for_exactly_missing_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_import_module = importlib.import_module
+
+    def _fake_import_module(name: str, package: str | None = None):
+        if name == "gpd.mcp.managed_integrations":
+            exc = ModuleNotFoundError("No module named 'gpd.mcp.managed_integrations'")
+            exc.name = "gpd.mcp.managed_integrations"
+            raise exc
+        return original_import_module(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", _fake_import_module)
+
+    assert python_compat.load_optional_module("gpd.mcp.managed_integrations") is None
+
+
+def test_load_optional_module_reraises_nested_missing_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_import_module = importlib.import_module
+
+    def _fake_import_module(name: str, package: str | None = None):
+        if name == "gpd.mcp.managed_integrations":
+            exc = ModuleNotFoundError("No module named 'gpd.core.root_resolution'")
+            exc.name = "gpd.core.root_resolution"
+            raise exc
+        return original_import_module(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", _fake_import_module)
+
+    with pytest.raises(ModuleNotFoundError, match=r"No module named 'gpd\.core\.root_resolution'"):
+        python_compat.load_optional_module("gpd.mcp.managed_integrations")

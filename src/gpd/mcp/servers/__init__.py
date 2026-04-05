@@ -13,6 +13,7 @@ from pathlib import Path
 from pydantic import ConfigDict, create_model
 from pydantic import ValidationError as PydanticValidationError
 
+from gpd.contracts import _format_pydantic_validation_errors
 from gpd.core.frontmatter import FrontmatterParseError, extract_frontmatter
 
 MCP_SCHEMA_VERSION = 1
@@ -56,6 +57,8 @@ def stable_mcp_response(
 def stable_mcp_error(error: object) -> StableMCPEnvelope:
     """Return a stable MCP error envelope."""
 
+    if isinstance(error, PydanticValidationError):
+        error = "; ".join(_format_pydantic_validation_errors(error))
     return stable_mcp_response(error=error)
 
 

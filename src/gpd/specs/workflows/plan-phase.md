@@ -112,7 +112,7 @@ This is NOT the full discuss-phase flow — just the 2-3 most impactful question
 **If `phase_found` is false:** Validate phase exists in ROADMAP.md. If valid, resolve directory metadata from the roadmap before continuing:
 
 ```bash
-PHASE_INFO=$(gpd roadmap get-phase "${PHASE}")
+PHASE_INFO=$(gpd --raw roadmap get-phase "${PHASE}")
 if [ "$(echo "$PHASE_INFO" | gpd json get .found --default false)" != "true" ]; then
   echo "Error: Phase ${PHASE} not found in ROADMAP.md."
   exit 1
@@ -120,7 +120,7 @@ fi
 
 PHASE_NAME=$(echo "$PHASE_INFO" | gpd json get .phase_name --default "")
 PHASE_SLUG=$(gpd slug "$PHASE_NAME")
-PADDED_PHASE=$(printf '%s' "${PHASE}" | python3 -c "import sys; parts=sys.stdin.read().strip().split('.'); head=str(int(parts[0])).zfill(2); tail=[str(int(part)) for part in parts[1:] if part]; print('.'.join([head, *tail]))")
+PADDED_PHASE=$(gpd phase normalize "${PHASE}")
 PHASE="${PADDED_PHASE}"
 PHASE_DIR="GPD/phases/${PADDED_PHASE}-${PHASE_SLUG}"
 mkdir -p "${PHASE_DIR}"
@@ -133,7 +133,7 @@ Use these resolved values for all later references to `PHASE_DIR`, `PHASE_SLUG`,
 ## 3. Validate Phase
 
 ```bash
-PHASE_INFO=$(gpd roadmap get-phase "${PHASE}")
+PHASE_INFO=$(gpd --raw roadmap get-phase "${PHASE}")
 ```
 
 **If `found` is false:** Error with available phases. **If `found` is true:** Extract `phase_number`, `phase_name`, `goal` from JSON.
@@ -151,19 +151,20 @@ If `context_content` is not null, display: `Using phase context from: ${PHASE_DI
 Check if STATE.md contains an active hypothesis:
 
 ```bash
-HYPOTHESIS_SECTION=$(echo "$STATE_CONTENT" | grep -A5 "## Active Hypothesis")
+HYPOTHESIS_INFO=$(gpd --raw state active-hypothesis)
+if [ "$(echo "$HYPOTHESIS_INFO" | gpd json get .found --default false)" = "true" ]; then
+  HYPOTHESIS_SLUG=$(echo "$HYPOTHESIS_INFO" | gpd json get .branch_slug --default "")
+  HYPOTHESIS_FILE="GPD/hypotheses/${HYPOTHESIS_SLUG}/HYPOTHESIS.md"
+  HYPOTHESIS_CONTENT=$(cat "$HYPOTHESIS_FILE" 2>/dev/null)
+fi
 ```
 
 **If an active hypothesis exists:**
 
-1. Extract the hypothesis branch slug from STATE.md
+1. Extract the hypothesis branch slug from the helper output
 2. Read the HYPOTHESIS.md file:
 
-```bash
-HYPOTHESIS_SLUG=$(echo "$HYPOTHESIS_SECTION" | grep "Branch:" | sed 's/.*hypothesis\///')
-HYPOTHESIS_FILE="GPD/hypotheses/${HYPOTHESIS_SLUG}/HYPOTHESIS.md"
-HYPOTHESIS_CONTENT=$(cat "$HYPOTHESIS_FILE" 2>/dev/null)
-```
+See the shell snippet above.
 
 3. Display: `Active hypothesis detected: hypothesis/${HYPOTHESIS_SLUG}`
 4. The hypothesis description, motivation, expected outcome, and success criteria become a **primary constraint** for all downstream agents (researcher, planner, checker). Inject the hypothesis context into every agent prompt:
@@ -294,7 +295,7 @@ Display banner:
 > **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```bash
-PHASE_DESC=$(gpd roadmap get-phase "${PHASE}" | gpd json get .section --default "")
+PHASE_DESC=$(gpd --raw roadmap get-phase "${PHASE}" | gpd json get .section --default "")
 # Use requirements_content from INIT (already loaded via --include requirements)
 REQUIREMENTS=$(echo "$INIT" | gpd json get .requirements_content --default "" | grep -A100 "## Requirements" | head -50)
 STATE_SNAP=$(gpd state snapshot)

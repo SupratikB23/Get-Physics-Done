@@ -77,6 +77,12 @@ In strict mode that bibliography gate is semantic: `BIBLIOGRAPHY-AUDIT.json` mus
 
 <execution_context>
 @{GPD_INSTALL_DIR}/workflows/arxiv-submission.md
+@{GPD_INSTALL_DIR}/references/publication/peer-review-reliability.md
+@{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/artifact-manifest-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/bibliography-audit-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md
 </execution_context>
 
 <context>
@@ -86,6 +92,7 @@ Paper directory: $ARGUMENTS (optional; when omitted, resolve only from `paper/`,
 </context>
 
 <process>
+Apply the loaded artifact-manifest, bibliography-audit, review-ledger, referee-decision, and peer-review reliability documents literally when validating packaging readiness. Do not invent fallback review heuristics, blank `manuscript_path` placeholders, or ad hoc manuscript-root authority rules. Do not invent hidden fields or placeholder `manuscript_path` fallbacks when repairing review artifacts.
 
 ## 1. Locate Paper
 

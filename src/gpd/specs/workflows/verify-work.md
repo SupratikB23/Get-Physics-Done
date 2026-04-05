@@ -238,7 +238,7 @@ If a SUMMARY has `contract_results` or `comparison_verdicts`, use them only as e
 Also load the phase goal from ROADMAP.md to derive expected physics outcomes independently:
 
 ```bash
-gpd roadmap get-phase "${phase_number}"
+gpd --raw roadmap get-phase "${phase_number}"
 ```
 
 </step>

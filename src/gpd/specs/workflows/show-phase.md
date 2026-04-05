@@ -58,7 +58,7 @@ Categorize files into:
 **Extract phase info from ROADMAP.md:**
 
 ```bash
-PHASE_INFO=$(gpd roadmap get-phase "${phase_number}")
+PHASE_INFO=$(gpd --raw roadmap get-phase "${phase_number}")
 ```
 
 Extract: `phase_name`, `goal`, `dependencies`, `status` (from disk analysis).
@@ -66,7 +66,7 @@ Extract: `phase_name`, `goal`, `dependencies`, `status` (from disk analysis).
 Also get overall roadmap context:
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 ```
 
 Find this phase in the phases array to get `disk_status` (complete/partial/planned/empty/no_directory), `plan_count`, `summary_count`.

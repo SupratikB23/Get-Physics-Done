@@ -10,9 +10,11 @@ import pytest
 from pydantic import ValidationError
 
 from gpd.contracts import (
+    ContractClaim,
     ContractResults,
     ProjectContractParseResult,
     ResearchContract,
+    claim_requires_proof_audit,
     collect_plan_contract_integrity_errors,
     contract_from_data,
     contract_from_data_salvage,
@@ -21,7 +23,12 @@ from gpd.contracts import (
     parse_project_contract_data_salvage,
     parse_project_contract_data_strict,
 )
-from gpd.core.contract_validation import validate_project_contract
+from gpd.core.contract_validation import (
+    is_authoritative_project_contract_schema_finding,
+    is_defaultable_singleton_project_contract_schema_finding,
+    split_project_contract_schema_findings,
+    validate_project_contract,
+)
 from gpd.core.referee_policy import RefereeDecisionInput
 from gpd.mcp.paper.models import ReviewFinding, ReviewIssue, ReviewIssueSeverity, ReviewRecommendation, ReviewStageKind
 
@@ -57,6 +64,54 @@ def test_validate_project_contract_accepts_stage0_fixture() -> None:
     assert result.decisive_target_count > 0
     assert result.guidance_signal_count > 0
     assert result.reference_count > 0
+
+
+def test_project_contract_schema_finding_helpers_keep_authoritative_and_defaultable_classes_distinct() -> None:
+    assert is_authoritative_project_contract_schema_finding("schema_version must be the integer 1") is True
+    assert is_authoritative_project_contract_schema_finding("references.0.must_surface must be a boolean") is True
+    assert is_defaultable_singleton_project_contract_schema_finding(
+        "context_intake must be an object, not str"
+    ) is True
+    assert is_defaultable_singleton_project_contract_schema_finding(
+        "uncertainty_markers must be an object, not str"
+    ) is True
+    assert is_defaultable_singleton_project_contract_schema_finding(
+        "approach_policy must be an object, not str"
+    ) is False
+
+
+def test_split_project_contract_schema_findings_uses_public_helper_contract() -> None:
+    recoverable, blocking = split_project_contract_schema_findings(
+        [
+            "context_intake must be an object, not str",
+            "schema_version must be the integer 1",
+        ]
+    )
+
+    assert recoverable == ["context_intake must be an object, not str"]
+    assert blocking == ["schema_version must be the integer 1"]
+
+
+@pytest.mark.parametrize(
+    ("claim_payload", "expected"),
+    [
+        (
+            {"id": "claim-generic", "statement": "The theorem appears in the benchmark discussion."},
+            False,
+        ),
+        (
+            {"id": "claim-proof", "statement": "For all x > 0, F(x) >= 0."},
+            True,
+        ),
+    ],
+)
+def test_claim_requires_proof_audit_ignores_generic_theorem_words_and_keeps_explicit_quantifiers(
+    claim_payload: dict[str, object],
+    expected: bool,
+) -> None:
+    claim = ContractClaim.model_validate(claim_payload)
+
+    assert claim_requires_proof_audit(claim, {}) is expected
 
 
 def test_research_contract_rejects_blank_observable_regime_and_units() -> None:
@@ -173,6 +228,20 @@ def test_parse_project_contract_data_salvage_reports_recoverable_findings() -> N
     assert result.errors == result.recoverable_errors
 
 
+def test_parse_project_contract_data_salvage_reports_literal_case_drift_as_recoverable_findings() -> None:
+    contract = _load_contract_fixture()
+    contract["references"][0]["role"] = "Benchmark"
+    contract["references"][0]["required_actions"] = ["Read", "Compare", "Cite"]
+
+    result: ProjectContractParseResult = parse_project_contract_data_salvage(contract)
+
+    assert result.contract is not None
+    assert result.contract.references[0].role == "benchmark"
+    assert result.contract.references[0].required_actions == ["read", "compare", "cite"]
+    assert "references.0.role must use exact canonical value: benchmark" in result.recoverable_errors
+    assert "references.0.required_actions.0 must use exact canonical value: read" in result.recoverable_errors
+
+
 def test_parse_project_contract_data_salvage_preserves_blocking_errors_for_missing_required_collection_item_field() -> None:
     contract = _load_contract_fixture()
     del contract["claims"][0]["statement"]
@@ -243,6 +312,18 @@ def test_parse_project_contract_data_strict_rejects_duplicate_list_members() -> 
     assert "context_intake.must_read_refs.1 is a duplicate" in result.errors
 
 
+def test_parse_project_contract_data_strict_rejects_literal_case_drift() -> None:
+    contract = _load_contract_fixture()
+    contract["references"][0]["role"] = "Benchmark"
+    contract["references"][0]["required_actions"] = ["Read", "Compare", "Cite"]
+
+    result: ProjectContractParseResult = parse_project_contract_data_strict(contract)
+
+    assert result.contract is None
+    assert "references.0.role must use exact canonical value: benchmark" in result.errors
+    assert "references.0.required_actions.0 must use exact canonical value: read" in result.errors
+
+
 def test_parse_project_contract_data_strict_rejects_recoverable_nested_extra_keys() -> None:
     contract = _load_contract_fixture()
     contract["scope"]["legacy_notes"] = "nested extra field"
@@ -261,6 +342,13 @@ def test_parse_project_contract_data_strict_rejects_missing_schema_version() -> 
 
     assert result.contract is None
     assert result.errors == ["schema_version is required"]
+
+
+def test_contract_from_data_rejects_literal_case_drift_by_default() -> None:
+    contract = _load_contract_fixture()
+    contract["references"][0]["role"] = "Benchmark"
+
+    assert contract_from_data(contract) is None
 
 
 def test_validate_project_contract_rejects_missing_decisive_targets_and_skepticism() -> None:
@@ -322,6 +410,30 @@ def test_validate_project_contract_rejects_placeholder_only_anchor_guidance() ->
     )
 
 
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("user_asserted_anchors", "Nature benchmark"),
+        ("known_good_baselines", "Baseline notebook A"),
+    ],
+)
+def test_validate_project_contract_warns_for_non_concrete_anchor_guidance(
+    field_name: str,
+    value: str,
+) -> None:
+    contract = _load_contract_fixture()
+    contract["references"] = []
+    _remove_incidental_grounding(contract)
+    contract["context_intake"][field_name] = [value]
+
+    result = validate_project_contract(contract, mode="draft")
+
+    assert result.valid is False
+    assert result.guidance_signal_count == 0
+    assert "context_intake must not be empty" in result.errors
+    assert f"context_intake.{field_name} entry is not concrete enough to preserve as durable guidance: {value}" in result.warnings
+
+
 def test_validate_project_contract_rejects_missing_prior_output_only_guidance(tmp_path: Path) -> None:
     contract = _load_contract_fixture()
     contract["context_intake"] = {
@@ -342,6 +454,36 @@ def test_validate_project_contract_rejects_missing_prior_output_only_guidance(tm
         "context_intake.must_include_prior_outputs entry does not resolve to a project-local artifact: missing/path.md"
         in result.warnings
     )
+
+
+def test_validate_project_contract_rejects_bare_filename_prior_output_without_explicit_path() -> None:
+    contract = _load_contract_fixture()
+    contract["references"] = []
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["must_include_prior_outputs"] = ["RESULTS.md"]
+
+    result = validate_project_contract(contract, mode="draft")
+
+    assert result.valid is False
+    assert result.guidance_signal_count == 0
+    assert "context_intake must not be empty" in result.errors
+    assert (
+        "context_intake.must_include_prior_outputs entry is not an explicit project artifact path: RESULTS.md"
+        in result.warnings
+    )
+
+
+def test_validate_project_contract_accepts_explicit_relative_prior_output_path_without_project_root() -> None:
+    contract = _load_contract_fixture()
+    contract["references"] = []
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["must_include_prior_outputs"] = ["./RESULTS.md"]
+
+    result = validate_project_contract(contract, mode="draft")
+
+    assert result.valid is True
+    assert result.guidance_signal_count == 1
+    assert "context_intake must not be empty" not in result.errors
 
 
 def test_validate_project_contract_approved_mode_requires_concrete_anchor_grounding() -> None:

@@ -48,6 +48,20 @@ _COMMAND_FRONTMATTER_KEYS = frozenset(
         "agent",
     }
 )
+_AGENT_FRONTMATTER_KEYS = frozenset(
+    {
+        "name",
+        "description",
+        "tools",
+        "allowed-tools",
+        "commit_authority",
+        "surface",
+        "role_family",
+        "artifact_write_authority",
+        "shared_state_authority",
+        "color",
+    }
+)
 
 
 def _validate_command_frontmatter_keys(meta: dict[object, object], *, command_name: str) -> None:
@@ -56,6 +70,14 @@ def _validate_command_frontmatter_keys(meta: dict[object, object], *, command_na
     unknown_keys = sorted(str(key) for key in meta if str(key) not in _COMMAND_FRONTMATTER_KEYS)
     if unknown_keys:
         raise ValueError(f"unknown frontmatter keys for {command_name}: {', '.join(unknown_keys)}")
+
+
+def _validate_agent_frontmatter_keys(meta: dict[object, object], *, agent_name: str) -> None:
+    """Reject unknown agent frontmatter keys so all agent surfaces stay aligned."""
+
+    unknown_keys = sorted(str(key) for key in meta if str(key) not in _AGENT_FRONTMATTER_KEYS)
+    if unknown_keys:
+        raise ValueError(f"unknown frontmatter keys for {agent_name}: {', '.join(unknown_keys)}")
 
 
 # ─── Dataclasses ─────────────────────────────────────────────────────────────
@@ -612,6 +634,7 @@ def _parse_agent_file(path: Path, source: str) -> AgentDef:
         default=path.stem,
         required=True,
     )
+    _validate_agent_frontmatter_keys(meta, agent_name=agent_name)
     return AgentDef(
         name=agent_name,
         description=_parse_frontmatter_string_field(

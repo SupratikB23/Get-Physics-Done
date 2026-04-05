@@ -72,7 +72,7 @@ All subsequent commits go to this branch. User handles merging.
 Classify the phase type to drive agent selection and context budget decisions. Scan the phase goal and plan objectives for indicator keywords.
 
 ```bash
-PHASE_GOAL=$(gpd roadmap get-phase "${phase_number}" | gpd json get .goal --default "")
+PHASE_GOAL=$(gpd --raw roadmap get-phase "${phase_number}" | gpd json get .goal --default "")
 PLAN_OBJECTIVES=""
 for plan in "$phase_dir"/*-PLAN.md; do
   OBJ=$(gpd frontmatter get "$plan" --field objective 2>/dev/null)
@@ -1090,7 +1090,7 @@ If >15%, use `summary-extract` for one-liners instead of reading full SUMMARY fi
 
 ```bash
 for summary in "${phase_dir}"/*-SUMMARY.md; do
-  gpd summary-extract "$summary" --field one_liner
+  gpd --raw summary-extract "$summary" --field one_liner | gpd json get .one_liner --default ""
 done
 ```
 </step>

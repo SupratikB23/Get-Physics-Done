@@ -142,7 +142,7 @@ Parse JSON for: `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phas
 **If `phase_found` is false:** Check ROADMAP.md before exiting.
 
 ```bash
-ROADMAP_INFO=$(gpd roadmap get-phase "${PHASE}")
+ROADMAP_INFO=$(gpd --raw roadmap get-phase "${PHASE}")
 if [ "$(echo "$ROADMAP_INFO" | gpd json get .found --default false)" != "true" ]; then
   echo "Phase ${PHASE} not found in ROADMAP.md."
   echo ""
@@ -152,7 +152,7 @@ fi
 
 phase_name=$(echo "$ROADMAP_INFO" | gpd json get .phase_name --default "")
 phase_slug=$(gpd slug "$phase_name")
-padded_phase=$(printf '%s' "${PHASE}" | python3 -c "import sys; parts=sys.stdin.read().strip().split('.'); head=str(int(parts[0])).zfill(2); tail=[str(int(part)) for part in parts[1:] if part]; print('.'.join([head, *tail]))")
+padded_phase=$(gpd phase normalize "${PHASE}")
 phase_dir="GPD/phases/${padded_phase}-${phase_slug}"
 ```
 

@@ -7,6 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
+from gpd.adapters import get_adapter, list_runtimes
+from gpd.adapters.runtime_catalog import get_runtime_descriptor
+from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME
 from gpd.core.costs import UsageRecord, _profile_tier_mix, usage_ledger_path
 from gpd.core.recent_projects import record_recent_project
 from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_KEYS
@@ -17,9 +20,27 @@ from gpd.core.surface_phrases import (
     recovery_fast_next_reason,
 )
 from tests.latex_test_support import latex_capability_payload as _latex_capability
+from tests.runtime_install_helpers import seed_complete_runtime_install
 
 _TEST_RUNTIME = "runtime-under-test"
 _TEST_MODEL = "model-under-test"
+_RUNTIME_NAMES = tuple(list_runtimes())
+_SUPPORTED_RUNTIME_DESCRIPTORS = tuple(get_runtime_descriptor(runtime) for runtime in _RUNTIME_NAMES)
+_RUNTIME_ENV_VARS_TO_CLEAR = {
+    ENV_GPD_ACTIVE_RUNTIME,
+    *(
+        env_var
+        for descriptor in _SUPPORTED_RUNTIME_DESCRIPTORS
+        for env_var in (
+            *descriptor.activation_env_vars,
+            descriptor.global_config.env_var,
+            descriptor.global_config.env_dir_var,
+            descriptor.global_config.env_file_var,
+            "XDG_CONFIG_HOME" if descriptor.global_config.strategy == "xdg_app" else None,
+        )
+        if env_var
+    ),
+}
 
 
 class _ExecutionSnapshot(SimpleNamespace):
@@ -28,6 +49,14 @@ class _ExecutionSnapshot(SimpleNamespace):
 
     def __getattr__(self, name: str) -> object:
         return None
+
+
+@pytest.fixture(autouse=True)
+def _isolate_runtime_detection(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keep runtime-hints tests independent from host runtime installs."""
+    for key in _RUNTIME_ENV_VARS_TO_CLEAR:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr("gpd.hooks.runtime_detect.Path.home", lambda: tmp_path / "home")
 
 
 def _bootstrap_project(tmp_path: Path) -> Path:
@@ -1699,7 +1728,7 @@ def test_build_runtime_hint_payload_uses_generic_runtime_commands_when_no_instal
         },
     )
     monkeypatch.setattr(
-        "gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install",
+        "gpd.hooks.runtime_detect.detect_runtime_for_gpd_use",
         lambda *args, **kwargs: "unknown",
     )
 
@@ -1715,6 +1744,63 @@ def test_build_runtime_hint_payload_uses_generic_runtime_commands_when_no_instal
     assert "runtime `resume-work` continues in-runtime from the selected project state." in payload.next_actions
     assert "runtime `suggest-next` is the fastest post-resume next command when you only need the next action." in payload.next_actions
     assert not any(action.startswith("runtime-under-test ") for action in payload.next_actions)
+
+
+@pytest.mark.parametrize("include_local_conflict", [False, True])
+def test_build_runtime_hint_payload_uses_global_runtime_commands_when_global_install_is_effective(
+    tmp_path: Path, include_local_conflict: bool
+) -> None:
+    project = _bootstrap_project(tmp_path)
+    data_root = tmp_path / "data"
+    runtime = _RUNTIME_NAMES[0]
+    adapter = get_adapter(runtime)
+    home_dir = tmp_path / "home"
+    global_config_dir = adapter.resolve_global_config_dir(home=home_dir)
+
+    seed_complete_runtime_install(global_config_dir, runtime=runtime, install_scope="global", home=home_dir)
+    if include_local_conflict:
+        (project / adapter.local_config_dir_name).mkdir(parents=True, exist_ok=True)
+
+    resume_file = project / "GPD" / "phases" / "02" / ".continue-here.md"
+    resume_file.parent.mkdir(parents=True, exist_ok=True)
+    resume_file.write_text("resume\n", encoding="utf-8")
+
+    record_recent_project(
+        project,
+        session_data={
+            "last_date": "2026-03-27T12:05:00+00:00",
+            "stopped_at": "Phase 02",
+            "resume_file": "GPD/phases/02/.continue-here.md",
+        },
+        store_root=data_root,
+    )
+    _write_current_execution(
+        project,
+        session_id="sess-global-runtime",
+        extra_execution={
+            "phase": "02",
+            "plan": "01",
+            "resume_file": "GPD/phases/02/.continue-here.md",
+        },
+    )
+
+    payload = build_runtime_hint_payload(
+        project,
+        data_root=data_root,
+        base_ready=True,
+        latex_capability=_latex_capability(),
+    )
+
+    continue_command = adapter.format_command("resume-work")
+    fast_next_command = adapter.format_command("suggest-next")
+    assert payload.orientation["continue_command"] == continue_command
+    assert payload.orientation["fast_next_command"] == fast_next_command
+    assert (
+        f"`{fast_next_command}` is the fastest post-resume next command when you only need the next action."
+        in payload.next_actions
+    )
+    assert "runtime `resume-work`" not in payload.orientation["continue_command"]
+    assert "runtime `suggest-next`" not in payload.orientation["fast_next_command"]
 
 
 def test_build_runtime_hint_payload_machine_change_only_keeps_local_resume_without_in_runtime_followups(

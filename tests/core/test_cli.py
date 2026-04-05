@@ -31,6 +31,7 @@ from gpd.core.costs import (
     CostSummary,
     _profile_tier_mix,
 )
+from gpd.core.frontmatter import FrontmatterParseError
 from gpd.core.health import (
     CheckStatus,
     DoctorReport,
@@ -2457,6 +2458,42 @@ def test_state_get_section(mock_get):
     mock_get.assert_called_once()
 
 
+@patch("gpd.core.state.state_get")
+def test_state_active_hypothesis(mock_get):
+    mock_result = MagicMock()
+    mock_result.value = "**Branch:** hypothesis/alt-method\n**Description:** investigate a fallback"
+    mock_result.error = None
+    mock_get.return_value = mock_result
+
+    result = runner.invoke(app, ["--raw", "state", "active-hypothesis"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload == {
+        "found": True,
+        "branch": "hypothesis/alt-method",
+        "branch_slug": "alt-method",
+        "section": mock_result.value,
+    }
+
+
+@patch("gpd.core.state.state_get")
+def test_state_active_hypothesis_missing_section(mock_get):
+    mock_result = MagicMock()
+    mock_result.value = None
+    mock_result.error = "Section or field \"Active Hypothesis\" not found"
+    mock_get.return_value = mock_result
+
+    result = runner.invoke(app, ["--raw", "state", "active-hypothesis"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["found"] is False
+    assert payload["branch"] is None
+    assert payload["branch_slug"] is None
+    assert "Active Hypothesis" in payload["error"]
+
+
 @patch("gpd.core.state.state_update")
 def test_state_update(mock_update):
     mock_result = MagicMock()
@@ -2619,6 +2656,18 @@ def test_phase_list(mock_list):
     mock_list.assert_called_once()
 
 
+@patch("gpd.core.phases.list_phase_files")
+def test_phase_list_with_filters_uses_file_listing(mock_list_files):
+    mock_result = MagicMock()
+    mock_result.model_dump.return_value = {"files": ["01-test-PLAN.md"], "count": 1, "phase_dir": "01-test"}
+    mock_list_files.return_value = mock_result
+
+    result = runner.invoke(app, ["phase", "list", "--type", "plans", "--phase", "01"])
+
+    assert result.exit_code == 0
+    mock_list_files.assert_called_once_with(ANY, file_type="plans", phase="01")
+
+
 @patch("gpd.core.phases.phase_add")
 def test_phase_add(mock_add):
     mock_result = MagicMock()
@@ -2639,6 +2688,13 @@ def test_phase_complete(mock_complete):
     result = runner.invoke(app, ["phase", "complete", "42"])
     assert result.exit_code == 0
     mock_complete.assert_called_once()
+
+
+def test_phase_normalize_command():
+    result = runner.invoke(app, ["phase", "normalize", "3.1"])
+
+    assert result.exit_code == 0
+    assert "03.1" in result.output
 
 
 @patch("gpd.core.phases.validate_phase_waves")
@@ -2665,6 +2721,29 @@ def test_phase_validate_waves_fail(mock_validate):
 
     assert result.exit_code == 1
     mock_validate.assert_called_once()
+
+
+def test_validate_phase_artifacts_reports_expected_frontmatter_errors(tmp_path: Path) -> None:
+    phases_dir = tmp_path / "GPD" / "phases" / "01-test"
+    phases_dir.mkdir(parents=True)
+    summary_path = phases_dir / "01-test-SUMMARY.md"
+    summary_path.write_text("---\nnot: valid\n", encoding="utf-8")
+
+    with patch("gpd.core.frontmatter.validate_frontmatter", side_effect=FrontmatterParseError("bad yaml")):
+        failures = cli_module._validate_phase_artifacts(tmp_path / "GPD" / "phases", "summary")
+
+    assert failures == [f"{cli_module._format_display_path(summary_path)}: could not validate frontmatter (bad yaml)"]
+
+
+def test_validate_phase_artifacts_does_not_swallow_programmer_errors(tmp_path: Path) -> None:
+    phases_dir = tmp_path / "GPD" / "phases" / "01-test"
+    phases_dir.mkdir(parents=True)
+    summary_path = phases_dir / "01-test-SUMMARY.md"
+    summary_path.write_text("---\nnot: valid\n", encoding="utf-8")
+
+    with patch("gpd.core.frontmatter.validate_frontmatter", side_effect=RuntimeError("boom")):
+        with pytest.raises(RuntimeError, match="boom"):
+            cli_module._validate_phase_artifacts(tmp_path / "GPD" / "phases", "summary")
 
 
 # ─── raw output ─────────────────────────────────────────────────────────────
