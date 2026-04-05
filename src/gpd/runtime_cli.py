@@ -57,7 +57,7 @@ def _validate_passthrough_root_flags(gpd_args: list[str]) -> None:
             return
         if not arg.startswith("-"):
             return
-        if arg in {"--raw", "--version"}:
+        if arg in {"--help", "--raw", "--version"}:
             index += 1
             continue
         if arg == "--cwd":
@@ -149,18 +149,14 @@ def _is_matching_local_install_candidate(candidate: Path, *, runtime: str) -> bo
 
     adapter = get_adapter(runtime)
     manifest_status, manifest, manifest_runtime = load_install_manifest_runtime_status(candidate)
-    global_config_dirs = resolve_global_config_dir_candidates(adapter.runtime_descriptor, home=Path.home())
     if manifest_status == "ok":
         if manifest_runtime != runtime:
             return False
 
         manifest_scope = manifest.get("install_scope")
-        if manifest_scope == "global":
-            return False
-        if any(_paths_equal(candidate, global_dir) for global_dir in global_config_dirs) and manifest_scope != "local":
-            return False
-        return True
+        return manifest_scope == "local"
 
+    global_config_dirs = resolve_global_config_dir_candidates(adapter.runtime_descriptor, home=Path.home())
     has_install_markers = config_dir_has_managed_install_markers(candidate)
     if not has_install_markers:
         return False
@@ -462,16 +458,22 @@ def main(argv: list[str] | None = None) -> int:
         cli_cwd=cli_cwd,
     )
     manifest_status, manifest_payload, manifest_runtime = load_install_manifest_runtime_status(config_dir)
-    manifest_install_scope = manifest_payload.get("install_scope") if manifest_status == "ok" else None
+    manifest_install_scope = manifest_payload.get("install_scope")
     if not isinstance(manifest_install_scope, str):
         manifest_install_scope = None
+    manifest_explicit_target = manifest_payload.get("explicit_target")
+    if not isinstance(manifest_explicit_target, bool):
+        manifest_explicit_target = None
+    repair_explicit_target = (
+        manifest_explicit_target if manifest_explicit_target is not None else bool(options.explicit_target)
+    )
     if manifest_status == "missing" and config_dir_has_managed_install_markers(config_dir):
         sys.stderr.write(
             _missing_manifest_error_message(
                 runtime=runtime,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
-                explicit_target=bool(options.explicit_target),
+                explicit_target=repair_explicit_target,
                 cli_cwd=cli_cwd,
             )
         )
@@ -482,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
                 runtime=runtime,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
-                explicit_target=bool(options.explicit_target),
+                explicit_target=repair_explicit_target,
                 cli_cwd=cli_cwd,
             )
         )
@@ -493,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
                 runtime=runtime,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
-                explicit_target=bool(options.explicit_target),
+                explicit_target=repair_explicit_target,
                 cli_cwd=cli_cwd,
             )
         )
@@ -504,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
                 runtime=runtime,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
-                explicit_target=bool(options.explicit_target),
+                explicit_target=repair_explicit_target,
                 cli_cwd=cli_cwd,
             )
         )
@@ -517,7 +519,7 @@ def main(argv: list[str] | None = None) -> int:
                 manifest_install_scope=manifest_install_scope,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
-                explicit_target=bool(options.explicit_target),
+                explicit_target=repair_explicit_target,
                 cli_cwd=cli_cwd,
             )
         )
@@ -530,7 +532,7 @@ def main(argv: list[str] | None = None) -> int:
                 runtime=adapter.runtime_name,
                 config_dir=config_dir,
                 install_scope=options.install_scope,
-                explicit_target=bool(options.explicit_target),
+                explicit_target=repair_explicit_target,
                 cli_cwd=cli_cwd,
                 missing=missing,
             )

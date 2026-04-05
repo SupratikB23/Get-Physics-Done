@@ -76,14 +76,22 @@ def _reset_runtime_env(monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.delenv(key, raising=False)
 
 
-def _mark_complete_install(config_dir: Path, *, runtime: str, install_scope: str = "local") -> None:
+def _mark_complete_install(
+    config_dir: Path,
+    *,
+    runtime: str,
+    install_scope: str = "local",
+    explicit_target: bool | None = None,
+) -> None:
     adapter = get_adapter(runtime)
     seed_complete_runtime_install(
         config_dir,
         runtime=runtime,
         install_scope=install_scope,
         home=config_dir.parent if install_scope == "global" else None,
-        explicit_target=config_dir.name != adapter.config_dir_name,
+        explicit_target=(
+            explicit_target if explicit_target is not None else config_dir.name != adapter.config_dir_name
+        ),
     )
 
 
@@ -472,6 +480,102 @@ def test_runtime_cli_preserves_custom_global_target_in_malformed_runtime_repair_
     assert "GPD runtime bridge rejected malformed install manifest" in captured.err
     assert "--global" in captured.err
     assert f"--target-dir {config_dir}" in captured.err
+
+
+def test_runtime_cli_manifest_scoped_local_candidate_matching_does_not_consult_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    adapter = get_adapter("codex")
+    local_config_dir = tmp_path / adapter.config_dir_name
+    global_config_dir = tmp_path / "custom-global" / adapter.config_dir_name
+    local_config_dir.mkdir(parents=True, exist_ok=True)
+    global_config_dir.mkdir(parents=True, exist_ok=True)
+    (local_config_dir / MANIFEST_NAME).write_text(
+        json.dumps(
+            {
+                "runtime": adapter.runtime_name,
+                "install_scope": "local",
+                "install_target_dir": str(local_config_dir),
+                "explicit_target": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (global_config_dir / MANIFEST_NAME).write_text(
+        json.dumps(
+            {
+                "runtime": adapter.runtime_name,
+                "install_scope": "global",
+                "install_target_dir": str(global_config_dir),
+                "explicit_target": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "gpd.runtime_cli.Path.home",
+        lambda: (_ for _ in ()).throw(AssertionError("Path.home should not be consulted")),
+    )
+
+    assert runtime_cli._is_matching_local_install_candidate(local_config_dir, runtime=adapter.runtime_name) is True
+    assert runtime_cli._is_matching_local_install_candidate(global_config_dir, runtime=adapter.runtime_name) is False
+
+
+def test_runtime_cli_uses_manifest_explicit_target_for_repair_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    adapter = get_adapter("codex")
+    config_dir = tmp_path / "custom-global" / adapter.config_dir_name
+    config_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = config_dir / MANIFEST_NAME
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "install_scope": "global",
+                "runtime": adapter.runtime_name,
+                "explicit_target": True,
+                "install_target_dir": str(config_dir),
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("runtime", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "gpd.runtime_cli.Path.home",
+        lambda: (_ for _ in ()).throw(AssertionError("Path.home should not be consulted")),
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
+    monkeypatch.setattr(
+        "gpd.cli.entrypoint",
+        lambda: (_ for _ in ()).throw(AssertionError("entrypoint should not run for runtime-less manifests")),
+    )
+
+    exit_code = main(
+        [
+            "--runtime",
+            adapter.runtime_name,
+            "--config-dir",
+            str(config_dir),
+            "--install-scope",
+            "global",
+            "state",
+            "load",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 127
+    assert "GPD runtime bridge rejected incomplete install manifest" in captured.err
+    assert "--target-dir" in captured.err
+    assert str(config_dir) in captured.err
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)

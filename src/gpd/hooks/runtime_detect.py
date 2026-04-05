@@ -111,12 +111,7 @@ def _manifest_runtime_status(config_dir: Path) -> tuple[str, str | None]:
     return manifest_state, runtime
 
 
-def _runtime_from_manifest_or_path(
-    config_dir: Path,
-    *,
-    cwd: Path | None = None,
-    home: Path | None = None,
-) -> str | None:
+def _runtime_from_manifest_or_path(config_dir: Path, **_unused: object) -> str | None:
     """Infer the owning runtime for *config_dir* from its manifest.
 
     Managed surfaces fail closed without an authoritative manifest. Path shape
@@ -136,7 +131,7 @@ def _has_gpd_install(
     home: Path | None = None,
 ) -> bool:
     """Return True when *config_dir* has stable markers of a GPD install."""
-    runtime = _runtime_from_manifest_or_path(config_dir, cwd=cwd, home=home)
+    runtime = _runtime_from_manifest_or_path(config_dir)
     if runtime in (None, RUNTIME_UNKNOWN):
         return False
     adapter = _adapter(runtime)
