@@ -64,8 +64,8 @@ def _dir_contains_files(path: Path) -> bool:
         return True
 
 
-def _remove_manifestless_flat_command_residue(flat_commands: Path) -> int:
-    """Remove only managed flat command files when no manifest proves ownership."""
+def _remove_gpd_flat_command_residue(flat_commands: Path, *, stop_at: Path) -> int:
+    """Remove managed flat command files and prune empty command directories."""
     removed = 0
     try:
         entries = list(flat_commands.iterdir())
@@ -78,6 +78,7 @@ def _remove_manifestless_flat_command_residue(flat_commands: Path) -> int:
         if entry.name.startswith("gpd-") and entry.suffix == ".md":
             entry.unlink()
             removed += 1
+    prune_empty_ancestors(flat_commands, stop_at=stop_at)
     return removed
 
 
@@ -718,13 +719,9 @@ class RuntimeAdapter(abc.ABC):
             # Remove flat command/ directory used by some runtimes.
             flat_commands = target_dir / FLAT_COMMANDS_DIR_NAME
             if flat_commands.is_dir():
-                if assessment.manifest_state == "ok":
-                    shutil.rmtree(flat_commands)
-                    removed.append(f"{FLAT_COMMANDS_DIR_NAME}/")
-                else:
-                    removed_flat_commands = _remove_manifestless_flat_command_residue(flat_commands)
-                    if removed_flat_commands:
-                        removed.append(f"{removed_flat_commands} flat GPD commands")
+                removed_flat_commands = _remove_gpd_flat_command_residue(flat_commands, stop_at=target_dir)
+                if removed_flat_commands:
+                    removed.append(f"{removed_flat_commands} flat GPD commands")
 
             # Remove the shared GPD install root.
             gpd_dir = target_dir / GPD_INSTALL_DIR_NAME

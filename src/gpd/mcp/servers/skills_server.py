@@ -15,6 +15,7 @@ import copy
 import dataclasses
 import re
 from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
@@ -145,14 +146,38 @@ def _skill_index_label(skill: content_registry.SkillDef) -> str:
 def _canonicalize_command_surface(content: str) -> str:
     """Rewrite runtime-facing command examples to canonical ``gpd-*`` names."""
     content = rewrite_runtime_command_surfaces(content, canonical="skill")
-    for prefix in runtime_command_prefixes():
-        if prefix == CANONICAL_SKILL_PREFIX:
-            continue
-        content = content.replace(f"`{prefix}*`", f"`{_SKILL_COMMAND_PREFIX}*`").replace(
-            f"{prefix}*",
-            f"{_SKILL_COMMAND_PREFIX}*",
-        )
+    content = _canonicalize_runtime_command_wildcards(content)
     return content
+
+
+@lru_cache(maxsize=1)
+def _runtime_command_wildcard_pattern() -> re.Pattern[str]:
+    """Return a boundary-aware matcher for runtime command wildcards."""
+
+    prefixes = tuple(prefix for prefix in runtime_command_prefixes() if prefix != CANONICAL_SKILL_PREFIX)
+    if not prefixes:
+        return re.compile(r"(?!x)x")
+    escaped_prefixes = "|".join(re.escape(prefix) for prefix in prefixes)
+    return re.compile(rf"(?<![A-Za-z0-9_-])(?P<prefix>(?:{escaped_prefixes}))\*(?![A-Za-z0-9_-])")
+
+
+def _canonicalize_runtime_command_wildcards(content: str) -> str:
+    """Rewrite wildcard command examples without touching path-like substrings."""
+
+    pattern = _runtime_command_wildcard_pattern()
+    def _replace(match: re.Match[str]) -> str:
+        whitespace_start = max(
+            content.rfind("\n", 0, match.start()),
+            content.rfind("\r", 0, match.start()),
+            content.rfind("\t", 0, match.start()),
+            content.rfind(" ", 0, match.start()),
+        ) + 1
+        prefix_context = content[whitespace_start:match.start()]
+        if match.start() != whitespace_start and any(marker in prefix_context for marker in ("/", ":", ".", "@")):
+            return match.group(0)
+        return f"{_SKILL_COMMAND_PREFIX}*"
+
+    return pattern.sub(_replace, content)
 
 
 def _portable_skill_content(content: str) -> str:

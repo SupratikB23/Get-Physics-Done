@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from gpd.adapters import get_adapter
+from gpd.adapters.base import RuntimeAdapter
 from gpd.adapters.install_utils import copy_hook_scripts
 from gpd.adapters.runtime_catalog import get_shared_install_metadata, list_runtime_names
 
@@ -137,10 +138,39 @@ class TestUninstallBase:
         command_dir.mkdir(parents=True)
         (command_dir / "custom.md").write_text("keep", encoding="utf-8")
 
-        result = adapter.uninstall(target)
+        result = RuntimeAdapter.uninstall(adapter, target)
 
         assert result["removed"] == []
         assert (command_dir / "custom.md").exists()
+
+    def test_uninstall_manifest_backed_flat_commands_preserves_user_files(self, tmp_path: Path) -> None:
+        adapter = get_adapter("opencode")
+        target = tmp_path / ".opencode"
+        command_dir = target / "command"
+        command_dir.mkdir(parents=True)
+        (command_dir / "gpd-help.md").write_text("gpd", encoding="utf-8")
+        (command_dir / "custom.md").write_text("keep", encoding="utf-8")
+        _write_owned_manifest(target, runtime="opencode")
+
+        result = RuntimeAdapter.uninstall(adapter, target)
+
+        assert "flat GPD commands" in " ".join(result["removed"])
+        assert not (command_dir / "gpd-help.md").exists()
+        assert (command_dir / "custom.md").exists()
+        assert command_dir.exists()
+
+    def test_uninstall_manifest_backed_flat_commands_prunes_empty_directory(self, tmp_path: Path) -> None:
+        adapter = get_adapter("opencode")
+        target = tmp_path / ".opencode"
+        command_dir = target / "command"
+        command_dir.mkdir(parents=True)
+        (command_dir / "gpd-help.md").write_text("gpd", encoding="utf-8")
+        _write_owned_manifest(target, runtime="opencode")
+
+        result = RuntimeAdapter.uninstall(adapter, target)
+
+        assert "flat GPD commands" in " ".join(result["removed"])
+        assert not command_dir.exists()
 
     def test_removes_manifest_tracked_gpd_hooks(self, tmp_path: Path) -> None:
         adapter = get_adapter("claude-code")

@@ -80,3 +80,17 @@ def test_route_skill_publishes_non_blank_contract_in_tool_schema() -> None:
     assert task_description["minLength"] == 1
     assert task_description["pattern"] == r"\S"
     assert schema["required"] == ["task_description"]
+
+
+def test_canonicalize_command_surface_rewrites_real_command_examples_only() -> None:
+    from gpd.mcp.servers.skills_server import _canonicalize_command_surface
+
+    content = "Use `$gpd-*`, /gpd:*, /tmp/$gpd-*, https://example.test/$gpd-*, and foo$gpd-*bar."
+
+    result = _canonicalize_command_surface(content)
+
+    assert "Use `gpd-*`" in result
+    assert "/gpd:*" not in result
+    assert "/tmp/$gpd-*" in result
+    assert "https://example.test/$gpd-*" in result
+    assert "foo$gpd-*bar" in result
