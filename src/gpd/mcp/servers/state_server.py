@@ -65,6 +65,7 @@ def load_state_json(cwd: Path) -> dict | None:
         state_source=state_source,
     )
     merged_state = dict(state_obj)
+    merged_state.pop("session", None)
     merged_state["project_contract_load_info"] = project_contract_load_info
     merged_state["project_contract_validation"] = project_contract_validation
     merged_state["project_contract_gate"] = project_contract_gate

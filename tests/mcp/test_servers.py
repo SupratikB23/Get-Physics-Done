@@ -1592,6 +1592,36 @@ class TestStateServer:
         assert result["error"] == "project_dir must be an absolute path"
         assert result["schema_version"] == 1
 
+    def test_load_state_json_omits_legacy_session_mirror(self):
+        from gpd.mcp.servers.state_server import load_state_json
+
+        mock_state = {
+            "position": {"current_phase": "01"},
+            "decisions": [],
+            "blockers": [],
+            "session": {"last_date": "2026-01-01"},
+        }
+
+        with (
+            patch("gpd.mcp.servers.state_server.peek_state_json", return_value=(mock_state, [], "state.json")),
+            patch(
+                "gpd.mcp.servers.state_server._project_contract_runtime_payload_for_state",
+                return_value=(
+                    {"status": "loaded"},
+                    {"valid": True},
+                    {"authoritative": True},
+                ),
+            ),
+        ):
+            result = load_state_json(Path("/fake/project"))
+
+        assert result is not None
+        assert "session" not in result
+        assert result["position"]["current_phase"] == "01"
+        assert result["project_contract_load_info"]["status"] == "loaded"
+        assert result["project_contract_validation"]["valid"] is True
+        assert result["project_contract_gate"]["authoritative"] is True
+
     def test_get_state(self):
         from gpd.mcp.servers.state_server import get_state
 

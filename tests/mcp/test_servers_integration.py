@@ -276,6 +276,7 @@ class TestStateServerIntegration:
         result = get_state(str(project_root))
 
         assert result["position"]["current_phase"] == "01"
+        assert "session" not in result
         assert result["project_contract"]["scope"]["question"] == contract["scope"]["question"]
         assert result["project_contract_load_info"]["status"] == "loaded"
         assert result["project_contract_validation"]["valid"] is True
@@ -293,6 +294,7 @@ class TestStateServerIntegration:
         result = get_state(str(project_root))
 
         assert result["position"]["current_phase"] == "03"
+        assert "session" not in result
         assert result["project_contract"] is None
         assert result["project_contract_load_info"]["status"] == "blocked_schema"
         assert result["project_contract_validation"] is None
@@ -316,6 +318,7 @@ class TestStateServerIntegration:
         result = get_state(str(project_root))
 
         assert result["position"]["current_phase"] == "01"
+        assert "session" not in result
         assert result["project_contract"] is not None
         assert result["project_contract"]["context_intake"]["must_read_refs"] == ["ref-benchmark"]
         assert result["project_contract"]["references"][0]["role"] == "benchmark"
@@ -370,6 +373,7 @@ class TestStateServerIntegration:
         result = get_state(str(project_root))
 
         assert result["position"]["current_phase"] == "09"
+        assert "session" not in result
         assert result["project_contract_load_info"]["status"] == "loaded"
         assert result["project_contract_validation"]["valid"] is True
         assert result["project_contract_gate"]["authoritative"] is True
