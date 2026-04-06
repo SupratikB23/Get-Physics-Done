@@ -96,6 +96,7 @@ def test_fast_suite_policy_keeps_boundary_regressions_in_default_path() -> None:
 def test_ci_and_test_readme_document_explicit_fast_and_full_suite_commands() -> None:
     repo_root = _repo_root()
     workflow = _workflow_data()
+    pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
     tests_readme = (repo_root / "tests" / "README.md").read_text(encoding="utf-8")
     pytest_steps = _workflow_job_steps(workflow, "pytest")
     step_names = [str(step.get("name", "")) for step in pytest_steps]
@@ -104,17 +105,17 @@ def test_ci_and_test_readme_document_explicit_fast_and_full_suite_commands() -> 
     assert "Set up Node.js" in step_names
     assert step_names.index("Set up Node.js") < step_names.index("Install dependencies")
     fast_suite_command = run_steps["Run fast test suite"]
-    assert fast_suite_command.startswith("uv run pytest tests/ -q")
-    assert "-n auto" in fast_suite_command
+    assert fast_suite_command == "uv run pytest tests/ -q --dist=loadscope"
     assert "--dist=loadscope" in fast_suite_command
+    assert 'addopts = "-n auto"' in pyproject
     assert "--full-suite" not in fast_suite_command
     heavy_suite_command = run_steps["Run complementary heavy suite"]
     assert "from tests.conftest import complementary_heavy_suite_ignore_args" in heavy_suite_command
     assert 'HEAVY_SUITE_IGNORE_ARGS="$(' in heavy_suite_command
-    assert "uv run pytest tests/ -q --full-suite -n auto --dist=loadscope $HEAVY_SUITE_IGNORE_ARGS" in heavy_suite_command
+    assert "uv run pytest tests/ -q --full-suite --dist=loadscope $HEAVY_SUITE_IGNORE_ARGS" in heavy_suite_command
     assert "--full-suite" in heavy_suite_command
-    assert "preferred parallel fast path" in tests_readme
-    assert "parallel flags now live at the call site instead of repo config" in tests_readme
+    assert "already runs in parallel via `pyproject.toml`'s `-n auto` default" in tests_readme
+    assert "explicit `loadscope` scheduling used by CI" in tests_readme
     assert "GitHub Actions workflow runs the complementary heavy suite with `--full-suite` plus the shared ignore helper" in tests_readme
     assert complementary_heavy_suite_ignore_args() == tuple(
         f"--ignore=tests/{rel_path}" for rel_path in _all_test_paths() if rel_path not in FAST_SUITE_EXCLUDES
