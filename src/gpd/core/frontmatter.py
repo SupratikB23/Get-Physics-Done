@@ -376,19 +376,22 @@ def _resolve_contract_artifact_path(
     project_root: Path | None,
     artifact_dir: Path | None,
     path_text: str,
-) -> Path:
+) -> tuple[Path | None, str | None]:
     artifact_path = Path(path_text)
     if artifact_path.is_absolute():
-        return artifact_path
-    if artifact_dir is not None:
-        candidate = artifact_dir / artifact_path
-        if candidate.exists():
-            return candidate
-    if project_root is not None:
-        return project_root / artifact_path
-    if artifact_dir is not None:
-        return artifact_dir / artifact_path
-    return artifact_path
+        return None, "must be a project-relative path"
+
+    anchor_dir = artifact_dir or project_root
+    if anchor_dir is None:
+        return artifact_path, None
+
+    resolved_root = (project_root or anchor_dir).resolve(strict=False)
+    candidate = (anchor_dir / artifact_path).resolve(strict=False)
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError:
+        return None, "must resolve inside the project root"
+    return candidate, None
 
 
 class FrontmatterValidation(BaseModel):
@@ -774,13 +777,16 @@ def _proof_audit_errors(
         )
 
         if proof_audit.proof_artifact_path:
-            if proof_audit.proof_artifact_sha256:
-                resolved_artifact = _resolve_contract_artifact_path(
-                    project_root=project_root,
-                    artifact_dir=artifact_dir,
-                    path_text=proof_audit.proof_artifact_path,
-                )
+            resolved_artifact, artifact_error = _resolve_contract_artifact_path(
+                project_root=project_root,
+                artifact_dir=artifact_dir,
+                path_text=proof_audit.proof_artifact_path,
+            )
+            if artifact_error is not None:
+                errors.append(f"claim {claim.id} proof_audit proof_artifact_path {artifact_error}")
+            elif proof_audit.proof_artifact_sha256:
                 try:
+                    assert resolved_artifact is not None
                     actual_sha = hashlib.sha256(resolved_artifact.read_bytes()).hexdigest()
                 except OSError:
                     actual_sha = None
@@ -792,21 +798,25 @@ def _proof_audit_errors(
                     errors.append(f"claim {claim.id} proof_audit proof_artifact_sha256 is stale")
 
         if proof_audit.audit_artifact_path and proof_audit.audit_artifact_sha256:
-            resolved_audit_artifact = _resolve_contract_artifact_path(
+            resolved_audit_artifact, artifact_error = _resolve_contract_artifact_path(
                 project_root=project_root,
                 artifact_dir=artifact_dir,
                 path_text=proof_audit.audit_artifact_path,
             )
-            try:
-                actual_audit_sha = hashlib.sha256(resolved_audit_artifact.read_bytes()).hexdigest()
-            except OSError:
-                actual_audit_sha = None
-            if actual_audit_sha is None:
-                errors.append(
-                    f"claim {claim.id} proof_audit audit_artifact_path does not resolve to a readable file"
-                )
-            elif actual_audit_sha != proof_audit.audit_artifact_sha256:
-                errors.append(f"claim {claim.id} proof_audit audit_artifact_sha256 is stale")
+            if artifact_error is not None:
+                errors.append(f"claim {claim.id} proof_audit audit_artifact_path {artifact_error}")
+            else:
+                try:
+                    assert resolved_audit_artifact is not None
+                    actual_audit_sha = hashlib.sha256(resolved_audit_artifact.read_bytes()).hexdigest()
+                except OSError:
+                    actual_audit_sha = None
+                if actual_audit_sha is None:
+                    errors.append(
+                        f"claim {claim.id} proof_audit audit_artifact_path does not resolve to a readable file"
+                    )
+                elif actual_audit_sha != proof_audit.audit_artifact_sha256:
+                    errors.append(f"claim {claim.id} proof_audit audit_artifact_sha256 is stale")
 
         if result.status != "passed":
             continue
@@ -1246,7 +1256,14 @@ def _find_matching_plan_contract(summary_dir: Path, summary_meta: dict) -> _Plan
         project_root = resolve_project_root(summary_dir)
         if project_root is None:
             return _PlanContractResolution()
-        candidate = (project_root / relative_plan_path).resolve(strict=False)
+        candidate, path_error = _resolve_contract_artifact_path(
+            project_root=project_root,
+            artifact_dir=project_root,
+            path_text=relative_plan_path.as_posix(),
+        )
+        if path_error is not None:
+            return _PlanContractResolution(errors=[f"plan_contract_ref: {path_error}"])
+        assert candidate is not None
         if not candidate.exists():
             return _PlanContractResolution()
         matched, resolution = _resolve_plan_contract_candidate(candidate, summary_meta)
