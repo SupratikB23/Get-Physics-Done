@@ -69,6 +69,7 @@ def test_discovery_and_research_surfaces_prefer_research_artifacts_over_legacy_d
     _assert_contains_fragments(research_template, "Template for `GPD/phases/XX-name/{phase}-RESEARCH.md`", "RESEARCH.md")
     assert "discovery.md" not in research_template
     assert "DISCOVERY.md" not in research_template
+    assert not (TEMPLATES_DIR / "discovery.md").exists()
 
 
 def test_summary_driven_workflows_search_canonical_summary_artifacts() -> None:
