@@ -31,8 +31,9 @@ def test_new_project_prompt_surfaces_the_canonical_state_schema_for_project_cont
     assert "templates/state-json-schema.md" in new_project_text
     assert (
         "Before you ask for approval, keep the contract as a literal JSON object for the "
-        "`project_contract` subsection of `templates/state-json-schema.md`. Do not relax any "
-        "schema, ID, enum, or closed-schema rules."
+        "`project_contract` subsection of `templates/state-json-schema.md`, and use that "
+        "schema as the canonical source of truth for the object rules. Do not restate the "
+        "contract rules here."
         in new_project_text
     )
     assert "Do not approve a scoping contract that strips decisive outputs, anchors, prior outputs, or review/stop triggers down to generic placeholders." in new_project_text
@@ -87,11 +88,16 @@ def test_new_project_contract_rule_block_is_not_duplicated() -> None:
         new_project_text,
         "Before you show the approval gate, build the raw contract as a literal JSON object for the `project_contract` subsection of `templates/state-json-schema.md`:",
     )
+    later_block = new_project_text.split(
+        "Before you ask for approval, keep the contract as a literal JSON object for the `project_contract` subsection of `templates/state-json-schema.md`, and use that schema as the canonical source of truth for the object rules. Do not restate the contract rules here.",
+        1,
+    )[1].split("Present a concise scoping summary", 1)[0]
 
     assert len(show_block) > 10
     assert new_project_text.count("Before you show the approval gate, build the raw contract as a literal JSON object") == 1
     assert new_project_text.count("Before you ask for approval, keep the contract as a literal JSON object") == 1
-    assert "reuse the raw-contract rules above for the second approval step" not in new_project_text
+    assert "- `project_contract` is a JSON object, not prose" not in later_block
+    assert "- `observables`, `claims`, `deliverables`, `acceptance_tests`, `references`, `forbidden_proxies`, and `links` are arrays of objects, not strings" not in later_block
 
 
 def test_state_schema_surfaces_the_exact_approved_mode_grounding_rule() -> None:
