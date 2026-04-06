@@ -1,22 +1,22 @@
 <purpose>
-Validate research results through conversational research validation with persistent state. Creates the canonical `XX-VERIFICATION.md` artifact that tracks verification progress, survives /clear, and feeds gaps into gpd:plan-phase --gaps.
+Validate research results through conversational verification with persistent state. This workflow creates the canonical `XX-VERIFICATION.md` artifact, survives /clear, and feeds gaps into `gpd:plan-phase --gaps`.
 
 Researcher validates, the AI records. One check at a time. Plain text responses.
 
-**Key upgrade: checks now include computational spot-checks that the AI performs before presenting to the researcher, and the researcher is walked through numerical verification rather than just qualitative confirmation.**
+**Key upgrade:** the workflow now runs computational spot-checks before presenting each check, so the researcher confirms concrete numerical evidence instead of only qualitative summaries.
 </purpose>
 
 <philosophy>
-**Show expected physics AND computational evidence, ask if reality matches.**
+**Show expected physics and computational evidence, then ask if reality matches.**
 
-The AI does not just present what the research SHOULD show — it COMPUTES what the research should show at specific test points, then asks the researcher to confirm.
+The AI computes the expected result at specific test points before asking the researcher to confirm it.
 
 - "yes" / "y" / "next" / empty -> pass
 - Anything else -> logged as issue, severity inferred
 
-Walk through derivation logic, perform numerical spot-checks, re-derive limiting cases, probe edge cases with actual computations. No formal review forms. Just: "Here is what I independently computed. Does your result match?"
+Walk through derivation logic, perform numerical spot-checks, re-derive limiting cases, and probe edge cases with actual computations. No formal review forms. Just: "Here is what I independently computed. Does your result match?"
 
-**Verification independence:** Derive validation checks from the phase goal, the PLAN `contract`, and the actual research artifacts — not from phase-summary claims about what was accomplished. Summary artifacts (`SUMMARY.md` and `*-SUMMARY.md`) `contract_results` and `comparison_verdicts` tell you WHERE evidence lives, but expected physics outcomes come from the phase goal, contract IDs, and domain knowledge. See @{GPD_INSTALL_DIR}/references/verification/meta/verification-independence.md.
+**Verification independence:** Derive validation checks from the phase goal, the PLAN `contract`, and the actual research artifacts — not from phase-summary claims about what was accomplished. Summary artifacts (`SUMMARY.md` and `*-SUMMARY.md`) `contract_results` and `comparison_verdicts` tell you where evidence lives; the expected physics comes from the phase goal, contract IDs, and domain knowledge. See @{GPD_INSTALL_DIR}/references/verification/meta/verification-independence.md.
 </philosophy>
 
 <template>
@@ -265,7 +265,7 @@ For each contract-backed check, create a validation record that includes **both 
 - name: Brief check name
 - expected: What the physics should show (specific, verifiable)
 - computation: A specific numerical test the AI will perform before presenting to the researcher
-- check_subject_kind: `claim | deliverable | acceptance_test | reference`
+- check_subject_kind: `claim|deliverable|acceptance_test|reference`
 - subject_id: Contract ID when available
 
 Keep `check_subject_kind` and `gap_subject_kind` aligned with the canonical frontmatter-safe subject vocabulary. Use `forbidden_proxy_id` for explicit proxy-rejection checks, and keep missing decisive checks in the `suggested_contract_checks` ledger instead of inventing extra body subject kinds.
@@ -364,7 +364,7 @@ If an existing verification artifact is found (e.g., from a prior `gpd:execute-p
 1. Read it to preserve any prior automated verification results
 2. Do NOT overwrite — instead, append a `## Researcher Validation` section after the existing content
 3. The new researcher checks go under this section, keeping the automated checks intact
-4. **Status merge rule:** The combined verification `status` uses the MORE RESTRICTIVE verification-report vocabulary (`passed | gaps_found | expert_needed | human_needed`). If automated verification passed but the researcher finds issues, the combined status becomes `gaps_found`. If automated found gaps but the researcher confirms they are acceptable, the combined status stays `gaps_found` unless the researcher explicitly upgrades each gap to `pass`. Keep `session_status` for conversational progress only.
+4. **Status merge rule:** The combined verification `status` uses the MORE RESTRICTIVE verification-report vocabulary (`passed|gaps_found|expert_needed|human_needed`). If automated verification passed but the researcher finds issues, the combined status becomes `gaps_found`. If automated found gaps but the researcher confirms they are acceptable, the combined status stays `gaps_found` unless the researcher explicitly upgrades each gap to `pass`. Keep `session_status` for conversational progress only.
 5. If you report an aggregate independently confirmed tally, keep it in body prose or tables rather than adding a non-canonical verification frontmatter key
 
 If no existing verification artifact exists, create a new one from scratch.
@@ -383,7 +383,8 @@ Create file (or extend existing):
 ---
 phase: {phase_number}-{phase_name}
 verified: [ISO timestamp]
-status: passed | gaps_found | expert_needed | human_needed
+status: gaps_found
+# Allowed status values: passed|gaps_found|expert_needed|human_needed
 score: 0/{total contract targets} contract targets verified
 plan_contract_ref: GPD/phases/{phase_number}-{phase_name}/{phase_number}-{plan}-PLAN.md#/contract
 contract_results:
@@ -440,6 +441,7 @@ source: ["list of phase-summary files"]
 started: "ISO timestamp"
 updated: "ISO timestamp"
 session_status: validating
+# Allowed session_status values: validating|completed|diagnosed
 ---
 
 ## Current Check
@@ -448,14 +450,19 @@ session_status: validating
 <!-- Include only the ID keys that actually bind this check.
 Omit unused `subject_id`, `claim_id`, `deliverable_id`, `acceptance_test_id`,
 and `forbidden_proxy_id` fields instead of leaving blank placeholder strings. -->
+<!-- Allowed body enum values:
+`check_subject_kind`: claim|deliverable|acceptance_test|reference
+`comparison_kind`: benchmark|prior_work|experiment|cross_method|baseline|other
+`suggested_subject_kind`: claim|deliverable|acceptance_test|reference
+-->
 
 number: 1
 name: "first check name"
-check_subject_kind: [claim | deliverable | acceptance_test | reference]
+check_subject_kind: claim
 subject_id: "claim-main"
 claim_id: "claim-main"
 reference_ids: ["reference-id", "..."]
-comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | other]
+comparison_kind: benchmark
 comparison_reference_id: "reference-id"
 # If this check is not comparison-backed yet, omit both `comparison_kind` and `comparison_reference_id` instead of leaving blank placeholders.
 expected: |
@@ -471,7 +478,7 @@ suggested_contract_checks:
   # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.
   - check: "missing decisive check"
     reason: "why the missing check matters"
-    suggested_subject_kind: [claim | deliverable | acceptance_test | reference]
+    suggested_subject_kind: acceptance_test
     suggested_subject_id: "matching contract id"
     evidence_path: "artifact path or expected evidence path"
   # Add a reference-backed decisive gap here whenever a benchmark reference or
@@ -486,11 +493,11 @@ awaiting: researcher response
 Omit unused `subject_id`, `claim_id`, `deliverable_id`, `acceptance_test_id`,
 and `forbidden_proxy_id` fields instead of leaving blank placeholder strings. -->
 
-check_subject_kind: [claim | deliverable | acceptance_test | reference]
+check_subject_kind: claim
 subject_id: "claim-main"
 claim_id: "claim-main"
 reference_ids: ["reference-id", "..."]
-comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | other]
+comparison_kind: benchmark
 comparison_reference_id: "reference-id"
 # If this check is not comparison-backed yet, omit both `comparison_kind` and `comparison_reference_id` instead of leaving blank placeholders.
 expected: "verifiable physics outcome"
@@ -501,7 +508,7 @@ suggested_contract_checks:
   # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.
   - check: "missing decisive check"
     reason: "why the missing check matters"
-    suggested_subject_kind: [claim | deliverable | acceptance_test | reference]
+    suggested_subject_kind: acceptance_test
     suggested_subject_id: "matching contract id"
     evidence_path: "artifact path or expected evidence path"
 result: "pending"
