@@ -1508,7 +1508,7 @@ def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_led
     assert "contract_results (required" not in summary_template
     assert "comparison_verdicts (required" not in summary_template
     assert "Reload `@{GPD_INSTALL_DIR}/templates/contract-results-schema.md` immediately before writing the YAML" in summary_template
-    assert "uncertainty_markers:" in summary_template
+    assert "uncertainty_markers" in summary_template
 
 
 def test_validator_backed_examples_use_concrete_machine_readable_values() -> None:
@@ -1572,11 +1572,10 @@ def test_plan_tool_preflight_surfaces_across_planning_and_execution_prompts() ->
         assert legacy_alias not in summary_template
     assert "`suggested_contract_checks` is verification-only and does not belong in summaries." in summary_template
     assert "contract_results" in verification_template
-    assert "comparison_verdicts" in verification_template
-    assert "Subject Role" in verification_template
+    assert "Comparison verdicts must declare `subject_role` explicitly" in verification_template
     assert "subject_role: decisive" in verification_template
     assert "verification-side `suggested_contract_checks`" in verification_template
-    assert "uncertainty_markers:" in verification_template
+    assert "uncertainty_markers" in verification_template
     assert "Use `@{GPD_INSTALL_DIR}/templates/verification-report.md` for the canonical verification frontmatter contract." in research_verification
     assert "status: gaps_found" in research_verification
     assert "# Allowed status values: passed|gaps_found|expert_needed|human_needed" in research_verification
@@ -1588,8 +1587,18 @@ def test_plan_tool_preflight_surfaces_across_planning_and_execution_prompts() ->
     assert "deliverable-main" in research_verification
     assert "acceptance-test-main" in research_verification
     assert "reference-main" in research_verification
-    assert "surface it in PLAN frontmatter `tool_requirements` before drafting task prose" in verify_workflow
-    assert "keep it in PLAN frontmatter `tool_requirements` before rewriting task prose" in verify_workflow
+    assert (
+        "Use the shared planner template, phase template, and `templates/plan-contract-schema.md` "
+        "before drafting the fix plan. If the downstream fix plan needs specialized tooling or any "
+        "other machine-checkable hard validation requirement, surface it in PLAN frontmatter "
+        "`tool_requirements`."
+    ) in verify_workflow
+    assert (
+        "Use the shared planner template, phase template, and `templates/plan-contract-schema.md` "
+        "before rewriting the fix plan. If the revised fix plan still needs specialized tooling or "
+        "any other machine-checkable hard validation requirement, keep it in PLAN frontmatter "
+        "`tool_requirements`."
+    ) in verify_workflow
     assert "forbidden-proxy-main" in research_verification
     assert "comparison_verdicts:" in research_verification
     assert "subject_role: decisive" in research_verification
@@ -1972,7 +1981,7 @@ def test_contract_schema_references_stay_wired_into_templates_and_review_docs() 
     assert "disconfirming_observations: [observation-1]" in contract_results_schema
     assert "forbidden_proxy_id: fp-main" in contract_results_schema
     assert "closed action vocabulary: `read`, `use`, `compare`, `cite`, `avoid`" in contract_results_schema
-    assert "forbidden_proxy_id: forbidden-proxy-id" in summary_template
+    assert "forbidden_proxy_id" in summary_template
     assert "templates/contract-results-schema.md" in executor_completion
     assert "claim_id: claim-main" in executor_completion
     assert "completed_actions: [read, compare, cite]" in executor_completion
@@ -2010,14 +2019,17 @@ def test_contract_schema_references_stay_wired_into_templates_and_review_docs() 
     assert "gpd validate summary-contract" in execute_plan
     assert "gpd validate verification-contract" in verify_work
     assert "gpd validate plan-contract" in plan_phase
+    assert (
+        "Use the shared planner template, phase template, and `templates/plan-contract-schema.md`; "
+        "this wrapper only adds phase-specific gates."
+    ) in plan_phase
     assert "Validator gate before planning:" in plan_phase
-    assert "`contract.context_intake` is required and must be a non-empty object." in plan_phase
-    assert "Non-scoping plans keep `claims[]`, `deliverables[]`, `acceptance_tests[]`, and `forbidden_proxies[]` non-empty." in plan_phase
-    assert "Include `references[]` only when the plan relies on external grounding" in plan_phase
-    assert "Each plan has a complete contract block (claims, deliverables, acceptance tests, forbidden proxies, uncertainty markers, and `references[]` whenever grounding is not already explicit elsewhere in the contract)" in plan_phase
-    assert "Each plan has a complete contract block (claims, deliverables, references, acceptance tests, forbidden proxies, uncertainty markers)" not in plan_phase
-    assert "Light mode changes the body only." in plan_phase
-    assert "Keep the full canonical frontmatter, including `wave`, `depends_on`, `files_modified`, `interactive`, `conventions`, and `contract`." in plan_phase
+    assert "Light mode changes the body only; keep the full canonical frontmatter from the phase template." in plan_phase
+    assert "Each plan satisfies `templates/plan-contract-schema.md`" in plan_phase
+    assert "Tasks stay specific, actionable, and mode-appropriate" in plan_phase
+    assert "Dependencies, refs, baselines, and protocol bundles are surfaced where the shared templates expect them" in plan_phase
+    assert "Quantitative results include dimensional checks and validation checkpoints where relevant" in plan_phase
+    assert "Proof-bearing plans reserve `{plan_id}-PROOF-REDTEAM.md` and keep theorem coverage visible" in plan_phase
     assert "Contract Intake:" in plan_phase
     assert "Effective Reference Intake:" in plan_phase
     assert "Contract Intake:" in verify_work

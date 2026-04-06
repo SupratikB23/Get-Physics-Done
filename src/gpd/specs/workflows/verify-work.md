@@ -1020,11 +1020,7 @@ task(
 **Active References:** {active_reference_context}
 **Reference Artifacts:** {reference_artifacts_content}
 
-If the downstream fix plan will need specialized tooling or any other machine-checkable hard validation requirement, surface it in PLAN frontmatter `tool_requirements` before drafting task prose. Keep those dependencies visible on the plan surface so the checker can preflight them from the authored output instead of discovering them buried in body text.
-
-## Canonical PLAN Contract Schema
-
-Use `templates/plan-contract-schema.md` as the canonical contract schema reference.
+Use the shared planner template, phase template, and `templates/plan-contract-schema.md` before drafting the fix plan. If the downstream fix plan needs specialized tooling or any other machine-checkable hard validation requirement, surface it in PLAN frontmatter `tool_requirements`.
 
 <files_to_read>
 Read these files using the file_read tool:
@@ -1136,11 +1132,7 @@ task(
 **Active References:** {active_reference_context}
 **Reference Artifacts:** {reference_artifacts_content}
 
-If the revised fix plan still needs specialized tooling or any other machine-checkable hard validation requirement, keep it in PLAN frontmatter `tool_requirements` before rewriting task prose. Do not bury those requirements in the body where the checker cannot see them early.
-
-## Canonical PLAN Contract Schema
-
-Use `templates/plan-contract-schema.md` as the canonical contract schema reference.
+Use the shared planner template, phase template, and `templates/plan-contract-schema.md` before rewriting the fix plan. If the revised fix plan still needs specialized tooling or any other machine-checkable hard validation requirement, keep it in PLAN frontmatter `tool_requirements`.
 
 <files_to_read>
 Read all PLAN.md files in ${phase_dir}/ using the file_read tool.
