@@ -24,6 +24,11 @@ from gpd.contracts import (
     PROJECT_CONTRACT_COLLECTION_LIST_FIELDS,
     PROJECT_CONTRACT_MAPPING_LIST_FIELDS,
     PROJECT_CONTRACT_TOP_LEVEL_LIST_FIELDS,
+    _PLAN_GROUNDING_TEXT_BLOCKER_PATTERNS as _SHARED_PLAN_GROUNDING_TEXT_BLOCKER_PATTERNS,
+    _PLAN_GROUNDING_TEXT_DIRECT_PATTERNS as _SHARED_PLAN_GROUNDING_TEXT_DIRECT_PATTERNS,
+    _PLAN_GROUNDING_TEXT_QUESTION_PATTERNS as _SHARED_PLAN_GROUNDING_TEXT_QUESTION_PATTERNS,
+    _PLAN_GROUNDING_TEXT_SELECTION_PATTERNS as _SHARED_PLAN_GROUNDING_TEXT_SELECTION_PATTERNS,
+    _USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS as _SHARED_USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS,
     ContractAcceptanceTest,
     ContractApproachPolicy,
     ContractClaim,
@@ -45,6 +50,7 @@ from gpd.contracts import (
 from gpd.contracts import (
     _is_project_artifact_path as _shared_is_project_artifact_path,
 )
+from gpd.contracts import is_placeholder_only_guidance_text as _shared_is_placeholder_only_guidance_text
 from gpd.core.utils import dedupe_preserve_order
 
 __all__ = [
@@ -57,47 +63,11 @@ __all__ = [
 ]
 
 
-_ANCHOR_UNKNOWN_DIRECT_PATTERNS = (
-    re.compile(r"\bneed(?:s)? grounding\b"),
-    re.compile(r"\b(?:(?:decisive|benchmark|comparison)\s+)?target not (?:yet )?chosen\b"),
-)
-_ANCHOR_UNKNOWN_BLOCKER_PATTERNS = (
-    re.compile(r"\bunknown\b"),
-    re.compile(r"\bundecided\b"),
-    re.compile(r"\bunclear\b"),
-    re.compile(r"\bmissing\b"),
-    re.compile(r"\bnot (?:yet )?established\b"),
-    re.compile(r"\bnot (?:yet )?selected\b"),
-    re.compile(r"\bstill to identify\b"),
-    re.compile(r"\btbd\b"),
-    re.compile(r"\bto be determined\b"),
-    re.compile(r"\bmust establish\b"),
-    re.compile(r"\bestablish later\b"),
-    re.compile(r"\bno\b.+\byet\b"),
-)
-_ANCHOR_UNKNOWN_QUESTION_PATTERNS = (
-    re.compile(r"^\s*(?:which|what)\b"),
-    re.compile(r"\?$"),
-)
-_ANCHOR_UNKNOWN_SELECTION_PATTERNS = (
-    re.compile(r"\bserve as\b"),
-    re.compile(r"\btreat as\b"),
-    re.compile(r"\buse as\b"),
-    re.compile(r"\bchoose\b"),
-    re.compile(r"\bselect\b"),
-    re.compile(r"\bpick\b"),
-    re.compile(r"\bdecisive\b"),
-)
-_USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS = (
-    re.compile(r"^\s*(?:tbd|todo|unknown|unclear|none|n/?a|placeholder)\s*$"),
-    re.compile(r"\btbd\b"),
-    re.compile(r"\btodo\b"),
-    re.compile(r"\bplaceholder\b"),
-    re.compile(r"\bto be determined\b"),
-)
-_PLACEHOLDER_ONLY_GUIDANCE_PATTERNS = (
-    re.compile(r"^\s*(?:tbd|todo|unknown|unclear|none|n/?a|placeholder)\s*$"),
-)
+_ANCHOR_UNKNOWN_DIRECT_PATTERNS = _SHARED_PLAN_GROUNDING_TEXT_DIRECT_PATTERNS
+_ANCHOR_UNKNOWN_BLOCKER_PATTERNS = _SHARED_PLAN_GROUNDING_TEXT_BLOCKER_PATTERNS
+_ANCHOR_UNKNOWN_QUESTION_PATTERNS = _SHARED_PLAN_GROUNDING_TEXT_QUESTION_PATTERNS
+_ANCHOR_UNKNOWN_SELECTION_PATTERNS = _SHARED_PLAN_GROUNDING_TEXT_SELECTION_PATTERNS
+_USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS = _SHARED_USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS
 _RECOVERABLE_SCHEMA_WARNING_PATTERNS = (
     re.compile(r"^.+: Extra inputs are not permitted$"),
     re.compile(r"^.+\.\d+ must be a valid list member$"),
@@ -773,10 +743,7 @@ def _light_contract_consistency_errors(contract: ResearchContract) -> list[str]:
 def _is_placeholder_only_guidance_text(value: str) -> bool:
     """Return whether *value* is only a placeholder and not actionable guidance."""
 
-    lowered = value.casefold().strip()
-    if not lowered:
-        return True
-    return any(pattern.fullmatch(lowered) for pattern in _PLACEHOLDER_ONLY_GUIDANCE_PATTERNS)
+    return _shared_is_placeholder_only_guidance_text(value)
 
 
 def _is_concrete_text_grounding(
@@ -793,8 +760,6 @@ def _is_concrete_text_grounding(
         candidate_path = Path(value.strip()).expanduser()
         if candidate_path.is_absolute() or ".." in candidate_path.parts:
             return False
-    if any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_DIRECT_PATTERNS):
-        return False
     if any(
         _shared_is_concrete_reference_locator(value, reference_kind=reference_kind, project_root=project_root)
         for reference_kind in ("paper", "other", "dataset", "prior_artifact", "spec")
@@ -806,6 +771,8 @@ def _is_concrete_text_grounding(
             if candidate_path.is_absolute() or ".." in candidate_path.parts:
                 return False
         return True
+    if any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_DIRECT_PATTERNS):
+        return False
     if any(pattern.search(lowered) for pattern in _USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS):
         return False
     if any(pattern.search(lowered) for pattern in _ANCHOR_UNKNOWN_BLOCKER_PATTERNS):
@@ -1145,9 +1112,10 @@ def validate_project_contract(
 
     warnings.extend(_context_intake_guidance_warnings(parsed, project_root=project_root))
     must_surface_locator_warnings = _must_surface_locator_warnings(parsed, project_root=project_root)
-    warnings.extend(must_surface_locator_warnings)
     if mode == "approved":
         errors.extend(must_surface_locator_warnings)
+    else:
+        warnings.extend(must_surface_locator_warnings)
 
     has_non_reference_grounding = _has_non_reference_grounding_signal(parsed, project_root=project_root)
 

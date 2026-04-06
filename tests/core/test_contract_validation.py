@@ -1231,7 +1231,7 @@ def test_validate_project_contract_approved_mode_blocks_invalid_must_surface_loc
     )
     assert (
         "reference ref-placeholder is must_surface but locator is not concrete enough to ground validation"
-        in result.warnings
+        not in result.warnings
     )
 
 

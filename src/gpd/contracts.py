@@ -338,6 +338,15 @@ def statement_looks_theorem_like(statement: str | None) -> bool:
     return any(pattern.search(normalized) for pattern in _THEOREM_STYLE_STATEMENT_PATTERNS)
 
 
+def is_placeholder_only_guidance_text(value: str) -> bool:
+    """Return whether *value* is only placeholder guidance and not actionable context."""
+
+    lowered = value.casefold().strip()
+    if not lowered:
+        return True
+    return any(pattern.fullmatch(lowered) for pattern in _PLACEHOLDER_ONLY_GUIDANCE_PATTERNS)
+
+
 _PLAN_REFERENCE_LOCATOR_PLACEHOLDER_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*(?:tbd|todo|unknown|unclear|none|n/?a|placeholder)\s*$"),
     re.compile(r"\btbd\b"),
@@ -378,6 +387,30 @@ _PLAN_GROUNDING_TEXT_SELECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bselect\b"),
     re.compile(r"\bpick\b"),
     re.compile(r"\bdecisive\b"),
+)
+_PLAN_GROUNDING_TEXT_BLOCKER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bunknown\b"),
+    re.compile(r"\bundecided\b"),
+    re.compile(r"\bunclear\b"),
+    re.compile(r"\bmissing\b"),
+    re.compile(r"\bnot (?:yet )?established\b"),
+    re.compile(r"\bnot (?:yet )?selected\b"),
+    re.compile(r"\bstill to identify\b"),
+    re.compile(r"\btbd\b"),
+    re.compile(r"\bto be determined\b"),
+    re.compile(r"\bmust establish\b"),
+    re.compile(r"\bestablish later\b"),
+    re.compile(r"\bno\b.+\byet\b"),
+)
+_USER_ASSERTED_ANCHOR_PLACEHOLDER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^\s*(?:tbd|todo|unknown|unclear|none|n/?a|placeholder)\s*$"),
+    re.compile(r"\btbd\b"),
+    re.compile(r"\btodo\b"),
+    re.compile(r"\bplaceholder\b"),
+    re.compile(r"\bto be determined\b"),
+)
+_PLACEHOLDER_ONLY_GUIDANCE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^\s*(?:tbd|todo|unknown|unclear|none|n/?a|placeholder)\s*$"),
 )
 _PROJECT_ARTIFACT_PATH_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"[\\/]+"),
@@ -491,8 +524,6 @@ def _is_concrete_text_grounding(value: str, *, project_root: Path | None = None)
     lowered = value.casefold().strip()
     if not lowered:
         return False
-    if any(pattern.search(lowered) for pattern in _PLAN_GROUNDING_TEXT_DIRECT_PATTERNS):
-        return False
     if any(pattern.search(lowered) for pattern in _PLAN_REFERENCE_LOCATOR_CONCRETE_PATTERNS):
         return True
     if _is_citation_like_locator(value):
@@ -504,6 +535,8 @@ def _is_concrete_text_grounding(value: str, *, project_root: Path | None = None)
         for reference_kind in ("paper", "dataset", "prior_artifact", "spec")
     ):
         return True
+    if any(pattern.search(lowered) for pattern in _PLAN_GROUNDING_TEXT_DIRECT_PATTERNS):
+        return False
     if (
         all(pattern.search(lowered) for pattern in _PLAN_GROUNDING_TEXT_QUESTION_PATTERNS)
         and any(pattern.search(lowered) for pattern in _PLAN_GROUNDING_TEXT_SELECTION_PATTERNS)
