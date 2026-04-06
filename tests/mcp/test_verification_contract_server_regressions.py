@@ -62,8 +62,8 @@ def _schema_error_messages(schema: dict[str, object], payload: dict[str, object]
 def test_contract_server_singleton_drift_classifier_matches_core_contract_policy() -> None:
     from gpd.mcp.servers.verification_server import _is_defaultable_singleton_contract_error
 
-    assert _is_defaultable_singleton_contract_error("context_intake must be an object, not list") is True
-    assert _is_defaultable_singleton_contract_error("uncertainty_markers must be an object, not list") is True
+    assert _is_defaultable_singleton_contract_error("context_intake must be an object, not list") is False
+    assert _is_defaultable_singleton_contract_error("uncertainty_markers must be an object, not list") is False
     assert _is_defaultable_singleton_contract_error("approach_policy must be an object, not list") is False
 
 

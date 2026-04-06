@@ -115,6 +115,7 @@ _CASE_DRIFT_SCHEMA_WARNING_PATTERNS = (
     re.compile(r"^.+ must use exact canonical value: .+$"),
 )
 _AUTHORITATIVE_SCALAR_FINDING_PATTERNS = (
+    re.compile(r"^schema_version must be 1$"),
     re.compile(r"^schema_version must be the integer 1$"),
     re.compile(r"^schema_version: Input should be 1$"),
     re.compile(r"^.+\.must_surface must be a boolean$"),
