@@ -37,6 +37,7 @@ Keep `uncertainty_markers` explicit and user-visible in contract-backed outputs;
 For `contract_results.references`, keep the action ledger consistent: `completed` needs non-empty `completed_actions`, `missing` needs non-empty `missing_actions`, `not_applicable` keeps both lists empty, and the two lists must not overlap.
 `required_actions`, `completed_actions`, and `missing_actions` all use the same validator-enforced action vocabulary: `read`, `use`, `compare`, `cite`, `avoid`.
 Even singleton values must stay YAML lists in strict contract-backed ledgers: use `linked_ids: [claim-id]` and `completed_actions: [read]`, never scalar strings.
+Legacy frontmatter aliases such as `must_haves`, `verification_inputs`, `contract_evidence`, and `independently_confirmed` are forbidden in model-facing output; use only the canonical contract-ledger fields from `contract_results`.
 When evidence is about an explicit proxy guardrail, bind it through `forbidden_proxy_id` instead of inventing a new subject kind.
 Every `comparison_verdicts` entry must declare `subject_role` explicitly. If a decisive external anchor was used, include `reference_id`; if the decisive anchor is itself the compared subject, use `subject_kind: reference`.
 Emit decisive `comparison_verdicts` whenever the PLAN contract includes `benchmark` or `cross_method` acceptance tests, whenever a benchmark/compare-driven reference anchors the subject, or whenever you performed a decisive comparison in practice.

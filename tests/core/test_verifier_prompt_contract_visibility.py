@@ -28,6 +28,7 @@ def test_verifier_prompt_points_to_canonical_verification_schema_sources() -> No
     assert "Do not invent a verifier-local schema, relax required ledgers, or treat body prose as a substitute for frontmatter consumed by validation and downstream tooling." in verifier
     assert "include a machine-readable `ASSERT_CONVENTION` comment immediately after the YAML frontmatter in `VERIFICATION.md`." in verifier
     assert "Changed phase verification artifacts now fail `gpd pre-commit-check` if the required header is missing or mismatched." in verifier
+    assert "Legacy frontmatter aliases such as `must_haves`, `verification_inputs`, `contract_evidence`, and `independently_confirmed` are forbidden in model-facing output" in verifier
     assert "@{GPD_INSTALL_DIR}/templates/verification-report.md" in verifier_lines
     assert "@{GPD_INSTALL_DIR}/templates/contract-results-schema.md" in verifier_lines
 
@@ -62,6 +63,7 @@ def test_verifier_prompt_frontmatter_example_includes_contract_ledgers() -> None
     assert "comparison_kind: benchmark|prior_work|experiment|cross_method|baseline|other" in verifier
     assert "weakest_anchors: [anchor-1]" in verifier
     assert "disconfirming_observations: [observation-1]" in verifier
+    assert "\nindependently_confirmed:" not in verifier
     assert "<!-- ASSERT_CONVENTION: natural_units=natural, metric_signature=mostly-minus, fourier_convention=physics -->" in verifier
     assert "weakest_anchors: []" not in verifier
     assert "disconfirming_observations: []" not in verifier
@@ -70,6 +72,7 @@ def test_verifier_prompt_frontmatter_example_includes_contract_ledgers() -> None
 def test_verifier_prompt_surfaces_missing_parameter_proof_audit_and_stale_review_gate() -> None:
     verifier = _read_verifier_prompt()
     contract_results_schema = (TEMPLATES_DIR / "contract-results-schema.md").read_text(encoding="utf-8")
+    research_verification = (TEMPLATES_DIR / "research-verification.md").read_text(encoding="utf-8")
     verification_template = _read_verification_template()
 
     assert "[] Proof structure" in verifier
@@ -95,9 +98,15 @@ def test_verifier_prompt_surfaces_missing_parameter_proof_audit_and_stale_review
     assert "A quantified proof-bearing claim must keep `proof_audit.quantifier_status` explicit" in contract_results_schema
     assert "`proof_audit.proof_artifact_path` must match a declared `proof_deliverables` path" in contract_results_schema
     assert "`proof_audit.audit_artifact_path` must point to a proof-redteam artifact" in contract_results_schema
+    assert 'summary: "[what the adversarial proof review concluded]"' in verification_template
+    assert "completed_actions: []" in verification_template
+    assert "missing_actions: [read]" in verification_template
+    assert 'summary: "[what the adversarial proof review concluded]"' in research_verification
 
     assert "Proof-backed claims are stricter still" in verification_template
     assert "Quantified proof claims must keep `proof_audit.quantifier_status` explicit" in verification_template
     assert "the declared proof artifact path and the canonical proof-redteam artifact path" in verification_template
     assert "proof artifact, or proof-audit deliverable changed after the last adversarial proof review" in verification_template
     assert "A stale proof audit is never compatible with `status: passed`." in verification_template
+    assert "all artifacts pass levels 1-4" in verifier
+    assert "all artifacts pass levels 1-3" not in verifier

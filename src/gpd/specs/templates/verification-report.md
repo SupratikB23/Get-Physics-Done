@@ -16,6 +16,7 @@ Template for `GPD/phases/XX-name/{phase}-VERIFICATION.md` -- physics verificatio
 
 `status: passed` is strict: use it only when every claim, deliverable, and acceptance_test entry in `contract_results` is `passed`, every reference entry is `completed`, every `must_surface` reference has all `required_actions` recorded in `completed_actions`, every forbidden_proxy is `rejected` or `not_applicable`, every required decisive comparison has a decisive verdict, and `suggested_contract_checks` is empty. If any contract target is `partial`, `failed`, `blocked`, `missing`, or `unresolved`, use `gaps_found`, `expert_needed`, or `human_needed` instead of `passed`.
 Proof-backed claims are stricter still: `contract_results.claims.<claim-id>.status: passed` is invalid unless that same entry carries `proof_audit.completeness: complete`, `reviewer: gpd-check-proof`, a current `claim_statement_sha256`, current `proof_artifact_sha256`, current `audit_artifact_sha256`, and a passed proof-specific acceptance test. Quantified proof claims must keep `proof_audit.quantifier_status` explicit, and a passed quantified claim must use `quantifier_status: matched`. The proof audit also has to point at the declared proof artifact path and the canonical proof-redteam artifact path, not just any readable file. If the theorem statement, proof artifact, or proof-audit deliverable changed after the last adversarial proof review, keep the affected target at `partial` or `blocked` until the proof audit is rerun. A stale proof audit is never compatible with `status: passed`.
+Legacy frontmatter aliases such as `must_haves`, `verification_inputs`, `contract_evidence`, and `independently_confirmed` are forbidden in model-facing output; use only the canonical contract-ledger fields from `contract_results`.
 
 ---
 
@@ -78,6 +79,7 @@ contract_results:
         completeness: incomplete
         reviewed_at: "2026-04-02T12:00:00Z"
         reviewer: gpd-check-proof
+        summary: "[what the adversarial proof review concluded]"
         proof_artifact_path: derivations/main-proof.tex
         proof_artifact_sha256: "[required when a proof-bearing claim passes]"
         audit_artifact_path: GPD/phases/01-proof/01-01-PROOF-REDTEAM.md
@@ -117,8 +119,8 @@ contract_results:
   references:
     reference-id:
       status: missing
-      completed_actions: [read, compare, cite]
-      missing_actions: []
+      completed_actions: []
+      missing_actions: [read]
       summary: "[how the anchor was checked]"
   forbidden_proxies:
     forbidden-proxy-id:

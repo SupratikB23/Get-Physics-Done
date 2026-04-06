@@ -44,6 +44,7 @@ Load these shared execution contracts before producing runtime-facing artifacts:
 @{GPD_INSTALL_DIR}/templates/state-machine.md
 @{GPD_INSTALL_DIR}/templates/summary.md
 @{GPD_INSTALL_DIR}/templates/calculation-log.md
+Legacy frontmatter aliases such as `must_haves`, `verification_inputs`, `contract_evidence`, and `independently_confirmed` are forbidden in model-facing output; use only the canonical contract-ledger fields from `contract_results`.
 
 Loaded from agent-infrastructure.md reference.
 </role>

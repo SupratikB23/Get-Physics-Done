@@ -40,6 +40,10 @@ def test_verification_report_strict_pass_guidance_includes_reference_coverage_ru
     assert "every claim, deliverable, and acceptance_test entry in `contract_results` is `passed`" in verification_report
     assert "every reference entry is `completed`" in verification_report
     assert "every `must_surface` reference has all `required_actions` recorded in `completed_actions`" in verification_report
+    assert 'summary: "[what the adversarial proof review concluded]"' in verification_report
+    assert "completed_actions: []" in verification_report
+    assert "missing_actions: [read]" in verification_report
+    assert "Legacy frontmatter aliases such as `must_haves`, `verification_inputs`, `contract_evidence`, and `independently_confirmed` are forbidden in model-facing output" in verification_report
     assert "linked_ids: [deliverable-id, acceptance-test-id, reference-id]" in verification_report
     assert "evidence:\n        - verifier: gpd-verifier" in verification_report
     assert "linked_ids: [claim-id, acceptance-test-id]" in verification_report
@@ -127,6 +131,8 @@ def test_research_verification_template_keeps_contract_results_and_scalar_exampl
     assert "linked_ids: [claim-main, acceptance-test-main]" in research_verification
     assert "linked_ids: [claim-main, deliverable-main, reference-main]" in research_verification
     assert "evidence:\n        - verifier: gpd-verifier" in research_verification
+    assert 'summary: "[what the adversarial proof review concluded]"' in research_verification
+    assert "Legacy frontmatter aliases such as `must_haves`, `verification_inputs`, `contract_evidence`, and `independently_confirmed` are forbidden in model-facing output" in research_verification
     assert 'evidence_path: "GPD/phases/XX-name/{phase}-VERIFICATION.md"' in research_verification
     assert 'evidence_path: "[artifact path or expected evidence path]"' in research_verification
     assert 'started: "ISO timestamp"' in research_verification
@@ -139,3 +145,11 @@ def test_research_verification_template_keeps_contract_results_and_scalar_exampl
     assert 'updated: [ISO timestamp]' not in research_verification
     assert 'subject_id: "contract id or \\"\\""' not in research_verification
     assert 'subject_id: [contract id or ""]' not in research_verification
+
+
+def test_summary_template_keeps_reference_action_ledger_and_legacy_alias_note() -> None:
+    summary_template = _read("src/gpd/specs/templates/summary.md")
+
+    assert "For `contract_results.references`, keep the action ledger consistent" in summary_template
+    assert "required_actions`, `completed_actions`, and `missing_actions` all use the same validator-enforced action vocabulary" in summary_template
+    assert "Legacy frontmatter aliases such as `must_haves`, `verification_inputs`, `contract_evidence`, and `independently_confirmed` are forbidden in model-facing output" in summary_template

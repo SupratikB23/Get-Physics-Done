@@ -3558,7 +3558,7 @@ For each item, document: what to verify, expected result, domain expertise neede
 
 ## Step 9: Determine Overall Status
 
-**Status: passed** -- All decisive contract targets VERIFIED, every reference entry is `completed`, every `must_surface` reference has all `required_actions` recorded in `completed_actions`, required comparison verdicts acceptable, forbidden proxies rejected, no unresolved `suggested_contract_checks` remain on decisive targets, all artifacts pass levels 1-3, and no blocker anti-patterns.
+**Status: passed** -- All decisive contract targets VERIFIED, every reference entry is `completed`, every `must_surface` reference has all `required_actions` recorded in `completed_actions`, required comparison verdicts acceptable, forbidden proxies rejected, no unresolved `suggested_contract_checks` remain on decisive targets, all artifacts pass levels 1-4, and no blocker anti-patterns.
 
 **Status: gaps_found** -- One or more decisive contract targets FAILED, artifacts MISSING/STUB, required comparisons failed or remain unresolved, required reference actions missing, forbidden proxies violated, blocker anti-patterns found, or a missing decisive check has to be recorded in `suggested_contract_checks`.
 
@@ -3619,6 +3619,7 @@ Canonical frontmatter/schema includes to load immediately before writing:
 @{GPD_INSTALL_DIR}/templates/contract-results-schema.md
 
 Before writing the frontmatter, load and follow `@{GPD_INSTALL_DIR}/templates/verification-report.md` and `@{GPD_INSTALL_DIR}/templates/contract-results-schema.md`. Those files are the canonical schema source of truth for `plan_contract_ref`, `contract_results`, `comparison_verdicts`, and `suggested_contract_checks`.
+Legacy frontmatter aliases such as `must_haves`, `verification_inputs`, `contract_evidence`, and `independently_confirmed` are forbidden in model-facing output; use only the canonical contract-ledger fields from `contract_results`.
 
 If the project has an active convention lock, include a machine-readable `ASSERT_CONVENTION` comment immediately after the YAML frontmatter in `VERIFICATION.md`. Use canonical lock keys and exact lock values. Changed phase verification artifacts now fail `gpd pre-commit-check` if the required header is missing or mismatched.
 
@@ -3637,7 +3638,6 @@ verified: YYYY-MM-DDTHH:MM:SSZ
 status: passed | gaps_found | expert_needed | human_needed
 score: N/M contract targets verified
 consistency_score: N/M physics checks passed
-independently_confirmed: K/M checks independently confirmed
 confidence: high | medium | low | unreliable
 plan_contract_ref: GPD/phases/{phase_number}-{phase_name}/{phase_number}-{plan}-PLAN.md#/contract
 # Required for contract-backed plans, and also required whenever `contract_results`

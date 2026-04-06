@@ -9,6 +9,7 @@ Template for `GPD/phases/XX-name/{phase}-VERIFICATION.md` -- persistent research
 A conversational walkthrough of research results, checking derivation logic, physical intuition, edge cases, and overall soundness.
 Use `@{GPD_INSTALL_DIR}/templates/verification-report.md` for the canonical verification frontmatter contract. This template only adds the researcher-session body scaffold (`Current Check`, conversational logs, and diagnosis flow), so its verification-side `suggested_contract_checks` entries are part of the same canonical schema surface and must stay aligned with that shared schema instead of inventing a second checklist format.
 Keep the contract-backed frontmatter explicit: `uncertainty_markers` stay non-empty, theorem/proof claims remain `partial` or `blocked` until the proof audit and proof-specific acceptance test both pass, and any active convention lock still requires a machine-readable `ASSERT_CONVENTION` comment after the YAML frontmatter.
+Legacy frontmatter aliases such as `must_haves`, `verification_inputs`, `contract_evidence`, and `independently_confirmed` are forbidden in model-facing output; use only the canonical contract-ledger fields from `contract_results`.
 
 ---
 
@@ -32,6 +33,7 @@ contract_results:
         completeness: incomplete
         reviewed_at: null
         reviewer: gpd-check-proof
+        summary: "[what the adversarial proof review concluded]"
         proof_artifact_path: derivations/main-proof.tex
         proof_artifact_sha256: null
         audit_artifact_path: GPD/phases/XX-name/{phase}-{plan}-PROOF-REDTEAM.md
