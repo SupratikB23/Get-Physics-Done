@@ -707,6 +707,8 @@ def test_run_contract_check_tool_description_surfaces_request_requirements() -> 
     assert "stable numeric id" in description
     assert "``request.artifact_content``" in description
     assert "must be a string when present" in description
+    assert "``project_dir`` is optional" in description
+    assert "absolute project root" in description
     assert "``required_request_fields``" in description
     assert "``schema_required_request_fields``" in description
     assert "``schema_required_request_anyof_fields``" in description
@@ -735,6 +737,8 @@ def test_suggest_contract_checks_tool_description_surfaces_contract_requirements
     assert "metadata.hypothesis_ids" in description
     assert "metadata.theorem_parameter_symbols" in description
     assert "metadata.conclusion_clause_ids" in description
+    assert "``project_dir`` is optional" in description
+    assert "absolute project root" in description
     assert "``active_checks`` is optional and must be ``list[str]``" in description
     assert "``already_active``" in description
     assert "``supported_binding_fields``" in description
@@ -750,10 +754,13 @@ def test_suggest_contract_checks_tool_description_surfaces_contract_requirements
 
 
 def test_contract_tools_list_tools_expose_structured_request_schemas() -> None:
+    from gpd.mcp.servers import ABSOLUTE_PROJECT_DIR_SCHEMA
     from gpd.mcp.servers.verification_server import list_verification_checks, mcp
 
     run_schema = _tool_input_schema(mcp, "run_contract_check")
     run_request = _schema_object(run_schema, run_schema["properties"]["request"])
+    assert run_schema["properties"]["project_dir"]["anyOf"] == [ABSOLUTE_PROJECT_DIR_SCHEMA, {"type": "null"}]
+    assert run_schema["properties"]["project_dir"]["default"] is None
 
     assert run_request["additionalProperties"] is False
     check_key_requirement = next(
@@ -986,6 +993,8 @@ def test_contract_tools_list_tools_expose_structured_request_schemas() -> None:
     assert "non-empty `forbidden_proxies`" in contract_schema["description"]
 
     suggest_schema = _tool_input_schema(mcp, "suggest_contract_checks")
+    assert suggest_schema["properties"]["project_dir"]["anyOf"] == [ABSOLUTE_PROJECT_DIR_SCHEMA, {"type": "null"}]
+    assert suggest_schema["properties"]["project_dir"]["default"] is None
     contract_schema = _schema_anyof_object(suggest_schema["properties"]["contract"])
     _assert_contract_schema_sections_closed(contract_schema)
     assert set(contract_schema["required"]) == {"schema_version", "scope", "context_intake", "uncertainty_markers"}

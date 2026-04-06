@@ -508,6 +508,23 @@ def test_verification_get_bundle_checklist_returns_error_envelope_on_backend_fai
     assert result == {"error": "bundle store offline", "schema_version": 1}
 
 
+def test_verification_get_bundle_checklist_rejects_blank_bundle_ids() -> None:
+    from gpd.mcp.servers.verification_server import get_bundle_checklist
+
+    result = get_bundle_checklist(["stat-mech-simulation", "   "])
+
+    assert result == {"error": "bundle_ids[1] must be a non-empty string", "schema_version": 1}
+
+
+def test_verification_get_bundle_checklist_dedupes_bundle_ids() -> None:
+    from gpd.mcp.servers.verification_server import get_bundle_checklist
+
+    result = get_bundle_checklist(["stat-mech-simulation", "stat-mech-simulation"])
+
+    assert result["bundle_count"] == 1
+    assert [bundle["bundle_id"] for bundle in result["bundles"]] == ["stat-mech-simulation"]
+
+
 def test_pattern_lookup_tolerates_missing_default_library(tmp_path: Path) -> None:
     import gpd.mcp.servers.patterns_server as patterns_server
 

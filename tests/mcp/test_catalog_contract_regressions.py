@@ -113,6 +113,27 @@ def test_catalog_filter_schemas_publish_authoritative_enum_values() -> None:
     assert _collect_enum_values(skill_schema["properties"]["category"]) == expected_skill_categories
 
 
+def test_run_check_schema_publishes_live_identifier_enum() -> None:
+    from gpd.mcp.servers import verification_server
+
+    schema = _tool_schema("gpd.mcp.servers.verification_server", "run_check")
+    check_id = schema["properties"]["check_id"]
+
+    assert check_id["enum"] == list(verification_server._RUN_CHECK_IDENTIFIER_VALUES)
+    assert {"5.1", "contract.limit_recovery"} <= set(check_id["enum"])
+
+
+def test_get_bundle_checklist_schema_publishes_unique_non_blank_bundle_ids() -> None:
+    schema = _tool_schema("gpd.mcp.servers.verification_server", "get_bundle_checklist")
+    bundle_ids = schema["properties"]["bundle_ids"]
+
+    assert bundle_ids["type"] == "array"
+    assert bundle_ids["uniqueItems"] is True
+    assert bundle_ids["items"]["type"] == "string"
+    assert bundle_ids["items"]["minLength"] == 1
+    assert bundle_ids["items"]["pattern"] == r"\S"
+
+
 def test_protocol_catalog_schema_refreshes_from_live_manifest_values(monkeypatch: pytest.MonkeyPatch) -> None:
     from gpd.mcp.servers import protocols_server
 

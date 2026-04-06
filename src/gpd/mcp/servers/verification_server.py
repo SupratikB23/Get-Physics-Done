@@ -62,7 +62,9 @@ from gpd.core.verification_checks import (
     list_verification_checks,
 )
 from gpd.mcp.servers import (
+    ABSOLUTE_PROJECT_DIR_SCHEMA,
     configure_mcp_logging,
+    resolve_absolute_project_dir,
     stable_mcp_error,
     stable_mcp_response,
     tighten_registered_tool_contracts,
@@ -693,6 +695,10 @@ _RUN_CHECK_IDENTIFIER_VALUES: tuple[str, ...] = tuple(
         for identifier in _check_identifier_values(entry)
     )
 )
+_RUN_CHECK_IDENTIFIER_SCHEMA: dict[str, object] = {
+    **dict(_trimmed_non_empty_string_schema()),
+    "enum": list(_RUN_CHECK_IDENTIFIER_VALUES),
+}
 
 
 _CONTRACT_BINDING_INPUT_SCHEMA: dict[str, object] = _binding_input_schema_for_targets(_CONTRACT_BINDING_TARGETS)
@@ -1227,6 +1233,19 @@ StringListPayload = Annotated[
     object | None,
     WithJsonSchema({"anyOf": [{"type": "array", "items": _non_empty_string_schema()}, {"type": "null"}]}),
 ]
+OptionalAbsoluteProjectDirInput = Annotated[
+    str | None,
+    WithJsonSchema({"anyOf": [dict(ABSOLUTE_PROJECT_DIR_SCHEMA), {"type": "null"}]}),
+]
+RunCheckIdentifierInput = Annotated[
+    str,
+    Field(min_length=1, pattern=r"\S"),
+    WithJsonSchema(dict(_RUN_CHECK_IDENTIFIER_SCHEMA)),
+]
+BundleIdListInput = Annotated[
+    list[str],
+    WithJsonSchema(_string_list_schema()),
+]
 
 
 def _contract_check_request_hint(check_key: str, *, contract: ResearchContract | None = None) -> dict[str, object]:
@@ -1703,7 +1722,9 @@ def _run_contract_check_description() -> str:
         "irrelevant binding fields are request errors, not soft verification issues. Canonical binding "
         "fields are plural ``*_ids`` arrays. ``request.check_key`` may be the canonical key or the "
         "stable numeric id that resolves to the same check. ``request.artifact_content`` is optional "
-        "and must be a string when present. "
+        "and must be a string when present. ``project_dir`` is optional, but when the contract uses "
+        "project-local anchors or prior-output paths it should be the absolute project root so those "
+        "references are validated against the correct filesystem context. "
         f"{verification_contract_policy_text()} "
         "Use ``suggest_contract_checks(contract, active_checks=...)`` first when you need the exact "
         "``required_request_fields``, ``schema_required_request_fields``, "
@@ -1717,6 +1738,9 @@ def _suggest_contract_checks_description() -> str:
     return (
         "Suggest contract-aware checks from a schema-validated project or phase ``contract``. "
         "``contract`` must be an object with the normal GPD contract structure. "
+        "``project_dir`` is optional, but supply the absolute project root whenever the contract uses "
+        "project-local anchors or prior-output paths so grounding-sensitive checks see the same root "
+        "the model is reasoning about. "
         f"{verification_contract_policy_text()} "
         "For plan-style contract payloads, ``context_intake`` must be present and non-empty, and the "
         "contract must satisfy the same plan semantic requirements GPD enforces in plan frontmatter. "
@@ -1894,6 +1918,25 @@ def _validate_string(value: object, *, field_name: str) -> tuple[str | None, dic
     return stripped, None
 
 
+def _validate_optional_project_dir(
+    value: object,
+    *,
+    field_name: str,
+) -> tuple[Path | None, dict[str, object] | None]:
+    """Return an absolute project root path or ``None`` when the field is omitted."""
+
+    if value is None:
+        return None, None
+    project_dir, error = _validate_string(value, field_name=field_name)
+    if error is not None:
+        return None, error
+    assert project_dir is not None
+    resolved = resolve_absolute_project_dir(project_dir)
+    if resolved is None:
+        return None, _error_result(f"{field_name} must be an absolute path")
+    return resolved.resolve(strict=False), None
+
+
 def _validate_string_list(value: object, *, field_name: str) -> tuple[list[str] | None, dict[str, object] | None]:
     """Return a validated list[str] or an MCP error envelope."""
     if not isinstance(value, list):
@@ -2015,7 +2058,7 @@ def _dims_equal(a: dict[str, int], b: dict[str, int]) -> bool:
 
 @mcp.tool()
 def run_check(
-    check_id: Annotated[str, Field(min_length=1, pattern=r"\S")],
+    check_id: RunCheckIdentifierInput,
     domain: Annotated[str, Field(min_length=1, pattern=r"\S")],
     artifact_content: Annotated[str, Field(min_length=1, pattern=r"\S")],
 ) -> dict:
@@ -3783,12 +3826,15 @@ def _validate_limit_expected_behavior_binding(
 
 
 @mcp.tool(description=_run_contract_check_description())
-def run_contract_check(request: RunContractCheckPayload) -> dict:
+def run_contract_check(request: RunContractCheckPayload, project_dir: OptionalAbsoluteProjectDirInput = None) -> dict:
     """Run a contract-aware verification check."""
 
     with gpd_span("mcp.verification.run_contract_check"):
         try:
             request, error = _payload_mapping(request, field_name="request")
+            if error is not None:
+                return error
+            project_root, error = _validate_optional_project_dir(project_dir, field_name="project_dir")
             if error is not None:
                 return error
             request_key_error = _validate_run_contract_check_request_keys(request)
@@ -3825,7 +3871,7 @@ def run_contract_check(request: RunContractCheckPayload) -> dict:
             if contract_raw is not None:
                 contract, contract_salvage_errors, error = _parse_contract_payload(
                     contract_raw,
-                    project_root=Path.cwd(),
+                    project_root=project_root,
                 )
                 if error is not None:
                     return error
@@ -4488,12 +4534,19 @@ def run_contract_check(request: RunContractCheckPayload) -> dict:
 
 
 @mcp.tool(description=_suggest_contract_checks_description())
-def suggest_contract_checks(contract: SuggestContractPayload, active_checks: StringListPayload = None) -> dict:
+def suggest_contract_checks(
+    contract: SuggestContractPayload,
+    active_checks: StringListPayload = None,
+    project_dir: OptionalAbsoluteProjectDirInput = None,
+) -> dict:
     """Suggest contract-aware checks from a schema-validated contract."""
 
     with gpd_span("mcp.verification.suggest_contract_checks"):
         try:
             contract, error = _payload_mapping(contract, field_name="contract")
+            if error is not None:
+                return error
+            project_root, error = _validate_optional_project_dir(project_dir, field_name="project_dir")
             if error is not None:
                 return error
             if active_checks is not None:
@@ -4503,7 +4556,7 @@ def suggest_contract_checks(contract: SuggestContractPayload, active_checks: Str
                 active_checks = _normalize_active_checks(active_checks)
             parsed, contract_salvage_errors, error = _parse_contract_payload(
                 contract,
-                project_root=Path.cwd(),
+                project_root=project_root,
             )
             if error is not None or parsed is None:
                 return error or _error_result("Invalid contract payload")
@@ -4650,16 +4703,21 @@ def get_checklist(domain: Annotated[str, Field(min_length=1, pattern=r"\S")]) ->
 
 
 @mcp.tool()
-def get_bundle_checklist(bundle_ids: list[str]) -> dict:
+def get_bundle_checklist(bundle_ids: BundleIdListInput) -> dict:
     """Return additive verifier checklist extensions for selected protocol bundles."""
-    with gpd_span("mcp.verification.bundle_checklist", bundle_count=len(bundle_ids)):
+    validated_bundle_ids, error = _validate_string_list(bundle_ids, field_name="bundle_ids")
+    if error is not None:
+        return error
+    normalized_bundle_ids = _unique_strings(validated_bundle_ids or [])
+
+    with gpd_span("mcp.verification.bundle_checklist", bundle_count=len(normalized_bundle_ids)):
         try:
             bundles: list[dict[str, object]] = []
             resolved_bundles: list[ResolvedProtocolBundle] = []
             checklist: list[dict[str, object]] = []
             missing_bundle_ids: list[str] = []
 
-            for bundle_id in bundle_ids:
+            for bundle_id in normalized_bundle_ids:
                 bundle = get_protocol_bundle(bundle_id)
                 if bundle is None:
                     missing_bundle_ids.append(bundle_id)

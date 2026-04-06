@@ -295,9 +295,24 @@ def test_new_project_parallel_researchers_write_to_disjoint_artifacts() -> None:
     synth = _find_single_task(path, "gpd-research-synthesizer")
     _assert_spawn_contract(synth, ("GPD/research/SUMMARY.md",))
     assert "Do not trust the runtime handoff status by itself." in content
-    assert "If a scout reports success but its `expected_artifacts` entry (`GPD/research/{FILE}`) is missing" in content
+    assert "If a scout reports success but its `expected_artifacts` entry" in content
+    assert "`GPD/research/{FILE}`" in content
     assert "If the synthesizer reports success but `GPD/research/SUMMARY.md` is missing" in content
     assert "If 1-2 agents failed, proceed with the synthesizer using available files" in content
+
+
+def test_new_project_roadmapper_uses_spawn_contract_and_artifact_gate() -> None:
+    path = WORKFLOWS_DIR / "new-project.md"
+    content = _read(path)
+    roadmapper = _find_single_task(path, "gpd-roadmapper")
+
+    _assert_spawn_contract(roadmapper, ("GPD/ROADMAP.md", "GPD/STATE.md"))
+    assert "GPD/REQUIREMENTS.md" in roadmapper.text
+    assert "GPD/research/SUMMARY.md" in roadmapper.text
+    assert "allowed_paths:" in roadmapper.text
+    assert "If the roadmapper reports `## ROADMAP CREATED`" in content
+    assert "`GPD/ROADMAP.md` or `GPD/STATE.md` is missing" in content
+    assert "Do not trust the runtime handoff status by itself." in content
 
 
 def test_new_milestone_research_and_roadmapper_gate_success_path_artifacts() -> None:

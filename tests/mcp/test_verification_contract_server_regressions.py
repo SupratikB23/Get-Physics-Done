@@ -14,6 +14,22 @@ def _load_project_contract_fixture() -> dict[str, object]:
     return json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
 
 
+def _project_local_contract_fixture(project_root: Path) -> dict[str, object]:
+    contract = copy.deepcopy(_load_project_contract_fixture())
+    reference = contract["references"][0]
+    assert isinstance(reference, dict)
+    reference["kind"] = "prior_artifact"
+    reference["locator"] = "artifacts/benchmark/report.json"
+
+    artifact = project_root / "artifacts" / "benchmark" / "report.json"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("{}\n", encoding="utf-8")
+    baseline = project_root / "GPD" / "phases" / "01-setup" / "01-01-SUMMARY.md"
+    baseline.parent.mkdir(parents=True, exist_ok=True)
+    baseline.write_text("baseline summary\n", encoding="utf-8")
+    return contract
+
+
 def _call_verification_tool(tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
     from gpd.mcp.servers.verification_server import mcp
 
@@ -59,6 +75,57 @@ def _schema_error_messages(schema: dict[str, object], payload: dict[str, object]
     from jsonschema import Draft202012Validator
 
     return [error.message for error in Draft202012Validator(schema).iter_errors(payload)]
+
+
+def test_contract_check_tool_schemas_publish_optional_absolute_project_dir() -> None:
+    from gpd.mcp.servers import ABSOLUTE_PROJECT_DIR_SCHEMA
+
+    run_project_dir = _run_contract_check_input_schema()["properties"]["project_dir"]
+    suggest_project_dir = _suggest_contract_checks_input_schema()["properties"]["project_dir"]
+
+    for schema in (run_project_dir, suggest_project_dir):
+        assert schema["anyOf"] == [ABSOLUTE_PROJECT_DIR_SCHEMA, {"type": "null"}]
+        assert schema["default"] is None
+
+
+def test_contract_check_tools_reject_relative_project_dir() -> None:
+    from gpd.mcp.servers.verification_server import run_contract_check, suggest_contract_checks
+
+    expected = {"error": "project_dir must be an absolute path", "schema_version": 1}
+
+    assert run_contract_check({"check_key": "contract.limit_recovery"}, project_dir="relative/project") == expected
+    assert suggest_contract_checks(_load_project_contract_fixture(), project_dir="relative/project") == expected
+
+
+def test_run_contract_check_accepts_project_local_contract_when_project_dir_supplied(tmp_path: Path) -> None:
+    from gpd.mcp.servers.verification_server import run_contract_check
+
+    contract = _project_local_contract_fixture(tmp_path)
+    request = {
+        "check_key": "contract.benchmark_reproduction",
+        "contract": contract,
+        "binding": {"claim_ids": ["claim-benchmark"], "reference_ids": ["ref-benchmark"]},
+        "metadata": {"source_reference_id": "ref-benchmark"},
+        "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+    }
+
+    missing_root = run_contract_check(request)
+    rooted = run_contract_check(request, project_dir=tmp_path.resolve(strict=False).as_posix())
+
+    assert "must_surface=true anchor" in missing_root["error"]
+    assert rooted["status"] == "pass"
+
+
+def test_suggest_contract_checks_accepts_project_local_contract_when_project_dir_supplied(tmp_path: Path) -> None:
+    from gpd.mcp.servers.verification_server import suggest_contract_checks
+
+    contract = _project_local_contract_fixture(tmp_path)
+
+    missing_root = suggest_contract_checks(contract)
+    rooted = suggest_contract_checks(contract, project_dir=tmp_path.resolve(strict=False).as_posix())
+
+    assert "must_surface=true anchor" in missing_root["error"]
+    assert "contract.benchmark_reproduction" in {entry["check_key"] for entry in rooted["suggested_checks"]}
 def test_contract_server_singleton_drift_classifier_matches_core_contract_policy() -> None:
     from gpd.mcp.servers.verification_server import _is_defaultable_singleton_contract_error
 
