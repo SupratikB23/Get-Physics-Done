@@ -160,6 +160,7 @@ def test_resolve_runtime_lookup_active_runtime_uses_workspace_when_project_dir_i
 
 def test_normalized_runtime_hint_handles_alias_unknown_and_blank_values() -> None:
     assert _normalized_runtime_hint("claude") == "claude-code"
+    assert _normalized_runtime_hint("  claude  ") == "claude-code"
     assert _normalized_runtime_hint("unknown") is None
     assert _normalized_runtime_hint("   ") is None
 
@@ -193,6 +194,42 @@ def test_resolve_runtime_lookup_context_falls_back_to_workspace_runtime_when_pro
     assert resolved.active_runtime == "codex"
     assert resolved.lookup_dir == str(workspace)
     assert calls == [str(project_root), str(workspace)]
+
+
+def test_resolve_hook_lookup_context_uses_shared_runtime_hint_normalizer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+
+    calls: list[str | None] = []
+
+    def _normalize(runtime: str | None) -> str | None:
+        calls.append(runtime)
+        if runtime is None:
+            return None
+        runtime = runtime.strip()
+        if runtime == "active":
+            return "claude-code"
+        if runtime == "preferred":
+            return "codex"
+        return None
+
+    monkeypatch.setattr("gpd.hooks.install_context.normalize_runtime_hint", _normalize)
+
+    resolved = resolve_hook_lookup_context(
+        cwd=None,
+        home=home,
+        active_installed_runtime=" active ",
+        preferred_runtime=" preferred ",
+    )
+
+    assert calls == [" active ", " preferred ", " active "]
+    assert resolved.active_runtime == "claude-code"
+    assert resolved.preferred_runtime == "codex"
+
+
 def test_resolve_hook_lookup_context_normalizes_unknown_and_alias_runtime_hints(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     home = tmp_path / "home"
@@ -211,3 +248,28 @@ def test_resolve_hook_lookup_context_normalizes_unknown_and_alias_runtime_hints(
     assert resolved.lookup_cwd == workspace
     assert resolved.active_runtime == "claude-code"
     assert resolved.preferred_runtime == "claude-code"
+
+
+def test_resolve_hook_lookup_context_ignores_invalid_preferred_runtime_hint(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    home = tmp_path / "home"
+    workspace.mkdir()
+    home.mkdir()
+
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_active_runtime", lambda **_: None)
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install", lambda **_: None)
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_local_runtime_with_gpd_install", lambda **_: None)
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", lambda **_: "codex")
+
+    resolved = resolve_hook_lookup_context(
+        cwd=workspace,
+        home=home,
+        preferred_runtime="not-a-runtime",
+    )
+
+    assert resolved.lookup_cwd == workspace
+    assert resolved.active_runtime is None
+    assert resolved.preferred_runtime == "codex"

@@ -297,6 +297,7 @@ def _proof_obligation_contract() -> dict[str, object]:
         "schema_version": 1,
         "scope": {"question": "Does the proof cover every named parameter and hypothesis?"},
         "context_intake": {
+            "must_read_refs": ["ref-proof-outline"],
             "must_include_prior_outputs": ["GPD/phases/00-baseline/00-01-SUMMARY.md"],
         },
         "observables": [
@@ -339,6 +340,20 @@ def _proof_obligation_contract() -> dict[str, object]:
                     {"id": "concl-uniform", "text": "The bound is uniform in r_0."},
                 ],
                 "proof_deliverables": ["deliv-proof"],
+            }
+        ],
+        "references": [
+            {
+                "id": "ref-proof-outline",
+                "kind": "other",
+                "locator": "doi:10.1234/proof-outline",
+                "aliases": [],
+                "role": "background",
+                "why_it_matters": "Anchors the theorem statement audited by the proof checks.",
+                "applies_to": ["claim-proof"],
+                "carry_forward_to": [],
+                "must_surface": True,
+                "required_actions": ["read"],
             }
         ],
         "deliverables": [

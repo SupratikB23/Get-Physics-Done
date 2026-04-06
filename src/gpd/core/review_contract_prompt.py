@@ -405,14 +405,9 @@ def render_review_contract_prompt(review_contract: object) -> str:
         f"`preflight_checks` must use declared values; "
         f"`required_state`={ '|'.join(VALID_REVIEW_REQUIRED_STATES) } when present."
     )
-    if any(
-        isinstance(requirement, dict) and requirement.get("blocking_preflight_checks")
-        for requirement in payload.get("conditional_requirements", [])
-        if isinstance(payload, dict)
-    ):
-        guidance_lines.append(
-            "Each `conditional_requirements[].blocking_preflight_checks` entry must also appear in `preflight_checks`."
-        )
+    guidance_lines.append(
+        "Each `conditional_requirements[].blocking_preflight_checks` entry must also appear in `preflight_checks`."
+    )
     rendered = yaml.safe_dump(
         {REVIEW_CONTRACT_PROMPT_WRAPPER_KEY: rendered_payload},
         sort_keys=False,

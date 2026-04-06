@@ -28,13 +28,16 @@ def _project_dir_is_trusted(explicit_project_dir: bool, project_dir_trusted: boo
     return project_dir_trusted if project_dir_trusted is not None else explicit_project_dir
 
 
-def _normalized_runtime_hint(runtime: str | None) -> str | None:
+def normalize_runtime_hint(runtime: str | None) -> str | None:
     if runtime is None:
         return None
     normalized = normalize_runtime_name(runtime) or runtime.strip() or None
     if normalized in (None, RUNTIME_UNKNOWN):
         return None
     return normalized if normalized in supported_runtime_names() else None
+
+
+_normalized_runtime_hint = normalize_runtime_hint
 
 
 def _normalized_lookup_dir(path: str | Path) -> str:
@@ -52,12 +55,12 @@ def resolve_runtime_lookup_active_runtime(
 ) -> str | None:
     """Resolve the active runtime without letting nested installs hijack explicit project roots."""
     if _project_dir_is_trusted(explicit_project_dir, project_dir_trusted):
-        project_runtime = _normalized_runtime_hint(runtime_resolver(project_root))
+        project_runtime = normalize_runtime_hint(runtime_resolver(project_root))
         if project_runtime or workspace_dir == project_root:
             return project_runtime
-        return _normalized_runtime_hint(runtime_resolver(workspace_dir))
+        return normalize_runtime_hint(runtime_resolver(workspace_dir))
 
-    return _normalized_runtime_hint(runtime_resolver(workspace_dir))
+    return normalize_runtime_hint(runtime_resolver(workspace_dir))
 
 
 def resolve_runtime_lookup_dir(
@@ -69,7 +72,7 @@ def resolve_runtime_lookup_dir(
     active_runtime: str | None = None,
 ) -> str:
     """Return the cwd hook surfaces should use for runtime-owned lookups."""
-    normalized_runtime = _normalized_runtime_hint(active_runtime)
+    normalized_runtime = normalize_runtime_hint(active_runtime)
     if _project_dir_is_trusted(explicit_project_dir, project_dir_trusted):
         resolved_workspace = Path(workspace_dir).expanduser().resolve(strict=False)
         resolved_project = Path(project_root).expanduser().resolve(strict=False)

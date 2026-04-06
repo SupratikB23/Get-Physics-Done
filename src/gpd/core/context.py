@@ -147,8 +147,7 @@ def _ignore_dirs() -> frozenset[str]:
 
 
 _RUNTIME_CONFIG_DIRS = _runtime_config_dirs()
-_RUNTIME_IGNORED_SCAN_PATHS = _runtime_ignored_scan_paths()
-_IGNORE_DIRS = _ignore_dirs()
+
 
 __all__ = [
     "init_execute_phase",

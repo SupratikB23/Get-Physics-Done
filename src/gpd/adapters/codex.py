@@ -223,6 +223,10 @@ def _load_manifest_codex_skills_dir(target_dir: Path) -> Path | None:
     if isinstance(manifest_skills_dir, str) and manifest_skills_dir:
         return Path(manifest_skills_dir)
 
+    generic_skills_dir = manifest.get("skills_dir")
+    if isinstance(generic_skills_dir, str) and generic_skills_dir:
+        return Path(generic_skills_dir)
+
     return None
 
 
@@ -251,17 +255,6 @@ def _load_manifest_codex_generated_skill_dirs(target_dir: Path) -> tuple[str, ..
 def _planned_installed_codex_skill_dirs(target_dir: Path) -> tuple[str, ...]:
     """Return generated Codex skill directories inferable from installed command files."""
     commands_dir = target_dir / GPD_INSTALL_DIR_NAME / COMMANDS_DIR_NAME
-    if not commands_dir.is_dir():
-        return ()
-    try:
-        return tuple(sorted(_planned_codex_skill_dirs(commands_dir, "gpd")))
-    except OSError:
-        return ()
-
-
-def _planned_source_codex_skill_dirs() -> tuple[str, ...]:
-    """Return generated Codex skill directories inferable from the packaged source tree."""
-    commands_dir = Path(__file__).resolve().parents[1] / COMMANDS_DIR_NAME
     if not commands_dir.is_dir():
         return ()
     try:
@@ -326,9 +319,13 @@ def _tracked_codex_generated_skill_dirs(
     target_dir: Path,
     *,
     skills_dir: Path | None = None,
-    allow_packaged_source_fallback: bool = True,
 ) -> tuple[str, ...]:
-    """Return generated skill names when ownership evidence is unambiguous."""
+    """Return generated skill names when ownership evidence is unambiguous.
+
+    Only live install evidence is authoritative here: manifest-tracked files,
+    managed markers inside the skills tree, and the installed command tree.
+    Packaged source content is not an install-ownership signal.
+    """
     candidates: list[set[str]] = []
 
     live_managed = _load_live_managed_codex_skill_dirs(skills_dir)
@@ -352,11 +349,6 @@ def _tracked_codex_generated_skill_dirs(
     planned = _planned_installed_codex_skill_dirs(target_dir)
     if planned:
         return tuple(sorted(planned))
-
-    if allow_packaged_source_fallback:
-        planned_source = _planned_source_codex_skill_dirs()
-        if planned_source:
-            return tuple(sorted(planned_source))
 
     return ()
 
@@ -1147,7 +1139,11 @@ class CodexAdapter(RuntimeAdapter):
         return (*super().install_completeness_relpaths(), "config.toml")
 
     def missing_install_artifacts(self, target_dir: Path) -> tuple[str, ...]:
-        """Return missing Codex install artifacts, including the shared skills dir."""
+        """Return missing Codex install artifacts, including the shared skills dir.
+
+        The shared skills directory is considered present only when the install
+        can justify its generated skill set from manifest or live install data.
+        """
         missing = list(super().missing_install_artifacts(target_dir))
 
         skills_dir = _load_manifest_codex_skills_dir(target_dir)
@@ -1210,7 +1206,6 @@ class CodexAdapter(RuntimeAdapter):
             tracked_skill_dirs = _tracked_codex_generated_skill_dirs(
                 target_dir,
                 skills_dir=skills_dir,
-                allow_packaged_source_fallback=False,
             )
 
             # 1. Remove generated GPD skill directories tracked in the manifest,

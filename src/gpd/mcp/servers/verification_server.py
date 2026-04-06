@@ -13,6 +13,7 @@ Usage:
 import copy
 import re
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
@@ -3349,6 +3350,7 @@ def _validate_contract_integrity(
     contract: ResearchContract,
     *,
     contract_raw: dict[str, object],
+    project_root: Path | None = None,
 ) -> dict[str, object] | None:
     """Reject plan-contract semantic mismatches after structural validation."""
 
@@ -3357,7 +3359,7 @@ def _validate_contract_integrity(
         errors.append("missing context_intake")
     elif not contract_has_explicit_context_intake(contract):
         errors.append("context_intake must not be empty")
-    for error in collect_plan_contract_integrity_errors(contract):
+    for error in collect_plan_contract_integrity_errors(contract, project_root=project_root):
         if error not in errors:
             errors.append(error)
     if not errors:
@@ -3365,7 +3367,11 @@ def _validate_contract_integrity(
     return _contract_payload_error(errors)
 
 
-def _parse_contract_payload(contract_raw: dict[str, object]) -> tuple[ResearchContract | None, list[str], dict | None]:
+def _parse_contract_payload(
+    contract_raw: dict[str, object],
+    *,
+    project_root: Path | None = None,
+) -> tuple[ResearchContract | None, list[str], dict | None]:
     strict_result = parse_project_contract_data_strict(contract_raw)
     salvage_result = parse_project_contract_data_salvage(contract_raw)
     normalized_strict_errors = [
@@ -3419,7 +3425,11 @@ def _parse_contract_payload(contract_raw: dict[str, object]) -> tuple[ResearchCo
                 for error in salvage_result.blocking_errors
             ]
             return None, [], _contract_payload_error(salvage_errors)
-    integrity_error = _validate_contract_integrity(contract, contract_raw=contract_raw)
+    integrity_error = _validate_contract_integrity(
+        contract,
+        contract_raw=contract_raw,
+        project_root=project_root,
+    )
     if integrity_error is not None:
         return None, [], integrity_error
     return contract, recoverable_errors, None
@@ -3808,7 +3818,10 @@ def run_contract_check(request: RunContractCheckPayload) -> dict:
             contract = None
             contract_salvage_errors: list[str] = []
             if contract_raw is not None:
-                contract, contract_salvage_errors, error = _parse_contract_payload(contract_raw)
+                contract, contract_salvage_errors, error = _parse_contract_payload(
+                    contract_raw,
+                    project_root=Path.cwd(),
+                )
                 if error is not None:
                     return error
 
@@ -4525,7 +4538,10 @@ def suggest_contract_checks(contract: SuggestContractPayload, active_checks: Str
                 if error is not None:
                     return error
                 active_checks = _normalize_active_checks(active_checks)
-            parsed, contract_salvage_errors, error = _parse_contract_payload(contract)
+            parsed, contract_salvage_errors, error = _parse_contract_payload(
+                contract,
+                project_root=Path.cwd(),
+            )
             if error is not None or parsed is None:
                 return error or _error_result("Invalid contract payload")
             active = set(active_checks or [])

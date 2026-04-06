@@ -2592,6 +2592,7 @@ def test_collect_plan_contract_integrity_errors_requires_theorem_inventory_for_p
     ("field_path", "value"),
     [
         ("context_intake.must_include_prior_outputs", ["TBD"]),
+        ("context_intake.must_include_prior_outputs", ["./RESULTS.md"]),
         ("context_intake.user_asserted_anchors", ["Nature benchmark"]),
         ("context_intake.known_good_baselines", ["Science benchmark"]),
         ("context_intake.crucial_inputs", ["Check the user's finite-volume cutoff choice before proceeding"]),
@@ -2651,7 +2652,6 @@ def test_collect_plan_contract_integrity_errors_rejects_placeholder_must_surface
     [
         ("paper", "Author et al., Journal, 2024"),
         ("other", "Einstein, Annalen der Physik, 1905"),
-        ("prior_artifact", "GPD/phases/03-missing-energy/03-01-SUMMARY.md"),
         ("spec", "https://example.org/missing-data-benchmark.csv"),
     ],
 )
@@ -2678,6 +2678,62 @@ def test_collect_plan_contract_integrity_errors_accepts_concrete_must_surface_re
     contract["context_intake"]["must_read_refs"] = ["ref-anchor"]
 
     errors = collect_plan_contract_integrity_errors(ResearchContract.model_validate(contract))
+
+    assert errors == []
+
+
+def test_collect_plan_contract_integrity_errors_rejects_rootless_project_local_must_surface_reference_locator() -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    contract["references"] = [
+        {
+            "id": "ref-anchor",
+            "kind": "prior_artifact",
+            "locator": "GPD/phases/03-missing-energy/03-01-SUMMARY.md",
+            "aliases": [],
+            "role": "benchmark",
+            "why_it_matters": "Local artifacts should not count as anchors until resolved against a project root.",
+            "applies_to": ["claim-benchmark"],
+            "carry_forward_to": [],
+            "must_surface": True,
+            "required_actions": ["read", "compare"],
+        }
+    ]
+    contract["context_intake"]["must_read_refs"] = ["ref-anchor"]
+
+    errors = collect_plan_contract_integrity_errors(ResearchContract.model_validate(contract))
+
+    assert "references must include at least one must_surface=true anchor" in errors
+
+
+def test_collect_plan_contract_integrity_errors_accepts_project_local_must_surface_reference_locator_with_project_root(
+    tmp_path: Path,
+) -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    artifact = tmp_path / "GPD" / "phases" / "03-missing-energy" / "03-01-SUMMARY.md"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("summary", encoding="utf-8")
+    contract["references"] = [
+        {
+            "id": "ref-anchor",
+            "kind": "prior_artifact",
+            "locator": "GPD/phases/03-missing-energy/03-01-SUMMARY.md",
+            "aliases": [],
+            "role": "benchmark",
+            "why_it_matters": "Resolved local artifact should satisfy the hard anchor requirement.",
+            "applies_to": ["claim-benchmark"],
+            "carry_forward_to": [],
+            "must_surface": True,
+            "required_actions": ["read", "compare"],
+        }
+    ]
+    contract["context_intake"]["must_read_refs"] = ["ref-anchor"]
+
+    errors = collect_plan_contract_integrity_errors(
+        ResearchContract.model_validate(contract),
+        project_root=tmp_path,
+    )
 
     assert errors == []
 

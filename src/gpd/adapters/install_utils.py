@@ -1452,6 +1452,8 @@ def write_manifest(
         default_target = _default_install_target(runtime.strip(), normalized_scope)
         if default_target is not None:
             manifest["explicit_target"] = not _paths_equal(config_dir, default_target)
+    if skills_dir:
+        manifest["skills_dir"] = str(Path(skills_dir))
     files: dict[str, str] = {}
 
     # Managed install root

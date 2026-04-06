@@ -31,7 +31,9 @@ from gpd.contracts import (
     ResearchContract,
     VerificationEvidence,
     _collect_project_contract_list_member_errors,
+    _collect_project_local_grounding_integrity_errors,
     collect_contract_integrity_errors,
+    collect_plan_contract_integrity_errors,
     parse_project_contract_data_salvage,
     parse_project_contract_data_strict,
 )
@@ -851,7 +853,17 @@ def _classify_project_contract_payload(
             warnings=schema_warnings,
         )
 
-    integrity_errors = collect_contract_integrity_errors(normalized_contract)
+    integrity_errors = list(collect_contract_integrity_errors(normalized_contract))
+    local_grounding_errors = _collect_project_local_grounding_integrity_errors(
+        normalized_contract,
+        project_root=cwd,
+    )
+    plan_integrity_errors = set(collect_plan_contract_integrity_errors(normalized_contract, project_root=cwd))
+    if local_grounding_errors and (
+        "missing references or explicit grounding context" in plan_integrity_errors
+        or "references must include at least one must_surface=true anchor" in plan_integrity_errors
+    ):
+        integrity_errors.extend(local_grounding_errors)
     if integrity_errors:
         logger.warning(
             "Loaded blocked project_contract from %s because semantic integrity checks failed: %s",
@@ -3094,6 +3106,7 @@ def _load_state_json_with_integrity_issues(
                 normalized, restored_contract_findings = _restore_visible_project_contract(
                     normalized,
                     parsed.get("project_contract"),
+                    project_root=cwd,
                 )
                 for finding in restored_contract_findings:
                     if finding not in integrity_issues:
@@ -3280,7 +3293,12 @@ def peek_state_json(
     )
 
 
-def _restore_visible_project_contract(state_obj: dict, raw_project_contract: object) -> tuple[dict, list[str]]:
+def _restore_visible_project_contract(
+    state_obj: dict,
+    raw_project_contract: object,
+    *,
+    project_root: Path | None = None,
+) -> tuple[dict, list[str]]:
     """Restore a load-time contract that should remain visible despite load blockers."""
 
     if state_obj.get("project_contract") is not None or not isinstance(raw_project_contract, dict):
@@ -3289,6 +3307,19 @@ def _restore_visible_project_contract(state_obj: dict, raw_project_contract: obj
     parsed = parse_project_contract_data_salvage(raw_project_contract)
     if parsed.contract is None:
         return state_obj, []
+
+    local_grounding_errors = _collect_project_local_grounding_integrity_errors(
+        parsed.contract,
+        project_root=project_root,
+    )
+    plan_integrity_errors = set(
+        collect_plan_contract_integrity_errors(parsed.contract, project_root=project_root)
+    )
+    if local_grounding_errors and (
+        "missing references or explicit grounding context" in plan_integrity_errors
+        or "references must include at least one must_surface=true anchor" in plan_integrity_errors
+    ):
+        return state_obj, local_grounding_errors
 
     integrity_errors = set(collect_contract_integrity_errors(parsed.contract))
     schema_blockers = [error for error in parsed.blocking_errors if error not in integrity_errors]
@@ -3331,6 +3362,7 @@ def _load_state_json_from_backup(
             restored, restored_contract_findings = _restore_visible_project_contract(
                 restored,
                 bak_parsed.get("project_contract"),
+                project_root=project_root,
             )
             for finding in restored_contract_findings:
                 if finding not in integrity_issues:

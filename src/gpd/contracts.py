@@ -545,24 +545,44 @@ def _has_concrete_grounding_entries(
     *,
     field_name: str,
     project_root: Path | None = None,
+    require_existing_project_artifacts: bool = False,
 ) -> bool:
     """Return whether any grounding entry is concrete for the requested field."""
 
     if field_name == "must_include_prior_outputs":
+        if require_existing_project_artifacts:
+            return any(
+                project_root is not None and _is_project_artifact_path(value, project_root=project_root)
+                for value in values
+            )
         return any(_is_project_artifact_path(value, project_root=project_root) for value in values)
     if field_name in {"user_asserted_anchors", "known_good_baselines"}:
         return any(_is_concrete_text_grounding(value, project_root=project_root) for value in values)
     raise ValueError(f"Unsupported grounding field {field_name!r}")
 
 
-def _has_concrete_must_surface_reference(contract: ResearchContract) -> bool:
+def _has_concrete_must_surface_reference(
+    contract: ResearchContract,
+    *,
+    project_root: Path | None = None,
+    require_existing_project_artifacts: bool = False,
+) -> bool:
     """Return whether the contract includes a concrete must_surface reference."""
 
     for reference in contract.references:
-        if reference.must_surface and _is_concrete_reference_locator(
+        if not reference.must_surface:
+            continue
+        if not _is_concrete_reference_locator(
             reference.locator,
             reference_kind=reference.kind,
+            project_root=project_root,
         ):
+            continue
+        if not require_existing_project_artifacts:
+            return True
+        if not _is_project_artifact_path(reference.locator, project_root=None):
+            return True
+        if project_root is not None and _is_project_artifact_path(reference.locator, project_root=project_root):
             return True
     return False
 
@@ -2091,7 +2111,52 @@ def collect_contract_integrity_errors(contract: ResearchContract) -> list[str]:
     return errors
 
 
-def _has_contract_grounding_context(contract: ResearchContract) -> bool:
+def _collect_project_local_grounding_integrity_errors(
+    contract: ResearchContract,
+    *,
+    project_root: Path | None = None,
+) -> list[str]:
+    """Return integrity errors for project-local grounding that cannot be resolved safely."""
+
+    errors: list[str] = []
+
+    for value in contract.context_intake.must_include_prior_outputs:
+        if not _looks_like_project_artifact_path(value):
+            continue
+        if project_root is None:
+            errors.append(
+                "context_intake.must_include_prior_outputs entry requires a resolved project_root "
+                f"to verify artifact grounding: {value}"
+            )
+            continue
+        if not _is_project_artifact_path(value, project_root=project_root):
+            errors.append(
+                f"context_intake.must_include_prior_outputs entry does not resolve to a project-local artifact: {value}"
+            )
+
+    for reference in contract.references:
+        if not reference.must_surface or not _looks_like_project_artifact_path(reference.locator):
+            continue
+        if project_root is None:
+            errors.append(
+                f"reference {reference.id} must_surface locator requires a resolved project_root "
+                f"to verify artifact grounding: {reference.locator}"
+            )
+            continue
+        if not _is_project_artifact_path(reference.locator, project_root=project_root):
+            errors.append(
+                f"reference {reference.id} must_surface locator does not resolve to a project-local artifact: {reference.locator}"
+            )
+
+    return errors
+
+
+def _has_contract_grounding_context(
+    contract: ResearchContract,
+    *,
+    project_root: Path | None = None,
+    require_existing_project_artifacts: bool = False,
+) -> bool:
     """Return whether the contract carries explicit grounding outside references."""
 
     return any(
@@ -2099,14 +2164,18 @@ def _has_contract_grounding_context(contract: ResearchContract) -> bool:
             _has_concrete_grounding_entries(
                 contract.context_intake.must_include_prior_outputs,
                 field_name="must_include_prior_outputs",
+                project_root=project_root,
+                require_existing_project_artifacts=require_existing_project_artifacts,
             ),
             _has_concrete_grounding_entries(
                 contract.context_intake.user_asserted_anchors,
                 field_name="user_asserted_anchors",
+                project_root=project_root,
             ),
             _has_concrete_grounding_entries(
                 contract.context_intake.known_good_baselines,
                 field_name="known_good_baselines",
+                project_root=project_root,
             ),
         )
     )
@@ -2127,7 +2196,12 @@ def contract_has_explicit_context_intake(contract: ResearchContract) -> bool:
     )
 
 
-def _is_scoping_contract(contract: ResearchContract) -> bool:
+def _is_scoping_contract(
+    contract: ResearchContract,
+    *,
+    project_root: Path | None = None,
+    require_existing_project_artifacts: bool = False,
+) -> bool:
     """Return whether the contract is still framing the work rather than proving it."""
 
     return (
@@ -2137,12 +2211,21 @@ def _is_scoping_contract(contract: ResearchContract) -> bool:
             bool(contract.observables)
             or bool(contract.deliverables)
             or bool(contract.scope.unresolved_questions)
-            or _has_contract_grounding_context(contract)
+            or _has_contract_grounding_context(
+                contract,
+                project_root=project_root,
+                require_existing_project_artifacts=require_existing_project_artifacts,
+            )
         )
     )
 
 
-def _is_exploratory_contract(contract: ResearchContract) -> bool:
+def _is_exploratory_contract(
+    contract: ResearchContract,
+    *,
+    project_root: Path | None = None,
+    require_existing_project_artifacts: bool = False,
+) -> bool:
     """Return whether the contract semantics describe setup/exploratory work."""
 
     exploratory_test_kinds = {
@@ -2159,19 +2242,42 @@ def _is_exploratory_contract(contract: ResearchContract) -> bool:
     exploratory_deliverable_kinds = {"code", "note", "report", "derivation", "figure", "table", "dataset", "data", "other"}
 
     return (
-        not _is_scoping_contract(contract)
-        and (bool(contract.acceptance_tests) or _has_contract_grounding_context(contract))
+        not _is_scoping_contract(
+            contract,
+            project_root=project_root,
+            require_existing_project_artifacts=require_existing_project_artifacts,
+        )
+        and (
+            bool(contract.acceptance_tests)
+            or _has_contract_grounding_context(
+                contract,
+                project_root=project_root,
+                require_existing_project_artifacts=require_existing_project_artifacts,
+            )
+        )
         and all(test.kind in exploratory_test_kinds for test in contract.acceptance_tests)
         and all(deliverable.kind in exploratory_deliverable_kinds for deliverable in contract.deliverables)
     )
 
 
-def collect_plan_contract_integrity_errors(contract: ResearchContract) -> list[str]:
+def collect_plan_contract_integrity_errors(
+    contract: ResearchContract,
+    *,
+    project_root: Path | None = None,
+) -> list[str]:
     """Return the full semantic integrity error set for plan-style contracts."""
 
     issues = list(collect_contract_integrity_errors(contract))
-    scoping_contract = _is_scoping_contract(contract)
-    exploratory_contract = _is_exploratory_contract(contract)
+    scoping_contract = _is_scoping_contract(
+        contract,
+        project_root=project_root,
+        require_existing_project_artifacts=True,
+    )
+    exploratory_contract = _is_exploratory_contract(
+        contract,
+        project_root=project_root,
+        require_existing_project_artifacts=True,
+    )
 
     if not contract.claims and not scoping_contract:
         issues.append("missing claims")
@@ -2179,7 +2285,15 @@ def collect_plan_contract_integrity_errors(contract: ResearchContract) -> list[s
         issues.append("missing deliverables")
     if not contract.acceptance_tests and not scoping_contract:
         issues.append("missing acceptance_tests")
-    if not contract.references and not (_has_contract_grounding_context(contract) or exploratory_contract or scoping_contract):
+    if not contract.references and not (
+        _has_contract_grounding_context(
+            contract,
+            project_root=project_root,
+            require_existing_project_artifacts=True,
+        )
+        or exploratory_contract
+        or scoping_contract
+    ):
         issues.append("missing references or explicit grounding context")
     if not contract.forbidden_proxies and not (exploratory_contract or scoping_contract):
         issues.append("missing forbidden_proxies")
@@ -2191,7 +2305,11 @@ def collect_plan_contract_integrity_errors(contract: ResearchContract) -> list[s
         contract.observables
         or contract.deliverables
         or contract.scope.unresolved_questions
-        or _has_contract_grounding_context(contract)
+        or _has_contract_grounding_context(
+            contract,
+            project_root=project_root,
+            require_existing_project_artifacts=True,
+        )
     ):
         issues.append("scoping contracts must preserve at least one target, open question, or carry-forward input")
 
@@ -2204,7 +2322,11 @@ def collect_plan_contract_integrity_errors(contract: ResearchContract) -> list[s
     reference_ids = {reference.id for reference in contract.references}
     known_ids = claim_ids | deliverable_ids | acceptance_test_ids | reference_ids
 
-    if contract.references and not _has_concrete_must_surface_reference(contract):
+    if contract.references and not _has_concrete_must_surface_reference(
+        contract,
+        project_root=project_root,
+        require_existing_project_artifacts=True,
+    ):
         issues.append("references must include at least one must_surface=true anchor")
     for must_read_ref in contract.context_intake.must_read_refs:
         if must_read_ref not in reference_ids:

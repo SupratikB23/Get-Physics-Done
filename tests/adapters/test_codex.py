@@ -16,6 +16,7 @@ from gpd.adapters.codex import (
     _convert_codex_tool_name,
     _convert_to_codex_skill,
     _normalize_codex_questioning,
+    _tracked_codex_generated_skill_dirs,
 )
 from gpd.adapters.install_utils import build_runtime_cli_bridge_command, file_hash
 from gpd.registry import load_agents_from_dir
@@ -1380,6 +1381,61 @@ class TestUninstall:
         assert adapter.has_complete_install(target) is True
 
         adapter.uninstall(target, skills_dir=skills)
+
+        assert all(not (skills / name).exists() for name in tracked_skill_names)
+
+    def test_missing_install_artifacts_does_not_use_packaged_source_skill_fallback(
+        self,
+        adapter: CodexAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / ".codex"
+        target.mkdir()
+        skills = tmp_path / "skills"
+        skills.mkdir()
+
+        adapter.install(gpd_root, target, skills_dir=skills)
+        manifest_path = target / "gpd-file-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        tracked_skill_names = set(manifest["codex_generated_skill_dirs"])
+        manifest.pop("codex_generated_skill_dirs", None)
+        manifest.pop("files", None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        for name in tracked_skill_names:
+            (skills / name / "SKILL.md").write_text("user-customized skill\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            "gpd.adapters.codex._planned_installed_codex_skill_dirs",
+            lambda target_dir: (),
+        )
+
+        assert _tracked_codex_generated_skill_dirs(target, skills_dir=skills) == ()
+        assert str(skills) in adapter.missing_install_artifacts(target)
+        assert adapter.has_complete_install(target) is False
+
+    def test_missing_codex_skills_dir_metadata_falls_back_to_generic_manifest_skills_dir(
+        self,
+        adapter: CodexAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".codex"
+        target.mkdir()
+        skills = tmp_path / "custom-skills"
+        skills.mkdir()
+
+        adapter.install(gpd_root, target, skills_dir=skills)
+        manifest_path = target / "gpd-file-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        tracked_skill_names = set(manifest["codex_generated_skill_dirs"])
+        manifest.pop("codex_skills_dir", None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        assert str(skills) not in adapter.missing_install_artifacts(target)
+
+        adapter.uninstall(target)
 
         assert all(not (skills / name).exists() for name in tracked_skill_names)
 

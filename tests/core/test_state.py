@@ -256,6 +256,55 @@ def test_peek_state_json_respects_project_root_for_project_contract_grounding(tm
     assert loaded["project_contract"] is None
 
 
+def test_restore_visible_project_contract_rejects_rootless_local_prior_output_grounding() -> None:
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["references"] = []
+    contract["context_intake"] = {
+        "must_read_refs": [],
+        "must_include_prior_outputs": ["./RESULTS.md"],
+        "user_asserted_anchors": [],
+        "known_good_baselines": [],
+        "context_gaps": [],
+        "crucial_inputs": [],
+    }
+
+    restored, findings = state_module._restore_visible_project_contract(
+        default_state_dict(),
+        contract,
+    )
+
+    assert restored["project_contract"] is None
+    assert findings == [
+        "context_intake.must_include_prior_outputs entry requires a resolved project_root to verify artifact grounding: ./RESULTS.md"
+    ]
+
+
+def test_restore_visible_project_contract_accepts_existing_local_prior_output_grounding_with_project_root(
+    tmp_path: Path,
+) -> None:
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["references"] = []
+    contract["context_intake"] = {
+        "must_read_refs": [],
+        "must_include_prior_outputs": ["./RESULTS.md"],
+        "user_asserted_anchors": [],
+        "known_good_baselines": [],
+        "context_gaps": [],
+        "crucial_inputs": [],
+    }
+    (tmp_path / "RESULTS.md").write_text("result\n", encoding="utf-8")
+
+    restored, findings = state_module._restore_visible_project_contract(
+        default_state_dict(),
+        contract,
+        project_root=tmp_path,
+    )
+
+    assert restored["project_contract"] is not None
+    assert restored["project_contract"]["context_intake"]["must_include_prior_outputs"] == ["./RESULTS.md"]
+    assert findings == []
+
+
 def test_load_state_json_preserves_sibling_fields_when_nested_position_field_is_invalid(tmp_path: Path) -> None:
     state = default_state_dict()
     state["position"]["current_phase"] = "3"
