@@ -1726,6 +1726,14 @@ def test_suggest_contract_checks_request_templates_validate_against_advertised_r
     assert benchmark["check_key"] == "contract.benchmark_reproduction"
     assert checks["contract.benchmark_reproduction"]["check"] == "contract.benchmark_reproduction"
     assert benchmark["metadata"]["source_reference_id"] == "ref-benchmark"
+    assert checks["contract.benchmark_reproduction"]["schema_required_request_fields"] == [
+        "observed.metric_value",
+        "observed.threshold_value",
+    ]
+    assert checks["contract.benchmark_reproduction"]["schema_required_request_anyof_fields"] == [
+        ["metadata.source_reference_id"],
+        ["contract"],
+    ]
     assert benchmark["observed"]["metric_value"] is None
     assert benchmark["observed"]["threshold_value"] is None
 
@@ -1786,7 +1794,26 @@ def test_run_contract_check_schema_rejects_benchmark_requests_without_source_ref
     messages = [error.message for error in validator.iter_errors(request)]
 
     assert messages
-    assert any("metadata" in message for message in messages)
+    assert any("any of the given schemas" in message for message in messages)
+
+
+def test_run_contract_check_schema_allows_benchmark_requests_without_source_reference_id_when_contract_is_present() -> None:
+    from jsonschema import Draft202012Validator
+
+    schema = _run_contract_check_input_schema()
+    validator = Draft202012Validator(schema)
+
+    request = {
+        "request": {
+            "check_key": "contract.benchmark_reproduction",
+            "contract": _derived_template_contract(),
+            "observed": {"metric_value": 0.01, "threshold_value": 0.02},
+        }
+    }
+
+    messages = [error.message for error in validator.iter_errors(request)]
+
+    assert messages == []
 
 
 def test_run_contract_check_schema_rejects_contract_derived_limit_and_family_metadata_when_missing_metadata() -> None:

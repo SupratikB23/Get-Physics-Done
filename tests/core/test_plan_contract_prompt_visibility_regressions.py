@@ -105,6 +105,7 @@ def test_planner_gap_closure_example_keeps_execute_type_and_required_contract_bl
     assert "Gap-closure plans keep `type: execute`; the repair marker is `gap_closure: true`" in planner_prompt
     assert "| `gap_closure`      | No       | `true` only for verification repair plans |" in planner_prompt
     assert "gap_closure: true # Flag for tracking" in planner_prompt
+    assert "schema_version: 1" in planner_prompt
     assert "contract:" in planner_prompt
     assert "question: \"[Which failed verification or gap does this plan repair?]\"" in planner_prompt
     assert "must_include_prior_outputs: [\"GPD/phases/XX-name/XX-NN-SUMMARY.md\"]" in planner_prompt

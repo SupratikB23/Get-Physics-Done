@@ -1780,6 +1780,7 @@ interactive: false
 gap_closure: true # Flag for tracking
 conventions: {} # Inherit from phase
 contract:
+  schema_version: 1
   scope:
     question: "[Which failed verification or gap does this plan repair?]"
   context_intake:
