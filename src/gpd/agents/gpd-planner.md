@@ -45,22 +45,10 @@ Your job: Produce PLAN.md files that the AI executors can carry out without inte
 
 <context_budget_note>
 
-## Context Budget Awareness
+## Context Budget
 
-Your system prompt (this agent definition + @-included references) consumes approximately **15-20% of your context window**. Budget the remaining 80% as:
 
-| Allocation | Context % | What It Covers |
-|---|---|---|
-| System prompt | ~15-20% | This agent definition, shared protocols, @-included references |
-| Reading project files | ~30% | STATE.md, ROADMAP.md, CONTEXT.md, RESEARCH.md, SUMMARYs, INSIGHTS.md, ERROR-PATTERNS.md |
-| Plan creation output | ~40-50% | PLAN.md files, dependency graphs, contract coverage, return format |
-
-**Practical implications:**
-
-- Skip optional files that don't exist (see `triage_optional_files` step)
-- For large projects with many prior phases, use `history-digest` and only read full SUMMARYs for 2-4 most relevant phases
-- Keep plan files concise — verbose action descriptions eat into the budget for additional plans
-- If creating 5+ plans, you will approach context limits — prioritize completeness of earlier plans over exhaustive detail in later ones
+Keep this agent prompt lean. Prefer the workflow and shared references for policy; use this file for planner role, routing, and plan-shape guidance only.
 
 </context_budget_note>
 
@@ -143,7 +131,6 @@ Autonomy mode combines with research mode (explore/exploit) to form a 2D behavio
 | **Supervised** | User approves each tangent decision before it becomes a branch or side investigation | Standard + checkpoints | Focused + verified at each step |
 | **Balanced** | Broad search, but tangent choices are still surfaced explicitly instead of branching silently | Default research flow | Efficient execution, key checkpoints |
 | **YOLO** | Broad search inside the approved scope; tangent choices still stay explicit instead of silently creating git-backed branches | Fast auto research loop | Fast convergent execution |
-| **YOLO** | Maximum exploration budget inside the approved scope; no silent branch creation | Maximum speed | Laser-focused sprint |
 
 </autonomy_modes>
 
@@ -226,19 +213,19 @@ Multiple viable approaches remain:
 Phase 4: Compute NLO Cross Section (exploit — method validated in Phase 3)
   Plan 4-1: Execute NLO calculation following Phase 3 methodology
     - No researcher spawned (method known)
-    - No plan-checker (follows validated template)
+    - Checker behavior follows workflow/config for the current phase
     - Tight scope: specific process only, no side calculations
 ```
 
 ### Adaptive Mode (`research_mode: "adaptive"`)
 
-**When to use:** Multi-phase projects where the approach may need iteration. The system starts broad and narrows automatically.
+**When to use:** Multi-phase projects where the approach may need iteration.
 
 **Planner behavior:**
-- **Phases 1-2:** Plan in explore mode — broad research, multiple alternatives considered, but unresolved alternatives still go through the tangent control model before they become separate workstreams.
-- **Phase 3+:** Transition to exploit mode once SUMMARY.md from Phase 2 identifies the best approach. Read prior phase results to inform the transition.
-- **Transition trigger:** When a phase SUMMARY contains `approach_validated: true` or equivalent confidence marker, subsequent phases switch to exploit.
-- **Override:** If a later phase hits a deviation rule 5 (physics redirect), temporarily revert to explore mode for that phase.
+- Start broad until prior decisive evidence or an explicit approach lock justifies narrowing.
+- Reuse existing research only when it covers the exact method family, anchors, and decisive evidence path.
+- Do not infer narrowing from phase number alone.
+- If a later phase hits a deviation rule 5 (physics redirect), temporarily revert to explore mode for that phase.
 
 ### How to Read Research Mode
 
@@ -791,20 +778,20 @@ Derive plans from actual work. Depth determines compression tolerance, not a tar
 
 ## Execution Time Heuristics
 
-Rough estimates for different task types. Use these to set expectations and detect scope problems (a phase with 10+ hours of estimated work should be split).
+Rough estimates for different task types. Use these to set expectations and detect scope problems; a phase with 10+ hours of estimated work should usually be split.
 
-| Task Type | Typical Execution Time | Context % per Task |
-|---|---|---|
-| Convention establishment | 5-10 min | ~5% |
-| Known formula application | 10-15 min | ~10% |
-| Standard textbook derivation | 15-30 min | ~15-20% |
-| Multi-step derivation | 30-60 min | ~25-35% |
-| Novel calculation or proof | 45-90 min | ~35-45% |
-| Algorithm implementation + test | 20-40 min | ~20-25% |
-| Monte Carlo simulation (setup + short run) | 30-60 min | ~25-30% |
-| Data analysis + visualization | 15-30 min | ~15-20% |
-| Literature comparison task | 10-20 min | ~10-15% |
-| Limiting case verification | 10-20 min | ~10-15% |
+| Task Type | Typical Execution Time |
+|---|---|
+| Convention establishment | 5-10 min |
+| Known formula application | 10-15 min |
+| Standard textbook derivation | 15-30 min |
+| Multi-step derivation | 30-60 min |
+| Novel calculation or proof | 45-90 min |
+| Algorithm implementation + test | 20-40 min |
+| Monte Carlo simulation (setup + short run) | 30-60 min |
+| Data analysis + visualization | 15-30 min |
+| Literature comparison task | 10-20 min |
+| Limiting case verification | 10-20 min |
 
 **Complexity multipliers:**
 

@@ -35,17 +35,13 @@ def test_plan_contract_schema_surfaces_defaultable_semantic_fields_and_hard_cons
 def test_planner_prompt_surfaces_default_salvage_and_specific_semantics() -> None:
     planner_prompt = _read_template("planner-subagent-prompt.md")
 
-    assert "The contract still exposes defaultable semantic fields" in planner_prompt
-    assert "observables[].kind" in planner_prompt
-    assert "deliverables[].kind" in planner_prompt
-    assert "acceptance_tests[].kind" in planner_prompt
-    assert "references[].kind" in planner_prompt
-    assert "references[].role" in planner_prompt
-    assert "links[].relation" in planner_prompt
-    assert "They default to `other` and may be omitted only when that generic category is actually intended." in planner_prompt
+    assert "Use `@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md` as the canonical contract source." in planner_prompt
+    assert "Keep this prompt for scope selection, mode flags, and return conventions only." in planner_prompt
+    assert "Use the included schema as the source of truth." in planner_prompt
+    assert "For proof-bearing work, keep hypotheses, quantified variables, and named parameters explicit enough to audit." in planner_prompt
+    assert "The contract still exposes defaultable semantic fields" not in planner_prompt
+    assert "Stale proof review gate" not in planner_prompt
     assert "Treat `approach_policy` as execution policy only; it does not substitute for grounding." in planner_prompt
-    assert "**Defaulted semantic fields:**" not in planner_prompt
-    assert "Include `references[]` only when the contract does not already carry explicit grounding through `context_intake` or preserved scoping inputs." in planner_prompt
 
 
 def test_phase_prompt_surfaces_default_salvage_and_hard_plan_requirements() -> None:
@@ -83,6 +79,12 @@ def test_planner_prompt_stays_compact_while_preserving_canonical_contract_wiring
     planner_prompt = (REPO_ROOT / "src/gpd/agents/gpd-planner.md").read_text(encoding="utf-8")
 
     assert planner_prompt.count("contract:\n  schema_version: 1") >= 2
+    assert "15-20%" not in planner_prompt
+    assert "Context %" not in planner_prompt
+    assert "No plan-checker" not in planner_prompt
+    assert "The system starts broad and narrows automatically." not in planner_prompt
+    assert "approach_validated: true" not in planner_prompt
+    assert planner_prompt.count("| **YOLO** |") == 1
     assert "<worked_examples>" not in planner_prompt
     assert "<goal_backward>" not in planner_prompt
     assert "Worked Examples: Complete PLAN.md Files" not in planner_prompt
@@ -102,9 +104,9 @@ def test_proof_obligation_planning_surfaces_require_claim_audit_and_stale_review
         "parameter regime the proof must cover."
     ) in plan_schema
 
-    assert "**Proof claim audit:** For theorem/proof work, enumerate hypotheses, quantified variables, and named parameters explicitly enough" in planner_prompt
-    assert "silently narrowed subcases or dropped assumptions" in planner_prompt
-    assert "**Stale proof review gate:** If a proof-backed deliverable or theorem statement changes after review" in planner_prompt
+    assert "For proof-bearing work, keep hypotheses, quantified variables, and named parameters explicit enough to audit." in planner_prompt
+    assert "**Proof claim audit:**" not in planner_prompt
+    assert "**Stale proof review gate:**" not in planner_prompt
 
     assert "For `observables[].kind: proof_obligation`, name the theorem or claim plus the hypotheses/parameter regime explicitly" in phase_prompt
     assert "silently specialized parameters" in phase_prompt

@@ -20,7 +20,6 @@ Template for spawning `gpd-planner`. The planner agent owns the planning logic; 
 
 Use `@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md` as the canonical contract source. Keep this prompt for scope selection, mode flags, and return conventions only.
 If `{project_contract}` is empty, stale, or too underspecified to identify the phase contract slice, return `## CHECKPOINT REACHED` rather than guessing.
-Treat `approach_policy` as execution policy only.
 
 **Project State:** {state_content}
 **Project Contract:** {project_contract}
@@ -55,11 +54,7 @@ Planning requires `project_contract`. Keep the contract block complete per the s
 </contract_completion_requirements>
 
 <contract_visibility_shortcuts>
-The contract still exposes defaultable semantic fields: `observables[].kind`, `deliverables[].kind`, `acceptance_tests[].kind`, `references[].kind`, `references[].role`, and `links[].relation`. They default to `other` and may be omitted only when that generic category is actually intended.
-Treat `approach_policy` as execution policy only; it does not substitute for grounding.
-Include `references[]` only when the contract does not already carry explicit grounding through `context_intake` or preserved scoping inputs.
-**Proof claim audit:** For theorem/proof work, enumerate hypotheses, quantified variables, and named parameters explicitly enough to catch silently narrowed subcases or dropped assumptions.
-**Stale proof review gate:** If a proof-backed deliverable or theorem statement changes after review, rerun the proof audit before accepting the repaired target.
+Use the included schema as the source of truth. Keep `project_contract`, `effective_reference_intake`, and `active_reference_context` aligned with it. Treat `approach_policy` as execution policy only; it does not substitute for grounding. For proof-bearing work, keep hypotheses, quantified variables, and named parameters explicit enough to audit.
 </contract_visibility_shortcuts>
 
 <light_mode_instructions>
@@ -67,7 +62,7 @@ Include `references[]` only when the contract does not already carry explicit gr
 </light_mode_instructions>
 
 <context_budget_guidance>
-Context windows are finite (~200k tokens, ~80% usable). Target ~50% budget per plan, ~40% for hypothesis-driven plans, and split large phases into multiple plans instead of overloading one. Flag context-heavy plans in frontmatter and use waves so independent work gets fresh context. See `{GPD_INSTALL_DIR}/references/orchestration/context-budget.md` for budget details.
+Keep plan prompts concise. Prefer fresh reads over copying long history, and split large phases instead of overloading one plan.
 </context_budget_guidance>
 
 <downstream_consumer>
