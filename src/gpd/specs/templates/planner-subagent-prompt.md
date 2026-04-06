@@ -61,9 +61,7 @@ Planning requires `project_contract`:
 </contract_completion_requirements>
 
 <contract_visibility_shortcuts>
-The contract still exposes defaultable semantic fields: `observables[].kind`, `deliverables[].kind`, `acceptance_tests[].kind`, `references[].kind`, `references[].role`, and `links[].relation`.
-They default to `other` and may be omitted only when that generic category is actually intended.
-**Defaulted semantic fields:** `observables[].kind`, `deliverables[].kind`, `acceptance_tests[].kind`, `references[].kind`, `references[].role`, and `links[].relation` all exist in the contract and default to `other`.
+The contract still exposes defaultable semantic fields: `observables[].kind`, `deliverables[].kind`, `acceptance_tests[].kind`, `references[].kind`, `references[].role`, and `links[].relation`. They default to `other` and may be omitted only when that generic category is actually intended.
 Treat `approach_policy` as execution policy only; it does not substitute for grounding.
 Include `references[]` only when the contract does not already carry explicit grounding through `context_intake` or preserved scoping inputs.
 **Proof claim audit:** For theorem/proof work, enumerate hypotheses, quantified variables, and named parameters explicitly enough to catch silently narrowed subcases or dropped assumptions.

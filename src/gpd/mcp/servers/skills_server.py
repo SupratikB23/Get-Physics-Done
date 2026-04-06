@@ -564,7 +564,7 @@ def get_skill(name: Annotated[str, Field(min_length=1, pattern=r"\S")]) -> dict:
                 predicate=_is_contract_reference,
             )
             loading_hint = (
-                "schema_documents and contract_documents already include the expanded canonical bodies; use referenced_files only for additional workflow/context docs."
+                "schema_documents and contract_documents include the loaded markdown bodies for schema and contract references; use referenced_files only for additional workflow/context docs."
                 if referenced_files
                 else "No external markdown dependencies detected in the canonical skill body."
             )

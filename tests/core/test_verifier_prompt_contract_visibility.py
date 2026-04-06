@@ -77,6 +77,8 @@ def test_verifier_prompt_surfaces_missing_parameter_proof_audit_and_stale_review
     research_verification = (TEMPLATES_DIR / "research-verification.md").read_text(encoding="utf-8")
     verification_template = _read_verification_template()
 
+    assert verifier.count("## Physics Stub Detection Patterns") == 1
+    assert verifier.count("## 5.15 Anomalies/Topological Properties — Executable Template") == 1
     assert "[] Proof structure" in verifier
     assert (
         "Every named theorem parameter or hypothesis is used or explicitly discharged; no theorem symbol may "

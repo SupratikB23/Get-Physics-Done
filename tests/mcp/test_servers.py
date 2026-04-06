@@ -1285,7 +1285,7 @@ class TestSkillsServer:
         assert "referee-decision-schema.md" in schema_documents
         assert "Referee Decision Schema" in schema_documents["referee-decision-schema.md"]["body"]
         assert "review-ledger-schema.md" in contract_documents
-        assert "schema_documents and contract_documents already include" in result["loading_hint"]
+        assert "schema_documents and contract_documents include the loaded markdown bodies for schema and contract references" in result["loading_hint"]
         assert result["content_authority"] == "canonical"
         assert result["structured_metadata_authority"] == {
             "content": "canonical",

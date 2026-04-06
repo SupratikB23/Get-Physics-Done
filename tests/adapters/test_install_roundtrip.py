@@ -633,4 +633,4 @@ def test_installed_prompt_contract_visibility_survives_adapter_projection(
         verify_work,
         runtime=runtime,
     )
-
+    assert verifier.count("## Physics Stub Detection Patterns") == 1

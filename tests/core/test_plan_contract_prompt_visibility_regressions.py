@@ -44,7 +44,7 @@ def test_planner_prompt_surfaces_default_salvage_and_specific_semantics() -> Non
     assert "links[].relation" in planner_prompt
     assert "They default to `other` and may be omitted only when that generic category is actually intended." in planner_prompt
     assert "Treat `approach_policy` as execution policy only; it does not substitute for grounding." in planner_prompt
-    assert "**Defaulted semantic fields:** `observables[].kind`, `deliverables[].kind`, `acceptance_tests[].kind`, `references[].kind`, `references[].role`, and `links[].relation` all exist in the contract and default to `other`" in planner_prompt
+    assert "**Defaulted semantic fields:**" not in planner_prompt
     assert "Include `references[]` only when the contract does not already carry explicit grounding through `context_intake` or preserved scoping inputs." in planner_prompt
 
 
