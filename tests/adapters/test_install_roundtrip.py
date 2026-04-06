@@ -322,6 +322,7 @@ def _assert_installed_contract_visibility(
     assert "For proof-bearing or `proof_obligation` work, an additional mandatory floor applies" in verify_work
 
 
+@pytest.mark.no_stable_hook_python
 @pytest.mark.parametrize("runtime", ["claude-code"])
 def test_install_artifacts_pin_checkout_python_when_running_from_checkout(
     tmp_path: Path,

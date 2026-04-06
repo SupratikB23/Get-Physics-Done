@@ -76,7 +76,9 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-n auto"
-markers = []
+markers = [
+    "no_stable_hook_python: opt out of the autouse _stable_hook_python fixture",
+]
 
 [tool.ruff]
 target-version = "py311"
