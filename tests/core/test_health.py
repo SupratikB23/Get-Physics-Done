@@ -660,6 +660,33 @@ class TestCheckStoragePaths:
             ".gitignore:25:!GPD/phase-checkpoints/*.md\tGPD/phase-checkpoints/01-test-phase.md",
         ]
 
+    def test_repo_gitignore_hides_repo_local_gpd_state_surfaces(self, tmp_path: Path) -> None:
+        repo = _init_git_repo(tmp_path)
+
+        result = subprocess.run(
+            [
+                "git",
+                "check-ignore",
+                "-v",
+                "--",
+                "GPD/STATE.md",
+                "GPD/state.json",
+                "GPD/state.json.bak",
+            ],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.stderr == ""
+        assert result.returncode == 0
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        assert len(lines) == 3
+        assert any(line.endswith("\tGPD/STATE.md") for line in lines)
+        assert any(line.endswith("\tGPD/state.json") for line in lines)
+        assert any(line.endswith("\tGPD/state.json.bak") for line in lines)
+
     def test_git_status_reports_dirty_tracked_checkpoint_artifacts(self, tmp_path: Path) -> None:
         repo = _init_git_repo(tmp_path)
         checkpoint_dir = repo / "GPD" / "phase-checkpoints"
