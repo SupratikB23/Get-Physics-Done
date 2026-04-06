@@ -68,6 +68,22 @@ REVIEW_CONTRACT_KEYS = frozenset(REVIEW_CONTRACT_FIELD_ORDER)
 REVIEW_CONTRACT_CONDITIONAL_KEYS = frozenset(REVIEW_CONTRACT_CONDITIONAL_FIELD_ORDER)
 
 
+def _review_contract_guidance() -> str:
+    review_modes = "|".join(VALID_REVIEW_MODES)
+    when_values = "|".join(VALID_REVIEW_CONDITIONAL_WHENS)
+    required_states = "|".join(VALID_REVIEW_REQUIRED_STATES)
+    preflight_checks = "|".join(VALID_REVIEW_PREFLIGHT_CHECKS)
+    return (
+        f"{review_contract_visibility_note()} "
+        "Closed schema: no extra keys. "
+        f"`review_mode`={review_modes}; "
+        f"`required_state`={required_states} when present; "
+        f"`preflight_checks` must use declared values (`{preflight_checks}`); "
+        f"`conditional_requirements[].when`={when_values}; "
+        "`conditional_requirements[].blocking_preflight_checks` must reuse declared `preflight_checks` values."
+    )
+
+
 def _load_review_contract_payload(
     review_contract: object,
     *,
@@ -396,18 +412,6 @@ def render_review_contract_prompt(review_contract: object) -> str:
     rendered_payload = dict(payload)
     if not rendered_payload.get("required_state"):
         rendered_payload.pop("required_state", None)
-    guidance_lines = [
-        review_contract_visibility_note()
-    ]
-    guidance_lines.append(
-        "Closed schema: no extra keys. "
-        f"`review_mode`={ '|'.join(VALID_REVIEW_MODES) }; "
-        f"`preflight_checks` must use declared values; "
-        f"`required_state`={ '|'.join(VALID_REVIEW_REQUIRED_STATES) } when present."
-    )
-    guidance_lines.append(
-        "Each `conditional_requirements[].blocking_preflight_checks` entry must also appear in `preflight_checks`."
-    )
     rendered = yaml.safe_dump(
         {REVIEW_CONTRACT_PROMPT_WRAPPER_KEY: rendered_payload},
         sort_keys=False,
@@ -415,6 +419,6 @@ def render_review_contract_prompt(review_contract: object) -> str:
     ).rstrip()
     return (
         "## Review Contract\n\n"
-        f"{' '.join(guidance_lines)}\n\n"
+        f"{_review_contract_guidance()}\n\n"
         f"```yaml\n{rendered}\n```"
     )

@@ -495,7 +495,8 @@ class TestSkillsServerIntegration:
         assert "## Review Contract" in result["content"]
         assert "review_contract:" in result["content"]
         assert "review-contract:" not in result["content"]
-        assert "inject `review_contract` alongside `content`" in result["loading_hint"]
+        assert "schema_documents and contract_documents mirror loaded schema and contract markdown bodies." in result["loading_hint"]
+        assert "treat `content` as authoritative" in result["loading_hint"]
 
     def test_get_skill_surfaces_template_backed_schema_documents_for_writing_and_resume(self):
         from gpd.mcp.servers.skills_server import get_skill

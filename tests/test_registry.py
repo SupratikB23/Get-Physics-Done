@@ -161,7 +161,7 @@ class TestParseAgentFile:
         assert agent.shared_state_authority == "direct"
         assert agent.color == "blue"
         assert agent.system_prompt.startswith("## Agent Requirements\n")
-        assert "Model-visible agent requirements. Follow this YAML directly." in agent.system_prompt
+        assert "Model-visible agent requirements. Follow this YAML." in agent.system_prompt
         assert "commit_authority: orchestrator" in agent.system_prompt
         assert "surface: public" in agent.system_prompt
         assert "role_family: worker" in agent.system_prompt
@@ -278,7 +278,7 @@ class TestParseAgentFile:
         f.write_text("---\nname: nobody\n---\n", encoding="utf-8")
         agent = _parse_agent_file(f, source="agents")
         assert agent.system_prompt.startswith("## Agent Requirements\n")
-        assert "Model-visible agent requirements. Follow this YAML directly." in agent.system_prompt
+        assert "Model-visible agent requirements. Follow this YAML." in agent.system_prompt
         assert "commit_authority:" in agent.system_prompt
         assert agent.system_prompt.endswith("```")
 

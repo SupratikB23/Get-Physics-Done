@@ -119,7 +119,7 @@ _GEMINI_COMMAND_RUNTIME_NOTE = (
     "</gemini_runtime_notes>\n\n"
 )
 _GEMINI_NEW_PROJECT_INIT_BLOCK = """```bash
-INIT=$(gpd init new-project)
+INIT=$(gpd --raw init new-project)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed with the workflow.
@@ -128,13 +128,13 @@ fi
 _GEMINI_NEW_PROJECT_INIT_REPLACEMENT = """Run the init command as its own shell call in Gemini auto-edit mode. Do not wrap it in `INIT=$(...)` or an `if` block.
 
 ```bash
-gpd init new-project
+gpd --raw init new-project
 ```
 
 If the init command fails, stop, surface the error, and do not proceed with the workflow."""
 _GEMINI_SET_PROFILE_BLOCK = """```bash
 gpd config ensure-section
-INIT=$(gpd init progress --include state,config)
+INIT=$(gpd --raw init progress --include state,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -149,7 +149,7 @@ gpd config ensure-section
 Then run:
 
 ```bash
-gpd init progress --include state,config --no-project-reentry
+gpd --raw init progress --include state,config --no-project-reentry
 ```
 
 If the init command fails, stop, surface the error, and do not proceed."""
@@ -157,7 +157,7 @@ _GEMINI_SET_PROFILE_BLOCK_RE = re.compile(
     r"```bash\n"
     r"gpd config ensure-section\n"
     r"(?:#.*\n)*"
-    r"INIT=\$\((?:gpd init progress --include state,config(?: --no-project-reentry)?)\)\n"
+    r"INIT=\$\((?:gpd --raw init progress --include state,config(?: --no-project-reentry)?)\)\n"
     r"if \[ \$\? -ne 0 \]; then\n"
     r"  echo \"ERROR: gpd initialization failed: \$INIT\"\n"
     r"  # STOP — display the error to the user and do not proceed\.\n"
@@ -589,7 +589,7 @@ gpd commit "docs: generate dependency graph" --files GPD/DEPENDENCY-GRAPH.md
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init phase-op)
+INIT=$(gpd --raw init phase-op)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -597,12 +597,12 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init phase-op
+gpd --raw init phase-op
 ```""",
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init progress --include state,roadmap,config)
+INIT=$(gpd --raw init progress --include state,roadmap,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -610,12 +610,12 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init progress --include state,roadmap,config
+gpd --raw init progress --include state,roadmap,config
 ```""",
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init progress --include state)
+INIT=$(gpd --raw init progress --include state)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -623,12 +623,12 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init progress --include state
+gpd --raw init progress --include state
 ```""",
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init phase-op --include state,config "${PHASE_ARG:-}")
+INIT=$(gpd --raw init phase-op --include state,config "${PHASE_ARG:-}")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -636,12 +636,12 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init phase-op --include state,config "${PHASE_ARG:-}"
+gpd --raw init phase-op --include state,config "${PHASE_ARG:-}"
 ```""",
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init progress --include state,config)
+INIT=$(gpd --raw init progress --include state,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -649,7 +649,7 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init progress --include state,config
+gpd --raw init progress --include state,config
 ```""",
     )
     return _rewrite_gemini_capture_assignments(content)

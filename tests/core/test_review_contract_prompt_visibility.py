@@ -9,6 +9,7 @@ import pytest
 from gpd import registry
 from gpd.core.model_visible_text import command_visibility_note, review_contract_visibility_note
 from gpd.core.review_contract_prompt import (
+    VALID_REVIEW_CONDITIONAL_WHENS,
     normalize_review_contract_frontmatter_payload,
     normalize_review_contract_payload,
     render_review_contract_prompt,
@@ -491,8 +492,10 @@ def test_review_contract_renderer_rejects_unknown_preflight_checks() -> None:
 def test_review_contract_renderer_always_surfaces_blocking_preflight_dependency_rule() -> None:
     section = render_review_contract_prompt({"schema_version": 1, "review_mode": "review"})
 
+    assert "`preflight_checks` must use declared values" in section
+    assert f"`conditional_requirements[].when`={'|'.join(VALID_REVIEW_CONDITIONAL_WHENS)}" in section
     assert (
-        "Each `conditional_requirements[].blocking_preflight_checks` entry must also appear in `preflight_checks`."
+        "`conditional_requirements[].blocking_preflight_checks` must reuse declared `preflight_checks` values."
         in section
     )
 

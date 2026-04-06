@@ -10,12 +10,12 @@ __all__ = [
 
 
 def agent_visibility_note() -> str:
-    return "Model-visible agent requirements. Follow this YAML directly."
+    return "Model-visible agent requirements. Follow this YAML."
 
 
 def command_visibility_note() -> str:
-    return "Model-visible execution constraints. Follow this YAML directly."
+    return "Model-visible command constraints. Follow this YAML."
 
 
 def review_contract_visibility_note() -> str:
-    return "Model-visible review contract. Command preflight and validation use the same schema."
+    return "Model-visible review contract. Validation uses this schema."
