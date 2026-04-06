@@ -53,6 +53,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
 
@@ -62,5 +67,12 @@ jobs:
       - name: Run fast test suite
         run: uv run pytest tests/ -q -n auto --dist=loadscope
 
-      - name: Run full test suite
-        run: uv run pytest tests/ -q --full-suite -n auto --dist=loadscope
+      - name: Run complementary heavy suite
+        run: |
+          HEAVY_SUITE_IGNORE_ARGS="$(uv run python - <<'PY'
+          from tests.conftest import full_suite_ignore_args
+
+          print(" ".join(full_suite_ignore_args()))
+          PY
+          )"
+          uv run pytest tests/ -q -n auto --dist=loadscope $HEAVY_SUITE_IGNORE_ARGS

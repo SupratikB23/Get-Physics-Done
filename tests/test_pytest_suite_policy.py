@@ -3,11 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import yaml
+
 from tests.conftest import (
     _FAST_SUITE_ENV_VAR,
     FAST_SUITE_EXCLUDES,
     _explicit_collection_requested,
     _full_suite_requested,
+    full_suite_ignore_args,
 )
 
 
@@ -17,6 +20,21 @@ def _read(relpath: str) -> str:
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
+
+
+def _workflow_data() -> dict[str, object]:
+    return yaml.safe_load((_repo_root() / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8"))
+
+
+def _workflow_job_steps(workflow: dict[str, object], job_name: str) -> list[dict[str, object]]:
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs[job_name]
+    assert isinstance(job, dict)
+    steps = job["steps"]
+    assert isinstance(steps, list)
+    assert all(isinstance(step, dict) for step in steps)
+    return steps
 
 
 def test_fast_suite_policy_is_centralized_in_root_conftest() -> None:
@@ -54,6 +72,10 @@ def test_fast_suite_policy_keeps_heavyweight_skips_explicit() -> None:
 
 def test_fast_suite_policy_keeps_boundary_regressions_in_default_path() -> None:
     required = {
+        "core/test_contract_validation_smoke.py",
+        "core/test_executor_prompt_contract_visibility.py",
+        "core/test_frontmatter_smoke.py",
+        "core/test_plan_contract_prompt_visibility_regressions.py",
         "test_project_contract_boundary_regressions.py",
         "test_runtime_abstraction_boundaries.py",
         "core/test_contract_schema_prompt_parity.py",
@@ -68,14 +90,24 @@ def test_fast_suite_policy_keeps_boundary_regressions_in_default_path() -> None:
 
 def test_ci_and_test_readme_document_explicit_fast_and_full_suite_commands() -> None:
     repo_root = _repo_root()
-    workflow = (repo_root / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+    workflow = _workflow_data()
     tests_readme = (repo_root / "tests" / "README.md").read_text(encoding="utf-8")
+    pytest_steps = _workflow_job_steps(workflow, "pytest")
+    step_names = [str(step.get("name", "")) for step in pytest_steps]
+    run_steps = {str(step.get("name", "")): str(step.get("run", "")) for step in pytest_steps if "run" in step}
 
-    assert "uv run pytest tests/ -q -n auto --dist=loadscope" in workflow
-    assert "uv run pytest tests/ -q --full-suite -n auto --dist=loadscope" in workflow
+    assert "Set up Node.js" in step_names
+    assert step_names.index("Set up Node.js") < step_names.index("Install dependencies")
+    assert run_steps["Run fast test suite"] == "uv run pytest tests/ -q -n auto --dist=loadscope"
+    assert "from tests.conftest import full_suite_ignore_args" in run_steps["Run complementary heavy suite"]
+    assert "uv run pytest tests/ -q -n auto --dist=loadscope $HEAVY_SUITE_IGNORE_ARGS" in run_steps[
+        "Run complementary heavy suite"
+    ]
+    assert "--full-suite" not in run_steps["Run complementary heavy suite"]
     assert "preferred parallel fast path" in tests_readme
     assert "parallel flags now live at the call site instead of repo config" in tests_readme
     assert "GitHub Actions workflow runs both fast and full suites explicitly" in tests_readme
+    assert full_suite_ignore_args() == tuple(f"--ignore=tests/{rel_path}" for rel_path in sorted(FAST_SUITE_EXCLUDES))
 
 
 def test_explicit_collection_is_not_treated_as_fast_suite_blacklisting() -> None:

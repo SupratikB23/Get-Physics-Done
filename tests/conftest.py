@@ -20,7 +20,6 @@ FAST_SUITE_EXCLUDES = frozenset(
         "core/test_contract_validation.py",
         "core/test_conventions.py",
         "core/test_error_recovery.py",
-        "core/test_executor_prompt_contract_visibility.py",
         "core/test_extras.py",
         "core/test_frontmatter.py",
         "core/test_frontmatter_edge.py",
@@ -33,7 +32,6 @@ FAST_SUITE_EXCLUDES = frozenset(
         "core/test_paper_quality_artifacts.py",
         "core/test_patterns.py",
         "core/test_phases.py",
-        "core/test_plan_contract_prompt_visibility_regressions.py",
         "core/test_project_reentry.py",
         "core/test_query.py",
         "core/test_recovery_advice.py",
@@ -81,6 +79,13 @@ def _full_suite_requested(*, cli_flag: bool, env_value: str | None) -> bool:
 def fast_suite_ignored(rel_path: str, *, full_suite: bool, explicitly_requested: bool) -> bool:
     """Return whether one test path belongs to the default fast-suite skip set."""
     return not full_suite and not explicitly_requested and rel_path in FAST_SUITE_EXCLUDES
+
+
+def full_suite_ignore_args(*, tests_root: Path | None = None) -> tuple[str, ...]:
+    """Return pytest ``--ignore=...`` args for the complementary heavy suite."""
+
+    root = Path("tests") if tests_root is None else tests_root
+    return tuple(f"--ignore={root / rel_path}" for rel_path in sorted(FAST_SUITE_EXCLUDES))
 
 
 def _requested_collection_roots(config) -> tuple[Path, ...]:
