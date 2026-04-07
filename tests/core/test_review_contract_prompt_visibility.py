@@ -218,6 +218,7 @@ def test_model_visible_wrapper_notes_surface_their_closed_schema_rules() -> None
     assert command_note.count(MODEL_VISIBLE_CLOSED_SCHEMA_PHRASE) == 1
     assert note.count(MODEL_VISIBLE_CLOSED_SCHEMA_PHRASE) == 1
     assert "strict booleans" in command_note.lower()
+    assert "`schema_version` must be the integer `1`" in note
     assert "context_mode" in command_note
     assert "project_reentry_capable" in command_note
 
@@ -228,6 +229,34 @@ def test_model_visible_wrapper_notes_surface_their_closed_schema_rules() -> None
     assert "blocking_preflight_checks" in note
     assert "List fields reject blank entries and duplicates." in note
     assert "Each conditional requirement must declare at least one field." in note
+
+
+@pytest.mark.parametrize(
+    ("normalizer", "payload"),
+    [
+        (
+            normalize_review_contract_payload,
+            "schema_version: 1\nreview_mode: review\nreview_mode: publication\n",
+        ),
+        (
+            normalize_review_contract_frontmatter_payload,
+            (
+                "review-contract:\n"
+                "  schema_version: 1\n"
+                "  review_mode: review\n"
+                "  conditional_requirements:\n"
+                "    - when: theorem-bearing claims are present\n"
+                "      required_outputs:\n"
+                "        - one\n"
+                "      required_outputs:\n"
+                "        - two\n"
+            ),
+        ),
+    ],
+)
+def test_review_contract_normalizers_reject_duplicate_yaml_keys(normalizer, payload: str) -> None:
+    with pytest.raises(ValueError, match="duplicate key"):
+        normalizer(payload)
 
 
 def test_review_contract_renderer_rejects_unknown_keys() -> None:
@@ -345,7 +374,7 @@ def test_review_contract_visibility_note_surfaces_the_hard_constraints() -> None
     conditional_whens = " or ".join(f"`{value}`" for value in REVIEW_CONTRACT_CONDITIONAL_WHENS)
 
     assert "Closed schema; no extra keys." in note
-    assert "`schema_version` must be `1`;" in note
+    assert "`schema_version` must be the integer `1`;" in note
     assert f"`review_mode` must be {review_modes};" in note
     assert f"`conditional_requirements[].when` must be one of {conditional_whens};" in note
     assert "`conditional_requirements[].blocking_preflight_checks` must reuse declared `preflight_checks`." in note

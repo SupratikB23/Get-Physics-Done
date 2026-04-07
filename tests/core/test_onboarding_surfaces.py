@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from gpd.core.public_surface_contract import (
     resume_authority_fields,
 )
 from tests import doc_surface_contracts as doc_surface_contracts_module
+
 
 def _public_surface_contract_files(contract_path: Path, schema_path: Path) -> object:
     class _FakeFiles:
@@ -672,3 +674,33 @@ def test_doc_surface_contract_helpers_refresh_dynamic_command_surfaces(
             )
         )
     )
+
+
+def test_doc_surface_contract_payload_cache_clear_refreshes_after_source_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base_contract = public_surface_contract_module.load_public_surface_contract()
+    first_contract = dataclasses.replace(
+        base_contract,
+        beginner_onboarding=dataclasses.replace(
+            base_contract.beginner_onboarding,
+            preflight_requirements=("First preflight",),
+        ),
+    )
+    second_contract = dataclasses.replace(
+        base_contract,
+        beginner_onboarding=dataclasses.replace(
+            base_contract.beginner_onboarding,
+            preflight_requirements=("Second preflight",),
+        ),
+    )
+
+    monkeypatch.setattr(doc_surface_contracts_module, "load_public_surface_contract", lambda: first_contract)
+    doc_surface_contracts_module._public_surface_contract_payload.cache_clear()
+    assert doc_surface_contracts_module.beginner_preflight_requirements() == ("First preflight",)
+
+    monkeypatch.setattr(doc_surface_contracts_module, "load_public_surface_contract", lambda: second_contract)
+    assert doc_surface_contracts_module.beginner_preflight_requirements() == ("First preflight",)
+
+    doc_surface_contracts_module._public_surface_contract_payload.cache_clear()
+    assert doc_surface_contracts_module.beginner_preflight_requirements() == ("Second preflight",)

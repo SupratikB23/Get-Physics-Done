@@ -5,27 +5,25 @@ from __future__ import annotations
 import dataclasses
 import re
 from collections.abc import Iterable
+from functools import lru_cache
 
 from gpd.adapters import get_adapter, iter_runtime_descriptors
-from gpd.core.public_surface_contract import load_public_surface_contract
-from gpd.core.public_surface_contract import local_cli_bridge_commands
-from gpd.core.public_surface_contract import local_cli_cost_command
-from gpd.core.public_surface_contract import local_cli_doctor_command
-from gpd.core.public_surface_contract import local_cli_doctor_global_command
-from gpd.core.public_surface_contract import local_cli_doctor_local_command
-from gpd.core.public_surface_contract import local_cli_help_command
-from gpd.core.public_surface_contract import local_cli_integrations_status_wolfram_command
-from gpd.core.public_surface_contract import local_cli_observe_execution_command
-from gpd.core.public_surface_contract import local_cli_permissions_status_command
-from gpd.core.public_surface_contract import local_cli_permissions_sync_command
-from gpd.core.public_surface_contract import local_cli_plan_preflight_command
-from gpd.core.public_surface_contract import local_cli_presets_list_command
-from gpd.core.public_surface_contract import recovery_cross_workspace_command
-from gpd.core.public_surface_contract import recovery_local_snapshot_command
-from gpd.core.public_surface_contract import local_cli_resume_command
-from gpd.core.public_surface_contract import local_cli_resume_recent_command
-from gpd.core.public_surface_contract import local_cli_unattended_readiness_command
-from gpd.core.public_surface_contract import local_cli_validate_command_context_command
+from gpd.core.public_surface_contract import (
+    load_public_surface_contract,
+    local_cli_cost_command,
+    local_cli_doctor_command,
+    local_cli_doctor_global_command,
+    local_cli_doctor_local_command,
+    local_cli_integrations_status_wolfram_command,
+    local_cli_observe_execution_command,
+    local_cli_permissions_status_command,
+    local_cli_permissions_sync_command,
+    local_cli_plan_preflight_command,
+    local_cli_resume_command,
+    local_cli_unattended_readiness_command,
+    recovery_cross_workspace_command,
+    recovery_local_snapshot_command,
+)
 from gpd.core.resume_surface import RESUME_COMPATIBILITY_ALIAS_FIELDS
 from gpd.core.surface_phrases import post_start_settings_note
 
@@ -186,6 +184,7 @@ def _first_index_of_any(content: str, fragments: Iterable[str], *, label: str) -
     return min(positions)
 
 
+@lru_cache(maxsize=1)
 def _public_surface_contract_payload() -> dict[str, object]:
     payload = {"schema_version": 1, **dataclasses.asdict(load_public_surface_contract())}
     assert isinstance(payload, dict), "public surface contract must be a JSON object"
@@ -199,13 +198,6 @@ def _public_surface_contract_payload() -> dict[str, object]:
     }
     assert payload["schema_version"] == 1
     return payload
-
-
-def _clear_public_surface_contract_payload_cache() -> None:
-    return None
-
-
-_public_surface_contract_payload.cache_clear = _clear_public_surface_contract_payload_cache
 
 
 def _contract_section(name: str) -> dict[str, object]:

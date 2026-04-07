@@ -89,7 +89,7 @@ def review_contract_visibility_note() -> str:
     required_states = _join_disjunction(REVIEW_CONTRACT_REQUIRED_STATES)
     return render_model_visible_note(
         "Review contract schema.",
-        f"`{REVIEW_CONTRACT_PROMPT_WRAPPER_KEY}` is the wrapper key; `schema_version` must be `1`;",
+        f"`{REVIEW_CONTRACT_PROMPT_WRAPPER_KEY}` is the wrapper key; `schema_version` must be the integer `1`;",
         f"`review_mode` must be {review_modes};",
         f"when present, `required_state` must be {required_states};",
         f"`conditional_requirements[].when` must be one of {conditional_whens};",

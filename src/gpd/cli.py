@@ -88,10 +88,6 @@ from gpd.core.publication_review_paths import (
     manuscript_matches_review_artifact_path,
     review_artifact_round,
 )
-from gpd.core.runtime_command_surfaces import (
-    format_active_runtime_command,
-    resolve_active_runtime_descriptor,
-)
 from gpd.core.recovery_advice import (
     RecoveryAdvice,
     build_recovery_advice,
@@ -105,6 +101,10 @@ from gpd.core.resume_surface import (
     resume_candidate_kind_from_source,
 )
 from gpd.core.root_resolution import resolve_project_root
+from gpd.core.runtime_command_surfaces import (
+    format_active_runtime_command,
+    resolve_active_runtime_descriptor,
+)
 from gpd.core.surface_phrases import (
     cost_inspect_action,
     recovery_action_lines,
