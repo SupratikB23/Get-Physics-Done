@@ -28,6 +28,7 @@ _ALLOWED_STAGE_KEYS = {
     "mode_paths",
     "required_init_fields",
     "loaded_authorities",
+    "conditional_authorities",
     "must_not_eager_load",
     "allowed_tools",
     "writes_allowed",
@@ -45,6 +46,7 @@ class NewProjectStage:
     mode_paths: tuple[str, ...]
     required_init_fields: tuple[str, ...]
     loaded_authorities: tuple[str, ...]
+    conditional_authorities: tuple[NewProjectConditionalAuthority, ...]
     must_not_eager_load: tuple[str, ...]
     allowed_tools: tuple[str, ...]
     writes_allowed: tuple[str, ...]
@@ -61,6 +63,12 @@ class NewProjectStageContract:
 
     def stage_ids(self) -> tuple[str, ...]:
         return tuple(stage.id for stage in self.stages)
+
+
+@dataclass(frozen=True, slots=True)
+class NewProjectConditionalAuthority:
+    when: str
+    authorities: tuple[str, ...]
 
 
 def _require_string(raw: object, *, label: str) -> str:
@@ -107,7 +115,7 @@ def _validate_stage(raw: object, *, index: int) -> NewProjectStage:
     if unknown_keys:
         raise ValueError(f"stages[{index}] contains unexpected key(s): {', '.join(unknown_keys)}")
 
-    required_keys = tuple(sorted(_ALLOWED_STAGE_KEYS - {"checkpoints"}))
+    required_keys = tuple(sorted(_ALLOWED_STAGE_KEYS - {"checkpoints", "conditional_authorities"}))
     missing_keys = sorted(key for key in required_keys if key not in raw)
     if missing_keys:
         raise ValueError(f"stages[{index}] is missing required key(s): {', '.join(missing_keys)}")
@@ -127,6 +135,10 @@ def _validate_stage(raw: object, *, index: int) -> NewProjectStage:
             label=f"stages[{index}].loaded_authorities",
             allow_empty=True,
         ),
+        conditional_authorities=_require_conditional_authorities(
+            raw.get("conditional_authorities", []),
+            label=f"stages[{index}].conditional_authorities",
+        ),
         must_not_eager_load=_require_string_tuple(
             raw["must_not_eager_load"],
             label=f"stages[{index}].must_not_eager_load",
@@ -142,6 +154,34 @@ def _validate_stage(raw: object, *, index: int) -> NewProjectStage:
         next_stages=_require_string_tuple(raw["next_stages"], label=f"stages[{index}].next_stages", allow_empty=True),
         checkpoints=_require_string_tuple(raw.get("checkpoints", []), label=f"stages[{index}].checkpoints", allow_empty=True),
     )
+
+
+def _require_conditional_authorities(
+    raw: object,
+    *,
+    label: str,
+) -> tuple[NewProjectConditionalAuthority, ...]:
+    if not isinstance(raw, list):
+        raise ValueError(f"{label} must be a list")
+
+    items: list[NewProjectConditionalAuthority] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(raw):
+        entry_label = f"{label}[{index}]"
+        if not isinstance(entry, dict):
+            raise ValueError(f"{entry_label} must be a JSON object")
+        unknown_keys = sorted(str(key) for key in entry if str(key) not in {"when", "authorities"})
+        if unknown_keys:
+            raise ValueError(f"{entry_label} contains unexpected key(s): {', '.join(unknown_keys)}")
+        if "when" not in entry or "authorities" not in entry:
+            raise ValueError(f"{entry_label} must define when and authorities")
+        when = _require_string(entry["when"], label=f"{entry_label}.when")
+        if when in seen:
+            raise ValueError(f"{label} must not contain duplicate when values")
+        seen.add(when)
+        authorities = _require_string_tuple(entry["authorities"], label=f"{entry_label}.authorities")
+        items.append(NewProjectConditionalAuthority(when=when, authorities=authorities))
+    return tuple(items)
 
 
 def validate_new_project_stage_contract_payload(raw: object) -> NewProjectStageContract:
@@ -188,6 +228,12 @@ def validate_new_project_stage_contract_payload(raw: object) -> NewProjectStageC
         for authority in (*stage.loaded_authorities, *stage.must_not_eager_load):
             if authority and not authority.startswith(("workflows/", "references/", "templates/")):
                 raise ValueError(f"stage {stage.id!r} has invalid authority path: {authority!r}")
+        for conditional in stage.conditional_authorities:
+            for authority in conditional.authorities:
+                if authority and not authority.startswith(("workflows/", "references/", "templates/")):
+                    raise ValueError(
+                        f"stage {stage.id!r} has invalid conditional authority path: {authority!r}"
+                    )
 
     expected_stage_ids = ["scope_intake", "scope_approval", "post_scope"]
     if stage_ids != expected_stage_ids:

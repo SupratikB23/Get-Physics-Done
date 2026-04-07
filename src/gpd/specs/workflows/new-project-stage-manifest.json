@@ -32,6 +32,14 @@
       "loaded_authorities": [
         "workflows/new-project.md"
       ],
+      "conditional_authorities": [
+        {
+          "when": "full_questioning_path",
+          "authorities": [
+            "references/research/questioning.md"
+          ]
+        }
+      ],
       "must_not_eager_load": [
         "references/research/questioning.md",
         "references/ui/ui-brand.md",
@@ -76,8 +84,10 @@
       ],
       "loaded_authorities": [
         "templates/project-contract-schema.md",
-        "templates/project-contract-grounding-linkage.md"
+        "templates/project-contract-grounding-linkage.md",
+        "references/shared/canonical-schema-discipline.md"
       ],
+      "conditional_authorities": [],
       "must_not_eager_load": [
         "references/research/questioning.md",
         "references/ui/ui-brand.md",
@@ -114,17 +124,23 @@
         "workflows/new-project.md"
       ],
       "required_init_fields": [
+        "researcher_model",
+        "synthesizer_model",
+        "roadmapper_model",
+        "commit_docs",
+        "autonomy",
+        "research_mode",
         "project_contract",
         "project_contract_gate",
         "project_contract_load_info",
         "project_contract_validation"
       ],
       "loaded_authorities": [
-        "references/research/questioning.md",
         "references/ui/ui-brand.md",
         "templates/project.md",
         "templates/requirements.md"
       ],
+      "conditional_authorities": [],
       "must_not_eager_load": [],
       "allowed_tools": [
         "file_read",
@@ -138,7 +154,14 @@
         "GPD/REQUIREMENTS.md",
         "GPD/ROADMAP.md",
         "GPD/STATE.md",
-        "GPD/config.json"
+        "GPD/state.json",
+        "GPD/config.json",
+        "GPD/CONVENTIONS.md",
+        "GPD/research/PRIOR-WORK.md",
+        "GPD/research/METHODS.md",
+        "GPD/research/COMPUTATIONAL.md",
+        "GPD/research/PITFALLS.md",
+        "GPD/research/SUMMARY.md"
       ],
       "produced_state": [
         "project artifacts",

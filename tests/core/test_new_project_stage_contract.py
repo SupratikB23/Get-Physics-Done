@@ -23,29 +23,61 @@ def test_new_project_stage_contract_loads_and_preserves_stage_order() -> None:
     assert contract.stages[1].order == 2
     assert contract.stages[2].order == 3
     assert contract.stages[0].mode_paths == ("workflows/new-project.md",)
+    assert contract.stages[0].loaded_authorities == ("workflows/new-project.md",)
     assert "project_contract_gate" in contract.stages[0].required_init_fields
     assert "needs_research_map" in contract.stages[0].required_init_fields
+    assert contract.stages[0].conditional_authorities[0].when == "full_questioning_path"
+    assert contract.stages[0].conditional_authorities[0].authorities == ("references/research/questioning.md",)
     assert "references/research/questioning.md" in contract.stages[0].must_not_eager_load
     assert "templates/project-contract-schema.md" in contract.stages[0].must_not_eager_load
     assert "templates/project-contract-grounding-linkage.md" in contract.stages[0].must_not_eager_load
+    assert contract.stages[0].writes_allowed == ()
+    assert contract.stages[1].required_init_fields == (
+        "project_contract",
+        "project_contract_gate",
+        "project_contract_load_info",
+        "project_contract_validation",
+    )
     assert contract.stages[1].loaded_authorities == (
         "templates/project-contract-schema.md",
         "templates/project-contract-grounding-linkage.md",
+        "references/shared/canonical-schema-discipline.md",
     )
+    assert contract.stages[1].conditional_authorities == ()
     assert contract.stages[1].writes_allowed == ("GPD/state.json",)
+    assert contract.stages[2].required_init_fields == (
+        "researcher_model",
+        "synthesizer_model",
+        "roadmapper_model",
+        "commit_docs",
+        "autonomy",
+        "research_mode",
+        "project_contract",
+        "project_contract_gate",
+        "project_contract_load_info",
+        "project_contract_validation",
+    )
     assert contract.stages[2].loaded_authorities == (
-        "references/research/questioning.md",
         "references/ui/ui-brand.md",
         "templates/project.md",
         "templates/requirements.md",
     )
+    assert contract.stages[2].conditional_authorities == ()
     assert contract.stages[2].writes_allowed == (
         "GPD/PROJECT.md",
         "GPD/REQUIREMENTS.md",
         "GPD/ROADMAP.md",
         "GPD/STATE.md",
+        "GPD/state.json",
         "GPD/config.json",
+        "GPD/CONVENTIONS.md",
+        "GPD/research/PRIOR-WORK.md",
+        "GPD/research/METHODS.md",
+        "GPD/research/COMPUTATIONAL.md",
+        "GPD/research/PITFALLS.md",
+        "GPD/research/SUMMARY.md",
     )
+    assert "references/research/questioning.md" not in contract.stages[2].loaded_authorities
 
 
 def test_new_project_stage_contract_loader_is_cached() -> None:
