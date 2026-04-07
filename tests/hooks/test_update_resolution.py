@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from gpd.adapters import get_adapter
 from gpd.adapters.runtime_catalog import get_shared_install_metadata
+from gpd.hooks import runtime_detect as runtime_detect_module
 from gpd.hooks.update_resolution import (
     latest_update_cache,
     ordered_update_cache_candidates,
@@ -140,12 +141,24 @@ def test_resolve_update_cache_inputs_uses_explicit_or_inferred_preference(tmp_pa
             assert preferred_runtime == expected_preference
 
 
-def test_primary_update_cache_file_falls_back_to_home_gpd_cache(tmp_path: Path) -> None:
+def test_primary_update_cache_file_falls_back_to_home_data_root_cache(tmp_path: Path) -> None:
     home = tmp_path / "home"
 
     cache_file = primary_update_cache_file([], home=home)
 
-    assert cache_file == home / "GPD" / "cache" / "gpd-update-check.json"
+    assert cache_file == home / ".gpd" / "cache" / "gpd-update-check.json"
+
+
+def test_home_update_cache_path_comes_from_one_helper_for_lookup_and_write_paths(tmp_path: Path) -> None:
+    helper_path = tmp_path / ".gpd" / "cache" / "gpd-update-check.json"
+
+    with patch.object(runtime_detect_module, "home_update_cache_file", return_value=helper_path) as mock_helper:
+        candidates = runtime_detect_module.get_update_cache_candidates(home=tmp_path, cwd=tmp_path)
+        primary = primary_update_cache_file([], home=tmp_path)
+
+    assert candidates[-1].path == helper_path
+    assert primary == helper_path
+    assert mock_helper.call_count == 2
 
 
 def test_latest_update_cache_uses_shared_cache_constants_for_self_owned_install_and_workspace_precedence(

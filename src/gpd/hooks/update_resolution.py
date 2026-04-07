@@ -7,8 +7,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 import gpd.hooks.install_context as hook_layout
-from gpd.adapters.install_utils import CACHE_DIR_NAME, UPDATE_CACHE_FILENAME
-from gpd.core.constants import PLANNING_DIR_NAME
 
 DebugLogger = Callable[[str], None]
 
@@ -105,8 +103,9 @@ def primary_update_cache_file(candidates: list[object], *, home: str | Path | No
         candidate_path = getattr(candidates[0], "path", None)
         if isinstance(candidate_path, Path):
             return candidate_path
-    resolved_home = Path.home() if home is None else Path(home).expanduser().resolve(strict=False)
-    return resolved_home / PLANNING_DIR_NAME / CACHE_DIR_NAME / UPDATE_CACHE_FILENAME
+    from gpd.hooks.runtime_detect import home_update_cache_file
+
+    return home_update_cache_file(home=home)
 
 
 def latest_update_cache(

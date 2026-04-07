@@ -23,7 +23,7 @@ from gpd.adapters.runtime_catalog import (
 from gpd.adapters.runtime_catalog import (
     normalize_runtime_name as _normalize_runtime_name,
 )
-from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, PLANNING_DIR_NAME, TODOS_DIR_NAME
+from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, HOME_DATA_DIR_NAME, TODOS_DIR_NAME
 from gpd.hooks.install_metadata import install_scope_from_manifest, load_install_manifest_runtime_status
 
 RUNTIME_UNKNOWN = "unknown"
@@ -512,6 +512,12 @@ def get_cache_dirs(*, cwd: Path | None = None, home: Path | None = None) -> list
     return [d / CACHE_DIR_NAME for d in all_runtime_dirs(include_local=True, cwd=cwd, home=home)]
 
 
+def home_update_cache_file(*, home: Path | None = None) -> Path:
+    """Return the canonical home-scoped update-cache file path."""
+    resolved_home = Path.home() if home is None else Path(home).expanduser().resolve(strict=False)
+    return resolved_home / HOME_DATA_DIR_NAME / CACHE_DIR_NAME / UPDATE_CACHE_FILENAME
+
+
 def get_update_cache_files(
     *,
     cwd: Path | None = None,
@@ -564,7 +570,7 @@ def get_update_cache_candidates(
                 scope=SCOPE_GLOBAL,
             )
         )
-    candidates.append(UpdateCacheCandidate(resolved_home / PLANNING_DIR_NAME / CACHE_DIR_NAME / UPDATE_CACHE_FILENAME))
+    candidates.append(UpdateCacheCandidate(home_update_cache_file(home=resolved_home)))
     return _unique_update_cache_candidates(candidates)
 
 

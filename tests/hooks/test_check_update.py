@@ -582,7 +582,7 @@ class TestMainThrottle:
             encoding="utf-8",
         )
 
-        fallback_cache = home / "GPD" / "cache" / "gpd-update-check.json"
+        fallback_cache = home / ".gpd" / "cache" / "gpd-update-check.json"
         fallback_cache.parent.mkdir(parents=True)
         fallback_cache.write_text(
             json.dumps({"checked": int(time.time()), "update_available": False}),
@@ -683,7 +683,7 @@ class TestMainThrottle:
         mock_popen.assert_called_once()
 
     def test_fresh_inflight_marker_suppresses_duplicate_spawn(self, tmp_path: Path) -> None:
-        cache_file = tmp_path / "GPD" / "cache" / "gpd-update-check.json"
+        cache_file = tmp_path / ".gpd" / "cache" / "gpd-update-check.json"
         cache_file.parent.mkdir(parents=True)
         cache_file.with_name("gpd-update-check.json.inflight").write_text(str(int(time.time())), encoding="utf-8")
 
@@ -700,7 +700,7 @@ class TestMainThrottle:
         mock_popen.assert_not_called()
 
     def test_stale_inflight_marker_is_replaced_before_spawning(self, tmp_path: Path) -> None:
-        cache_file = tmp_path / "GPD" / "cache" / "gpd-update-check.json"
+        cache_file = tmp_path / ".gpd" / "cache" / "gpd-update-check.json"
         cache_file.parent.mkdir(parents=True)
         marker = cache_file.with_name("gpd-update-check.json.inflight")
         marker.write_text(str(int(time.time()) - 1000), encoding="utf-8")
@@ -730,7 +730,12 @@ class TestMainThrottle:
         hook_path = explicit_target / "hooks" / "check_update.py"
         hook_path.parent.mkdir(parents=True)
         hook_path.write_text("# hook\n", encoding="utf-8")
-        _mark_complete_install(explicit_target, runtime="codex")
+        self_install = SimpleNamespace(
+            config_dir=explicit_target,
+            runtime="codex",
+            install_scope="local",
+            cache_file=explicit_target / "cache" / "gpd-update-check.json",
+        )
 
         fresh_workspace_cache = workspace / ".claude" / "cache"
         fresh_workspace_cache.mkdir(parents=True)
@@ -744,6 +749,7 @@ class TestMainThrottle:
             patch("gpd.hooks.check_update.Path.cwd", return_value=workspace),
             patch("gpd.hooks.check_update.Path.home", return_value=home),
             patch("gpd.hooks.check_update._self_config_dir", return_value=explicit_target),
+            patch("gpd.hooks.install_context.detect_self_owned_install", return_value=self_install),
             patch(
                 "gpd.hooks.update_resolution.resolve_update_cache_inputs",
                 return_value=(workspace, home, None, "codex"),
@@ -768,7 +774,12 @@ class TestMainThrottle:
         hook_path = explicit_target / "hooks" / "check_update.py"
         hook_path.parent.mkdir(parents=True)
         hook_path.write_text("# hook\n", encoding="utf-8")
-        _mark_complete_install(explicit_target, runtime="codex")
+        self_install = SimpleNamespace(
+            config_dir=explicit_target,
+            runtime="codex",
+            install_scope="local",
+            cache_file=explicit_target / "cache" / "gpd-update-check.json",
+        )
 
         stale_workspace_cache = workspace / ".claude" / "cache"
         stale_workspace_cache.mkdir(parents=True)
@@ -782,6 +793,7 @@ class TestMainThrottle:
             patch("gpd.hooks.check_update.Path.cwd", return_value=workspace),
             patch("gpd.hooks.check_update.Path.home", return_value=home),
             patch("gpd.hooks.check_update._self_config_dir", return_value=explicit_target),
+            patch("gpd.hooks.install_context.detect_self_owned_install", return_value=self_install),
             patch(
                 "gpd.hooks.update_resolution.resolve_update_cache_inputs",
                 return_value=(workspace, home, None, "codex"),
@@ -810,7 +822,6 @@ class TestMainThrottle:
         hook_path = explicit_target / "hooks" / "check_update.py"
         hook_path.parent.mkdir(parents=True)
         hook_path.write_text("# hook\n", encoding="utf-8")
-        _mark_complete_install(explicit_target, runtime="codex")
 
         workspace_runtime_dir = workspace / ".codex"
         workspace_cache = workspace_runtime_dir / "cache" / "gpd-update-check.json"
