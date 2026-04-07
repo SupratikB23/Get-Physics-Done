@@ -190,6 +190,17 @@ Additionally:
 - The final adjudicator must emit `REVIEW-LEDGER{round_suffix}.json` and `REFEREE-DECISION{round_suffix}.json` (empty suffix on the first round).
 - The artifact should stay compact. It is a decision handoff, not a second manuscript.
 - `StageReviewReport`, nested `ReviewFinding`, and nested `ProofAuditRecord` entries use a closed schema; do not invent extra keys beyond those shown here.
+- These closed values mirror `StageReviewReport`, `ReviewFinding`, `ReviewIssue`, and `ProofAuditRecord` exactly.
+- Closed-vocabulary fields use these exact lowercase literals:
+  - `stage_kind: reader | literature | math | physics | interestingness | meta`
+  - `findings[].severity: critical | major | minor | suggestion`
+  - `findings[].support_status: supported | partially_supported | unsupported | unclear`
+  - `confidence: high | medium | low`
+  - `recommendation_ceiling: accept | minor_revision | major_revision | reject`
+  - `issues[].opened_by_stage: reader | literature | math | physics | interestingness | meta`
+  - `issues[].status: open | carried_forward | resolved`
+  - `final_recommendation: accept | minor_revision | major_revision | reject`
+  - `final_confidence: high | medium | low`
 - `manuscript_path` must be non-empty and must name the exact manuscript snapshot under review.
 - `claims_reviewed` and every nested `claim_ids` list must use Stage 1 `CLM-...` claim IDs, not free-form labels.
 - Every nested `proof_audits[].claim_id` must reuse a Stage 1 `CLM-...` claim ID and must also appear in `claims_reviewed`.

@@ -88,7 +88,8 @@ def _command_agent_labels() -> tuple[str, ...]:
 
 def agent_visibility_note() -> str:
     return render_model_visible_note(
-        "Model-visible agent requirements.",
+        "Agent YAML rules.",
+        "`tools` is a list of tool names;",
         f"`commit_authority` must be {_join_disjunction(AGENT_COMMIT_AUTHORITIES)};",
         f"`surface` must be {_join_disjunction(AGENT_SURFACES)};",
         f"`role_family` must be {_join_disjunction(AGENT_ROLE_FAMILIES)};",
@@ -105,11 +106,12 @@ def command_visibility_note() -> str:
         else "`agent` when present must match a built-in canonical agent label exactly;"
     )
     return render_model_visible_note(
-        "Model-visible command constraints.",
+        "Command YAML rules.",
         "Strict booleans only.",
         f"`context_mode` must be {_join_disjunction(VALID_CONTEXT_MODES)};",
-        "`allowed_tools` is a list when present;",
-        "`requires` is an object when present;",
+        "`allowed_tools` is a list of tool names when present;",
+        "`requires` is a closed mapping when present; only `files` is supported.",
+        "`requires.files` is a string or list of strings.",
         "Empty optional fields may be omitted.",
         agent_clause,
         "`project_reentry_capable` must be `true` or `false` and may be `true` only when `context_mode` is `project-required`.",
@@ -122,15 +124,16 @@ def review_contract_visibility_note() -> str:
     required_states = _join_disjunction(REVIEW_CONTRACT_REQUIRED_STATES)
     preflight_checks = _join_disjunction(REVIEW_CONTRACT_PREFLIGHT_CHECKS)
     return render_model_visible_note(
-        "Review contract schema.",
+        "Review-contract YAML rules.",
         f"`{REVIEW_CONTRACT_PROMPT_WRAPPER_KEY}` is the wrapper key; `schema_version` must be the integer `1`;",
         "Empty optional fields may be omitted.",
         f"`review_mode` must be {review_modes};",
-        f"when present, `required_state` must be {required_states};",
+        f"`required_state` when present must be {required_states};",
+        "`required_outputs`, `required_evidence`, `blocking_conditions`, `preflight_checks`, and `stage_artifacts` are lists when present;",
+        f"`preflight_checks` entries must be {preflight_checks};",
         f"`conditional_requirements[].when` must be one of {conditional_whens};",
-        f"`preflight_checks` is a list and each entry must be one of {preflight_checks};",
-        "`conditional_requirements[].blocking_preflight_checks` entries must also appear in the top-level `preflight_checks` list.",
+        "`conditional_requirements[].blocking_preflight_checks` is a list when present and its entries must also appear in the top-level `preflight_checks` list.",
         "Each `conditional_requirements[].when` value may appear at most once.",
         "List fields reject blank entries and duplicates.",
-        "Each conditional requirement must declare at least one field.",
+        "Each conditional requirement must declare at least one non-empty field.",
     )

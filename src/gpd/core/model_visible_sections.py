@@ -12,7 +12,7 @@ MODEL_VISIBLE_CLOSED_SCHEMA_PHRASE = "Closed schema; no extra keys."
 def render_model_visible_note(prefix: str, *clauses: str) -> str:
     """Return a concise model-visible note with the shared closed-schema phrase."""
 
-    parts = [prefix, "Follow this YAML.", MODEL_VISIBLE_CLOSED_SCHEMA_PHRASE]
+    parts = [prefix, "Use this YAML.", MODEL_VISIBLE_CLOSED_SCHEMA_PHRASE]
     parts.extend(clauses)
     return " ".join(parts)
 

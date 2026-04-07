@@ -55,7 +55,6 @@ Parse JSON for: `planner_model`, `executor_model`, `commit_docs`, `autonomy`, `n
 
 Quick tasks can run mid-phase and do NOT require ROADMAP.md. They still require an initialized project workspace with `GPD/PROJECT.md` and the `GPD/` directory.
 Quick mode still inherits the approved `project_contract` only when `project_contract_gate.authoritative` is true, and it still inherits the active reference ledger. Do not bypass required anchors, baselines, or forbidden-proxy constraints just because the task is small.
-Before planning, load the shared planner template, phase template, and canonical contract schema.
 
 **Proof-obligation command block:** If the description or inherited contract indicates theorem-style work (`proof_obligation`, `theorem`, `lemma`, `corollary`, `proposition`, `claim`, `proof`, `prove`, `show that`, `existence`, `uniqueness`), STOP instead of using quick mode. Do not bypass this by asking for a "quick sketch", "light proof", or "just the main idea". Route explicitly to:
 

@@ -113,9 +113,9 @@ Rules:
 - `uncertainty_markers` must remain explicit in contract-backed outputs so the model sees unresolved anchors, competing explanations, and disconfirming observations before writing.
 - Every declared claim, deliverable, acceptance test, reference, and forbidden proxy ID from the referenced PLAN contract must appear in the matching section.
 - Section-specific status vocabularies are mandatory:
-  - `claims`, `deliverables`, and `acceptance_tests` use `passed`, `partial`, `failed`, `blocked`, or `not_attempted`.
-  - `references` use `completed`, `missing`, or `not_applicable`.
-  - `forbidden_proxies` use `rejected`, `violated`, `unresolved`, or `not_applicable`.
+- `claims`, `deliverables`, and `acceptance_tests` use `passed`, `partial`, `failed`, `blocked`, or `not_attempted`.
+- `references` use `completed`, `missing`, or `not_applicable`.
+- `forbidden_proxies` use `rejected`, `violated`, `unresolved`, or `not_applicable`.
 - `claims|deliverables|acceptance_tests -> passed|partial|failed|blocked|not_attempted`
 - `references -> completed|missing|not_applicable`
 - `forbidden_proxies -> rejected|violated|unresolved|not_applicable`
@@ -124,6 +124,10 @@ Rules:
 - A claim is proof-bearing if any of these is true: `claim_kind` is `theorem|lemma|corollary|proposition|claim`; the statement is theorem-like (`prove/show that`, explicit `for all` / `exists`, or uniqueness language); any proof field is already populated (`parameters`, `hypotheses`, `quantifiers`, `conclusion_clauses`, or `proof_deliverables`); or `observables[]` references a `proof_obligation` target.
 - `proof_audit` belongs on `contract_results.claims.<claim-id>` for theorem/proof claims. Do not move it to `deliverables` or `acceptance_tests`.
 - If a proof-bearing claim is marked `status: passed`, `proof_audit` is mandatory and `proof_audit.completeness` must be explicit.
+- `proof_audit.completeness: complete | incomplete`
+- `proof_audit.quantifier_status: matched | narrowed | mismatched | unclear`
+- `proof_audit.scope_status: matched | narrower_than_claim | mismatched | unclear`
+- `proof_audit.counterexample_status: none_found | counterexample_found | not_attempted | narrowed_claim`
 - `proof_audit.completeness: complete` is only valid when the audit has `reviewer: gpd-check-proof`, a non-empty `reviewed_at`, `proof_artifact_path`, `proof_artifact_sha256`, `audit_artifact_path`, `audit_artifact_sha256`, `claim_statement_sha256`, no missing hypotheses, no missing parameter symbols, no uncovered quantifiers, no uncovered conclusion clauses, `scope_status: matched`, `counterexample_status: none_found`, and `stale: false`.
 - A quantified proof-bearing claim must keep `proof_audit.quantifier_status` explicit; a passed quantified claim must use `quantifier_status: matched`.
 - A passed proof-bearing claim must carry `proof_artifact_path`, `proof_artifact_sha256`, `audit_artifact_path`, `audit_artifact_sha256`, and a `claim_statement_sha256` that matches the current claim statement so stale theorem text or proof-redteam artifacts cannot inherit an old proof audit silently.
@@ -142,6 +146,7 @@ Rules:
 - For decisive acceptance tests, benchmark requirements must close with `comparison_kind: benchmark` and cross-method requirements must close with `comparison_kind: cross_method`; `prior_work`, `experiment`, `baseline`, and `other` do not satisfy those decisive mappings on their own.
 - For list-typed proof-audit fields (`covered_hypothesis_ids`, `missing_hypothesis_ids`, `covered_parameter_symbols`, `missing_parameter_symbols`, `uncovered_quantifiers`, `uncovered_conclusion_clause_ids`), even a single item must stay a YAML list. Scalar strings are invalid.
 - `status`, `proof_audit.completeness`, and evidence literals such as `confidence`, `quantifier_status`, and `counterexample_status` use the exact lowercase literals shown here. Near-matches like `Passed` or `High` are invalid.
+- `evidence[].confidence: high | medium | low | unreliable`
 - Inside `evidence[]`, list-typed proof coverage fields (`covered_hypothesis_ids`, `missing_hypothesis_ids`, `covered_parameter_symbols`, `missing_parameter_symbols`, `uncovered_conclusion_clause_ids`) must stay YAML lists even when they contain a single item.
 
 ---

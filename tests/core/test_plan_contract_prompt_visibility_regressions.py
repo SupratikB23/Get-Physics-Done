@@ -65,6 +65,9 @@ def test_planner_prompt_surfaces_default_salvage_and_specific_semantics() -> Non
         "claim_kind",
     ):
         assert token in planner_prompt
+    assert "Do not silently branch or widen scope." in planner_prompt
+    assert "`tool_requirements` pass `gpd validate plan-preflight <PLAN.md>`" in planner_prompt
+    assert "Proof-bearing plans keep proof artifacts and sibling `*-PROOF-REDTEAM.md` audits explicit" in planner_prompt
     assert "The contract still exposes defaultable semantic fields" not in planner_prompt
     assert "Stale proof review gate" not in planner_prompt
 

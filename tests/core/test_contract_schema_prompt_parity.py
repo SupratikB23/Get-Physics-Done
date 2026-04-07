@@ -7,6 +7,16 @@ from typing import Literal, get_args, get_origin
 
 from gpd.adapters.install_utils import expand_at_includes
 from gpd.contracts import (
+    CONTRACT_ACCEPTANCE_AUTOMATION_VALUES,
+    CONTRACT_ACCEPTANCE_TEST_KIND_VALUES,
+    CONTRACT_DELIVERABLE_KIND_VALUES,
+    CONTRACT_LINK_RELATION_VALUES,
+    CONTRACT_OBSERVABLE_KIND_VALUES,
+    CONTRACT_REFERENCE_KIND_VALUES,
+    CONTRACT_REFERENCE_ROLE_VALUES,
+    PROOF_AUDIT_COUNTEREXAMPLE_STATUS_VALUES,
+    PROOF_AUDIT_QUANTIFIER_STATUS_VALUES,
+    PROOF_AUDIT_SCOPE_STATUS_VALUES,
     ComparisonVerdict,
     ContractAcceptanceTest,
     ContractApproachPolicy,
@@ -30,6 +40,7 @@ from gpd.contracts import (
     ContractUncertaintyMarkers,
     ResearchContract,
     SuggestedContractCheck,
+    VerificationEvidence,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -142,6 +153,10 @@ def _assert_phrases_visible(text: str, phrases: set[str], *, label: str) -> None
     assert not missing, f"{label} is missing canonical choice phrases: {', '.join(missing)}"
 
 
+def _choice_line(field_name: str, values: tuple[str, ...]) -> str:
+    return f"{field_name}: {' | '.join(values)}"
+
+
 def test_plan_contract_schema_surfaces_canonical_research_contract_fields() -> None:
     plan_schema = _read(TEMPLATES_DIR / "plan-contract-schema.md")
 
@@ -198,3 +213,39 @@ def test_project_contract_schema_examples_surface_validator_accepted_proof_objec
         assert '"id": "hyp-main"' in schema_text
         assert '"id": "concl-main"' in schema_text
         assert '"automation": "human"' in schema_text
+
+
+def test_project_and_state_contract_schemas_surface_full_closed_research_vocabularies() -> None:
+    expected_lines = (
+        _choice_line("observables[].kind", CONTRACT_OBSERVABLE_KIND_VALUES),
+        _choice_line("deliverables[].kind", CONTRACT_DELIVERABLE_KIND_VALUES),
+        _choice_line("acceptance_tests[].kind", CONTRACT_ACCEPTANCE_TEST_KIND_VALUES),
+        _choice_line("acceptance_tests[].automation", CONTRACT_ACCEPTANCE_AUTOMATION_VALUES),
+        _choice_line("references[].kind", CONTRACT_REFERENCE_KIND_VALUES),
+        _choice_line("references[].role", CONTRACT_REFERENCE_ROLE_VALUES),
+        _choice_line("links[].relation", CONTRACT_LINK_RELATION_VALUES),
+    )
+
+    for schema_name in ("project-contract-schema.md", "state-json-schema.md"):
+        schema_text = _read(TEMPLATES_DIR / schema_name)
+        for line in expected_lines:
+            assert line in schema_text, f"{schema_name} is missing canonical enum line: {line}"
+
+
+def test_contract_results_schema_and_expanded_prompts_surface_full_proof_audit_status_vocabularies() -> None:
+    expected_lines = (
+        _choice_line("proof_audit.completeness", _ordered_literal_tokens(ContractProofAudit.model_fields["completeness"].annotation)),
+        _choice_line("proof_audit.quantifier_status", PROOF_AUDIT_QUANTIFIER_STATUS_VALUES),
+        _choice_line("proof_audit.scope_status", PROOF_AUDIT_SCOPE_STATUS_VALUES),
+        _choice_line("proof_audit.counterexample_status", PROOF_AUDIT_COUNTEREXAMPLE_STATUS_VALUES),
+        _choice_line("evidence[].confidence", _ordered_literal_tokens(VerificationEvidence.model_fields["confidence"].annotation)),
+    )
+
+    contract_results_schema = _read(TEMPLATES_DIR / "contract-results-schema.md")
+    verifier_prompt = _expanded(AGENTS_DIR / "gpd-verifier.md")
+    executor_prompt = _expanded(AGENTS_DIR / "gpd-executor.md")
+
+    for line in expected_lines:
+        assert line in contract_results_schema
+        assert line in verifier_prompt
+        assert line in executor_prompt

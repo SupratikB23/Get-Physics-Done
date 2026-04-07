@@ -50,7 +50,11 @@ def test_new_project_prompt_surfaces_the_canonical_contract_schema_for_project_c
     assert "project_contract_load_info" in new_project_text
     assert "project_contract_validation" in new_project_text
     assert "`context_intake`, `approach_policy`, and `uncertainty_markers` must each stay as objects, not strings or lists." in new_project_text
-    assert "`schema_version` must be the integer `1`, and `references[].must_surface` must be a boolean `true` or `false`, not a quoted synonym." in new_project_text
+    assert (
+        "`schema_version` must be the integer `1`, `references[].must_surface` must stay a boolean `true` or "
+        "`false`, and `context_intake`, `uncertainty_markers`, and `references[]` must stay visible in the approval gate"
+        in new_project_text
+    )
     for field in (
         "researcher_model",
         "synthesizer_model",
@@ -72,7 +76,7 @@ def test_new_project_prompt_surfaces_the_canonical_contract_schema_for_project_c
     ):
         assert f"`{field}`" in parse_line
     assert "If the init JSON already contains `project_contract`, `project_contract_load_info`, or `project_contract_validation`, preserve that state in the approval gate and continuation decision." in new_project_text
-    assert "preserve any init-surfaced `project_contract`, `project_contract_load_info`, and `project_contract_validation` state while deciding whether this is fresh work or a continuation" in new_project_text
+    assert "preserve any init-surfaced `project_contract`, `project_contract_load_info`, and `project_contract_validation` state while deciding whether this is fresh work or a continuation" not in new_project_text
 
 
 def test_new_project_contract_rule_block_is_not_duplicated() -> None:

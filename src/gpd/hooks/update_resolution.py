@@ -85,8 +85,8 @@ def ordered_update_cache_candidates(
         preferred_candidates = [
             candidate for candidate in relevant_candidates if getattr(candidate, "runtime", None) == resolved_preferred_runtime
         ]
-        fallback_candidates = [candidate for candidate in relevant_candidates if getattr(candidate, "runtime", None) is None]
         if preferred_candidates:
+            fallback_candidates = [candidate for candidate in relevant_candidates if getattr(candidate, "runtime", None) is None]
             seen_paths: set[Path] = set()
             preferred_first: list[object] = []
             for candidate in [*preferred_candidates, *fallback_candidates]:
@@ -96,11 +96,6 @@ def ordered_update_cache_candidates(
                 seen_paths.add(candidate_path)
                 preferred_first.append(candidate)
             relevant_candidates = preferred_first
-        relevant_candidates = [
-            candidate
-            for candidate in relevant_candidates
-            if getattr(candidate, "runtime", None) in (None, resolved_preferred_runtime)
-        ]
     return relevant_candidates
 
 

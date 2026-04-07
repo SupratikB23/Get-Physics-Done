@@ -160,10 +160,8 @@ def _normalize_review_contract_optional_str(value: object, *, field_name: str, d
 def _normalize_review_contract_string_list(value: object, *, field_name: str) -> list[str]:
     if value is None:
         return []
-    if isinstance(value, str):
-        return [_normalize_review_contract_required_str(value, field_name=field_name)]
     if not isinstance(value, list):
-        raise ValueError(f"{field_name} must be a string or list of strings")
+        raise ValueError(f"{field_name} must be a list of strings")
 
     normalized: list[str] = []
     seen: set[str] = set()

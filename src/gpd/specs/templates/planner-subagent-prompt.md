@@ -5,6 +5,7 @@ template_version: 1
 # Planner Subagent Prompt Template
 
 Template for spawning `gpd-planner`. The planner agent owns the planning logic; this template carries phase-specific context, mode flags, and return conventions.
+Keep workflow wrappers thin: they should pass phase-specific inputs, not restate planner policy.
 
 ---
 
@@ -62,6 +63,10 @@ Keep `scope.in_scope` populated, and keep `contract.context_intake` concrete eno
 For proof-bearing work, use an explicit non-`other` `claim_kind` and keep hypotheses, quantified variables, and named parameters explicit enough to audit.
 </contract_visibility_requirements>
 
+<tangent_control>
+Do not silently branch or widen scope. If multiple viable main-line paths remain and the user has not chosen among them, return `## CHECKPOINT REACHED` instead of emitting parallel plans.
+</tangent_control>
+
 <light_mode_instructions>
 **If plan depth is `light`:** Keep the full canonical frontmatter, including `wave`, `depends_on`, `files_modified`, `interactive`, `conventions`, `contract`, and `contract.context_intake`. Simplify only the body: one high-level task block per plan, concise verification, no extra code snippets. Light mode changes body verbosity only.
 </light_mode_instructions>
@@ -78,11 +83,14 @@ Output consumed by gpd:execute-phase. Plans need frontmatter, XML tasks, rigorou
 - [ ] PLAN.md files created in phase directory
 - [ ] Frontmatter is valid
 - [ ] The contract block is complete per `plan-contract-schema.md`
+- [ ] `tool_requirements` are declared whenever specialized machine-checkable prerequisites exist
+- [ ] `tool_requirements` pass `gpd validate plan-preflight <PLAN.md>` before the plan is treated as execution-ready
 - [ ] Tasks are specific, actionable, and testable
 - [ ] Dependencies and waves are correct
 - [ ] Required refs, prior outputs, baselines, and protocol bundle guidance are surfaced where needed
 - [ ] Forbidden proxies are rejected explicitly
 - [ ] Dimensional analysis and validation checkpoints cover each quantitative result
+- [ ] Proof-bearing plans keep proof artifacts and sibling `*-PROOF-REDTEAM.md` audits explicit
 </quality_gate>
 ```
 
@@ -116,7 +124,7 @@ Load the validator-enforced PLAN contract schema before writing or revising any 
 
 ## Canonical PLAN Contract Schema
 
-@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md
+The canonical schema above applies here too; do not restate it.
 
 **Phase Context:**
 Revisions MUST still honor user decisions.

@@ -549,113 +549,37 @@ Display banner:
 
 Planner prompt:
 
+@{GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md
+
 ```markdown
-<planning_context>
-**Phase:** {phase_number}
-**Mode:** {standard | gap_closure}
-**Plan depth:** {full | light}
-**Research mode:** {RESEARCH_MODE}
-**Autonomy:** {AUTONOMY}
+Render the template's `## Standard Planning Template` into `filled_prompt` with these bindings:
 
-Planning requires the approved `project_contract`; if the gate is blocked or the phase slice is too underspecified, return `## CHECKPOINT REACHED`.
+- `{phase_number}` -> {phase_number}
+- `{standard | gap_closure}` -> `standard` unless this is explicit gap-closure planning
+- `{full | light}` -> `light` only when `--light`; otherwise `full`
+- `{research_mode}` -> {RESEARCH_MODE}
+- `{autonomy}` -> {AUTONOMY}
+- `{state_content}` -> {state_content}
+- `{project_contract}` -> {project_contract}
+- `{project_contract_gate}` -> {project_contract_gate}
+- `{project_contract_load_info}` -> {project_contract_load_info}
+- `{project_contract_validation}` -> {project_contract_validation}
+- `{contract_intake}` -> {contract_intake}
+- `{effective_reference_intake}` -> {effective_reference_intake}
+- `{roadmap_content}` -> {roadmap_content}
+- `{requirements_content}` -> {requirements_content}
+- `{protocol_bundle_context}` -> {protocol_bundle_context}
+- `{active_reference_context}` -> {active_reference_context}
+- `{reference_artifacts_content}` -> {reference_artifacts_content}
+- `{context_content}` -> {context_content}
+- `{research_content}` -> {research_content}
+- `{experiment_design_content}` -> {experiment_design_content}
+- `{verification_content}` -> {verification_content}
+- `{validation_content}` -> {validation_content}
 
-**Project State:** {state_content}
-**Project Contract:** {project_contract}
-**Project Contract Gate:** {project_contract_gate}
-**Project Contract Load Info:** {project_contract_load_info}
-**Project Contract Validation:** {project_contract_validation}
-**Contract Intake:** {contract_intake}
-**Effective Reference Intake:** {effective_reference_intake}
-**Roadmap:** {roadmap_content}
-**Requirements:** {requirements_content}
-**Protocol Bundles:** {protocol_bundle_context}
-**Active References:** {active_reference_context}
-**Reference Artifacts:** {reference_artifacts_content}
-
-## Canonical PLAN Contract Schema
-
-Use the shared planner template, phase template, and `templates/plan-contract-schema.md`; this wrapper only adds phase-specific gates.
-
-**Validator gate before planning:**
-- If `project_contract_gate.authoritative` is false, `project_contract_load_info.status` starts with `blocked`, or `project_contract_validation.valid` is false, return `## CHECKPOINT REACHED` instead of drafting from guessed scope.
-- If `project_contract` is empty, stale, or too underspecified to identify the phase contract slice, return `## CHECKPOINT REACHED`.
-- Keep `Contract Intake` and `Effective Reference Intake` visible to the planner.
-- For proof-bearing work, preserve theorem inventory, proof-specific acceptance tests, and the `{plan_id}-PROOF-REDTEAM.md` handoff.
-- Light mode changes the body only; keep the full canonical frontmatter from the phase template.
-- Validate each finished plan with `gpd validate plan-contract <PLAN.md>` before checker review.
-- If `tool_requirements` are declared, validate them with `gpd validate plan-preflight <PLAN.md>` before treating the plan as execution-ready.
-
-**Phase Context:**
-IMPORTANT: If context exists below, it contains USER DECISIONS from gpd:discuss-phase.
-
-- **Decisions** = LOCKED -- honor exactly, do not revisit
-- **Agent's Discretion** = Freedom -- make methodological choices
-- **Deferred Ideas** = Out of scope -- do NOT include
-
-{context_content}
-
-**Research:** {research_content}
-**Experiment Design (if exists):** {experiment_design_content}
-**Gap Closure (if --gaps):** {verification_content} {validation_content}
-
-**Tangent Control:**
-- When multiple viable approaches or optional side questions appear, do NOT silently branch, emit branch-like alternative plans, or widen scope.
-- Use the canonical 4-way decision model above.
-- If no explicit tangent decision already exists in context and more than one viable path remains live, return `## CHECKPOINT REACHED` with the four options above instead of silently branching.
-- If `research_mode=exploit`, suppress optional tangents unless the user explicitly requested them or the current approach is blocked by physics, contract, or anchor failure. Do not surface `gpd:branch-hypothesis` as a default exploit-mode move.
-</planning_context>
-
-<physics_planning_requirements>
-Keep mathematical rigor, limiting cases, error budgets, and proof-redteam gating explicit; the shared schema owns the detailed contract vocabulary.
-</physics_planning_requirements>
-
-<contract_requirements>
-Use the approved `project_contract`; do not infer scope from roadmap or requirements alone.
-</contract_requirements>
-
-<light_mode_instructions>
-Light mode changes the body only; keep the canonical frontmatter from the phase template.
-</light_mode_instructions>
-
-<context_budget_guidance>
-Context windows are finite (~80% usable before compression). Plans must be sized accordingly:
-
-- **Target per plan:** ~50% context budget (40% for hypothesis-driven plans)
-- **Segment large phases** into multiple plans rather than one overloaded plan
-- **Flag context-heavy plans** in frontmatter: `context_note: "Heavy - consider splitting if >6 tasks"`
-- **Group related tasks** that share intermediate results in the same plan
-- **Use waves** for independent work -- each subagent gets a fresh context window
-
-**Signs a plan needs splitting:** >6-8 substantive tasks, multiple independent derivations, tasks requiring different large reference files, mix of symbolic derivation and numerical verification.
-
-See `{GPD_INSTALL_DIR}/references/orchestration/context-budget.md` for detailed budget allocation by workflow type.
-</context_budget_guidance>
-
-<downstream_consumer>
-Output consumed by gpd:execute-phase. Plans need:
-
-- Frontmatter (wave, depends_on, files_modified, interactive, contract)
-- Tasks in XML format
-- Verification criteria with mathematical rigor requirements
-- contract-complete frontmatter before execution starts
-- contract links or explicit task-level dependency wiring for critical handoffs, including limiting-case checks
-- proof-bearing plans to hand off an explicit proof artifact and sibling `{plan_id}-PROOF-REDTEAM.md` audit artifact before any theorem claim can be treated as closed
-- protocol-bundle guidance reflected in task structure, verification, and decisive artifact selection when applicable
-</downstream_consumer>
-
-<quality_gate>
-
-- [ ] PLAN.md files created in phase directory
-- [ ] Each plan has valid frontmatter
-- [ ] Each plan satisfies `templates/plan-contract-schema.md`
-- [ ] Each plan passes `gpd validate plan-contract <PLAN.md>`
-- [ ] Each plan with `tool_requirements` passes `gpd validate plan-preflight <PLAN.md>` or surfaces an explicit blocker/fallback path
-- [ ] Tasks stay specific, actionable, and mode-appropriate
-- [ ] Dependencies, refs, baselines, and protocol bundles are surfaced where the shared templates expect them
-- [ ] Forbidden proxies are rejected explicitly
-- [ ] Quantitative results include dimensional checks and validation checkpoints where relevant
-- [ ] Proof-bearing plans reserve `{plan_id}-PROOF-REDTEAM.md` and keep theorem coverage visible
-</quality_gate>
+If an active hypothesis branch exists, append the existing `<hypothesis_constraint>` block after the rendered planning context.
+Keep `{contract_intake}` and `{effective_reference_intake}` visible in the rendered prompt.
+Do not restate template-owned contract gates, tangent control, tool-requirement policy, proof-bearing plan policy, context-budget guidance, downstream-consumer rules, or the quality gate here.
 ```
 
 ```
@@ -817,34 +741,27 @@ fi
 
 Revision prompt:
 
+@{GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md
+
 ```markdown
-<revision_context>
-**Phase:** {phase_number}
-**Mode:** revision
-**Existing plans:** {plans_content}
-**Checker issues:** {structured_issues_from_checker}
-**Protocol Bundles:** {protocol_bundle_context}
-**Project Contract Gate:** {project_contract_gate}
-**Project Contract Load Info:** {project_contract_load_info}
-**Project Contract Validation:** {project_contract_validation}
-**Contract Intake:** {contract_intake}
-**Effective Reference Intake:** {effective_reference_intake}
-**Active References:** {active_reference_context}
-**Project Contract:** {project_contract}
-**Reference Artifacts:** {reference_artifacts_content}
+Render the template's `## Revision Template` into `revision_prompt` with these bindings:
 
-Use the shared planner template, phase template, and `templates/plan-contract-schema.md`; apply only targeted fixes for the checker issues.
-{context_content}
-</revision_context>
+- `{phase_number}` -> {phase_number}
+- `{plans_content}` -> {plans_content}
+- `{structured_issues_from_checker}` -> {structured_issues_from_checker}
+- `{state_content}` -> {state_content}
+- `{project_contract}` -> {project_contract}
+- `{project_contract_gate}` -> {project_contract_gate}
+- `{project_contract_load_info}` -> {project_contract_load_info}
+- `{project_contract_validation}` -> {project_contract_validation}
+- `{contract_intake}` -> {contract_intake}
+- `{effective_reference_intake}` -> {effective_reference_intake}
+- `{protocol_bundle_context}` -> {protocol_bundle_context}
+- `{active_reference_context}` -> {active_reference_context}
+- `{reference_artifacts_content}` -> {reference_artifacts_content}
+- `{context_content}` -> {context_content}
 
-<instructions>
-Make targeted updates to address checker issues.
-Do NOT replan from scratch unless issues are fundamental (wrong physical regime, missing conservation law, incorrect symmetry, or an invalid contract slice).
-If `project_contract_gate.authoritative` is false, `project_contract_load_info.status` starts with `blocked`, or `project_contract_validation.valid` is false, return `## CHECKPOINT REACHED`.
-If the approved project contract is missing or no longer sufficient to identify the right phase slice, return `## CHECKPOINT REACHED`.
-Keep proof-bearing coverage, `tool_requirements`, decisive outputs, anchor refs, forbidden-proxy handling, and disconfirming paths visible where the checker can see them.
-Return what changed.
-</instructions>
+Keep the revision prompt scoped to targeted checker fixes. Do not restate template-owned revision policy here.
 ```
 
 ```

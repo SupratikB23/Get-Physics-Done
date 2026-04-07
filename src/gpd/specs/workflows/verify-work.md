@@ -1011,9 +1011,9 @@ Spawn gpd-planner in --gaps mode:
 ```
 task(
   prompt="""First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.
+Then read {GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md, {GPD_INSTALL_DIR}/templates/phase-prompt.md, and {GPD_INSTALL_DIR}/templates/plan-contract-schema.md before drafting the fix plan.
 
 <planning_context>
-
 **Phase:** {phase_number}
 **Mode:** gap_closure
 **Project Contract:** {project_contract}
@@ -1026,7 +1026,7 @@ task(
 **Active References:** {active_reference_context}
 **Reference Artifacts:** {reference_artifacts_content}
 
-Use the shared planner template, phase template, and `templates/plan-contract-schema.md` before drafting the fix plan. If `project_contract_gate.authoritative` is false, `project_contract_load_info.status` starts with `blocked`, or `project_contract_validation.valid` is false, return `## CHECKPOINT REACHED` instead of drafting from guessed scope. If the downstream fix plan needs specialized tooling or any other machine-checkable hard validation requirement, surface it in PLAN frontmatter `tool_requirements`.
+If the downstream fix plan needs specialized tooling or any other machine-checkable hard validation requirement, surface it in PLAN frontmatter `tool_requirements`.
 
 <files_to_read>
 Read these files using the file_read tool:
@@ -1136,9 +1136,9 @@ Spawn gpd-planner with revision context:
 ```
 task(
   prompt="""First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.
+Then read {GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md, {GPD_INSTALL_DIR}/templates/phase-prompt.md, and {GPD_INSTALL_DIR}/templates/plan-contract-schema.md before rewriting the fix plan.
 
 <revision_context>
-
 **Phase:** {phase_number}
 **Mode:** revision
 **Project Contract:** {project_contract}
@@ -1151,7 +1151,7 @@ task(
 **Active References:** {active_reference_context}
 **Reference Artifacts:** {reference_artifacts_content}
 
-Use the shared planner template, phase template, and `templates/plan-contract-schema.md` before rewriting the fix plan. If the revised fix plan still needs specialized tooling or any other machine-checkable hard validation requirement, keep it in PLAN frontmatter `tool_requirements`.
+If the revised fix plan still needs specialized tooling or any other machine-checkable hard validation requirement, keep it in PLAN frontmatter `tool_requirements`.
 Treat `effective_reference_intake` as the structured source of carry-forward anchors; `active_reference_context` is the readable projection, not the source of truth.
 
 <files_to_read>

@@ -5,6 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from gpd.adapters.install_utils import expand_at_includes
+from gpd.mcp.paper.models import (
+    ReviewConfidence,
+    ReviewIssueSeverity,
+    ReviewIssueStatus,
+    ReviewRecommendation,
+    ReviewStageKind,
+    ReviewSupportStatus,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENTS_DIR = REPO_ROOT / "src/gpd/agents"
@@ -17,6 +25,11 @@ def _read(agent_name: str) -> str:
 
 def _expanded(agent_name: str) -> str:
     return expand_at_includes(_read(agent_name), SPEC_ROOT, "/runtime/")
+
+
+def _enum_line(field_name: str, enum_type: type[object]) -> str:
+    values = " | ".join(member.value for member in enum_type)
+    return f"{field_name}: {values}"
 
 
 def _assert_shared_contract_pointer(text: str, contract_fragment: str) -> None:
@@ -100,3 +113,23 @@ def test_review_stage_prompts_keep_only_stage_specific_deltas() -> None:
         assert "Peer Review Panel Protocol" in expanded
         assert "Stage 1 `CLAIMS{round_suffix}.json` must follow this compact `ClaimIndex` shape:" in expanded
         assert "StageReviewReport`, nested `ReviewFinding`, and nested `ProofAuditRecord` entries use a closed schema" in expanded
+
+
+def test_peer_review_panel_protocol_surfaces_full_review_enum_vocabularies() -> None:
+    protocol = (SPEC_ROOT / "references" / "publication" / "peer-review-panel.md").read_text(encoding="utf-8")
+    expanded = _expanded("gpd-review-reader.md")
+    expected_lines = (
+        _enum_line("stage_kind", ReviewStageKind),
+        _enum_line("findings[].severity", ReviewIssueSeverity),
+        _enum_line("findings[].support_status", ReviewSupportStatus),
+        _enum_line("confidence", ReviewConfidence),
+        _enum_line("recommendation_ceiling", ReviewRecommendation),
+        _enum_line("issues[].opened_by_stage", ReviewStageKind),
+        _enum_line("issues[].status", ReviewIssueStatus),
+        _enum_line("final_recommendation", ReviewRecommendation),
+        _enum_line("final_confidence", ReviewConfidence),
+    )
+
+    for line in expected_lines:
+        assert line in protocol
+        assert line in expanded

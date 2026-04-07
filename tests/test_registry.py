@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from gpd import registry
-from gpd.core.model_visible_text import agent_visibility_note, command_visibility_note
+from gpd.core.model_visible_text import agent_visibility_note, command_visibility_note, review_contract_visibility_note
 from gpd.registry import (
     AgentDef,
     CommandDef,
@@ -78,6 +78,11 @@ class TestParseFrontmatter:
         text = "---\njust a string\n---\nBody."
         with pytest.raises(ValueError, match="Frontmatter must parse to a mapping"):
             _parse_frontmatter(text)
+
+    def test_model_visible_wrapper_notes_use_concise_yaml_prefixes(self) -> None:
+        assert agent_visibility_note().startswith("Agent YAML rules. Use this YAML.")
+        assert command_visibility_note().startswith("Command YAML rules. Use this YAML.")
+        assert review_contract_visibility_note().startswith("Review-contract YAML rules. Use this YAML.")
 
     def test_malformed_yaml_frontmatter_raises(self) -> None:
         text = "---\nname: test\nbad: [unterminated\n---\nBody."
@@ -192,7 +197,7 @@ class TestParseAgentFile:
         assert agent.shared_state_authority == "direct"
         assert agent.color == "blue"
         assert agent.system_prompt.startswith("## Agent Requirements\n")
-        assert "Model-visible agent requirements. Follow this YAML." in agent.system_prompt
+        assert "Agent YAML rules. Use this YAML." in agent.system_prompt
         assert "Closed schema; no extra keys." in agent.system_prompt
         assert agent_visibility_note() in agent.system_prompt
         assert "commit_authority: orchestrator" in agent.system_prompt
@@ -357,7 +362,7 @@ class TestParseAgentFile:
         f.write_text("---\nname: nobody\n---\n", encoding="utf-8")
         agent = _parse_agent_file(f, source="agents")
         assert agent.system_prompt.startswith("## Agent Requirements\n")
-        assert "Model-visible agent requirements. Follow this YAML." in agent.system_prompt
+        assert "Agent YAML rules. Use this YAML." in agent.system_prompt
         assert "commit_authority:" in agent.system_prompt
         assert agent.system_prompt.endswith("```")
 
@@ -829,31 +834,24 @@ class TestParseCommandFile:
         with pytest.raises(ValueError, match=rf"Invalid review-contract in .*{field_name}-invalid-scalar\.md.*{field_name}"):
             _parse_command_file(f, source="commands")
 
-    def test_command_review_contract_accepts_singleton_string_list_fields(self, tmp_path: Path) -> None:
+    def test_command_review_contract_list_fields_reject_singleton_string_scalars(self, tmp_path: Path) -> None:
         f = _write_review_contract_command(
             tmp_path,
             "singleton-string-list-fields.md",
             "  required_outputs: GPD/output.md\n"
-            "  preflight_checks: manuscript\n"
+            "  preflight_checks:\n"
+            "    - manuscript\n"
             "  conditional_requirements:\n"
             "    - when: theorem-bearing claims are present\n"
-            "      required_outputs: GPD/review/PROOF-REDTEAM{round_suffix}.md\n",
+            "      required_outputs:\n"
+            "        - GPD/review/PROOF-REDTEAM{round_suffix}.md\n",
         )
 
-        cmd = _parse_command_file(f, source="commands")
-
-        assert cmd.review_contract is not None
-        assert cmd.review_contract.required_outputs == ["GPD/output.md"]
-        assert cmd.review_contract.preflight_checks == ["manuscript"]
-        assert cmd.review_contract.conditional_requirements == [
-            ReviewContractConditionalRequirement(
-                when="theorem-bearing claims are present",
-                required_outputs=["GPD/review/PROOF-REDTEAM{round_suffix}.md"],
-                required_evidence=[],
-                blocking_conditions=[],
-                stage_artifacts=[],
-            )
-        ]
+        with pytest.raises(
+            ValueError,
+            match=r"Invalid review-contract in .*singleton-string-list-fields\.md.*required_outputs must be a list of strings",
+        ):
+            _parse_command_file(f, source="commands")
 
     @pytest.mark.parametrize(
         "field_name",
@@ -880,28 +878,27 @@ class TestParseCommandFile:
         ):
             _parse_command_file(f, source="commands")
 
-    def test_command_review_contract_list_fields_accept_singleton_string_scalars(self, tmp_path: Path) -> None:
+    def test_command_review_contract_conditional_list_fields_reject_singleton_string_scalars(self, tmp_path: Path) -> None:
         f = _write_review_contract_command(
             tmp_path,
             "singleton-list-scalars.md",
-            "  required_outputs: GPD/REFEREE-REPORT{round_suffix}.md\n"
-            "  preflight_checks: manuscript\n"
+            "  required_outputs:\n"
+            "    - GPD/REFEREE-REPORT{round_suffix}.md\n"
+            "  preflight_checks:\n"
+            "    - manuscript\n"
             "  conditional_requirements:\n"
             "    - when: theorem-bearing claims are present\n"
             "      required_outputs: GPD/review/PROOF-REDTEAM{round_suffix}.md\n",
         )
 
-        cmd = _parse_command_file(f, source="commands")
-
-        assert cmd.review_contract is not None
-        assert cmd.review_contract.required_outputs == ["GPD/REFEREE-REPORT{round_suffix}.md"]
-        assert cmd.review_contract.preflight_checks == ["manuscript"]
-        assert cmd.review_contract.conditional_requirements == [
-            registry.ReviewContractConditionalRequirement(
-                when="theorem-bearing claims are present",
-                required_outputs=["GPD/review/PROOF-REDTEAM{round_suffix}.md"],
-            )
-        ]
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"Invalid review-contract in .*singleton-list-scalars\.md.*"
+                r"conditional_requirements\[0\]\.required_outputs must be a list of strings"
+            ),
+        ):
+            _parse_command_file(f, source="commands")
 
     def test_command_review_contract_parses_conditional_requirements(self, tmp_path: Path) -> None:
         f = _write_review_contract_command(

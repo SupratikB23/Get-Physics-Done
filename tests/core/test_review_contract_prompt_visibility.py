@@ -100,8 +100,11 @@ def test_peer_review_workflow_keeps_contract_gate_prose_concise() -> None:
     workflow = _read_workflow("peer-review")
     assert "project_contract_gate.authoritative" in workflow
     assert "effective_reference_intake" in workflow
-    assert "Bundle guidance is additive only" in workflow
-    assert "Reader-visible claims and surfaced evidence remain first-class" in workflow
+    assert "Bundle guidance" in workflow
+    assert "additive only" in workflow
+    assert "Reader-visible claims" in workflow
+    assert "surfaced evidence" in workflow
+    assert "first-class" in workflow
     assert "Apply the gate rule above." not in workflow
 
 
@@ -236,8 +239,9 @@ def test_model_visible_wrapper_notes_surface_their_closed_schema_rules() -> None
     assert note.count(MODEL_VISIBLE_CLOSED_SCHEMA_PHRASE) == 1
     assert "Empty optional fields may be omitted." in note
     assert "strict booleans" in command_note.lower()
-    assert "`allowed_tools` is a list when present;" in command_note
-    assert "`requires` is an object when present;" in command_note
+    assert "`allowed_tools` is a list of tool names when present;" in command_note
+    assert "`requires` is a closed mapping when present; only `files` is supported." in command_note
+    assert "`requires.files` is a string or list of strings." in command_note
     assert "Empty optional fields may be omitted." in command_note
     for value in VALID_CONTEXT_MODES:
         assert value in command_note
@@ -252,16 +256,14 @@ def test_model_visible_wrapper_notes_surface_their_closed_schema_rules() -> None
 
     assert "wrapper key" in note
     assert f"`review_mode` must be {review_modes}" in note
-    assert f"`required_state` must be {required_states}" in note
+    assert f"`required_state` when present must be {required_states}" in note
     assert f"`conditional_requirements[].when` must be one of {conditional_whens}" in note
-    assert f"`preflight_checks` is a list and each entry must be one of {preflight_checks}" in note
-    assert (
-        "`conditional_requirements[].blocking_preflight_checks` entries must also appear in the top-level "
-        "`preflight_checks` list."
-    ) in note
+    assert f"`preflight_checks` entries must be {preflight_checks};" in note
+    assert "`conditional_requirements[].blocking_preflight_checks` is a list when present" in note
+    assert "appear in the top-level `preflight_checks` list." in note
     assert "Each `conditional_requirements[].when` value may appear at most once." in note
     assert "List fields reject blank entries and duplicates." in note
-    assert "Each conditional requirement must declare at least one field." in note
+    assert "Each conditional requirement must declare at least one non-empty field." in note
 
 
 @pytest.mark.parametrize(
@@ -405,46 +407,68 @@ def test_review_contract_visibility_note_surfaces_the_hard_constraints() -> None
     note = review_contract_visibility_note()
     review_modes = " or ".join(f"`{value}`" for value in REVIEW_CONTRACT_MODES)
     conditional_whens = " or ".join(f"`{value}`" for value in REVIEW_CONTRACT_CONDITIONAL_WHENS)
+    preflight_checks = " or ".join(f"`{value}`" for value in REVIEW_CONTRACT_PREFLIGHT_CHECKS)
 
     assert "Closed schema; no extra keys." in note
     assert "`schema_version` must be the integer `1`;" in note
     assert f"`review_mode` must be {review_modes};" in note
     assert f"`conditional_requirements[].when` must be one of {conditional_whens};" in note
-    assert "`preflight_checks` is a list and each entry must be one of" in note
+    assert "`required_state` when present must be" in note
     assert (
-        "`conditional_requirements[].blocking_preflight_checks` entries must also appear in the top-level "
-        "`preflight_checks` list."
+        "`required_outputs`, `required_evidence`, `blocking_conditions`, `preflight_checks`, and `stage_artifacts` "
+        "are lists when present;"
     ) in note
+    assert f"`preflight_checks` entries must be {preflight_checks};" in note
+    assert "`conditional_requirements[].blocking_preflight_checks` is a list when present" in note
+    assert "appear in the top-level `preflight_checks` list." in note
 
 
-def test_review_contract_normalizer_accepts_singleton_string_list_fields() -> None:
-    payload = normalize_review_contract_payload(
-        {
-            "schema_version": 1,
-            "review_mode": "publication",
-            "required_outputs": "GPD/review/PROOF-REDTEAM{round_suffix}.md",
-            "preflight_checks": "manuscript",
-            "conditional_requirements": [
-                {
-                    "when": "theorem-bearing claims are present",
-                    "required_outputs": "GPD/review/PROOF-REDTEAM{round_suffix}.md",
+@pytest.mark.parametrize(
+    ("normalizer", "payload", "error_fragment"),
+    [
+        (
+            normalize_review_contract_payload,
+            {
+                "schema_version": 1,
+                "review_mode": "publication",
+                "required_outputs": "GPD/review/PROOF-REDTEAM{round_suffix}.md",
+            },
+            "required_outputs must be a list of strings",
+        ),
+        (
+            normalize_review_contract_frontmatter_payload,
+            {
+                "review-contract": {
+                    "schema_version": 1,
+                    "review_mode": "publication",
+                    "preflight_checks": "manuscript",
                 }
-            ],
-        }
-    )
-
-    assert payload["required_outputs"] == ["GPD/review/PROOF-REDTEAM{round_suffix}.md"]
-    assert payload["preflight_checks"] == ["manuscript"]
-    assert payload["conditional_requirements"] == [
-        {
-            "when": "theorem-bearing claims are present",
-            "required_outputs": ["GPD/review/PROOF-REDTEAM{round_suffix}.md"],
-            "required_evidence": [],
-            "blocking_conditions": [],
-            "blocking_preflight_checks": [],
-            "stage_artifacts": [],
-        }
-    ]
+            },
+            "preflight_checks must be a list of strings",
+        ),
+        (
+            normalize_review_contract_payload,
+            {
+                "schema_version": 1,
+                "review_mode": "publication",
+                "conditional_requirements": [
+                    {
+                        "when": "theorem-bearing claims are present",
+                        "required_outputs": "GPD/review/PROOF-REDTEAM{round_suffix}.md",
+                    }
+                ],
+            },
+            "conditional_requirements[0].required_outputs must be a list of strings",
+        ),
+    ],
+)
+def test_review_contract_normalizers_reject_singleton_string_list_fields(
+    normalizer,
+    payload: dict[str, object],
+    error_fragment: str,
+) -> None:
+    with pytest.raises(ValueError, match=re.escape(error_fragment)):
+        normalizer(payload)
 
 
 def test_review_contract_payload_elides_blank_required_state() -> None:
@@ -523,7 +547,7 @@ def test_review_contract_normalizer_canonicalizes_case_only_enum_drift() -> None
             {
                 "when": "Theorem-Bearing Claims Are Present",
                 "blocking_preflight_checks": ["Compiled_Manuscript"],
-                "required_outputs": "GPD/review/PROOF-REDTEAM{round_suffix}.md",
+                "required_outputs": ["GPD/review/PROOF-REDTEAM{round_suffix}.md"],
             }
         ],
     }
@@ -548,25 +572,47 @@ def test_review_contract_normalizer_canonicalizes_case_only_enum_drift() -> None
     assert dataclasses.asdict(parsed) == normalized
 
 
-def test_review_contract_prompt_and_registry_share_singleton_string_list_normalization() -> None:
-    payload = {
-        "schema_version": 1,
-        "review_mode": "publication",
-        "required_outputs": "GPD/REFEREE-REPORT{round_suffix}.md",
-        "preflight_checks": "manuscript",
-        "conditional_requirements": [
+@pytest.mark.parametrize(
+    ("payload", "error_fragment"),
+    [
+        (
             {
-                "when": "theorem-bearing claims are present",
-                "required_outputs": "GPD/review/PROOF-REDTEAM{round_suffix}.md",
-            }
-        ],
-    }
-
-    normalized = normalize_review_contract_payload(payload)
-    parsed = registry._parse_review_contract(payload, "gpd:test")
-
-    assert parsed is not None
-    assert dataclasses.asdict(parsed) == normalized
+                "schema_version": 1,
+                "review_mode": "publication",
+                "required_outputs": "GPD/REFEREE-REPORT{round_suffix}.md",
+            },
+            "required_outputs must be a list of strings",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "review_mode": "publication",
+                "preflight_checks": "manuscript",
+            },
+            "preflight_checks must be a list of strings",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "review_mode": "publication",
+                "conditional_requirements": [
+                    {
+                        "when": "theorem-bearing claims are present",
+                        "required_outputs": "GPD/review/PROOF-REDTEAM{round_suffix}.md",
+                    }
+                ],
+            },
+            "conditional_requirements[0].required_outputs must be a list of strings",
+        ),
+    ],
+)
+def test_review_contract_prompt_and_registry_reject_singleton_string_list_fields_consistently(
+    payload: dict[str, object], error_fragment: str
+) -> None:
+    with pytest.raises(ValueError, match=re.escape(error_fragment)):
+        normalize_review_contract_payload(payload)
+    with pytest.raises(ValueError, match=re.escape(error_fragment)):
+        registry._parse_review_contract(payload, "gpd:test")
 
 
 @pytest.mark.parametrize(

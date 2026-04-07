@@ -140,12 +140,10 @@ Before you ask for approval, keep the contract as a literal JSON object for the 
 Prefer explicit missing-anchor wording such as `Which reference should serve as the decisive benchmark anchor?`, `Benchmark reference not yet selected`, or `decisive target not yet chosen`.
 Do not force a phase list just to make the scoping contract look complete. If decomposition is still unclear, record that uncertainty and let `ROADMAP.md` start with a single coarse phase or first grounded investigation chunk.
 If the init JSON already contains `project_contract`, `project_contract_load_info`, or `project_contract_validation`, preserve that state in the approval gate and continuation decision. Do not collapse a visible-but-blocked contract into a blank slate when deciding whether this is a fresh project or a continuation.
-preserve any init-surfaced `project_contract`, `project_contract_load_info`, and `project_contract_validation` state while deciding whether this is fresh work or a continuation.
 
 If a blocking field is missing, ask exactly one repair prompt that targets only the missing field. Do not silently continue with placeholders.
 If no must-read references are confirmed yet, record that explicitly in the contract rather than inventing one.
-If the user does not know the anchor yet, preserve that explicitly in `scope.unresolved_questions`, `context_intake.context_gaps`, or `uncertainty_markers.weakest_anchors` rather than inventing a paper, benchmark, or baseline.
-Accepted shorthand like `need grounding` or `target not yet chosen` is fine when it clearly refers to the missing decisive anchor.
+If the user does not know the anchor yet, preserve that explicitly in `scope.unresolved_questions`, `context_intake.context_gaps`, or `uncertainty_markers.weakest_anchors` rather than inventing a paper, benchmark, or baseline. Accepted shorthand like `need grounding` or `target not yet chosen` is fine when it clearly refers to the missing decisive anchor.
 If the user supplied explicit observables, deliverables, prior outputs, or stop conditions, preserve them in the contract using wording the user would still recognize. Do not paraphrase them into generic "benchmark" or "artifact" language unless the user asked you to broaden them.
 For observables, preserve any user-named decisive quantity, signal, or behavior, especially the first smoking-gun check they would trust over softer proxies or limiting cases.
 If the user named a prior output or review checkpoint that must ground approval or be carried forward, put it in `context_intake.must_include_prior_outputs`. Use `context_intake.crucial_inputs` for user-stated observables, stop conditions, review requests, or constraints that must stay visible but do not themselves replace approved-mode grounding.
@@ -160,9 +158,7 @@ Before you show the approval gate, build the raw contract as a literal JSON obje
 - do not invent near-miss enum values, extra keys, or scalar shortcuts for list fields
 - fix them to the schema before approval
 - `context_intake`, `approach_policy`, and `uncertainty_markers` must each stay as objects, not strings or lists.
-- `schema_version` must be the integer `1`, and `references[].must_surface` must be a boolean `true` or `false`, not a quoted synonym.
-- keep `context_intake`, `uncertainty_markers`, and `references[]` visible in the approval gate so the contract still reflects the real inputs
-- keep `schema_version` at `1`, and keep `references[].must_surface` as a boolean, not a synonym
+- `schema_version` must be the integer `1`, `references[].must_surface` must stay a boolean `true` or `false`, and `context_intake`, `uncertainty_markers`, and `references[]` must stay visible in the approval gate so the contract still reflects the real inputs
 
 @{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md
 

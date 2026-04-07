@@ -1609,6 +1609,7 @@ def test_validator_backed_examples_use_concrete_machine_readable_values() -> Non
 def test_plan_tool_preflight_surfaces_across_planning_and_execution_prompts() -> None:
     phase_prompt = (TEMPLATES_DIR / "phase-prompt.md").read_text(encoding="utf-8")
     planner_agent = (AGENTS_DIR / "gpd-planner.md").read_text(encoding="utf-8")
+    planner_prompt_template = (TEMPLATES_DIR / "planner-subagent-prompt.md").read_text(encoding="utf-8")
     plan_checker = (AGENTS_DIR / "gpd-plan-checker.md").read_text(encoding="utf-8")
     executor_agent = (AGENTS_DIR / "gpd-executor.md").read_text(encoding="utf-8")
     execute_plan = (WORKFLOWS_DIR / "execute-plan.md").read_text(encoding="utf-8")
@@ -1643,7 +1644,8 @@ def test_plan_tool_preflight_surfaces_across_planning_and_execution_prompts() ->
     assert "Use declared fallbacks automatically only for non-blocking preferred tools (`required: false`)" in execute_plan
     assert "gpd validate plan-preflight <PLAN.md>" not in execute_plan
     assert "require that the selected `PLAN.md` passes `gpd validate plan-preflight <PLAN.md>`" in execute_phase
-    assert "gpd validate plan-preflight <PLAN.md>" in plan_phase
+    assert "templates/planner-subagent-prompt.md" in plan_phase
+    assert "`tool_requirements` pass `gpd validate plan-preflight <PLAN.md>` before the plan is treated as execution-ready" in planner_prompt_template
     assert "declare it as `tool: wolfram` in `tool_requirements`" in tooling_ref
     for legacy_alias in ("must_haves", "verification_inputs", "contract_evidence", "independently_confirmed"):
         assert legacy_alias not in summary_template
@@ -1664,18 +1666,17 @@ def test_plan_tool_preflight_surfaces_across_planning_and_execution_prompts() ->
     assert "deliverable-main" in research_verification
     assert "acceptance-test-main" in research_verification
     assert "reference-main" in research_verification
-    assert verify_workflow.count("## CHECKPOINT REACHED") == 1
+    assert "## CHECKPOINT REACHED" not in verify_workflow
     assert verify_workflow.count("templates/planner-subagent-prompt.md") == 2
     assert verify_workflow.count("templates/phase-prompt.md") == 2
     assert verify_workflow.count("templates/plan-contract-schema.md") == 2
     for token in (
-        "project_contract_gate.authoritative",
-        "project_contract_load_info.status",
-        "project_contract_validation.valid",
         "tool_requirements",
         "gap_closure",
     ):
         assert token in verify_workflow
+    assert "The shared planner template owns the canonical planning policy and contract gate." not in verify_workflow
+    assert "The shared planner template owns the canonical planning and revision policy." not in verify_workflow
     assert "forbidden-proxy-main" in research_verification
     assert "comparison_verdicts:" in research_verification
     assert "subject_role: decisive" in research_verification
@@ -2108,19 +2109,11 @@ def test_contract_schema_references_stay_wired_into_templates_and_review_docs() 
     assert "gpd validate summary-contract" in execute_plan
     assert "gpd validate verification-contract" in verify_work
     assert "gpd validate plan-contract" in plan_phase
-    assert (
-        "Use the shared planner template, phase template, and `templates/plan-contract-schema.md`; "
-        "this wrapper only adds phase-specific gates."
-    ) in plan_phase
-    assert "Validator gate before planning:" in plan_phase
-    assert "Light mode changes the body only; keep the full canonical frontmatter from the phase template." in plan_phase
-    assert "Each plan satisfies `templates/plan-contract-schema.md`" in plan_phase
-    assert "Tasks stay specific, actionable, and mode-appropriate" in plan_phase
-    assert "Dependencies, refs, baselines, and protocol bundles are surfaced where the shared templates expect them" in plan_phase
-    assert "Quantitative results include dimensional checks and validation checkpoints where relevant" in plan_phase
-    assert "Proof-bearing plans reserve `{plan_id}-PROOF-REDTEAM.md` and keep theorem coverage visible" in plan_phase
-    assert "Contract Intake:" in plan_phase
-    assert "Effective Reference Intake:" in plan_phase
+    assert "Render the template's `## Standard Planning Template` into `filled_prompt`" in plan_phase
+    assert "Render the template's `## Revision Template` into `revision_prompt`" in plan_phase
+    assert "Do not restate template-owned contract gates" in plan_phase
+    assert "{contract_intake}" in plan_phase
+    assert "{effective_reference_intake}" in plan_phase
     assert "Contract Intake:" in verify_work
     assert "Effective Reference Intake:" in verify_work
 
@@ -3046,11 +3039,8 @@ def test_verify_work_gap_closure_delegation_surfaces_contract_gate_inputs() -> N
     assert "**Project Contract Validation:** {project_contract_validation}" in verify_work
     assert "**Contract Intake:** {contract_intake}" in verify_work
     assert "**Effective Reference Intake:** {effective_reference_intake}" in verify_work
-    assert (
-        "If `project_contract_gate.authoritative` is false, `project_contract_load_info.status` starts with `blocked`, "
-        "or `project_contract_validation.valid` is false, return `## CHECKPOINT REACHED` instead of drafting from guessed scope."
-        in verify_work
-    )
+    assert "surface it in PLAN frontmatter `tool_requirements`" in verify_work
+    assert "The shared planner template owns the canonical planning policy and contract gate." not in verify_work
 
 
 def test_stage8_surfaces_decisive_comparisons_paper_quality_artifacts_and_profile_invariants() -> None:
