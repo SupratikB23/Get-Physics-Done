@@ -4,13 +4,15 @@ import copy
 import dataclasses
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from gpd.adapters import get_adapter, iter_runtime_descriptors
+from gpd.adapters import iter_runtime_descriptors
 from gpd.core import onboarding_surfaces as onboarding_surfaces_module
 from gpd.core import public_surface_contract as public_surface_contract_module
 from gpd.core.onboarding_surfaces import (
+    BeginnerRuntimeSurface,
     beginner_onboarding_hub_url,
     beginner_runtime_surface,
     beginner_runtime_surfaces,
@@ -72,6 +74,24 @@ def _load_public_surface_contract_with_payload(
     load_public_surface_contract.cache_clear()
 
 
+def _expected_beginner_runtime_surface(descriptor: object) -> BeginnerRuntimeSurface:
+    public_prefix = descriptor.public_command_surface_prefix or descriptor.command_prefix
+    return BeginnerRuntimeSurface(
+        runtime_name=descriptor.runtime_name,
+        display_name=descriptor.display_name,
+        install_flag=descriptor.install_flag,
+        launch_command=descriptor.launch_command,
+        help_command=f"{public_prefix}help",
+        start_command=f"{public_prefix}start",
+        tour_command=f"{public_prefix}tour",
+        new_project_command=f"{public_prefix}new-project",
+        new_project_minimal_command=f"{public_prefix}new-project --minimal",
+        map_research_command=f"{public_prefix}map-research",
+        resume_work_command=f"{public_prefix}resume-work",
+        settings_command=f"{public_prefix}settings",
+    )
+
+
 def test_beginner_onboarding_surface_contract_exposes_hub_and_ladder() -> None:
     assert beginner_onboarding_hub_url() == "./docs/README.md"
     assert "blob/main" not in beginner_onboarding_hub_url()
@@ -117,6 +137,33 @@ def test_public_surface_contract_rejects_recovery_ladder_command_drift(
         load_public_surface_contract()
 
 
+@pytest.mark.parametrize(
+    ("field_name", "command_fragment"),
+    [
+        ("install_local_example", "gpd install <runtime> --local"),
+        ("doctor_local_command", "gpd doctor --runtime <runtime> --local"),
+        ("doctor_global_command", "gpd doctor --runtime <runtime> --global"),
+        ("validate_command_context_command", "gpd validate command-context gpd:<name>"),
+    ],
+)
+def test_public_surface_contract_loader_rejects_local_cli_bridge_command_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    field_name: str,
+    command_fragment: str,
+) -> None:
+    payload = json.loads(
+        Path(public_surface_contract_module.__file__).resolve().with_name("public_surface_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    payload["local_cli_bridge"][field_name] = f"{command_fragment} --drifted"
+    _load_public_surface_contract_with_payload(monkeypatch, tmp_path, payload)
+
+    with pytest.raises(ValueError, match=r"local_cli_bridge\.[a-z_]+ must equal"):
+        load_public_surface_contract()
+
+
 def test_beginner_runtime_surfaces_follow_runtime_catalog() -> None:
     surfaces = beginner_runtime_surfaces()
     descriptors = iter_runtime_descriptors()
@@ -125,18 +172,8 @@ def test_beginner_runtime_surfaces_follow_runtime_catalog() -> None:
         descriptor.runtime_name for descriptor in descriptors
     )
 
-    for surface in surfaces:
-        adapter = get_adapter(surface.runtime_name)
-        assert surface.display_name == adapter.display_name
-        assert surface.launch_command == adapter.launch_command
-        assert surface.help_command == adapter.help_command
-        assert surface.start_command == adapter.format_command("start")
-        assert surface.tour_command == adapter.format_command("tour")
-        assert surface.new_project_command == adapter.new_project_command
-        assert surface.new_project_minimal_command == f"{adapter.new_project_command} --minimal"
-        assert surface.map_research_command == adapter.map_research_command
-        assert surface.resume_work_command == adapter.format_command("resume-work")
-        assert surface.settings_command == adapter.format_command("settings")
+    for descriptor, surface in zip(descriptors, surfaces, strict=True):
+        assert surface == _expected_beginner_runtime_surface(descriptor)
 
 
 def test_beginner_runtime_surface_single_lookup_matches_bulk_surface() -> None:
@@ -144,22 +181,45 @@ def test_beginner_runtime_surface_single_lookup_matches_bulk_surface() -> None:
         assert beginner_runtime_surface(surface.runtime_name) == surface
 
 
-def test_beginner_runtime_surface_single_lookup_uses_adapter_descriptor_boundary(
+def test_beginner_runtime_surface_single_lookup_uses_descriptor_public_surface_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime_name = iter_runtime_descriptors()[0].runtime_name
+    descriptor = SimpleNamespace(
+        runtime_name=runtime_name,
+        display_name="Descriptor Display",
+        install_flag="--descriptor",
+        launch_command="descriptor-launch",
+        command_prefix="/adapter:",
+        public_command_surface_prefix="/public:",
+    )
 
     def _boom() -> tuple[object, ...]:
         raise AssertionError("single runtime lookup should not scan the runtime catalog")
 
+    def _get_runtime_descriptor(name: str) -> object:
+        assert name == runtime_name
+        return descriptor
+
     monkeypatch.setattr(onboarding_surfaces_module, "iter_runtime_descriptors", _boom)
+    monkeypatch.setattr(onboarding_surfaces_module, "get_runtime_descriptor", _get_runtime_descriptor)
 
     surface = onboarding_surfaces_module.beginner_runtime_surface(runtime_name)
-    adapter = get_adapter(runtime_name)
 
-    assert surface.display_name == adapter.display_name
-    assert surface.install_flag == adapter.install_flag
-    assert surface.settings_command == adapter.format_command("settings")
+    assert surface == BeginnerRuntimeSurface(
+        runtime_name=runtime_name,
+        display_name="Descriptor Display",
+        install_flag="--descriptor",
+        launch_command="descriptor-launch",
+        help_command="/public:help",
+        start_command="/public:start",
+        tour_command="/public:tour",
+        new_project_command="/public:new-project",
+        new_project_minimal_command="/public:new-project --minimal",
+        map_research_command="/public:map-research",
+        resume_work_command="/public:resume-work",
+        settings_command="/public:settings",
+    )
 
 
 def test_resume_authority_contract_exposes_full_validated_surface() -> None:

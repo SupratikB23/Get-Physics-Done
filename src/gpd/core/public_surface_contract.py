@@ -170,6 +170,12 @@ class PublicSurfaceContract:
     recovery_ladder: RecoveryLadderContract
 
 
+_LOCAL_CLI_INSTALL_LOCAL_EXAMPLE_COMMAND = "gpd install <runtime> --local"
+_LOCAL_CLI_DOCTOR_LOCAL_COMMAND = "gpd doctor --runtime <runtime> --local"
+_LOCAL_CLI_DOCTOR_GLOBAL_COMMAND = "gpd doctor --runtime <runtime> --global"
+_LOCAL_CLI_VALIDATE_COMMAND_CONTEXT_COMMAND = "gpd validate command-context gpd:<name>"
+
+
 def _require_object(payload: object, *, label: str) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError(f"{label} must be a JSON object")
@@ -409,8 +415,19 @@ def _require_exact_command(commands: tuple[str, ...], *, label: str, command: st
     return command
 
 
+def _require_local_cli_bridge_command(command: str, *, bridge_commands: tuple[str, ...] | None = None) -> str:
+    commands = bridge_commands if bridge_commands is not None else local_cli_bridge_commands()
+    return _require_exact_command(commands, label="local_cli_bridge", command=command)
+
+
 def _local_cli_bridge_command(command: str) -> str:
-    return _require_exact_command(local_cli_bridge_commands(), label="local_cli_bridge", command=command)
+    return _require_local_cli_bridge_command(command)
+
+
+def _require_local_cli_bridge_template(command: str, *, label: str, expected: str) -> str:
+    if command != expected:
+        raise ValueError(f"{label} must equal {expected!r}")
+    return command
 
 
 def _require_local_cli_named_commands(
@@ -603,25 +620,37 @@ def load_public_surface_contract() -> PublicSurfaceContract:
             named_commands=named_commands,
             terminal_phrase=_require_string(bridge_payload, "terminal_phrase", label="local_cli_bridge"),
             purpose_phrase=_require_string(bridge_payload, "purpose_phrase", label="local_cli_bridge"),
-            install_local_example=_require_string(
-                bridge_payload,
-                "install_local_example",
-                label="local_cli_bridge",
+            install_local_example=_require_local_cli_bridge_template(
+                _require_string(bridge_payload, "install_local_example", label="local_cli_bridge"),
+                label="local_cli_bridge.install_local_example",
+                expected=_LOCAL_CLI_INSTALL_LOCAL_EXAMPLE_COMMAND,
             ),
-            doctor_local_command=_require_string(
-                bridge_payload,
-                "doctor_local_command",
-                label="local_cli_bridge",
+            doctor_local_command=_require_local_cli_bridge_template(
+                _require_string(
+                    bridge_payload,
+                    "doctor_local_command",
+                    label="local_cli_bridge",
+                ),
+                label="local_cli_bridge.doctor_local_command",
+                expected=_LOCAL_CLI_DOCTOR_LOCAL_COMMAND,
             ),
-            doctor_global_command=_require_string(
-                bridge_payload,
-                "doctor_global_command",
-                label="local_cli_bridge",
+            doctor_global_command=_require_local_cli_bridge_template(
+                _require_string(
+                    bridge_payload,
+                    "doctor_global_command",
+                    label="local_cli_bridge",
+                ),
+                label="local_cli_bridge.doctor_global_command",
+                expected=_LOCAL_CLI_DOCTOR_GLOBAL_COMMAND,
             ),
-            validate_command_context_command=_require_string(
-                bridge_payload,
-                "validate_command_context_command",
-                label="local_cli_bridge",
+            validate_command_context_command=_require_local_cli_bridge_template(
+                _require_string(
+                    bridge_payload,
+                    "validate_command_context_command",
+                    label="local_cli_bridge",
+                ),
+                label="local_cli_bridge.validate_command_context_command",
+                expected=_LOCAL_CLI_VALIDATE_COMMAND_CONTEXT_COMMAND,
             ),
         ),
         post_start_settings=PostStartSettingsContract(
