@@ -97,30 +97,25 @@ def test_resolve_update_cache_inputs_uses_explicit_or_inferred_preference(tmp_pa
     home = tmp_path / "home"
 
     cases = (
-        (None, "codex", True),
-        ("codex", "codex", False),
+        (None, "codex"),
+        ("codex", "codex"),
     )
 
-    for explicit_preference, expected_preference, should_lookup in cases:
-        lookup_patch = (
-            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="codex")
-            if should_lookup
-            else patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", side_effect=AssertionError("unexpected lookup"))
-        )
-        with (
-            patch("gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install", return_value="unknown"),
-            lookup_patch,
-        ):
+    with (
+        patch("gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install", return_value="unknown"),
+        patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="codex"),
+    ):
+        for explicit_preference, expected_preference in cases:
             workspace_path, resolved_home, active_runtime, preferred_runtime = resolve_update_cache_inputs(
                 cwd=workspace,
                 home=home,
                 preferred_runtime=explicit_preference,
             )
 
-        assert workspace_path == workspace
-        assert resolved_home == home
-        assert active_runtime is None
-        assert preferred_runtime == expected_preference
+            assert workspace_path == workspace
+            assert resolved_home == home
+            assert active_runtime is None
+            assert preferred_runtime == expected_preference
 
 
 def test_primary_update_cache_file_falls_back_to_home_gpd_cache(tmp_path: Path) -> None:

@@ -75,15 +75,17 @@ def test_resolve_hook_surface_runtime_falls_back_when_self_owned_runtime_is_unkn
             return_value=HookLookupContext(
                 lookup_cwd=tmp_path / "workspace",
                 resolved_home=tmp_path / "home",
-                active_runtime="gemini",
-                preferred_runtime="gemini",
+                active_runtime=None,
+                preferred_runtime=None,
             ),
         ),
         patch("gpd.hooks.payload_policy.get_runtime_capabilities", side_effect=KeyError("unknown runtime")),
     ):
         runtime = resolve_hook_surface_runtime(hook_file=hook_file, cwd=tmp_path / "workspace", surface="notify")
+        policy = resolve_hook_payload_policy(hook_file=hook_file, cwd=tmp_path / "workspace", surface="notify")
 
-    assert runtime == "gemini"
+    assert runtime is None
+    assert policy == get_hook_payload_policy()
 
 
 def test_resolve_hook_surface_runtime_propagates_unexpected_runtime_catalog_errors(

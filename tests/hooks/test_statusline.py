@@ -1228,6 +1228,60 @@ class TestMain:
         mock_model.assert_called_once()
         assert "[project/src/notes]" in captured.getvalue()
 
+    def test_main_downgrades_top_level_alias_only_workspace_mapping_to_keep_workspace_lookup(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        project = tmp_path / "project"
+        nested = project / "src" / "notes"
+        nested.mkdir(parents=True)
+        (project / "GPD").mkdir(parents=True)
+
+        payload = {
+            "current_dir": str(nested),
+            "project_root": str(project),
+            "runtime_session_id": "sess-runtime",
+        }
+        hook_payload = SimpleNamespace(
+            workspace_keys=("cwd", "current_dir"),
+            project_dir_keys=("project_dir", "project_root"),
+            runtime_session_id_keys=("runtime_session_id",),
+            model_keys=(),
+            context_remaining_keys=(),
+        )
+
+        captured = io.StringIO()
+        with (
+            patch("sys.stdin", io.StringIO(json.dumps(payload))),
+            patch("sys.stdout", captured),
+            patch(
+                "gpd.hooks.statusline._resolve_payload_roots",
+                return_value=SimpleNamespace(
+                    workspace_dir=str(nested),
+                    project_root=str(project),
+                    project_dir_present=True,
+                    project_dir_trusted=True,
+                ),
+            ),
+            patch(
+                "gpd.hooks.statusline.resolve_runtime_lookup_context_from_payload_roots",
+                return_value=SimpleNamespace(lookup_dir=str(nested), active_runtime="codex"),
+            ) as mock_runtime_lookup,
+            patch("gpd.hooks.statusline._hook_payload_policy", return_value=hook_payload),
+            patch("gpd.hooks.statusline._read_runtime_hints", return_value=_runtime_hints_payload(_visibility_state())),
+            patch("gpd.hooks.statusline._read_execution_state", return_value={}),
+            patch("gpd.hooks.statusline._read_position", return_value=""),
+            patch("gpd.hooks.statusline._read_current_task", return_value=""),
+            patch("gpd.hooks.statusline._check_update", return_value=""),
+            patch("gpd.hooks.statusline._read_workspace_label", return_value="[project/src/notes]"),
+            patch("gpd.hooks.statusline._read_model_label", return_value="model"),
+        ):
+            main()
+
+        runtime_roots = mock_runtime_lookup.call_args.args[0]
+        assert runtime_roots.project_dir_trusted is False
+        assert "[project/src/notes]" in captured.getvalue()
+
     def test_main_prefers_live_execution_task_over_todo_fallback(self) -> None:
         captured = io.StringIO()
         with (

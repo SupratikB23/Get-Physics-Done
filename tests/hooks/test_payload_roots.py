@@ -126,6 +126,21 @@ def test_payload_uses_alias_only_workspace_mapping_detects_alias_only_mapping(tm
     )
 
 
+def test_payload_uses_alias_only_workspace_mapping_detects_top_level_alias_only_mapping(tmp_path) -> None:
+    workspace = tmp_path / "workspace"
+    project = tmp_path / "project"
+    workspace.mkdir()
+    project.mkdir()
+
+    assert payload_uses_alias_only_workspace_mapping(
+        {
+            "current_dir": str(workspace),
+            "project_root": str(project),
+        },
+        hook_payload=_policy(workspace_keys=("cwd", "current_dir"), project_dir_keys=("project_dir", "project_root")),
+    )
+
+
 def test_coerce_root_pair_accepts_tuple_and_list_payloads(tmp_path) -> None:
     workspace = tmp_path / "workspace"
     project = tmp_path / "project"

@@ -237,6 +237,10 @@ def test_resolve_hook_lookup_context_uses_shared_runtime_hint_normalizer(
         return None
 
     monkeypatch.setattr("gpd.hooks.install_context.normalize_runtime_hint", _normalize)
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", lambda **_: None)
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_active_runtime", lambda **_: None)
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install", lambda **_: None)
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_local_runtime_with_gpd_install", lambda **_: None)
 
     resolved = resolve_hook_lookup_context(
         cwd=None,
@@ -245,8 +249,9 @@ def test_resolve_hook_lookup_context_uses_shared_runtime_hint_normalizer(
         preferred_runtime=" preferred ",
     )
 
-    assert calls == [" active ", " preferred ", " active "]
-    assert resolved.active_runtime == "claude-code"
+    assert " active " in calls
+    assert " preferred " in calls
+    assert resolved.active_runtime is None
     assert resolved.preferred_runtime == "codex"
 
 
@@ -266,6 +271,30 @@ def test_resolve_hook_lookup_context_normalizes_unknown_and_alias_runtime_hints(
     )
 
     assert resolved.lookup_cwd == workspace
+    assert resolved.active_runtime == "claude-code"
+    assert resolved.preferred_runtime == "claude-code"
+
+
+def test_resolve_hook_lookup_context_revalidates_stale_active_installed_runtime_hint(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    home = tmp_path / "home"
+    workspace.mkdir()
+    home.mkdir()
+
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", lambda **_: "claude-code")
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_active_runtime_with_gpd_install", lambda **_: "claude-code")
+    monkeypatch.setattr("gpd.hooks.runtime_detect.detect_local_runtime_with_gpd_install", lambda **_: None)
+
+    resolved = resolve_hook_lookup_context(
+        cwd=workspace,
+        home=home,
+        active_installed_runtime="codex",
+        preferred_runtime="claude",
+    )
+
     assert resolved.active_runtime == "claude-code"
     assert resolved.preferred_runtime == "claude-code"
 

@@ -105,17 +105,23 @@ def payload_uses_alias_only_workspace_mapping(
     accidentally leave an unrelated top-level project hint authoritative.
     """
 
-    workspace_value = data.get("workspace")
-    if not isinstance(workspace_value, dict):
-        return False
     workspace_keys = tuple(getattr(hook_payload, "workspace_keys", ()) or ())
     project_dir_keys = tuple(getattr(hook_payload, "project_dir_keys", ()) or ())
     if not workspace_keys or not project_dir_keys:
         return False
+
+    workspace_value = data.get("workspace")
+    if isinstance(workspace_value, dict):
+        candidate_mapping: dict[str, object] = workspace_value
+    elif workspace_value is None:
+        candidate_mapping = data
+    else:
+        return False
+
     return bool(
-        _first_string(workspace_value, *workspace_keys)
+        _first_string(candidate_mapping, *workspace_keys)
         and _project_dir_from_payload(data, hook_payload=hook_payload)
-        and not _first_string(workspace_value, workspace_keys[0])
+        and not _first_string(candidate_mapping, workspace_keys[0])
     )
 
 
