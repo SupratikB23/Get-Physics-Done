@@ -174,6 +174,8 @@ def test_run_contract_check_accepts_non_must_surface_reference_when_project_dir_
     rooted = run_contract_check(request, project_dir=tmp_path.resolve(strict=False).as_posix())
 
     assert rooted["status"] == "pass"
+
+
 def test_contract_server_singleton_drift_classifier_matches_core_contract_policy() -> None:
     from gpd.mcp.servers.verification_server import _is_defaultable_singleton_contract_error
 
