@@ -58,6 +58,7 @@ RESEARCH_MODE=$(gpd --raw config get research_mode 2>/dev/null | gpd json get .v
 **Mode-aware behavior:**
 - `research_mode=explore`: Map broadly — include alternative theoretical frameworks, speculative connections, open questions across related domains.
 - `research_mode=exploit`: Map narrowly — focus on primary formalism, established results, direct computational needs.
+- `research_mode=balanced` (default): Use the standard mapping depth for this workflow and preserve the default anchor and contract coverage unless the research question needs broader or narrower mapping.
 - `research_mode=adaptive`: Start with primary framework, expand mapping if connections to other domains appear.
 - Regardless of mode, do not drop contract-critical anchors, prior baselines, or user-mandated references.
 - Treat `effective_reference_intake` as the machine-readable carry-forward registry for anchors, prior outputs, baselines, and unresolved gaps. Use `active_reference_context` to render and explain it, not to replace it.
@@ -122,7 +123,9 @@ Continue to spawn_agents.
 Spawn 4 parallel gpd-research-mapper agents.
 
 Use task tool with `subagent_type="gpd-research-mapper"`, `model="{mapper_model}"`, `readonly=false`, and `run_in_background=true` for parallel execution.
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 **CRITICAL:** Use the dedicated `gpd-research-mapper` agent, NOT `Explore`. The mapper agent writes documents directly.
 

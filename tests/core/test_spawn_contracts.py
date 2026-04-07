@@ -6,18 +6,27 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from gpd.adapters.install_utils import expand_at_includes
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / "src/gpd/specs/workflows"
 REFERENCES_DIR = REPO_ROOT / "src/gpd/specs/references"
 TEMPLATES_DIR = REPO_ROOT / "src/gpd/specs/templates"
 WORKFLOW_PATHS = (
-    WORKFLOWS_DIR / "verify-work.md",
-    WORKFLOWS_DIR / "write-paper.md",
-    WORKFLOWS_DIR / "new-project.md",
+    WORKFLOWS_DIR / "quick.md",
     WORKFLOWS_DIR / "map-research.md",
+    WORKFLOWS_DIR / "write-paper.md",
+    WORKFLOWS_DIR / "respond-to-referees.md",
+    WORKFLOWS_DIR / "peer-review.md",
+    WORKFLOWS_DIR / "validate-conventions.md",
+    WORKFLOWS_DIR / "derive-equation.md",
+    WORKFLOWS_DIR / "explain.md",
+    WORKFLOWS_DIR / "audit-milestone.md",
+    WORKFLOWS_DIR / "debug.md",
 )
 
-RUNTIME_NOTE_FRAGMENT = "Runtime delegation:"
+RUNTIME_NOTE_INCLUDE_FRAGMENT = "@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md"
+RUNTIME_NOTE_BODY_FRAGMENT = "Spawn a fresh subagent for the task below."
 MODEL_OMISSION_FRAGMENT = (
     "If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model."
 )
@@ -87,10 +96,6 @@ def _task_agent_name(task_text: str) -> str:
     return match.group(1)
 
 
-def _preceding_text(text: str, start: int, *, window: int = 800) -> str:
-    return text[max(0, start - window) : start]
-
-
 def _task_is_commented_out(text: str, start: int) -> bool:
     line_start = text.rfind("\n", 0, start) + 1
     line_prefix = text[line_start:start].lstrip()
@@ -107,18 +112,25 @@ def _find_single_task(path: Path, agent_name: str) -> TaskBlock:
     return matches[0]
 
 
-def _assert_runtime_note_present(path: Path) -> None:
+def _assert_runtime_note_include(path: Path) -> None:
     content = _read(path)
-    assert RUNTIME_NOTE_FRAGMENT in content, path
-    assert MODEL_OMISSION_FRAGMENT in content, path
-    assert READONLY_RUNTIME_NOTE_FRAGMENT in content, (
-        f"{path.relative_to(REPO_ROOT)} runtime note missing readonly=false instruction"
+    assert RUNTIME_NOTE_INCLUDE_FRAGMENT in content, path
+    assert RUNTIME_NOTE_BODY_FRAGMENT not in content, (
+        f"{path.relative_to(REPO_ROOT)} should reference the shared runtime note instead of duplicating it"
     )
 
 
-def _assert_prompt_bootstrap(task: TaskBlock, agent_name: str) -> None:
-    assert f'subagent_type="{agent_name}"' in task.text
-    assert f"First, read {{GPD_AGENTS_DIR}}/{agent_name}.md for your role and instructions." in task.text
+def _assert_expanded_runtime_note(path: Path) -> None:
+    content = expand_at_includes(_read(path), REPO_ROOT / "src/gpd", "/runtime/")
+    assert RUNTIME_NOTE_BODY_FRAGMENT in content, path
+    assert MODEL_OMISSION_FRAGMENT in content, path
+    assert READONLY_RUNTIME_NOTE_FRAGMENT in content, (
+        f"{path.relative_to(REPO_ROOT)} expanded runtime note missing readonly=false instruction"
+    )
+
+
+def _assert_prompt_bootstrap_in_content(content: str, agent_name: str) -> None:
+    assert f"First, read {{GPD_AGENTS_DIR}}/{agent_name}.md for your role and instructions." in content
 
 
 def _extract_output_paths(task: TaskBlock) -> list[str]:
@@ -176,39 +188,36 @@ def test_agent_delegation_reference_defines_canonical_task_contract() -> None:
 def test_representative_workflows_keep_runtime_note_and_agent_prompt_bootstrap() -> None:
     coverage = {
         "quick.md": ["gpd-planner", "gpd-executor"],
-        "plan-phase.md": ["gpd-phase-researcher", "gpd-planner", "gpd-plan-checker"],
-        "execute-phase.md": ["gpd-executor"],
-        "write-paper.md": ["gpd-paper-writer"],
-        "new-project.md": ["gpd-project-researcher"],
+        "map-research.md": ["gpd-research-mapper"],
+        "write-paper.md": ["gpd-paper-writer", "gpd-bibliographer"],
+        "respond-to-referees.md": ["gpd-paper-writer"],
         "peer-review.md": ["gpd-review-reader", "gpd-referee"],
+        "validate-conventions.md": ["gpd-consistency-checker", "gpd-notation-coordinator"],
+        "derive-equation.md": ["gpd-check-proof"],
+        "explain.md": ["gpd-explainer"],
+        "audit-milestone.md": ["gpd-consistency-checker", "gpd-referee"],
+        "debug.md": ["gpd-debugger"],
     }
 
     for workflow_name, agent_names in coverage.items():
         path = WORKFLOWS_DIR / workflow_name
-        _assert_runtime_note_present(path)
+        content = _read(path)
+        _assert_runtime_note_include(path)
+        _assert_expanded_runtime_note(path)
+        expanded_content = expand_at_includes(content, REPO_ROOT / "src/gpd", "/runtime/")
+        if workflow_name == "explain.md":
+            assert 'prompt=filled_prompt' in content
+            assert 'subagent_type="gpd-explainer"' in content
+            assert 'description="Explain {slug}"' in content
+            continue
         for agent_name in agent_names:
-            _assert_prompt_bootstrap(_find_single_task(path, agent_name), agent_name)
+            _assert_prompt_bootstrap_in_content(expanded_content, agent_name)
 
 
 def test_every_workflow_task_block_carries_runtime_delegation_note_and_bootstrap() -> None:
     for path in WORKFLOW_PATHS:
-        content = _read(path)
-        for task in _extract_task_blocks(content):
-            if 'subagent_type="' not in task.text:
-                continue
-            if _task_is_commented_out(content, task.start):
-                continue
-            agent_name = _task_agent_name(task.text)
-            preceding = _preceding_text(content, task.start)
-
-            assert RUNTIME_NOTE_FRAGMENT in preceding, f"{path.relative_to(REPO_ROOT)} missing runtime note before {agent_name}"
-            assert MODEL_OMISSION_FRAGMENT in preceding, (
-                f"{path.relative_to(REPO_ROOT)} missing model-omission instruction before {agent_name}"
-            )
-            assert READONLY_RUNTIME_NOTE_FRAGMENT in preceding, (
-                f"{path.relative_to(REPO_ROOT)} missing readonly=false instruction before {agent_name}"
-            )
-            _assert_prompt_bootstrap(task, agent_name)
+        _assert_runtime_note_include(path)
+        _assert_expanded_runtime_note(path)
 
 
 def test_quick_and_write_paper_gate_handoffs_on_expected_artifacts() -> None:
@@ -342,6 +351,7 @@ def test_new_milestone_research_and_roadmapper_gate_success_path_artifacts() -> 
 def test_peer_review_stages_use_fresh_context_and_stage_artifacts() -> None:
     path = WORKFLOWS_DIR / "peer-review.md"
     content = _read(path)
+    expanded_content = expand_at_includes(content, REPO_ROOT / "src/gpd", "/runtime/")
 
     reader = _find_single_task(path, "gpd-review-reader")
     literature = _find_single_task(path, "gpd-review-literature")
@@ -351,7 +361,11 @@ def test_peer_review_stages_use_fresh_context_and_stage_artifacts() -> None:
     significance = _find_single_task(path, "gpd-review-significance")
     referee = _find_single_task(path, "gpd-referee")
 
-    assert "Spawn a fresh subagent for the task below." in content
+    assert RUNTIME_NOTE_INCLUDE_FRAGMENT in content
+    assert RUNTIME_NOTE_BODY_FRAGMENT not in content
+    assert RUNTIME_NOTE_BODY_FRAGMENT in expanded_content
+    assert MODEL_OMISSION_FRAGMENT in expanded_content
+    assert READONLY_RUNTIME_NOTE_FRAGMENT in expanded_content
     assert "This stage must start nearly fresh and remain manuscript-first." in reader.text
     assert "fresh context" in literature.text
     assert "fresh context" in math.text

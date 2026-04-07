@@ -102,7 +102,9 @@ If a phase is missing `*-VERIFICATION.md`, flag it as "unverified phase" -- this
 ## 3. Spawn Consistency Checker
 
 With phase context collected:
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(
@@ -207,7 +209,9 @@ Resolve referee model:
 ```bash
 REFEREE_MODEL=$(gpd resolve-model gpd-referee)
 ```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(

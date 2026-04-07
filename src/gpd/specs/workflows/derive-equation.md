@@ -492,7 +492,9 @@ When the runtime supports delegation, resolve the proof-critic model and spawn `
 CHECK_PROOF_MODEL=$(gpd resolve-model gpd-check-proof)
 ```
 
-> **Runtime delegation:** Spawn a fresh subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, STOP at a checkpoint instead of self-certifying the proof audit in the derivation writer context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, STOP at a checkpoint instead of self-certifying the proof audit in the derivation writer context.
 
 ```
 task(

@@ -93,7 +93,9 @@ Resolve the explainer model:
 EXPLAINER_MODEL=$(gpd resolve-model gpd-explainer)
 ```
 
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```markdown
 <objective>
@@ -167,7 +169,9 @@ Resolve bibliographer model:
 BIBLIO_MODEL=$(gpd resolve-model gpd-bibliographer)
 ```
 
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, perform the audit in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, perform the audit in the main context.
 
 ```
 task(

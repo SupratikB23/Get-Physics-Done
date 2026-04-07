@@ -179,7 +179,9 @@ If phases disagree, this is a potential error source.
 ```bash
 CONSISTENCY_MODEL=$(gpd resolve-model gpd-consistency-checker)
 ```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(
@@ -270,7 +272,9 @@ may be incorrect.
 ```bash
 NOTATION_MODEL=$(gpd resolve-model gpd-notation-coordinator)
 ```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(
