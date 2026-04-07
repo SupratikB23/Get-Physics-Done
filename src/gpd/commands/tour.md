@@ -5,7 +5,6 @@ argument-hint: "[optional short goal]"
 context_mode: projectless
 allowed-tools:
   - file_read
-  - shell
 ---
 
 

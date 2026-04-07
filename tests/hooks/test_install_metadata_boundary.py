@@ -15,6 +15,7 @@ from gpd.hooks.install_metadata import (
     config_dir_has_managed_install_markers,
     installed_update_command,
     load_install_manifest_runtime_status,
+    load_install_manifest_scope_status,
     load_install_manifest_state,
 )
 from gpd.hooks.runtime_detect import _manifest_runtime_status as runtime_detect_manifest_runtime_status
@@ -67,6 +68,43 @@ def test_load_install_manifest_state_classifies_manifest_payloads(
             manifest_path.write_text(manifest_content, encoding="utf-8")
 
     assert load_install_manifest_state(config_dir) == (expected_state, expected_payload)
+
+
+@pytest.mark.parametrize(
+    ("manifest_content", "expected_state", "expected_scope"),
+    [
+        (None, "missing", None),
+        (b"\xff", "corrupt", None),
+        ("[]", "invalid", None),
+        (json.dumps({"runtime": "codex"}), "missing_install_scope", None),
+        (json.dumps({"runtime": "codex", "install_scope": ""}), "malformed_install_scope", None),
+        (json.dumps({"runtime": "codex", "install_scope": "workspace"}), "malformed_install_scope", None),
+        (json.dumps({"runtime": "codex", "install_scope": "local"}), "ok", "local"),
+        (json.dumps({"runtime": "codex", "install_scope": "global"}), "ok", "global"),
+    ],
+)
+def test_load_install_manifest_scope_status_classifies_manifest_payloads(
+    tmp_path: Path,
+    manifest_content: bytes | str | None,
+    expected_state: str,
+    expected_scope: str | None,
+) -> None:
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = config_dir / "gpd-file-manifest.json"
+    if manifest_content is not None:
+        if isinstance(manifest_content, bytes):
+            manifest_path.write_bytes(manifest_content)
+        else:
+            manifest_path.write_text(manifest_content, encoding="utf-8")
+
+    state, payload, scope = load_install_manifest_scope_status(config_dir)
+    assert state == expected_state
+    assert scope == expected_scope
+    if expected_state in {"ok", "missing_install_scope", "malformed_install_scope"}:
+        assert payload == json.loads(manifest_path.read_text(encoding="utf-8"))
+    else:
+        assert payload == {}
 
 
 def test_config_dir_has_managed_install_markers_detects_install_surfaces(tmp_path: Path) -> None:

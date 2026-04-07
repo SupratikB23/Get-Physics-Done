@@ -2303,17 +2303,52 @@ def _has_contract_grounding_context(
     )
 
 
-def contract_has_explicit_context_intake(contract: ResearchContract) -> bool:
-    """Return whether ``context_intake`` carries any explicit non-empty field."""
+def contract_has_explicit_context_intake(
+    contract: ResearchContract,
+    *,
+    project_root: Path | None = None,
+) -> bool:
+    """Return whether ``context_intake`` carries any concrete, model-useful guidance."""
+
+    has_reference_guidance = any(
+        _is_concrete_reference_locator(
+            reference.locator,
+            reference_kind=reference.kind,
+            project_root=project_root,
+        )
+        for reference in contract.references
+        if reference.id in contract.context_intake.must_read_refs
+    )
+    has_prior_output_guidance = _has_concrete_grounding_entries(
+        contract.context_intake.must_include_prior_outputs,
+        field_name="must_include_prior_outputs",
+        project_root=project_root,
+        require_existing_project_artifacts=True,
+    )
+    has_anchor_guidance = _has_concrete_grounding_entries(
+        contract.context_intake.user_asserted_anchors,
+        field_name="user_asserted_anchors",
+        project_root=project_root,
+        require_existing_project_artifacts=True,
+    )
+    has_baseline_guidance = _has_concrete_grounding_entries(
+        contract.context_intake.known_good_baselines,
+        field_name="known_good_baselines",
+        project_root=project_root,
+        require_existing_project_artifacts=True,
+    )
+    has_text_guidance = any(
+        not is_placeholder_only_guidance_text(value)
+        for value in (*contract.context_intake.context_gaps, *contract.context_intake.crucial_inputs)
+    )
 
     return any(
         (
-            contract.context_intake.must_read_refs,
-            contract.context_intake.must_include_prior_outputs,
-            contract.context_intake.user_asserted_anchors,
-            contract.context_intake.known_good_baselines,
-            contract.context_intake.context_gaps,
-            contract.context_intake.crucial_inputs,
+            has_reference_guidance,
+            has_prior_output_guidance,
+            has_anchor_guidance,
+            has_baseline_guidance,
+            has_text_guidance,
         )
     )
 
@@ -2445,6 +2480,10 @@ def collect_plan_contract_integrity_errors(
     known_ids = claim_ids | deliverable_ids | acceptance_test_ids | reference_ids
 
     if contract.references and not _has_concrete_must_surface_reference(
+        contract,
+        project_root=project_root,
+        require_existing_project_artifacts=True,
+    ) and not _has_contract_grounding_context(
         contract,
         project_root=project_root,
         require_existing_project_artifacts=True,

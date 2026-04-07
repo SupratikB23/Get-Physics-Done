@@ -9,11 +9,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING
 
-from gpd.adapters.runtime_catalog import (
-    get_runtime_descriptor,
-    iter_runtime_descriptors,
-    list_runtime_names,
-)
+from gpd.adapters.runtime_catalog import get_runtime_descriptor, iter_runtime_descriptors, list_runtime_names
 
 if TYPE_CHECKING:
     from gpd.adapters.base import RuntimeAdapter
@@ -64,28 +60,39 @@ def _ensure_loaded() -> None:
     _LOADED = True
 
 
+def _ensure_runtime_loaded(runtime_name: str) -> type[RuntimeAdapter]:
+    """Return the adapter class for one runtime, loading only that runtime if needed."""
+
+    if runtime_name in _REGISTRY:
+        return _REGISTRY[runtime_name]
+
+    supported_runtime_names = list_runtimes()
+    if runtime_name not in supported_runtime_names:
+        supported = ", ".join(sorted(supported_runtime_names))
+        raise KeyError(f"Unknown runtime {runtime_name!r}. Supported: {supported}")
+
+    adapter_class = _load_adapter_class(runtime_name)
+    _REGISTRY[runtime_name] = adapter_class
+    return adapter_class
+
+
 def get_adapter(runtime: str) -> RuntimeAdapter:
     """Get an adapter instance for the given runtime name.
 
     Raises ``KeyError`` if the runtime is not supported.
     """
-    _ensure_loaded()
-    if runtime not in _REGISTRY:
-        supported = ", ".join(sorted(_REGISTRY.keys()))
-        raise KeyError(f"Unknown runtime {runtime!r}. Supported: {supported}")
-    return _REGISTRY[runtime]()
+    adapter_class = _ensure_runtime_loaded(runtime)
+    return adapter_class()
 
 
 def iter_adapters() -> list[RuntimeAdapter]:
     """Return adapter instances in registry order."""
-    _ensure_loaded()
-    return [adapter_cls() for adapter_cls in _REGISTRY.values()]
+    return [get_adapter(runtime_name) for runtime_name in list_runtimes()]
 
 
 def list_runtimes() -> list[str]:
     """Return all supported runtime names."""
-    _ensure_loaded()
-    return [descriptor.runtime_name for descriptor in iter_runtime_descriptors() if descriptor.runtime_name in _REGISTRY]
+    return [descriptor.runtime_name for descriptor in iter_runtime_descriptors()]
 
 
 def __getattr__(name: str):

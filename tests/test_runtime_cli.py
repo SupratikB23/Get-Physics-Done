@@ -219,6 +219,49 @@ def test_runtime_cli_ancestor_local_repair_command_targets_resolved_install(
 
 
 @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+def test_runtime_cli_prefers_nearest_broken_local_install_over_farther_complete_install(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+    descriptor,
+) -> None:
+    adapter = get_adapter(descriptor.runtime_name)
+    workspace = tmp_path / "workspace"
+    nested_cwd = workspace / "research" / "notes"
+    nested_cwd.mkdir(parents=True)
+
+    nearer_config_dir = workspace / adapter.config_dir_name
+    farther_config_dir = tmp_path / adapter.config_dir_name
+    _mark_incomplete_install(nearer_config_dir, runtime=descriptor.runtime_name)
+    _mark_complete_install(farther_config_dir, runtime=descriptor.runtime_name)
+    monkeypatch.chdir(nested_cwd)
+    monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
+    monkeypatch.setattr(
+        "gpd.cli.entrypoint",
+        lambda: (_ for _ in ()).throw(AssertionError("entrypoint should not run for broken nearest installs")),
+    )
+
+    exit_code = main(
+        [
+            "--runtime",
+            descriptor.runtime_name,
+            "--config-dir",
+            f"./{adapter.config_dir_name}",
+            "--install-scope",
+            "local",
+            "state",
+            "load",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 127
+    assert f"GPD runtime install incomplete for {adapter.display_name} at `{nearer_config_dir}`." in captured.err
+    assert f"--target-dir {nearer_config_dir}" in captured.err
+    assert str(farther_config_dir) not in captured.err
+
+
+@pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
 def test_runtime_cli_preserves_custom_global_target_in_incomplete_install_repair_guidance(
     monkeypatch,
     tmp_path: Path,

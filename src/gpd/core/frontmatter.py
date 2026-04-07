@@ -289,7 +289,7 @@ def _validate_contract_mapping(
     semantic_errors: list[str] = []
     if "context_intake" not in contract_data:
         semantic_errors.append("missing context_intake")
-    elif not contract_has_explicit_context_intake(contract):
+    elif not contract_has_explicit_context_intake(contract, project_root=project_root):
         semantic_errors.append("context_intake must not be empty")
     for error in _collect_plan_contract_explicit_field_errors(contract_data):
         if error not in semantic_errors:

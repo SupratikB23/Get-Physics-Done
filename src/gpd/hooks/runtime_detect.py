@@ -10,7 +10,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from gpd.adapters import get_adapter, list_runtimes
+from gpd.adapters import get_adapter
 from gpd.adapters.install_utils import (
     CACHE_DIR_NAME,
     GPD_INSTALL_DIR_NAME,
@@ -18,6 +18,7 @@ from gpd.adapters.install_utils import (
 )
 from gpd.adapters.runtime_catalog import get_shared_install_metadata
 from gpd.adapters.runtime_catalog import normalize_runtime_name as _normalize_runtime_name
+from gpd.adapters.runtime_catalog import list_runtime_names
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, PLANNING_DIR_NAME, TODOS_DIR_NAME
 from gpd.hooks.install_metadata import install_scope_from_manifest, load_install_manifest_runtime_status
 
@@ -33,7 +34,7 @@ RUNTIME_NEUTRAL_UPDATE_COMMAND = get_shared_install_metadata().bootstrap_command
 
 def supported_runtime_names() -> tuple[str, ...]:
     """Return the current runtime inventory from the adapter registry."""
-    return tuple(list_runtimes())
+    return tuple(list_runtime_names())
 
 
 @dataclass(frozen=True, slots=True)

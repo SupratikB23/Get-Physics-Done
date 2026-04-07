@@ -20,10 +20,16 @@ def test_split_root_global_cli_options_moves_global_options_before_subcommand_an
         "validate",
         "command-context",
         "gpd:new-project",
+        "--help",
+        "--version",
+        "-v",
         "--cwd",
         "/tmp/workspace",
         "--raw",
         "--",
+        "--help",
+        "--version",
+        "-v",
         "--cwd",
         "/tmp/ignored",
         "--raw",
@@ -31,12 +37,15 @@ def test_split_root_global_cli_options_moves_global_options_before_subcommand_an
 
     global_args, remaining_args = split_root_global_cli_options(argv)
 
-    assert global_args == ["--cwd", "/tmp/workspace", "--raw"]
+    assert global_args == ["--help", "--version", "-v", "--cwd", "/tmp/workspace", "--raw"]
     assert remaining_args == [
         "validate",
         "command-context",
         "gpd:new-project",
         "--",
+        "--help",
+        "--version",
+        "-v",
         "--cwd",
         "/tmp/ignored",
         "--raw",
@@ -48,12 +57,18 @@ def test_normalize_root_global_cli_options_preserves_root_global_prefix_order() 
         "validate",
         "command-context",
         "gpd:new-project",
+        "--help",
+        "--version",
+        "-v",
         "--cwd",
         "/tmp/workspace",
         "--raw",
     ]
 
     assert normalize_root_global_cli_options(argv) == [
+        "--help",
+        "--version",
+        "-v",
         "--cwd",
         "/tmp/workspace",
         "--raw",
@@ -61,6 +76,12 @@ def test_normalize_root_global_cli_options_preserves_root_global_prefix_order() 
         "command-context",
         "gpd:new-project",
     ]
+
+
+def test_normalize_root_global_cli_options_preserves_trailing_root_flags() -> None:
+    argv = ["progress", "bar", "--help", "--version", "-v"]
+
+    assert normalize_root_global_cli_options(argv) == ["--help", "--version", "-v", "progress", "bar"]
 
 
 def test_resolve_root_global_cli_cwd_from_argv_uses_last_pre_passthrough_cwd(tmp_path: Path) -> None:

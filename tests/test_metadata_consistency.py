@@ -163,15 +163,15 @@ def test_canonical_registry_skill_inventory_counts_match_repo_contents() -> None
 def test_agent_metadata_inventory_uses_valid_enums_without_changing_canonical_skill_surface() -> None:
     content_registry.invalidate_cache()
 
-    valid_surfaces = set(content_registry.VALID_AGENT_SURFACES)
-    valid_role_families = set(content_registry.VALID_AGENT_ROLE_FAMILIES)
-    valid_artifact_authorities = set(content_registry.VALID_AGENT_ARTIFACT_WRITE_AUTHORITIES)
-    valid_shared_state_authorities = set(content_registry.VALID_AGENT_SHARED_STATE_AUTHORITIES)
+    valid_surfaces = set(content_registry.AGENT_SURFACES)
+    valid_role_families = set(content_registry.AGENT_ROLE_FAMILIES)
+    valid_artifact_authorities = set(content_registry.AGENT_ARTIFACT_WRITE_AUTHORITIES)
+    valid_shared_state_authorities = set(content_registry.AGENT_SHARED_STATE_AUTHORITIES)
 
-    assert content_registry.VALID_AGENT_SURFACES is content_registry.AGENT_SURFACES
-    assert content_registry.VALID_AGENT_ROLE_FAMILIES is content_registry.AGENT_ROLE_FAMILIES
-    assert content_registry.VALID_AGENT_ARTIFACT_WRITE_AUTHORITIES is content_registry.AGENT_ARTIFACT_WRITE_AUTHORITIES
-    assert content_registry.VALID_AGENT_SHARED_STATE_AUTHORITIES is content_registry.AGENT_SHARED_STATE_AUTHORITIES
+    assert not hasattr(content_registry, "VALID_AGENT_SURFACES")
+    assert not hasattr(content_registry, "VALID_AGENT_ROLE_FAMILIES")
+    assert not hasattr(content_registry, "VALID_AGENT_ARTIFACT_WRITE_AUTHORITIES")
+    assert not hasattr(content_registry, "VALID_AGENT_SHARED_STATE_AUTHORITIES")
 
     for name in content_registry.list_agents():
         agent = content_registry.get_agent(name)

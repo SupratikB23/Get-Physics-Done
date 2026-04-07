@@ -2995,6 +2995,23 @@ def test_entrypoint_normalizes_trailing_global_options(monkeypatch) -> None:
     assert captured["args"] == ["--cwd", "/tmp/demo", "--raw", "progress", "bar"]
 
 
+@pytest.mark.parametrize("root_flag", ["--help", "--version", "-v"])
+def test_entrypoint_normalizes_trailing_root_global_flags(monkeypatch, root_flag: str) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(cli_module, "_maybe_reexec_from_checkout", lambda: None)
+    monkeypatch.setattr(cli_module.sys, "argv", ["gpd", "progress", "bar", root_flag])
+
+    def fake_app(*, args: list[str] | None = None) -> int:
+        captured["args"] = args
+        return 0
+
+    monkeypatch.setattr(cli_module, "app", fake_app)
+
+    assert cli_module.entrypoint() == 0
+    assert captured["args"] == [root_flag, "progress", "bar"]
+
+
 @patch("gpd.core.phases.progress_render")
 def test_app_call_accepts_trailing_raw_and_cwd(
     mock_progress,

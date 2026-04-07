@@ -111,6 +111,64 @@ def test_runtime_cli_allows_version_passthrough_as_root_flag(
 
 
 @pytest.mark.parametrize(
+    ("manifest_scope", "expected_phrase"),
+    [
+        (None, "The manifest must declare a non-empty `install_scope` field."),
+        ("workspace", "The manifest `install_scope` field must be exactly `local` or `global`."),
+    ],
+)
+def test_runtime_cli_rejects_missing_or_malformed_install_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    manifest_scope: str | None,
+    expected_phrase: str,
+) -> None:
+    runtime_name = _BRIDGE_RUNTIME_DESCRIPTOR.runtime_name
+    config_dir = tmp_path / _BRIDGE_RUNTIME_DESCRIPTOR.config_dir_name
+    config_dir.mkdir(parents=True, exist_ok=True)
+    manifest: dict[str, object] = {
+        "runtime": runtime_name,
+        "install_target_dir": str(config_dir),
+    }
+    if manifest_scope is not None:
+        manifest["install_scope"] = manifest_scope
+    (config_dir / runtime_cli.get_shared_install_metadata().manifest_name).write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+    expected_repair_command = build_runtime_install_repair_command(
+        runtime_name,
+        install_scope="local",
+        target_dir=config_dir,
+        explicit_target=False,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("gpd.runtime_cli._maybe_reexec_from_checkout", lambda *_args, **_kwargs: None)
+
+    exit_code = runtime_cli.main(
+        [
+            "--runtime",
+            runtime_name,
+            "--config-dir",
+            str(config_dir),
+            "--install-scope",
+            "local",
+            "state",
+            "load",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 127
+    assert "GPD runtime bridge rejected incomplete install manifest" in captured.err
+    assert expected_phrase in captured.err
+    assert expected_repair_command in captured.err
+
+
+@pytest.mark.parametrize(
     ("install_scope", "config_dir_factory", "expected_target_dir_flag"),
     [
         ("local", lambda tmp_path, descriptor: tmp_path / descriptor.config_dir_name, False),

@@ -37,13 +37,6 @@ from gpd.core.review_contract_prompt import (
 from gpd.core.strict_yaml import load_strict_yaml
 from gpd.specs import SPECS_DIR
 
-# Public alias names kept for existing consumers; the canonical tuples remain
-# the source of truth in gpd.core.model_visible_text.
-VALID_AGENT_SURFACES = AGENT_SURFACES
-VALID_AGENT_ROLE_FAMILIES = AGENT_ROLE_FAMILIES
-VALID_AGENT_ARTIFACT_WRITE_AUTHORITIES = AGENT_ARTIFACT_WRITE_AUTHORITIES
-VALID_AGENT_SHARED_STATE_AUTHORITIES = AGENT_SHARED_STATE_AUTHORITIES
-
 # ─── Package layout ──────────────────────────────────────────────────────────
 
 _PKG_ROOT = Path(__file__).resolve().parent  # gpd/
@@ -110,6 +103,7 @@ def _inline_model_visible_includes(content: str) -> str:
     expanded = expand_at_includes(content, _PKG_ROOT, _MODEL_VISIBLE_INCLUDE_PATH_PREFIX)
     cleaned = re.sub(r"(?m)^[ \t]*<!-- \[included:.*?\] -->\s*\n?", "", expanded)
     cleaned = re.sub(r"(?m)^[ \t]*<!-- \[end included\] -->\s*\n?", "", cleaned)
+    cleaned = re.sub(r"(?s)<!--.*?-->", "", cleaned)
     return (
         cleaned.replace(
             f"{_MODEL_VISIBLE_INCLUDE_PATH_PREFIX}get-physics-done/",
@@ -1334,10 +1328,6 @@ __all__ = [
     "AGENT_SHARED_STATE_AUTHORITIES",
     "AGENT_SURFACES",
     "VALID_CONTEXT_MODES",
-    "VALID_AGENT_ARTIFACT_WRITE_AUTHORITIES",
-    "VALID_AGENT_ROLE_FAMILIES",
-    "VALID_AGENT_SHARED_STATE_AUTHORITIES",
-    "VALID_AGENT_SURFACES",
     "canonical_agent_names",
     "get_agent",
     "get_command",

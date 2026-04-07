@@ -398,10 +398,35 @@ class TestNormalizeRuntimeName:
 
 
 def test_supported_runtime_names_reflect_live_runtime_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(runtime_detect_module, "list_runtimes", lambda: ["alpha", "beta", "gamma"])
+    monkeypatch.setattr(runtime_detect_module, "list_runtime_names", lambda: ["alpha", "beta", "gamma"])
+    monkeypatch.setattr(
+        runtime_detect_module,
+        "get_adapter",
+        lambda runtime: (_ for _ in ()).throw(AssertionError(f"unexpected adapter load: {runtime}")),
+    )
 
     assert supported_runtime_names() == ("alpha", "beta", "gamma")
     assert runtime_detect_module._prioritized_runtimes("beta") == ["beta", "alpha", "gamma"]
+
+
+def test_get_adapter_loads_only_one_runtime_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    import gpd.adapters as adapters_module
+
+    loaded_modules: list[str] = []
+    real_import_module = adapters_module.import_module
+
+    def tracking_import_module(name: str, package: str | None = None) -> object:
+        if name.startswith("gpd.adapters."):
+            loaded_modules.append(name)
+        return real_import_module(name, package)
+
+    monkeypatch.setattr(adapters_module, "_REGISTRY", {})
+    monkeypatch.setattr(adapters_module, "import_module", tracking_import_module)
+
+    adapter = adapters_module.get_adapter(RUNTIME_CODEX)
+
+    assert adapter.runtime_name == RUNTIME_CODEX
+    assert loaded_modules == [f"gpd.adapters.{RUNTIME_CODEX.replace('-', '_')}"]
 
 
 def test_runtime_detect_does_not_export_cached_runtime_inventory() -> None:

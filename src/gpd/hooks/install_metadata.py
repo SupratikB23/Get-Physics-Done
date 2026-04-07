@@ -85,15 +85,6 @@ class ManagedInstallSurface:
         )
 
 
-def _load_manifest_payload(config_dir: Path) -> dict[str, object] | None:
-    """Return the parsed manifest payload when it is a mapping."""
-
-    state, payload = load_install_manifest_state(config_dir)
-    if state != "ok":
-        return None
-    return payload
-
-
 def _glob_contains_files(config_dir: Path, patterns: tuple[str, ...]) -> bool:
     """Return whether any configured managed-surface glob materializes files."""
 
@@ -173,6 +164,26 @@ def load_install_manifest_runtime_status(config_dir: Path) -> tuple[str, dict[st
     return "ok", payload, canonical_runtime
 
 
+def load_install_manifest_scope_status(config_dir: Path) -> tuple[str, dict[str, object], str | None]:
+    """Return the manifest parse state, payload, and canonical install scope when available."""
+
+    state, payload = load_install_manifest_state(config_dir)
+    if state != "ok":
+        return state, payload, None
+
+    if "install_scope" not in payload:
+        return "missing_install_scope", payload, None
+
+    scope = payload.get("install_scope")
+    if not isinstance(scope, str):
+        return "malformed_install_scope", payload, None
+
+    normalized_scope = scope.strip()
+    if normalized_scope not in {"local", "global"}:
+        return "malformed_install_scope", payload, None
+    return "ok", payload, normalized_scope
+
+
 def assess_install_target(
     config_dir: Path,
     *,
@@ -239,12 +250,8 @@ def assess_install_target(
 def install_scope_from_manifest(config_dir: Path) -> str | None:
     """Return the persisted install scope for *config_dir*."""
 
-    manifest = _load_manifest_payload(config_dir)
-    if manifest is None:
-        return None
-
-    scope = manifest.get("install_scope")
-    return scope if scope in {"local", "global"} else None
+    state, _payload, scope = load_install_manifest_scope_status(config_dir)
+    return scope if state == "ok" else None
 
 
 def _manifest_runtime(config_dir: Path) -> str | None:

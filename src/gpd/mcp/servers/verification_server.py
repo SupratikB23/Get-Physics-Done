@@ -3435,7 +3435,7 @@ def _validate_contract_integrity(
     errors: list[str] = []
     if "context_intake" not in contract_raw:
         errors.append("missing context_intake")
-    elif not contract_has_explicit_context_intake(contract):
+    elif not contract_has_explicit_context_intake(contract, project_root=project_root):
         errors.append("context_intake must not be empty")
     for error in collect_plan_contract_integrity_errors(contract, project_root=project_root):
         if error not in errors:

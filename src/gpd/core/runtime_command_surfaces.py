@@ -6,6 +6,8 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
+from gpd.adapters.runtime_catalog import get_runtime_descriptor, normalize_runtime_name
+
 __all__ = ["format_active_runtime_command", "resolve_active_runtime_descriptor"]
 
 logger = logging.getLogger(__name__)
@@ -17,17 +19,23 @@ def resolve_active_runtime_descriptor(
     detect_runtime: Callable[..., str | None] | None = None,
 ) -> object | None:
     """Return the active runtime descriptor, or ``None`` when resolution fails."""
-    from gpd.adapters import get_adapter
     from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, detect_runtime_for_gpd_use
 
     detector = detect_runtime or detect_runtime_for_gpd_use
     try:
         runtime_name = detector(cwd=cwd)
-        if runtime_name in (None, RUNTIME_UNKNOWN):
-            return None
-        return get_adapter(runtime_name).runtime_descriptor
     except Exception as exc:
         logger.warning("Active runtime resolution failed: %s", exc)
+        return None
+    if runtime_name in (None, RUNTIME_UNKNOWN):
+        return None
+
+    normalized_runtime = normalize_runtime_name(runtime_name)
+    if normalized_runtime is None:
+        return None
+    try:
+        return get_runtime_descriptor(normalized_runtime)
+    except KeyError:
         return None
 
 
@@ -38,14 +46,10 @@ def format_active_runtime_command(
     detect_runtime: Callable[..., str | None] | None = None,
     fallback: str | None = None,
 ) -> str | None:
-    """Return the active runtime's formatted public command, or *fallback*."""
+    """Return the active runtime's formatted public command, or *fallback* when no runtime is detected."""
     from gpd.adapters import get_adapter
 
     descriptor = resolve_active_runtime_descriptor(cwd=cwd, detect_runtime=detect_runtime)
     if descriptor is None:
         return fallback
-    try:
-        return get_adapter(descriptor.runtime_name).format_command(action)
-    except Exception as exc:
-        logger.warning("Active runtime command formatting failed for %s: %s", action, exc)
-        return fallback
+    return get_adapter(descriptor.runtime_name).format_command(action)

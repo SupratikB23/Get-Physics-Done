@@ -7,6 +7,7 @@ from pathlib import Path
 
 from gpd.adapters.install_utils import expand_at_includes
 from gpd.core import public_surface_contract as public_surface_contract_module
+from gpd.core.cli_args import _ROOT_GLOBAL_FLAG_TOKENS
 from gpd.core.public_surface_contract import (
     local_cli_bridge_note,
     local_cli_doctor_global_command,
@@ -126,7 +127,8 @@ def _extract_gpd_command_surfaces(
         return []
 
     root_pattern = "|".join(sorted((re.escape(root) for root in command_roots), key=len, reverse=True))
-    prefix_pattern = r"(?:\s+(?:--raw|--cwd(?:=[^\s`]+)?|--cwd\s+[^\s`]+))*"
+    root_flag_pattern = "|".join(sorted((re.escape(flag) for flag in _ROOT_GLOBAL_FLAG_TOKENS), key=len, reverse=True))
+    prefix_pattern = rf"(?:\s+(?:{root_flag_pattern}|--cwd(?:=[^\s`]+)?|--cwd\s+[^\s`]+))*"
     pattern = re.compile(rf"\bgpd{prefix_pattern}\s+({root_pattern})(?:\s+([a-z0-9-]+))?")
     surfaces: list[str] = []
     for sample in _iter_markdown_code_samples(content):
@@ -173,6 +175,24 @@ def test_prompt_sources_keep_command_surface_rules_canonical_and_consistent() ->
     assert noncanonical_surfaces == []
     assert raw_after_subcommand == []
     assert summary_extract_fields == []
+
+
+def test_prompt_surface_extractor_matches_shared_root_global_flags() -> None:
+    cli_content = CLI_PATH.read_text(encoding="utf-8")
+    root_commands = _declared_root_commands(cli_content)
+    group_commands = _declared_groups(cli_content)
+
+    sample = """
+    ```text
+    gpd --help --version -v --cwd /tmp/workspace progress bar
+    ```
+    """
+
+    assert _extract_gpd_command_surfaces(
+        sample,
+        root_commands=root_commands,
+        group_commands=group_commands,
+    ) == ["progress"]
 
 
 def test_help_prompt_delegates_full_reference_to_workflow() -> None:

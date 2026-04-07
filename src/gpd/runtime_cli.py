@@ -36,6 +36,7 @@ from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME, ENV_GPD_DISABLE_CHECKOUT_
 from gpd.hooks.install_metadata import (
     config_dir_has_managed_install_markers,
     load_install_manifest_runtime_status,
+    load_install_manifest_scope_status,
 )
 
 
@@ -154,19 +155,10 @@ def _resolve_local_config_dir(raw_value: str, *, runtime: str, cli_cwd: Path) ->
     """Resolve a local config dir reference against the nearest matching ancestor."""
     relative = Path(raw_value).expanduser()
     resolved_cwd = cli_cwd.resolve(strict=False)
-    manifest_backed_fallback: Path | None = None
-    adapter = get_adapter(runtime)
     for base in (resolved_cwd, *resolved_cwd.parents):
         candidate = (base / relative).resolve(strict=False)
-        if not _is_matching_local_install_candidate(candidate, runtime=runtime):
-            continue
-        manifest_status, _, _ = load_install_manifest_runtime_status(candidate)
-        if manifest_status == "ok" and adapter.has_complete_install(candidate):
+        if _is_matching_local_install_candidate(candidate, runtime=runtime):
             return candidate
-        if manifest_status == "ok" and manifest_backed_fallback is None:
-            manifest_backed_fallback = candidate
-    if manifest_backed_fallback is not None:
-        return manifest_backed_fallback
     return (resolved_cwd / relative).resolve(strict=False)
 
 
@@ -384,6 +376,34 @@ def _missing_manifest_runtime_error_message(
     )
 
 
+def _install_scope_status_error_message(
+    *,
+    runtime: str,
+    config_dir: Path,
+    install_scope: str,
+    explicit_target: bool,
+    cli_cwd: Path,
+    state: str,
+) -> str:
+    """Return repair guidance when the manifest install_scope field is missing or malformed."""
+    repair_command = _build_repair_command(
+        runtime=runtime,
+        config_dir=config_dir,
+        install_scope=install_scope,
+        explicit_target=explicit_target,
+        cli_cwd=cli_cwd,
+    )
+    if state == "missing_install_scope":
+        scope_issue = "The manifest must declare a non-empty `install_scope` field."
+    else:
+        scope_issue = "The manifest `install_scope` field must be exactly `local` or `global`."
+    return (
+        f"GPD runtime bridge rejected incomplete install manifest at `{config_dir}`.\n"
+        f"{scope_issue}\n"
+        f"Repair or reinstall with: `{repair_command}`\n"
+    )
+
+
 def _missing_manifest_error_message(
     *,
     runtime: str,
@@ -455,15 +475,29 @@ def main(argv: list[str] | None = None) -> int:
         cli_cwd=cli_cwd,
     )
     manifest_status, manifest_payload, manifest_runtime = load_install_manifest_runtime_status(config_dir)
-    manifest_install_scope = manifest_payload.get("install_scope")
-    if not isinstance(manifest_install_scope, str):
-        manifest_install_scope = None
+    manifest_scope_status, manifest_scope_payload, manifest_install_scope = load_install_manifest_scope_status(config_dir)
     manifest_explicit_target = manifest_payload.get("explicit_target")
     if not isinstance(manifest_explicit_target, bool):
         manifest_explicit_target = None
     repair_explicit_target = (
         manifest_explicit_target if manifest_explicit_target is not None else bool(options.explicit_target)
     )
+    if manifest_scope_status in {"missing_install_scope", "malformed_install_scope"}:
+        sys.stderr.write(
+            _install_scope_status_error_message(
+                runtime=runtime,
+                config_dir=config_dir,
+                install_scope=options.install_scope,
+                explicit_target=repair_explicit_target,
+                cli_cwd=cli_cwd,
+                state=manifest_scope_status,
+            )
+        )
+        return 127
+    if manifest_scope_status == "ok":
+        manifest_install_scope = manifest_scope_payload.get("install_scope")
+        if not isinstance(manifest_install_scope, str):
+            manifest_install_scope = None
     if manifest_status == "missing" and config_dir_has_managed_install_markers(config_dir):
         sys.stderr.write(
             _missing_manifest_error_message(

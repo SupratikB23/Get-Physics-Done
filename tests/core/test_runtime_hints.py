@@ -1841,6 +1841,28 @@ def test_format_active_runtime_command_formats_detected_runtime_command() -> Non
     assert result == adapter.format_command("resume-work")
 
 
+@pytest.mark.parametrize(
+    "detector_output",
+    [
+        get_runtime_descriptor("claude-code").display_name,
+        next(
+            alias
+            for alias in get_runtime_descriptor("claude-code").selection_aliases
+            if alias.casefold() != "claude-code"
+        ),
+    ],
+)
+def test_format_active_runtime_command_normalizes_detector_aliases_and_display_names(
+    detector_output: str,
+) -> None:
+    descriptor = get_runtime_descriptor("claude-code")
+    adapter = get_adapter(descriptor.runtime_name)
+
+    result = format_active_runtime_command("resume-work", detect_runtime=lambda **kwargs: detector_output)
+
+    assert result == adapter.format_command("resume-work")
+
+
 def test_format_active_runtime_command_logs_runtime_resolution_failures(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level("WARNING"):
         result = format_active_runtime_command(
@@ -1853,28 +1875,17 @@ def test_format_active_runtime_command_logs_runtime_resolution_failures(caplog: 
     assert "Active runtime resolution failed: detector broke" in caplog.text
 
 
-def test_format_active_runtime_command_logs_runtime_formatting_failures(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_format_active_runtime_command_propagates_runtime_formatting_failures() -> None:
     runtime = _RUNTIME_NAMES[0]
 
-    with (
-        patch(
-            "gpd.core.runtime_command_surfaces.resolve_active_runtime_descriptor",
-            return_value=SimpleNamespace(runtime_name=runtime),
+    with patch(
+        "gpd.adapters.get_adapter",
+        return_value=SimpleNamespace(
+            format_command=lambda action: (_ for _ in ()).throw(RuntimeError(f"format failed: {action}"))
         ),
-        patch(
-            "gpd.adapters.get_adapter",
-            return_value=SimpleNamespace(
-                format_command=lambda action: (_ for _ in ()).throw(RuntimeError(f"format failed: {action}"))
-            ),
-        ),
-        caplog.at_level("WARNING"),
     ):
-        result = format_active_runtime_command("resume-work", fallback="fallback command")
-
-    assert result == "fallback command"
-    assert "Active runtime command formatting failed for resume-work: format failed: resume-work" in caplog.text
+        with pytest.raises(RuntimeError, match=r"format failed: resume-work"):
+            format_active_runtime_command("resume-work", detect_runtime=lambda **kwargs: runtime)
 
 
 def test_build_runtime_hint_payload_uses_generic_runtime_commands_when_no_install_authoritative_runtime(

@@ -15,6 +15,7 @@ def test_tour_command_is_registered_and_projectless() -> None:
     command = get_command("gpd:tour")
     assert command.name == "gpd:tour"
     assert command.context_mode == "projectless"
+    assert command.allowed_tools == ["file_read"]
 
 
 def test_tour_command_references_workflow() -> None:

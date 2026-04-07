@@ -1420,6 +1420,38 @@ class TestSkillDiscovery:
 class TestRegistryPromptIncludeInlining:
     """Tests for registry-loaded content surfaces that inline shared includes."""
 
+    def test_registry_projection_strips_generic_html_comments(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        commands_dir = tmp_path / "commands"
+        commands_dir.mkdir()
+        (commands_dir / "commented.md").write_text(
+            "---\nname: gpd:commented\ndescription: Commented command\n---\n"
+            "Command body.\n<!-- hidden command note -->\nVisible tail.",
+            encoding="utf-8",
+        )
+
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "gpd-commented.md").write_text(
+            "---\nname: gpd-commented\ndescription: Commented agent\ntools: file_read\n---\n"
+            "Agent body.\n<!-- hidden agent note -->\nVisible tail.",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(registry, "COMMANDS_DIR", commands_dir)
+        monkeypatch.setattr(registry, "AGENTS_DIR", agents_dir)
+        registry.invalidate_cache()
+
+        try:
+            command = registry.get_command("gpd:commented")
+            agent = registry.get_agent("gpd-commented")
+
+            assert "<!--" not in command.content
+            assert "<!--" not in agent.system_prompt
+            assert "Visible tail." in command.content
+            assert "Visible tail." in agent.system_prompt
+        finally:
+            registry.invalidate_cache()
+
     def test_verifier_system_prompt_inlines_included_verification_checklists(self) -> None:
         agent = registry.get_agent("gpd-verifier")
 
