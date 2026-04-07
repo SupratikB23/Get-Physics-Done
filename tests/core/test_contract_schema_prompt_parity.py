@@ -186,3 +186,15 @@ def test_expanded_verifier_and_executor_prompts_keep_canonical_result_ledger_fie
     _assert_tokens_visible(executor_prompt, tokens, label="expanded gpd-executor.md")
     _assert_phrases_visible(verifier_prompt, phrases, label="expanded gpd-verifier.md")
     _assert_phrases_visible(executor_prompt, phrases, label="expanded gpd-executor.md")
+
+
+def test_project_contract_schema_examples_surface_validator_accepted_proof_objects() -> None:
+    for schema_name in ("project-contract-schema.md", "state-json-schema.md"):
+        schema_text = _read(TEMPLATES_DIR / schema_name)
+        assert '"parameters": [' in schema_text
+        assert '"hypotheses": [' in schema_text
+        assert '"conclusion_clauses": [' in schema_text
+        assert '"symbol": "k"' in schema_text
+        assert '"id": "hyp-main"' in schema_text
+        assert '"id": "concl-main"' in schema_text
+        assert '"automation": "human"' in schema_text

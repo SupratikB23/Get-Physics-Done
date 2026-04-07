@@ -3022,9 +3022,10 @@ def test_research_contract_accepts_structured_theorem_claim_fields() -> None:
     assert parsed.links[0].relation == "proves"
 
 
-def test_state_json_schema_project_contract_example_is_validator_compatible() -> None:
-    schema_text = (TEMPLATES_DIR / "state-json-schema.md").read_text(encoding="utf-8")
-    match = re.search(r"### `project_contract`\n\n```json\n(.*?)\n```", schema_text, re.DOTALL)
+@pytest.mark.parametrize("schema_name", ("project-contract-schema.md", "state-json-schema.md"))
+def test_project_contract_schema_examples_are_validator_compatible(schema_name: str) -> None:
+    schema_text = (TEMPLATES_DIR / schema_name).read_text(encoding="utf-8")
+    match = re.search(r"##+ `project_contract`\n\n```json\n(.*?)\n```", schema_text, re.DOTALL)
 
     assert match is not None
     contract = json.loads(match.group(1))

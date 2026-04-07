@@ -101,10 +101,30 @@ Fields marked **Authoritative** exist only in state.json (not representable in S
       "deliverables": ["deliv-main", "deliv-proof-main"],
       "acceptance_tests": ["test-main", "test-proof-main"],
       "references": ["Ref-01"],
-      "parameters": ["k"],
-      "hypotheses": ["Published normalization and tolerance convention are interpreted exactly as stated in Ref-01"],
+      "parameters": [
+        {
+          "symbol": "k",
+          "domain_or_type": "benchmark sample index",
+          "aliases": ["sample-k"],
+          "required_in_proof": true
+        }
+      ],
+      "hypotheses": [
+        {
+          "id": "hyp-main",
+          "text": "Published normalization and tolerance convention are interpreted exactly as stated in Ref-01",
+          "symbols": ["k"],
+          "category": "assumption",
+          "required_in_proof": true
+        }
+      ],
       "quantifiers": ["for every benchmark sample k in the approved comparison set"],
-      "conclusion_clauses": ["relative error stays within the stated 1% tolerance at every approved benchmark sample"],
+      "conclusion_clauses": [
+        {
+          "id": "concl-main",
+          "text": "Relative error stays within the stated 1% tolerance at every approved benchmark sample"
+        }
+      ],
       "proof_deliverables": ["deliv-proof-main"]
     }
   ],
@@ -141,7 +161,7 @@ Fields marked **Authoritative** exist only in state.json (not representable in S
       "procedure": "Check that every named hypothesis, parameter, and conclusion clause in the theorem claim is covered by the proof artifact",
       "pass_condition": "Every theorem field is covered explicitly or auditable as intentionally omitted",
       "evidence_required": ["deliv-proof-main"],
-      "automation": "manual"
+      "automation": "human"
     }
   ],
   "references": [
