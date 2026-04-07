@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from tests.ci_sharding import CI_CATEGORY_SHARD_COUNTS, ci_shard_specs
+from tests.ci_sharding import CI_TOTAL_SHARDS, ci_shard_specs
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -39,11 +39,7 @@ def _pytest_matrix_include(workflow: dict[str, object]) -> list[dict[str, object
     return include
 
 
-def _display_name(category: str, shard_index: int, shard_total: int) -> str:
-    return category if shard_total == 1 else f"{category} {shard_index}/{shard_total}"
-
-
-def test_ci_workflow_runs_balanced_full_suite_pytest_shards_with_default_parallelism_and_ci_worksteal() -> None:
+def test_ci_workflow_runs_runtime_informed_pytest_shards_with_default_parallelism_and_ci_worksteal() -> None:
     workflow = _workflow_data()
     pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     jobs = workflow["jobs"]
@@ -60,19 +56,13 @@ def test_ci_workflow_runs_balanced_full_suite_pytest_shards_with_default_paralle
     actual_shards = tuple(
         (
             str(entry["display_name"]),
-            str(entry["category"]),
             int(entry["shard_index"]),
             int(entry["shard_total"]),
         )
         for entry in matrix_include
     )
     expected_shards = tuple(
-        (
-            _display_name(spec.category, spec.shard_index, spec.shard_total),
-            spec.category,
-            spec.shard_index,
-            spec.shard_total,
-        )
+        (f"shard {spec.shard_index}/{spec.shard_total}", spec.shard_index, spec.shard_total)
         for spec in ci_shard_specs()
     )
 
@@ -83,10 +73,7 @@ def test_ci_workflow_runs_balanced_full_suite_pytest_shards_with_default_paralle
     assert isinstance(strategy, dict)
     assert strategy["fail-fast"] is False
     assert actual_shards == expected_shards
-    assert {
-        category: sum(1 for entry in matrix_include if entry["category"] == category)
-        for category in CI_CATEGORY_SHARD_COUNTS
-    } == CI_CATEGORY_SHARD_COUNTS
+    assert len(matrix_include) == CI_TOTAL_SHARDS
 
     trigger_job = jobs["trigger-staging-rebuild"]
     assert isinstance(trigger_job, dict)
@@ -98,12 +85,10 @@ def test_ci_workflow_runs_balanced_full_suite_pytest_shards_with_default_paralle
     pytest_shard_command = pytest_run_steps["Run pytest shard"]
     assert "from tests.ci_sharding import write_ci_shard_targets_file" in resolve_targets_command
     assert "PYTEST_SHARD_TARGET_FILE" in resolve_targets_command
-    assert "Resolved {len(targets)} test files" in resolve_targets_command
+    assert "Resolved {len(targets)} pytest targets for shard" in resolve_targets_command
+    assert "PYTEST_CATEGORY" not in resolve_targets_command
     assert 'mapfile -t PYTEST_TARGETS < "$PYTEST_SHARD_TARGET_FILE"' in pytest_shard_command
     assert 'uv run pytest -q "${PYTEST_TARGETS[@]}"' in pytest_shard_command
-    assert "--full-suite" not in pytest_shard_command
-    assert "uv run pytest tests/ -q" not in pytest_shard_command
-    assert "HEAVY_SUITE_IGNORE_ARGS" not in resolve_targets_command
     assert pytest_steps[-1]["name"] == "Run pytest shard"
     assert pytest_steps[-1]["run"] == pytest_shard_command
     assert pytest_steps[2]["uses"] == "actions/setup-node@v6"
@@ -112,13 +97,13 @@ def test_ci_workflow_runs_balanced_full_suite_pytest_shards_with_default_paralle
     assert 'pytest-xdist>=3.8.0' in pyproject
 
 
-def test_tests_readme_documents_default_full_suite_and_sharded_ci() -> None:
+def test_tests_readme_documents_default_full_suite_and_runtime_informed_ci_shards() -> None:
     tests_readme = (REPO_ROOT / "tests" / "README.md").read_text(encoding="utf-8")
 
     assert "Default `uv run pytest` runs the full checked-in suite" in tests_readme
     assert "`uv run pytest -q` does the same with quieter output" in tests_readme
     assert "Both inherit `-n auto --dist=worksteal` from `pyproject.toml`" in tests_readme
     assert "override that default explicitly with `uv run pytest -n 0`" in tests_readme
-    assert "GitHub Actions workflow runs that same full suite as twelve balanced shards" in tests_readme
-    assert "uses `tests/ci_sharding.py` to bucket files by collected test counts" in tests_readme
-    assert "five root shards, adapters, two hooks shards, mcp, and three core shards" in tests_readme
+    assert "GitHub Actions workflow runs that same full suite as twelve runtime-informed shards" in tests_readme
+    assert "split known hotspot modules such as `tests/test_runtime_cli.py`" in tests_readme
+    assert "greedily rebalance those work units across the matrix" in tests_readme

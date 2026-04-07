@@ -5,12 +5,15 @@ from pathlib import Path
 import yaml
 
 from tests.ci_sharding import (
-    CI_CATEGORY_SHARD_COUNTS,
+    CI_HOT_TEST_FILE_SPLITS,
+    CI_TOTAL_SHARDS,
     all_test_relpaths,
-    category_for_test_relpath,
+    build_ci_work_units,
     ci_shard_specs,
     collected_test_counts_by_file,
-    plan_category_shards_from_file_counts,
+    collected_test_inventory,
+    expand_ci_targets_to_nodeids,
+    plan_ci_shards,
 )
 
 
@@ -59,7 +62,7 @@ def test_default_collection_matches_all_checked_in_test_files() -> None:
     assert all(count > 0 for count in collected_counts.values())
 
 
-def test_ci_and_test_readme_document_default_full_suite_and_sharded_ci() -> None:
+def test_ci_and_test_readme_document_default_full_suite_and_runtime_informed_shards() -> None:
     repo_root = _repo_root()
     workflow = _workflow_data()
     pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
@@ -88,18 +91,14 @@ def test_ci_and_test_readme_document_default_full_suite_and_sharded_ci() -> None
     assert trigger_job["needs"] == ["pytest"]
 
     assert strategy["fail-fast"] is False
-    assert {
-        category: sum(1 for entry in include if entry["category"] == category)
-        for category in CI_CATEGORY_SHARD_COUNTS
-    } == CI_CATEGORY_SHARD_COUNTS
+    assert len(include) == CI_TOTAL_SHARDS
     assert tuple(
         (
-            str(entry["category"]),
             int(entry["shard_index"]),
             int(entry["shard_total"]),
         )
         for entry in include
-    ) == tuple((spec.category, spec.shard_index, spec.shard_total) for spec in ci_shard_specs())
+    ) == tuple((spec.shard_index, spec.shard_total) for spec in ci_shard_specs())
 
     assert "Set up Node.js" in pytest_step_names
     assert pytest_step_names.index("Set up Node.js") < pytest_step_names.index("Install dependencies")
@@ -110,33 +109,33 @@ def test_ci_and_test_readme_document_default_full_suite_and_sharded_ci() -> None
     assert "from tests.ci_sharding import write_ci_shard_targets_file" in resolve_targets_command
     assert 'mapfile -t PYTEST_TARGETS < "$PYTEST_SHARD_TARGET_FILE"' in pytest_shard_command
     assert 'uv run pytest -q "${PYTEST_TARGETS[@]}"' in pytest_shard_command
-    assert "--full-suite" not in pytest_shard_command
     assert "Default `uv run pytest` runs the full checked-in suite" in tests_readme
     assert "`uv run pytest -q` does the same with quieter output" in tests_readme
     assert "override that default explicitly with `uv run pytest -n 0`" in tests_readme
-    assert "GitHub Actions workflow runs that same full suite as twelve balanced shards" in tests_readme
-    assert "uses `tests/ci_sharding.py` to bucket files by collected test counts" in tests_readme
+    assert "GitHub Actions workflow runs that same full suite as twelve runtime-informed shards" in tests_readme
+    assert "split known hotspot modules such as `tests/test_runtime_cli.py`" in tests_readme
 
 
-def test_ci_shard_layout_covers_every_test_file_without_overlap() -> None:
-    all_relpaths = all_test_relpaths(tests_root=_repo_root() / "tests")
-    file_counts = dict.fromkeys(all_relpaths, 1)
-    assigned: list[str] = []
+def test_hotspot_files_are_split_into_multiple_work_units() -> None:
+    inventory = collected_test_inventory(repo_root=_repo_root())
+    work_units = build_ci_work_units(inventory)
 
-    for spec in ci_shard_specs():
-        planned_shards = plan_category_shards_from_file_counts(
-            file_counts,
-            category=spec.category,
-            shard_total=spec.shard_total,
-        )
-        assigned.extend(planned_shards[spec.shard_index - 1])
+    for rel_path, split_count in CI_HOT_TEST_FILE_SPLITS.items():
+        matching = [unit for unit in work_units if unit.label.startswith(rel_path)]
+        assert len(matching) == split_count
+        assert sum(len(unit.targets) for unit in matching) == len(inventory[rel_path])
 
-    assert sorted(assigned) == list(all_relpaths)
-    assert len(set(assigned)) == len(all_relpaths)
-    assert {
-        category: sum(1 for rel_path in all_relpaths if category_for_test_relpath(rel_path) == category)
-        for category in CI_CATEGORY_SHARD_COUNTS
-    } == {
-        category: sum(1 for rel_path in assigned if category_for_test_relpath(rel_path) == category)
-        for category in CI_CATEGORY_SHARD_COUNTS
-    }
+
+def test_ci_shard_layout_covers_every_collected_nodeid_without_overlap() -> None:
+    inventory = collected_test_inventory(repo_root=_repo_root())
+    planned_shards = plan_ci_shards(repo_root=_repo_root())
+    expanded_targets = [
+        expand_ci_targets_to_nodeids(shard_targets, inventory=inventory)
+        for shard_targets in planned_shards
+    ]
+    all_nodeids = tuple(nodeid for nodeids in inventory.values() for nodeid in nodeids)
+    flattened = [nodeid for shard_nodeids in expanded_targets for nodeid in shard_nodeids]
+
+    assert len(planned_shards) == CI_TOTAL_SHARDS
+    assert sorted(flattened) == sorted(all_nodeids)
+    assert len(flattened) == len(set(flattened))
