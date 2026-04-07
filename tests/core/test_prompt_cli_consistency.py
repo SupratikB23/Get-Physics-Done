@@ -615,7 +615,11 @@ def test_help_workflow_mentions_all_authoritative_local_cli_bridge_commands() ->
 
 
 def test_help_prompt_session_management_keeps_pause_before_leave_and_resume_on_return() -> None:
-    help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8")
+    help_workflow = expand_at_includes(
+        (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8"),
+        REPO_ROOT / "src/gpd",
+        "/runtime/",
+    )
 
     assert_runtime_reset_rediscovery_contract(
         help_workflow,

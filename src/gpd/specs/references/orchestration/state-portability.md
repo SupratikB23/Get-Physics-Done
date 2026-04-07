@@ -4,7 +4,7 @@ How GPD project state travels between machines, survives session interruptions, 
 
 ## Continuation Surface Contract
 
-The continuation architecture separates execution provenance from bounded-resume authority. `gpd --raw resume` reads `state.json.continuation` first, then fills gaps from lineage and recovery surfaces. Canonical continuation fields define the public resume vocabulary: `active_resume_kind`, `active_resume_origin`, `active_resume_pointer`, `active_bounded_segment`, `derived_execution_head`, `active_resume_result`, `continuity_handoff_file`, `recorded_continuity_handoff_file`, `missing_continuity_handoff_file`, and `resume_candidates`. Compatibility-only cues stay backend-only, compatibility-only intake fields stay internal, and `.continue-here.md` plus `DERIVATION-STATE.md` are projections rather than authorities.
+@{GPD_INSTALL_DIR}/references/orchestration/resume-vocabulary.md
 
 | Surface | Current Role | Authority |
 |---------|--------------|-----------|

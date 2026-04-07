@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from gpd.adapters.install_utils import expand_at_includes
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / "src/gpd/specs/workflows"
 
@@ -124,9 +126,9 @@ def test_new_milestone_roadmapper_prompt_surfaces_contract_gate_inputs() -> None
 
 
 def test_help_resume_surface_stays_user_facing() -> None:
-    workflow = _workflow_text("help.md")
+    workflow = expand_at_includes(_workflow_text("help.md"), REPO_ROOT / "src/gpd", "/runtime/").lower()
 
-    assert "compatibility-only intake fields stay internal" in workflow.lower()
+    assert "compatibility-only intake fields stay internal" in workflow
     assert "compat_resume_surface" not in workflow
     assert "session.resume_file" not in workflow
     assert "shared resume-surface resolver owns canonical candidate kind/origin semantics" not in workflow

@@ -2756,7 +2756,11 @@ def test_contract_models_match_prompted_schema_contracts() -> None:
 def test_stage5_execution_surfaces_use_bounded_review_cadence_and_first_result_gates() -> None:
     execute_phase = (WORKFLOWS_DIR / "execute-phase.md").read_text(encoding="utf-8")
     execute_plan = (WORKFLOWS_DIR / "execute-plan.md").read_text(encoding="utf-8")
-    resume_work = (WORKFLOWS_DIR / "resume-work.md").read_text(encoding="utf-8")
+    resume_work = expand_at_includes(
+        (WORKFLOWS_DIR / "resume-work.md").read_text(encoding="utf-8"),
+        REPO_ROOT / "src/gpd",
+        "/runtime/",
+    )
     continuation = (TEMPLATES_DIR / "continuation-prompt.md").read_text(encoding="utf-8")
     checkpoints = (REFERENCES_DIR / "orchestration" / "checkpoints.md").read_text(encoding="utf-8")
     checkpoint_flow = (REFERENCES_DIR / "execution" / "execute-plan-checkpoints.md").read_text(encoding="utf-8")
@@ -2823,9 +2827,11 @@ def test_debug_prompts_use_session_status_for_diagnosis_progress() -> None:
 
 
 def test_resume_workflow_surfaces_contract_load_and_validation_state() -> None:
-    resume_work = (WORKFLOWS_DIR / "resume-work.md").read_text(encoding="utf-8")
+    raw_resume_work = (WORKFLOWS_DIR / "resume-work.md").read_text(encoding="utf-8")
+    resume_work = expand_at_includes(raw_resume_work, REPO_ROOT / "src/gpd", "/runtime/")
+    resume_vocabulary = (REFERENCES_DIR / "orchestration" / "resume-vocabulary.md").read_text(encoding="utf-8")
 
-    assert "@{GPD_INSTALL_DIR}/templates/state-json-schema.md" in resume_work
+    assert "@{GPD_INSTALL_DIR}/templates/state-json-schema.md" in raw_resume_work
     assert "project_contract_validation" in resume_work
     assert "project_contract_load_info" in resume_work
     assert "workspace_state_exists" in resume_work
@@ -2833,7 +2839,7 @@ def test_resume_workflow_surfaces_contract_load_and_validation_state() -> None:
     assert "workspace_project_exists" in resume_work
     assert "workspace_planning_exists" in resume_work
     assert_resume_authority_contract(
-        resume_work,
+        resume_vocabulary,
         allow_explicit_alias_examples=False,
         require_generic_compatibility_note=False,
     )
@@ -2865,7 +2871,11 @@ def _assert_resume_compatibility_note(text: str) -> None:
 
 
 def test_resume_command_keeps_internal_resume_backend_details_out_of_public_prompt_surface() -> None:
-    resume_command = (COMMANDS_DIR / "resume-work.md").read_text(encoding="utf-8")
+    resume_command = expand_at_includes(
+        (COMMANDS_DIR / "resume-work.md").read_text(encoding="utf-8"),
+        REPO_ROOT / "src/gpd",
+        "/runtime/",
+    )
 
     assert "Canonical continuation fields define the public resume vocabulary" in resume_command
     _assert_resume_compatibility_note(resume_command)
@@ -2875,9 +2885,17 @@ def test_resume_command_keeps_internal_resume_backend_details_out_of_public_prom
 
 def test_execution_observability_and_resume_workflow_surfaces_stay_conservative_about_stalls() -> None:
     help_command = (COMMANDS_DIR / "help.md").read_text(encoding="utf-8")
-    help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8")
+    help_workflow = expand_at_includes(
+        (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8"),
+        REPO_ROOT / "src/gpd",
+        "/runtime/",
+    )
     progress = (WORKFLOWS_DIR / "progress.md").read_text(encoding="utf-8")
-    resume_work = (WORKFLOWS_DIR / "resume-work.md").read_text(encoding="utf-8")
+    resume_work = expand_at_includes(
+        (WORKFLOWS_DIR / "resume-work.md").read_text(encoding="utf-8"),
+        REPO_ROOT / "src/gpd",
+        "/runtime/",
+    )
 
     assert "Display GPD help by delegating to the workflow-owned help surface." in help_command
     assert "@{GPD_INSTALL_DIR}/workflows/help.md" in help_command
@@ -2891,8 +2909,16 @@ def test_execution_observability_and_resume_workflow_surfaces_stay_conservative_
 
 def test_pause_resume_and_help_wiring_keep_runtime_handoff_and_local_snapshot_boundary() -> None:
     pause_work = (WORKFLOWS_DIR / "pause-work.md").read_text(encoding="utf-8")
-    resume_work = (WORKFLOWS_DIR / "resume-work.md").read_text(encoding="utf-8")
-    help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8")
+    resume_work = expand_at_includes(
+        (WORKFLOWS_DIR / "resume-work.md").read_text(encoding="utf-8"),
+        REPO_ROOT / "src/gpd",
+        "/runtime/",
+    )
+    help_workflow = expand_at_includes(
+        (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8"),
+        REPO_ROOT / "src/gpd",
+        "/runtime/",
+    )
 
     assert "gpd:resume-work" in resume_work
     assert "gpd resume" in resume_work
@@ -2925,8 +2951,16 @@ def test_pause_resume_and_help_wiring_keep_runtime_handoff_and_local_snapshot_bo
 
 
 def test_state_portability_reference_keeps_resume_public_vocabulary_note_compact() -> None:
-    state_portability = (REFERENCES_DIR / "orchestration" / "state-portability.md").read_text(encoding="utf-8")
-    help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8")
+    state_portability = expand_at_includes(
+        (REFERENCES_DIR / "orchestration" / "state-portability.md").read_text(encoding="utf-8"),
+        REPO_ROOT / "src/gpd",
+        "/runtime/",
+    )
+    help_workflow = expand_at_includes(
+        (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8"),
+        REPO_ROOT / "src/gpd",
+        "/runtime/",
+    )
 
     assert "Canonical continuation fields define the public resume vocabulary" in state_portability
     _assert_resume_compatibility_note(state_portability)

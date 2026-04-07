@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from gpd.adapters.install_utils import expand_at_includes
+
 WORKFLOWS_DIR = Path("src/gpd/specs/workflows")
 COMMANDS_DIR = Path("src/gpd/commands")
 REFERENCES_DIR = Path("src/gpd/specs/references")
@@ -20,9 +22,15 @@ FRESH_CONTEXT_PHRASE_EXEMPTIONS = {
 
 def test_help_resume_boundary_note_is_concise_and_contract_aligned() -> None:
     help_workflow = (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8").lower()
+    expanded_help_workflow = expand_at_includes(
+        (WORKFLOWS_DIR / "help.md").read_text(encoding="utf-8"),
+        Path("src/gpd"),
+        "/runtime/",
+    ).lower()
 
-    assert help_workflow.count("compatibility-only intake fields stay internal") == 1
-    assert "canonical continuation fields define the public resume vocabulary" in help_workflow
+    assert help_workflow.count("@{gpd_install_dir}/references/orchestration/resume-vocabulary.md") == 1
+    assert expanded_help_workflow.count("compatibility-only intake fields stay internal") == 1
+    assert "canonical continuation fields define the public resume vocabulary" in expanded_help_workflow
     assert "public top-level resume vocabulary" not in help_workflow
 
 

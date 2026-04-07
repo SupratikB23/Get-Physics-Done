@@ -7,7 +7,9 @@ Use this workflow when:
 </trigger>
 
 <purpose>
-Restore the selected project's full context so "Where were we?" has an immediate answer. `state.json.continuation` is the durable authority; the temporary handoff artifact and the derived execution head are continuity aids only.
+Restore the selected project's full context so "Where were we?" has an immediate answer.
+
+@{GPD_INSTALL_DIR}/references/orchestration/resume-vocabulary.md
 </purpose>
 
 <required_reading>
@@ -36,7 +38,9 @@ Parse JSON once and read it semantically:
 - **Canonical continuation and recovery authority:** `resume_surface_schema_version`, `active_resume_kind`, `active_resume_origin`, `active_resume_pointer`, `active_bounded_segment`, `derived_execution_head`, `active_resume_result`, `continuity_handoff_file`, `recorded_continuity_handoff_file`, `missing_continuity_handoff_file`, `has_continuity_handoff`, `resume_candidates`, `execution_resumable`, `execution_paused_at`, `execution_review_pending`, `execution_pre_fanout_review_pending`, `execution_skeptical_requestioning_required`, `execution_downstream_locked`, `has_interrupted_agent`, `interrupted_agent_id`
 - **Machine advisory state:** `machine_change_detected`, `machine_change_notice`, `current_hostname`, `current_platform`, `session_hostname`, `session_platform`
 
-Canonical continuation fields define the public resume vocabulary: `active_resume_kind`, `active_resume_origin`, `active_resume_pointer`, `active_bounded_segment`, `derived_execution_head`, `active_resume_result`, `continuity_handoff_file`, `recorded_continuity_handoff_file`, `missing_continuity_handoff_file`, and `resume_candidates`. Compatibility-only intake fields stay internal. The recent-project list is advisory and machine-local; once you choose a workspace, `gpd:resume-work` reloads that project's canonical state.
+@{GPD_INSTALL_DIR}/references/orchestration/resume-vocabulary.md
+
+The recent-project list is advisory and machine-local; once you choose a workspace, `gpd:resume-work` reloads that project's canonical state.
 
 When `active_resume_result` is present, treat it as the hydrated canonical result context for the current resume target. Use its `id` as the continuity anchor, but prefer its structured fields for the user-facing resume summary instead of restating only the raw identifier.
 
