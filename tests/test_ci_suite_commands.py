@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from tests.conftest import FAST_SUITE_EXCLUDES, complementary_heavy_suite_ignore_args
+from tests.ci_sharding import CI_CATEGORY_SHARD_COUNTS, ci_shard_specs
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -24,68 +24,91 @@ def _job_steps(workflow: dict[str, object], job_name: str) -> list[dict[str, obj
     return steps
 
 
-def test_ci_workflow_runs_fast_and_full_pytest_suites_with_default_parallelism_and_ci_worksteal() -> None:
+def _pytest_matrix_include(workflow: dict[str, object]) -> list[dict[str, object]]:
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    pytest_job = jobs["pytest"]
+    assert isinstance(pytest_job, dict)
+    strategy = pytest_job["strategy"]
+    assert isinstance(strategy, dict)
+    matrix = strategy["matrix"]
+    assert isinstance(matrix, dict)
+    include = matrix["include"]
+    assert isinstance(include, list)
+    assert all(isinstance(entry, dict) for entry in include)
+    return include
+
+
+def test_ci_workflow_runs_category_named_runtime_informed_pytest_shards_with_default_parallelism_and_ci_worksteal() -> None:
     workflow = _workflow_data()
     pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     jobs = workflow["jobs"]
     assert isinstance(jobs, dict)
 
-    fast_steps = _job_steps(workflow, "pytest-fast")
-    heavy_steps = _job_steps(workflow, "pytest-heavy")
-
-    fast_step_names = [str(step.get("name", "")) for step in fast_steps]
-    fast_run_steps = {str(step.get("name", "")): str(step.get("run", "")) for step in fast_steps if "run" in step}
-    heavy_step_names = [str(step.get("name", "")) for step in heavy_steps]
-    heavy_run_steps = {str(step.get("name", "")): str(step.get("run", "")) for step in heavy_steps if "run" in step}
-
-    assert jobs["pytest-fast"].get("needs") is None
-    assert jobs["pytest-heavy"].get("needs") is None
-    trigger_job = jobs["trigger-staging-rebuild"]
-    assert isinstance(trigger_job, dict)
-    assert trigger_job["needs"] == ["pytest-fast", "pytest-heavy"]
-
-    assert "Set up Node.js" in fast_step_names
-    assert fast_step_names.index("Set up Node.js") < fast_step_names.index("Install dependencies")
-    fast_suite_command = fast_run_steps["Run fast test suite"]
-    assert fast_suite_command == "uv run pytest tests/ -q"
-    assert fast_steps[-1]["name"] == "Run fast test suite"
-    assert fast_steps[-1]["run"] == fast_suite_command
-
-    assert "Set up Node.js" in heavy_step_names
-    assert heavy_step_names.index("Set up Node.js") < heavy_step_names.index("Install dependencies")
-    assert heavy_run_steps["Run complementary heavy suite"].startswith("HEAVY_SUITE_IGNORE_ARGS=")
-    assert "from tests.conftest import complementary_heavy_suite_ignore_args" in heavy_run_steps[
-        "Run complementary heavy suite"
-    ]
-    heavy_suite_command = heavy_run_steps["Run complementary heavy suite"]
-    assert "uv run pytest tests/ -q" in heavy_suite_command
-    assert "--full-suite" in heavy_suite_command
-    assert "$HEAVY_SUITE_IGNORE_ARGS" in heavy_suite_command
-    assert "-n auto" not in heavy_suite_command
-    assert "--dist=worksteal" not in heavy_suite_command
-    assert heavy_steps[-1]["name"] == "Run complementary heavy suite"
-    assert "complementary_heavy_suite_ignore_args" in heavy_steps[-1]["run"]
-    assert fast_steps[2]["uses"] == "actions/setup-node@v6"
-    assert fast_steps[2]["with"]["node-version"] == "20"
-    assert heavy_steps[2]["uses"] == "actions/setup-node@v6"
-    assert heavy_steps[2]["with"]["node-version"] == "20"
-    assert 'addopts = "-n auto --dist=worksteal"' in pyproject
-    assert 'pytest-xdist>=3.8.0' in pyproject
-    assert complementary_heavy_suite_ignore_args() == tuple(
-        f"--ignore=tests/{rel_path}"
-        for rel_path in sorted(
-            path.relative_to(REPO_ROOT / "tests").as_posix()
-            for path in (REPO_ROOT / "tests").rglob("test_*.py")
-            if path.relative_to(REPO_ROOT / "tests").as_posix() not in FAST_SUITE_EXCLUDES
+    pytest_steps = _job_steps(workflow, "pytest")
+    pytest_step_names = [str(step.get("name", "")) for step in pytest_steps]
+    pytest_run_steps = {
+        str(step.get("name", "")): str(step.get("run", ""))
+        for step in pytest_steps
+        if "run" in step
+    }
+    matrix_include = _pytest_matrix_include(workflow)
+    actual_shards = tuple(
+        (
+            str(entry["display_name"]),
+            str(entry["category"]),
+            int(entry["shard_index"]),
+            int(entry["shard_total"]),
         )
+        for entry in matrix_include
+    )
+    expected_shards = tuple(
+        (spec.display_name, spec.category, spec.shard_index, spec.shard_total)
+        for spec in ci_shard_specs()
     )
 
+    assert jobs["pytest"].get("needs") is None
+    pytest_job = jobs["pytest"]
+    assert isinstance(pytest_job, dict)
+    strategy = pytest_job["strategy"]
+    assert isinstance(strategy, dict)
+    assert strategy["fail-fast"] is False
+    assert actual_shards == expected_shards
+    assert len(matrix_include) == sum(CI_CATEGORY_SHARD_COUNTS.values())
 
-def test_tests_readme_documents_fast_and_full_suite_entrypoints() -> None:
+    trigger_job = jobs["trigger-staging-rebuild"]
+    assert isinstance(trigger_job, dict)
+    assert trigger_job["needs"] == ["pytest"]
+
+    assert "Set up Node.js" in pytest_step_names
+    assert pytest_step_names.index("Set up Node.js") < pytest_step_names.index("Install dependencies")
+    resolve_targets_command = pytest_run_steps["Resolve pytest shard targets"]
+    pytest_shard_command = pytest_run_steps["Run pytest shard"]
+    assert "from tests.ci_sharding import write_ci_shard_targets_file" in resolve_targets_command
+    assert "PYTEST_CATEGORY" in resolve_targets_command
+    assert "PYTEST_SHARD_TARGET_FILE" in resolve_targets_command
+    assert "Resolved {len(targets)} pytest targets for {os.environ['PYTEST_CATEGORY']}" in resolve_targets_command
+    assert "shard {os.environ['PYTEST_SHARD_INDEX']}/{os.environ['PYTEST_SHARD_TOTAL']}" in resolve_targets_command
+    assert 'mapfile -t PYTEST_TARGETS < "$PYTEST_SHARD_TARGET_FILE"' in pytest_shard_command
+    assert 'uv run pytest -q "${PYTEST_TARGETS[@]}"' in pytest_shard_command
+    assert pytest_steps[-1]["name"] == "Run pytest shard"
+    assert pytest_steps[-1]["run"] == pytest_shard_command
+    assert pytest_steps[2]["uses"] == "actions/setup-node@v6"
+    assert pytest_steps[2]["with"]["node-version"] == "20"
+    assert 'addopts = "-n auto --dist=worksteal"' in pyproject
+    assert 'pytest-xdist>=3.8.0' in pyproject
+
+
+def test_tests_readme_documents_default_full_suite_and_category_named_runtime_informed_ci_shards() -> None:
     tests_readme = (REPO_ROOT / "tests" / "README.md").read_text(encoding="utf-8")
 
-    assert "Default `uv run pytest tests/ -q` uses the fast daily suite declared in" in tests_readme
-    assert "inherits `-n auto --dist=worksteal` from `pyproject.toml`" in tests_readme
-    assert "override that default explicitly with `uv run pytest tests/ -q -n 0`" in tests_readme
-    assert "The GitHub Actions workflow runs the fast and complementary heavy suites as separate jobs" in tests_readme
-    assert "heavy job using `--full-suite` and the shared ignore helper" in tests_readme
+    assert "Default `uv run pytest` runs the full checked-in suite" in tests_readme
+    assert "`uv run pytest -q` does the same with quieter output" in tests_readme
+    assert "Both inherit `-n auto --dist=worksteal` from `pyproject.toml`" in tests_readme
+    assert "raises xdist auto-worker selection toward the current CI shard fanout" in tests_readme
+    assert "override that default explicitly with `uv run pytest -n 0`" in tests_readme
+    assert "GitHub Actions workflow runs that same full suite as category-named runtime-informed shards" in tests_readme
+    assert "`root 1/8` through `root 8/8`, `adapters 1/2` through `adapters 2/2`, `hooks 1/2` through `hooks 2/2`, `mcp`, and `core 1/6` through `core 6/6`" in tests_readme
+    assert "boosts root modules that have been slow on GitHub Actions" in tests_readme
+    assert "splits known hotspot modules such as `tests/test_runtime_cli.py`, `tests/test_registry.py`, `tests/test_update_workflow.py`, and `tests/hooks/test_runtime_detect.py`" in tests_readme
+    assert "greedily rebalances those work units inside each category" in tests_readme

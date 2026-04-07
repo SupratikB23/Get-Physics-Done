@@ -310,19 +310,28 @@ def test_merge_gate_workflow_uses_main_branch_pytest_on_python_311() -> None:
     assert "push:" in workflow
     assert "branches: [main]" in workflow
     assert "workflow_dispatch:" in workflow
-    assert "name: pytest fast (3.11)" in workflow
-    assert "name: pytest heavy (3.11)" in workflow
+    assert "name: pytest ${{ matrix.display_name }} (3.11)" in workflow
+    assert "fail-fast: false" in workflow
+    assert "display_name: root 1/8" in workflow
+    assert "display_name: root 8/8" in workflow
+    assert "display_name: adapters 1/2" in workflow
+    assert "display_name: adapters 2/2" in workflow
+    assert "display_name: hooks 1/2" in workflow
+    assert "display_name: hooks 2/2" in workflow
+    assert "display_name: mcp" in workflow
+    assert "display_name: core 6/6" in workflow
     assert "actions/checkout@v6" in workflow
     assert "actions/setup-python@v6" in workflow
     assert 'python-version: "3.11"' in workflow
     assert "astral-sh/setup-uv@v7" in workflow
     assert "uv sync --dev" in workflow
     assert 'addopts = "-n auto --dist=worksteal"' in pyproject
-    assert "Run fast test suite" in workflow
-    assert "Run complementary heavy suite" in workflow
-    assert "uv run pytest tests/ -q" in workflow
-    assert "uv run pytest tests/ -q --full-suite $HEAVY_SUITE_IGNORE_ARGS" in workflow
-    assert "needs: [pytest-fast, pytest-heavy]" in workflow
+    assert "Resolve pytest shard targets" in workflow
+    assert "Run pytest shard" in workflow
+    assert "from tests.ci_sharding import write_ci_shard_targets_file" in workflow
+    assert "PYTEST_CATEGORY" in workflow
+    assert 'uv run pytest -q "${PYTEST_TARGETS[@]}"' in workflow
+    assert "needs: [pytest]" in workflow
 
 
 def test_prepare_release_workflow_creates_release_pr_without_publishing() -> None:
