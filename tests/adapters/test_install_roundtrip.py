@@ -291,7 +291,7 @@ def _assert_installed_contract_visibility(
     assert "project_contract_load_info" in new_project
     assert "project_contract_validation" in new_project
     assert "`schema_version` must be the integer `1`" in new_project
-    assert "`references[].must_surface` must be a boolean `true` or `false`" in new_project
+    assert "`references[].must_surface` must stay a boolean `true` or `false`" in new_project
     assert "`context_intake`" in new_project
     assert "`approach_policy`" in new_project
     assert "`uncertainty_markers`" in new_project
@@ -320,6 +320,7 @@ def _assert_installed_contract_visibility(
     assert "For proof-bearing or `proof_obligation` work, an additional mandatory floor applies" in verify_work
 
 
+@pytest.mark.no_stable_hook_python
 @pytest.mark.parametrize("runtime", ["claude-code"])
 def test_install_artifacts_pin_checkout_python_when_running_from_checkout(
     tmp_path: Path,

@@ -37,6 +37,7 @@ __all__ = [
     "CONTRACT_UNCERTAINTY_MARKER_FIELD_NAMES",
     "PROOF_ACCEPTANCE_TEST_KINDS",
     "PROOF_HYPOTHESIS_CATEGORY_VALUES",
+    "PROOF_AUDIT_REVIEWER",
     "PROOF_AUDIT_QUANTIFIER_STATUS_VALUES",
     "PROOF_AUDIT_SCOPE_STATUS_VALUES",
     "PROOF_AUDIT_COUNTEREXAMPLE_STATUS_VALUES",
@@ -1385,8 +1386,8 @@ class ContractProofAudit(BaseModel):
     def _validate_reviewer(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        if value != "gpd-check-proof":
-            raise ValueError("reviewer must be gpd-check-proof")
+        if value != PROOF_AUDIT_REVIEWER:
+            raise ValueError(f"reviewer must be {PROOF_AUDIT_REVIEWER}")
         return value
 
     @model_validator(mode="after")
@@ -1396,8 +1397,8 @@ class ContractProofAudit(BaseModel):
 
         if not self.reviewed_at:
             raise ValueError("completeness=complete requires reviewed_at")
-        if self.reviewer != "gpd-check-proof":
-            raise ValueError("completeness=complete requires reviewer=gpd-check-proof")
+        if self.reviewer != PROOF_AUDIT_REVIEWER:
+            raise ValueError(f"completeness=complete requires reviewer={PROOF_AUDIT_REVIEWER}")
         if not self.proof_artifact_path:
             raise ValueError("completeness=complete requires proof_artifact_path")
         if not self.proof_artifact_sha256:
@@ -1437,6 +1438,7 @@ PROOF_ACCEPTANCE_TEST_KINDS: tuple[str, ...] = (
     "lemma_dependency_closure",
     "counterexample_search",
 )
+PROOF_AUDIT_REVIEWER = "gpd-check-proof"
 
 
 class ContractEvidenceEntry(BaseModel):
@@ -2206,8 +2208,8 @@ def collect_proof_audit_alignment_errors(
         if audit.claim_statement_sha256 != statement_sha256:
             errors.append(f"claim {claim.id} proof_audit.claim_statement_sha256 does not match the current claim statement")
 
-    if audit.reviewer and audit.reviewer != "gpd-check-proof":
-        errors.append(f"claim {claim.id} proof_audit.reviewer must be gpd-check-proof")
+    if audit.reviewer and audit.reviewer != PROOF_AUDIT_REVIEWER:
+        errors.append(f"claim {claim.id} proof_audit.reviewer must be {PROOF_AUDIT_REVIEWER}")
 
     if deliverable_path_by_id:
         allowed_paths = {

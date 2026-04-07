@@ -1664,6 +1664,12 @@ gpd state add-decision \
 **If CONSISTENT:** Continue to phase completion.
 </step>
 
+<step name="orchestrator_self_check">
+
+**Orchestrator Self-Accountability Checkpoint** — before marking phase complete, verify that the VERIFICATION.md lists specific attack vectors, independent limiting cases, and literature cross-references — not just confirmations. If all checks passed on first attempt with zero issues, run one additional targeted check on the most load-bearing result.
+
+</step>
+
 <step name="update_roadmap">
 Mark phase complete in ROADMAP.md (date, status).
 

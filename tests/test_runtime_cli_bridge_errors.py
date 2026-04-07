@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -323,7 +324,7 @@ def test_runtime_cli_rejects_missing_bridge_arguments_without_argparse_abort(
 
 
 @pytest.mark.parametrize(
-    "argv, expected_fragment",
+    ("argv", "expected_fragment"),
     [
         (
             [
@@ -336,7 +337,7 @@ def test_runtime_cli_rejects_missing_bridge_arguments_without_argparse_abort(
                 "state",
                 "load",
             ],
-            "invalid choice: 'sideways' (choose from 'local', 'global')",
+            re.compile(r"invalid choice: 'sideways' \(choose from '?local'?,\s*'?global'?\)"),
         ),
         (
             [
@@ -393,7 +394,7 @@ def test_runtime_cli_rejects_missing_bridge_arguments_without_argparse_abort(
 )
 def test_runtime_cli_rejects_malformed_bridge_invocations(
     argv: list[str],
-    expected_fragment: str,
+    expected_fragment: str | re.Pattern[str],
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     exit_code = runtime_cli.main(argv)
@@ -401,5 +402,10 @@ def test_runtime_cli_rejects_malformed_bridge_invocations(
     captured = capsys.readouterr()
     assert exit_code == 127
     assert "GPD runtime bridge rejected malformed bridge invocation." in captured.err
-    assert expected_fragment in captured.err
+    if isinstance(expected_fragment, re.Pattern):
+        assert expected_fragment.search(captured.err), (
+            f"Regex {expected_fragment.pattern!r} not found in stderr:\n{captured.err}"
+        )
+    else:
+        assert expected_fragment in captured.err
     assert "usage:" not in captured.err.lower()
