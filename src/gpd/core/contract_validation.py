@@ -36,25 +36,15 @@ from gpd.contracts import (
     ContractScope,
     ContractUncertaintyMarkers,
     ResearchContract,
+    _has_concrete_grounding_entries,
+    _has_concrete_must_surface_reference,
+    _is_concrete_reference_locator,
+    _is_context_intake_locator_grounding,
+    _is_project_artifact_path,
     collect_contract_integrity_errors,
+    is_placeholder_only_guidance_text,
     parse_project_contract_data_salvage,
 )
-from gpd.contracts import (
-    _has_concrete_grounding_entries as _shared_has_concrete_grounding_entries,
-)
-from gpd.contracts import (
-    _has_concrete_must_surface_reference as _shared_has_concrete_must_surface_reference,
-)
-from gpd.contracts import (
-    _is_concrete_reference_locator as _shared_is_concrete_reference_locator,
-)
-from gpd.contracts import (
-    _is_concrete_text_grounding as _shared_is_concrete_text_grounding,
-)
-from gpd.contracts import (
-    _is_project_artifact_path as _shared_is_project_artifact_path,
-)
-from gpd.contracts import is_placeholder_only_guidance_text as _shared_is_placeholder_only_guidance_text
 from gpd.core.utils import dedupe_preserve_order
 
 __all__ = [
@@ -89,10 +79,6 @@ _AUTHORITATIVE_SCALAR_FINDING_PATTERNS = (
     re.compile(r"^schema_version: Input should be 1$"),
     re.compile(r"^.+\.must_surface must be a boolean$"),
 )
-
-_is_concrete_text_grounding = _shared_is_concrete_text_grounding
-_has_concrete_grounding_entries = _shared_has_concrete_grounding_entries
-_has_concrete_must_surface_reference = _shared_has_concrete_must_surface_reference
 
 _SCHEMA_VERSION_REQUIRED_ERROR = "schema_version is required"
 
@@ -743,12 +729,6 @@ def _light_contract_consistency_errors(contract: ResearchContract) -> list[str]:
     return errors
 
 
-def _is_placeholder_only_guidance_text(value: str) -> bool:
-    """Return whether *value* is only a placeholder and not actionable guidance."""
-
-    return _shared_is_placeholder_only_guidance_text(value)
-
-
 def _must_read_ref_counts_as_guidance(
     contract: ResearchContract,
     reference_id: str,
@@ -760,7 +740,7 @@ def _must_read_ref_counts_as_guidance(
     for reference in contract.references:
         if reference.id != reference_id:
             continue
-        return _shared_is_concrete_reference_locator(
+        return _is_concrete_reference_locator(
             reference.locator,
             reference_kind=reference.kind,
             project_root=project_root,
@@ -797,11 +777,13 @@ def _has_approved_grounding_signal(
                 contract.context_intake.user_asserted_anchors,
                 field_name="user_asserted_anchors",
                 project_root=project_root,
+                require_existing_project_artifacts=True,
             ),
             _has_concrete_grounding_entries(
                 contract.context_intake.known_good_baselines,
                 field_name="known_good_baselines",
                 project_root=project_root,
+                require_existing_project_artifacts=True,
             ),
         )
     )
@@ -826,11 +808,13 @@ def _has_non_reference_grounding_signal(
                 contract.context_intake.user_asserted_anchors,
                 field_name="user_asserted_anchors",
                 project_root=project_root,
+                require_existing_project_artifacts=True,
             ),
             _has_concrete_grounding_entries(
                 contract.context_intake.known_good_baselines,
                 field_name="known_good_baselines",
                 project_root=project_root,
+                require_existing_project_artifacts=True,
             ),
         )
     )
@@ -843,13 +827,13 @@ def _prior_output_counts_as_guidance(
 ) -> bool:
     """Return whether *value* is durable prior-output guidance."""
 
-    return _shared_is_project_artifact_path(value, project_root=project_root)
+    return _is_project_artifact_path(value, project_root=project_root)
 
 
 def _has_meaningful_guidance_text(values: list[str]) -> bool:
     """Return whether *values* contain non-placeholder textual guidance."""
 
-    return any(not _is_placeholder_only_guidance_text(value) for value in values)
+    return any(not is_placeholder_only_guidance_text(value) for value in values)
 
 
 def _guidance_signal_flags(
@@ -869,11 +853,11 @@ def _guidance_signal_flags(
             for value in contract.context_intake.must_include_prior_outputs
         ),
         "user_asserted_anchors": any(
-            _is_concrete_text_grounding(value, project_root=project_root)
+            _is_context_intake_locator_grounding(value, project_root=project_root, require_existing_project_artifacts=True)
             for value in contract.context_intake.user_asserted_anchors
         ),
         "known_good_baselines": any(
-            _is_concrete_text_grounding(value, project_root=project_root)
+            _is_context_intake_locator_grounding(value, project_root=project_root, require_existing_project_artifacts=True)
             for value in contract.context_intake.known_good_baselines
         ),
         "context_gaps": _has_meaningful_guidance_text(contract.context_intake.context_gaps),
@@ -907,7 +891,22 @@ def _context_intake_guidance_warnings(
         ("known_good_baselines", contract.context_intake.known_good_baselines),
     ):
         for value in values:
-            if _is_concrete_text_grounding(value, project_root=project_root):
+            if _is_context_intake_locator_grounding(
+                value,
+                project_root=project_root,
+                require_existing_project_artifacts=True,
+            ):
+                continue
+            if _is_project_artifact_path(value, project_root=None):
+                if project_root is None:
+                    warnings.append(
+                        f"context_intake.{field_name} entry requires a resolved project_root "
+                        f"to verify artifact grounding: {value}"
+                    )
+                else:
+                    warnings.append(
+                        f"context_intake.{field_name} entry does not resolve to a project-local artifact: {value}"
+                    )
                 continue
             warnings.append(
                 f"context_intake.{field_name} entry is not concrete enough to preserve as durable guidance: {value}"
@@ -918,7 +917,7 @@ def _context_intake_guidance_warnings(
         ("crucial_inputs", contract.context_intake.crucial_inputs),
     ):
         for value in values:
-            if not _is_placeholder_only_guidance_text(value):
+            if not is_placeholder_only_guidance_text(value):
                 continue
             warnings.append(
                 f"context_intake.{field_name} entry is only a placeholder and does not preserve actionable guidance: {value}"
@@ -938,7 +937,7 @@ def _must_surface_locator_warnings(
     for reference in contract.references:
         if not reference.must_surface:
             continue
-        if _shared_is_concrete_reference_locator(
+        if _is_concrete_reference_locator(
             reference.locator,
             reference_kind=reference.kind,
             project_root=project_root,

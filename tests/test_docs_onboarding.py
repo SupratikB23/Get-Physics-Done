@@ -199,10 +199,13 @@ def test_runtime_quickstarts_keep_current_provider_specific_setup_notes() -> Non
 
 
 def test_progress_docs_do_not_reference_nonexistent_list_todos_command() -> None:
-    for relative_path in ("src/gpd/commands/progress.md", "src/gpd/specs/workflows/progress.md"):
-        content = _read(relative_path)
-        assert "list-todos" not in content
-        assert "gpd --raw init todos" in content
+    command = _read("src/gpd/commands/progress.md")
+    workflow = _read("src/gpd/specs/workflows/progress.md")
+
+    assert "list-todos" not in command
+    assert "list-todos" not in workflow
+    assert "@{GPD_INSTALL_DIR}/workflows/progress.md" in command
+    assert "gpd --raw init todos" in workflow
 
 
 def test_progress_workflow_reconcile_mode_uses_supported_state_snapshot_fields() -> None:

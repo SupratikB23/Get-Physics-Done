@@ -3312,14 +3312,6 @@ def _restore_visible_project_contract(
         parsed.contract,
         project_root=project_root,
     )
-    plan_integrity_errors = set(
-        collect_plan_contract_integrity_errors(parsed.contract, project_root=project_root)
-    )
-    if local_grounding_errors and (
-        "missing references or explicit grounding context" in plan_integrity_errors
-        or "references must include at least one must_surface=true anchor" in plan_integrity_errors
-    ):
-        return state_obj, local_grounding_errors
 
     integrity_errors = set(collect_contract_integrity_errors(parsed.contract))
     schema_blockers = [error for error in parsed.blocking_errors if error not in integrity_errors]
@@ -3328,7 +3320,7 @@ def _restore_visible_project_contract(
 
     restored_state = dict(state_obj)
     restored_state["project_contract"] = parsed.contract.model_dump(mode="python")
-    surfaced_findings = [*parsed.recoverable_errors, *parsed.blocking_errors]
+    surfaced_findings = [*local_grounding_errors, *parsed.recoverable_errors, *parsed.blocking_errors]
     return restored_state, list(dict.fromkeys(surfaced_findings))
 
 

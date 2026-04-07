@@ -256,7 +256,7 @@ def test_peek_state_json_respects_project_root_for_project_contract_grounding(tm
     assert loaded["project_contract"] is None
 
 
-def test_restore_visible_project_contract_rejects_rootless_local_prior_output_grounding() -> None:
+def test_restore_visible_project_contract_keeps_rootless_local_prior_output_grounding_visible() -> None:
     contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
     contract["references"] = []
     contract["context_intake"] = {
@@ -273,9 +273,36 @@ def test_restore_visible_project_contract_rejects_rootless_local_prior_output_gr
         contract,
     )
 
-    assert restored["project_contract"] is None
+    assert restored["project_contract"] is not None
+    assert restored["project_contract"]["context_intake"]["must_include_prior_outputs"] == ["./RESULTS.md"]
     assert findings == [
         "context_intake.must_include_prior_outputs entry requires a resolved project_root to verify artifact grounding: ./RESULTS.md"
+    ]
+
+
+def test_restore_visible_project_contract_keeps_rootless_local_anchor_grounding_visible() -> None:
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["references"] = []
+    contract["claims"][0]["references"] = []
+    contract["acceptance_tests"][0]["evidence_required"] = ["deliv-figure"]
+    contract["context_intake"] = {
+        "must_read_refs": [],
+        "must_include_prior_outputs": [],
+        "user_asserted_anchors": ["./RESULTS.md"],
+        "known_good_baselines": [],
+        "context_gaps": [],
+        "crucial_inputs": [],
+    }
+
+    restored, findings = state_module._restore_visible_project_contract(
+        default_state_dict(),
+        contract,
+    )
+
+    assert restored["project_contract"] is not None
+    assert restored["project_contract"]["context_intake"]["user_asserted_anchors"] == ["./RESULTS.md"]
+    assert findings == [
+        "context_intake.user_asserted_anchors entry requires a resolved project_root to verify artifact grounding: ./RESULTS.md"
     ]
 
 
@@ -303,6 +330,32 @@ def test_restore_visible_project_contract_accepts_existing_local_prior_output_gr
     assert restored["project_contract"] is not None
     assert restored["project_contract"]["context_intake"]["must_include_prior_outputs"] == ["./RESULTS.md"]
     assert findings == []
+
+
+def test_state_load_keeps_visible_blocked_contract_in_state_for_rootless_local_anchor(tmp_path: Path) -> None:
+    state = default_state_dict()
+    contract = json.loads((FIXTURES_DIR / "project_contract.json").read_text(encoding="utf-8"))
+    contract["references"] = []
+    contract["claims"][0]["references"] = []
+    contract["acceptance_tests"][0]["evidence_required"] = ["deliv-figure"]
+    contract["context_intake"] = {
+        "must_read_refs": [],
+        "must_include_prior_outputs": [],
+        "user_asserted_anchors": ["./RESULTS.md"],
+        "known_good_baselines": [],
+        "context_gaps": [],
+        "crucial_inputs": [],
+    }
+    state["project_contract"] = contract
+    _write_raw_state_json(tmp_path, state)
+
+    loaded = state_load(tmp_path)
+
+    assert loaded.state["project_contract"] is not None
+    assert loaded.state["project_contract"]["context_intake"]["user_asserted_anchors"] == ["./RESULTS.md"]
+    assert loaded.project_contract_load_info["status"] == "blocked_integrity"
+    assert loaded.project_contract_gate["visible"] is True
+    assert loaded.project_contract_gate["authoritative"] is False
 
 
 def test_load_state_json_preserves_sibling_fields_when_nested_position_field_is_invalid(tmp_path: Path) -> None:

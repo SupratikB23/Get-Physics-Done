@@ -50,15 +50,15 @@ Keep dimensions, limits, proof coverage, and cross-method consistency explicit. 
 </physics_planning_requirements>
 
 <contract_completion_requirements>
-Planning requires `project_contract`. Keep the contract block complete per the schema include. Use `effective_reference_intake` and `active_reference_context` for grounding, not as substitutes. Autonomy and model profile may change cadence, not contract completeness.
+Planning requires `project_contract`. Keep the contract block complete per the schema include. Use `effective_reference_intake` and `active_reference_context` as rendered support surfaces aligned with the contract, not as substitutes for it.
 </contract_completion_requirements>
 
 <contract_visibility_shortcuts>
-Use the included schema as the source of truth. Keep `project_contract`, `effective_reference_intake`, and `active_reference_context` aligned with it. Treat `approach_policy` as execution policy only; it does not substitute for grounding. For proof-bearing work, keep hypotheses, quantified variables, and named parameters explicit enough to audit.
+Keep `project_contract` as the structured grounding ledger. Use `effective_reference_intake` and `active_reference_context` only to surface the same anchors in readable form. Treat `approach_policy` as execution policy only. It does not substitute for grounding. For proof-bearing work, keep hypotheses, quantified variables, and named parameters explicit enough to audit.
 </contract_visibility_shortcuts>
 
 <light_mode_instructions>
-**If plan depth is `light`:** Keep the full canonical frontmatter, including `wave`, `depends_on`, `files_modified`, `interactive`, `conventions`, `contract`, and `contract.context_intake`. Simplify only the body: one high-level task block per plan, concise verification, no extra code snippets. Light mode changes verbosity, not contract completeness.
+**If plan depth is `light`:** Keep the full canonical frontmatter, including `wave`, `depends_on`, `files_modified`, `interactive`, `conventions`, `contract`, and `contract.context_intake`. Simplify only the body: one high-level task block per plan, concise verification, no extra code snippets. Light mode changes body verbosity only.
 </light_mode_instructions>
 
 <context_budget_guidance>

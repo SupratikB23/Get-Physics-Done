@@ -25,10 +25,14 @@ def test_verifier_prompt_points_to_canonical_verification_schema_sources() -> No
     verifier = _read_verifier_prompt()
     expanded_verifier = _read_expanded_verifier_prompt()
     verifier_lines = verifier.splitlines()
+    expanded_lines = expanded_verifier.splitlines()
 
     assert "@{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md" in verifier_lines
+    assert "@{GPD_INSTALL_DIR}/references/verification/meta/verifier-profile-checks.md" in verifier_lines
     assert "`@{GPD_INSTALL_DIR}/templates/verification-report.md` is the canonical `VERIFICATION.md` frontmatter/body surface." in verifier
     assert "`@{GPD_INSTALL_DIR}/templates/contract-results-schema.md` is the canonical source of truth for `plan_contract_ref`, `contract_results`, `comparison_verdicts`, and verification-side `suggested_contract_checks`." in verifier
+    assert "Reload the same canonical schema files from Step 2 immediately before writing and obey them literally." in verifier
+    assert "do not invent verifier-local schema or legacy aliases." in verifier
     assert "## Data Boundary" not in verifier
     assert "## Canonical LLM Error References" in verifier
     assert "`@{GPD_INSTALL_DIR}/references/verification/errors/llm-physics-errors.md` -- index and entry point" in verifier
@@ -37,18 +41,21 @@ def test_verifier_prompt_points_to_canonical_verification_schema_sources() -> No
     assert "Do not invent a verifier-local schema, relax required ledgers, or treat body prose as a substitute for frontmatter consumed by validation and downstream tooling." in verifier
     assert "include a machine-readable `ASSERT_CONVENTION` comment immediately after the YAML frontmatter in `VERIFICATION.md`." in verifier
     assert "Changed phase verification artifacts now fail `gpd pre-commit-check` if the required header is missing or mismatched." in verifier
-    assert "Legacy frontmatter aliases are forbidden in model-facing output" in verifier
     assert "## Data Boundary" in expanded_verifier
     assert "ask the user before any install attempt" in expanded_verifier
     assert "Prefer copy-pasteable GPD commands" in expanded_verifier
+    assert "# Verifier Profile-Specific Checks" in expanded_verifier
+    assert "[] Proof structure" in expanded_verifier
     for legacy_alias in ("must_haves", "verification_inputs", "contract_evidence", "independently_confirmed"):
         assert legacy_alias not in verifier
     assert "@{GPD_INSTALL_DIR}/templates/verification-report.md" in verifier_lines
     assert "@{GPD_INSTALL_DIR}/templates/contract-results-schema.md" in verifier_lines
+    assert "@{GPD_INSTALL_DIR}/references/verification/meta/verifier-profile-checks.md" not in expanded_lines
 
 
 def test_verifier_prompt_surfaces_validator_enforced_contract_ledger_rules() -> None:
     verifier = _read_verifier_prompt()
+    contract_results_schema = (TEMPLATES_DIR / "contract-results-schema.md").read_text(encoding="utf-8")
 
     assert "If `contract_results` or `comparison_verdicts` are present, `plan_contract_ref` is required." in verifier
     assert "`plan_contract_ref` must be a string ending with the exact `#/contract` fragment and it must resolve to the matching PLAN contract on disk." in verifier
@@ -60,6 +67,7 @@ def test_verifier_prompt_surfaces_validator_enforced_contract_ledger_rules() -> 
     assert "For reference-backed decisive comparisons, only `comparison_kind: benchmark|prior_work|experiment|baseline|cross_method` satisfies the requirement; `comparison_kind: other` does not." in verifier
     assert "`suggested_contract_checks` entries in `VERIFICATION.md` may only use `check`, `reason`, `suggested_subject_kind`, `suggested_subject_id`, and `evidence_path`." in verifier
     assert "When the gap comes from `suggest_contract_checks(contract)`, `check` must copy the returned `check_key`." in verifier
+    assert "If you bind a `suggested_contract_checks` entry to a known contract target, `suggested_subject_kind` and `suggested_subject_id` must appear together; otherwise omit both." in contract_results_schema
     assert "For each suggested check, start from its returned `request_template`, satisfy the listed `required_request_fields`, constrain any bindings to the returned `supported_binding_fields`, and then execute `run_contract_check(request=...)`" in verifier
     assert "required reference actions missing" in verifier
     assert "`suggested_contract_check`" not in verifier
@@ -79,32 +87,33 @@ def test_verifier_prompt_frontmatter_example_includes_contract_ledgers() -> None
 
 def test_verifier_prompt_surfaces_missing_parameter_proof_audit_and_stale_review_gate() -> None:
     verifier = _read_verifier_prompt()
+    expanded_verifier = _read_expanded_verifier_prompt()
     contract_results_schema = (TEMPLATES_DIR / "contract-results-schema.md").read_text(encoding="utf-8")
     research_verification = (TEMPLATES_DIR / "research-verification.md").read_text(encoding="utf-8")
     verification_template = _read_verification_template()
 
     assert verifier.count("## Physics Stub Detection Patterns") == 1
     assert verifier.count("## 5.15 Anomalies/Topological Properties — Executable Template") == 1
-    assert "[] Proof structure" in verifier
+    assert "[] Proof structure" in expanded_verifier
     assert (
         "Every named theorem parameter or hypothesis is used or explicitly discharged; no theorem symbol may "
         "disappear without explanation"
-    ) in verifier
+    ) in expanded_verifier
     assert (
         "If the proof only establishes a narrower subcase than the stated theorem, downgrade the claim and "
         "name the missing hypothesis/parameter coverage"
-    ) in verifier
+    ) in expanded_verifier
     assert (
         "If the theorem statement or proof artifact changed after the last proof audit, treat the prior proof "
         "audit as stale and rerun before marking the target passed"
-    ) in verifier
+    ) in expanded_verifier
     assert (
         "Quantified proof claims keep `proof_audit.quantifier_status` explicit; passed quantified claims require `matched`"
-    ) in verifier
+    ) in expanded_verifier
     assert (
         "`proof_audit.proof_artifact_path` matches a declared `proof_deliverables` path and "
         "`proof_audit.audit_artifact_path` points to the canonical proof-redteam artifact"
-    ) in verifier
+    ) in expanded_verifier
     assert "A quantified proof-bearing claim must keep `proof_audit.quantifier_status` explicit" in contract_results_schema
     assert "`claim_kind` is `theorem|lemma|corollary|proposition|claim`" in contract_results_schema
     assert "`proof_artifact_path`, `proof_artifact_sha256`, `audit_artifact_path`, `audit_artifact_sha256`, `claim_statement_sha256`" in contract_results_schema

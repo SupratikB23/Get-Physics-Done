@@ -32,27 +32,20 @@ def test_new_project_prompt_surfaces_the_canonical_state_schema_for_project_cont
     assert (
         "Before you ask for approval, keep the contract as a literal JSON object for the "
         "`project_contract` subsection of `templates/state-json-schema.md`, and use that "
-        "schema as the canonical source of truth for the object rules. Do not restate the "
-        "contract rules here."
+        "schema as the canonical source of truth for the object rules. Do not restate the full "
+        "contract rules here; keep only the approval-critical reminders below."
         in new_project_text
     )
     assert "Do not approve a scoping contract that strips decisive outputs, anchors, prior outputs, or review/stop triggers down to generic placeholders." in new_project_text
-    assert "the contract schema is closed: do not add invented top-level or nested keys" in new_project_text
-    assert "list fields must stay lists even for single-item values" in new_project_text
-    assert "blank or duplicate list entries are invalid after trimming whitespace" in new_project_text
     assert "Before you show the approval gate, build the raw contract as a literal JSON object for the `project_contract` subsection of `templates/state-json-schema.md`:" in new_project_text
     assert "author only the JSON object that will be stored in `project_contract`, not the surrounding `state.json` envelope" in new_project_text
     assert "follow the `project_contract` object rules in `templates/state-json-schema.md` exactly" in new_project_text
-    assert "`context_intake`, `approach_policy`, and `uncertainty_markers` are objects, not strings or lists" in new_project_text
-    assert "`schema_version` must be the integer `1`" in new_project_text
-    assert "`references[].must_surface` must be a boolean `true` or `false`" in new_project_text
-    assert "`claims[].proof_deliverables` must point only to declared `deliverables[].id` values" in new_project_text
-    assert "treat a claim as proof-bearing whenever any of these is true" in new_project_text
-    assert "`claim_kind` is `theorem`, `lemma`, `corollary`, `proposition`, or `claim`" in new_project_text
-    assert "the statement is theorem-like (`prove/show that`, explicit `for all` / `exists`, or uniqueness language)" in new_project_text
-    assert "any proof field is already populated (`parameters`, `hypotheses`, `quantifiers`, `conclusion_clauses`, or `proof_deliverables`)" in new_project_text
-    assert "`observables[]` references a `proof_obligation` target" in new_project_text
-    assert "proof-bearing claims must include at least one proof-specific acceptance test kind" in new_project_text
+    assert "do not paraphrase the schema here; reuse its exact keys, enum values, list/object shapes, ID-linkage rules, and proof-bearing claim requirements" in new_project_text
+    assert "do not invent near-miss enum values, extra keys, or scalar shortcuts for list fields" in new_project_text
+    assert "fix them to the schema before approval" in new_project_text
+    assert "the contract schema is closed: do not add invented top-level or nested keys" not in new_project_text
+    assert "list fields must stay lists even for single-item values" not in new_project_text
+    assert "blank or duplicate list entries are invalid after trimming whitespace" not in new_project_text
     assert "project_contract_load_info" in new_project_text
     assert "project_contract_validation" in new_project_text
     assert "`context_intake`, `approach_policy`, and `uncertainty_markers` must each stay as objects, not strings or lists." in new_project_text
@@ -88,16 +81,20 @@ def test_new_project_contract_rule_block_is_not_duplicated() -> None:
         new_project_text,
         "Before you show the approval gate, build the raw contract as a literal JSON object for the `project_contract` subsection of `templates/state-json-schema.md`:",
     )
-    later_block = new_project_text.split(
-        "Before you ask for approval, keep the contract as a literal JSON object for the `project_contract` subsection of `templates/state-json-schema.md`, and use that schema as the canonical source of truth for the object rules. Do not restate the contract rules here.",
+    step4_block = new_project_text.split(
+        "## 4. Synthesize The Approved Project Contract And Write PROJECT.md",
         1,
-    )[1].split("Present a concise scoping summary", 1)[0]
+    )[1].split("Then synthesize all context into `GPD/PROJECT.md`", 1)[0]
 
-    assert len(show_block) > 10
     assert new_project_text.count("Before you show the approval gate, build the raw contract as a literal JSON object") == 1
     assert new_project_text.count("Before you ask for approval, keep the contract as a literal JSON object") == 1
-    assert "- `project_contract` is a JSON object, not prose" not in later_block
-    assert "- `observables`, `claims`, `deliverables`, `acceptance_tests`, `references`, `forbidden_proxies`, and `links` are arrays of objects, not strings" not in later_block
+    assert "Use the scoping-contract procedure from Step M1.5 for every flow before writing `PROJECT.md`." in step4_block
+    assert "Do not define a second scoping-contract variant here." in step4_block
+    assert "`scope.question`" not in step4_block
+    assert "`context_intake.must_read_refs`" not in step4_block
+    assert 'header: "Scope"' not in step4_block
+    assert any("context_intake" in line and "uncertainty_markers" in line for line in show_block)
+    assert any("schema_version" in line and "must_surface" in line for line in show_block)
 
 
 def test_state_schema_surfaces_the_exact_approved_mode_grounding_rule() -> None:

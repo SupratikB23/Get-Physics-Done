@@ -8,28 +8,28 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / "src/gpd/specs/workflows"
 COMMANDS_DIR = REPO_ROOT / "src/gpd/commands"
 REFERENCES_DIR = REPO_ROOT / "src/gpd/specs/references"
+TEMPLATES_DIR = REPO_ROOT / "src/gpd/specs/templates"
 
 
 def test_new_project_minimal_contract_guidance_surfaces_contract_enum_vocabulary() -> None:
     workflow_text = (WORKFLOWS_DIR / "new-project.md").read_text(encoding="utf-8")
+    state_schema_text = (TEMPLATES_DIR / "state-json-schema.md").read_text(encoding="utf-8")
 
-    assert "`observables[].kind`: `scalar | curve | map | classification | proof_obligation | other`" in workflow_text
-    assert (
-        "`acceptance_tests[].kind`: `existence | schema | benchmark | consistency | cross_method | limiting_case | "
-        "symmetry | dimensional_analysis | convergence | oracle | proxy | reproducibility | "
-        "proof_hypothesis_coverage | proof_parameter_coverage | proof_quantifier_domain | "
-        "claim_to_proof_alignment | lemma_dependency_closure | counterexample_search | human_review | other`"
-    ) in workflow_text
-    assert "`acceptance_tests[].automation`: `automated | hybrid | human`" in workflow_text
-    assert "`references[].role`: `definition | benchmark | method | must_consider | background | other`" in workflow_text
-    assert (
-        "`links[].relation`: `supports | computes | visualizes | benchmarks | depends_on | evaluated_by | "
-        "proves | uses_hypothesis | depends_on_lemma | other`"
-    ) in workflow_text
+    assert "templates/state-json-schema.md" in workflow_text
+    assert "use that schema as the canonical source of truth for the object rules" in workflow_text
+    assert "Do not restate the full contract rules here; keep only the approval-critical reminders below." in workflow_text
+    assert '`observables[]` — `{ "id", "name", "kind", "definition", "regime?", "units?" }`' in state_schema_text
+    assert '`acceptance_tests[]` — `{ "id", "subject", "kind", "procedure", "pass_condition", "evidence_required[]", "automation" }`' in state_schema_text
+    assert '`references[]` — `{ "id", "kind", "locator", "aliases[]", "role", "why_it_matters", "applies_to[]", "carry_forward_to[]", "must_surface": true|false, "required_actions[]" }`' in state_schema_text
+    assert '`links[]` — `{ "id", "source", "target", "relation", "verified_by[]" }`' in state_schema_text
+    assert "`claims[].claim_kind` must use the closed vocabulary: `theorem | lemma | corollary | proposition | result | claim | other`." in state_schema_text
+    assert "`required_actions[]` uses the same closed action vocabulary enforced downstream in contract ledgers: `read`, `use`, `compare`, `cite`, `avoid`." in state_schema_text
     assert (
         "if `references[].must_surface` is `true`, both `references[].applies_to[]` and "
         "`references[].required_actions[]` must be non-empty"
-    ) in workflow_text
+    ) not in workflow_text
+    assert "If a project-contract reference sets `must_surface: true`, `required_actions[]` must not be empty." in state_schema_text
+    assert "If a project-contract reference sets `must_surface: true`, `applies_to[]` must not be empty." in state_schema_text
 
 
 def test_settings_and_planning_config_keep_conventions_outside_config_json() -> None:

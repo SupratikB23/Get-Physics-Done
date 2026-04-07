@@ -1176,7 +1176,7 @@ def test_planning_prompts_keep_contract_gate_in_light_mode_and_all_modes() -> No
     assert "@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md" in planner_prompt
     assert "Use `@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md` as the canonical contract source." in planner_prompt
     assert "Treat `approach_policy` as execution policy only." in planner_prompt
-    assert "Light mode changes verbosity, not contract completeness." in planner_prompt
+    assert "Light mode changes body verbosity only." in planner_prompt
     assert "Profiles may compress detail, but they do NOT relax contract completeness." in planner_agent
     assert "All modes still require contract completeness, decisive outputs, required anchors, forbidden-proxy handling, and disconfirming paths before execution starts." in workflow_text
     assert "Human review does not replace those requirements." in checker_agent

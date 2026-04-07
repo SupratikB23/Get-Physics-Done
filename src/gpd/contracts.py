@@ -582,6 +582,21 @@ def _is_concrete_reference_locator(
     return False
 
 
+def _is_context_intake_locator_grounding(
+    value: str,
+    *,
+    project_root: Path | None = None,
+    require_existing_project_artifacts: bool = False,
+) -> bool:
+    """Return whether a context-intake anchor/baseline is concrete enough to count."""
+
+    if require_existing_project_artifacts and _is_project_artifact_path(value, project_root=None):
+        if project_root is None:
+            return False
+        return _is_project_artifact_path(value, project_root=project_root)
+    return _is_concrete_text_grounding(value, project_root=project_root)
+
+
 def _has_concrete_grounding_entries(
     values: list[str],
     *,
@@ -601,7 +616,14 @@ def _has_concrete_grounding_entries(
             )
         return any(_is_project_artifact_path(value, project_root=project_root) for value in values)
     if field_name in {"user_asserted_anchors", "known_good_baselines"}:
-        return any(_is_concrete_text_grounding(value, project_root=project_root) for value in values)
+        return any(
+            _is_context_intake_locator_grounding(
+                value,
+                project_root=project_root,
+                require_existing_project_artifacts=require_existing_project_artifacts,
+            )
+            for value in values
+        )
     raise ValueError(f"Unsupported grounding field {field_name!r}")
 
 
@@ -2178,6 +2200,24 @@ def _collect_project_local_grounding_integrity_errors(
                 f"context_intake.must_include_prior_outputs entry does not resolve to a project-local artifact: {value}"
             )
 
+    for field_name, values in (
+        ("user_asserted_anchors", contract.context_intake.user_asserted_anchors),
+        ("known_good_baselines", contract.context_intake.known_good_baselines),
+    ):
+        for value in values:
+            if not _is_project_artifact_path(value, project_root=None):
+                continue
+            if project_root is None:
+                errors.append(
+                    f"context_intake.{field_name} entry requires a resolved project_root "
+                    f"to verify artifact grounding: {value}"
+                )
+                continue
+            if not _is_project_artifact_path(value, project_root=project_root):
+                errors.append(
+                    f"context_intake.{field_name} entry does not resolve to a project-local artifact: {value}"
+                )
+
     for reference in contract.references:
         if not reference.must_surface or not _looks_like_project_artifact_path(reference.locator):
             continue
@@ -2215,11 +2255,13 @@ def _has_contract_grounding_context(
                 contract.context_intake.user_asserted_anchors,
                 field_name="user_asserted_anchors",
                 project_root=project_root,
+                require_existing_project_artifacts=require_existing_project_artifacts,
             ),
             _has_concrete_grounding_entries(
                 contract.context_intake.known_good_baselines,
                 field_name="known_good_baselines",
                 project_root=project_root,
+                require_existing_project_artifacts=require_existing_project_artifacts,
             ),
         )
     )

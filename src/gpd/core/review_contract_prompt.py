@@ -18,11 +18,6 @@ from gpd.core.model_visible_text import (
     review_contract_visibility_note,
 )
 
-VALID_REVIEW_MODES = REVIEW_CONTRACT_MODES
-VALID_REVIEW_PREFLIGHT_CHECKS = REVIEW_CONTRACT_PREFLIGHT_CHECKS
-VALID_REVIEW_REQUIRED_STATES = REVIEW_CONTRACT_REQUIRED_STATES
-VALID_REVIEW_CONDITIONAL_WHENS = REVIEW_CONTRACT_CONDITIONAL_WHENS
-
 REVIEW_CONTRACT_FIELD_ORDER = (
     "schema_version",
     "review_mode",
@@ -187,7 +182,7 @@ def _normalize_review_contract_conditional_when(value: object, *, field_name: st
     return _normalize_review_contract_choice(
         value,
         field_name=field_name,
-        valid_values=VALID_REVIEW_CONDITIONAL_WHENS,
+        valid_values=REVIEW_CONTRACT_CONDITIONAL_WHENS,
     )
 
 
@@ -224,7 +219,7 @@ def _normalize_review_contract_conditional_requirements(value: object) -> list[d
             "blocking_preflight_checks": _normalize_review_contract_choice_list(
                 item.get("blocking_preflight_checks"),
                 field_name=f"{field_name}.blocking_preflight_checks",
-                valid_values=VALID_REVIEW_PREFLIGHT_CHECKS,
+                valid_values=REVIEW_CONTRACT_PREFLIGHT_CHECKS,
             ),
             "stage_artifacts": _normalize_review_contract_string_list(
                 item.get("stage_artifacts"),
@@ -282,7 +277,7 @@ def _normalize_review_contract_payload(
         _normalize_review_contract_choice(
             loaded.get("review_mode"),
             field_name="review_mode",
-            valid_values=VALID_REVIEW_MODES,
+            valid_values=REVIEW_CONTRACT_MODES,
         )
 
     if "schema_version" not in loaded or "review_mode" not in loaded:
@@ -301,13 +296,13 @@ def _normalize_review_contract_payload(
         required_state = _normalize_review_contract_choice(
             required_state,
             field_name="required_state",
-            valid_values=VALID_REVIEW_REQUIRED_STATES,
+            valid_values=REVIEW_CONTRACT_REQUIRED_STATES,
         )
 
     preflight_checks = _normalize_review_contract_choice_list(
         loaded.get("preflight_checks"),
         field_name="preflight_checks",
-        valid_values=VALID_REVIEW_PREFLIGHT_CHECKS,
+        valid_values=REVIEW_CONTRACT_PREFLIGHT_CHECKS,
     )
     conditional_requirements = _normalize_review_contract_conditional_requirements(
         loaded.get("conditional_requirements")
@@ -331,7 +326,7 @@ def _normalize_review_contract_payload(
         "review_mode": _normalize_review_contract_choice(
             loaded.get("review_mode"),
             field_name="review_mode",
-            valid_values=VALID_REVIEW_MODES,
+            valid_values=REVIEW_CONTRACT_MODES,
         ),
         "required_outputs": _normalize_review_contract_string_list(
             loaded.get("required_outputs"),

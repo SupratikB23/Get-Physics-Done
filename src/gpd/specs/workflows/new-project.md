@@ -141,40 +141,26 @@ Do not force a phase list just to make the scoping contract look complete. If de
 If the init JSON already contains `project_contract`, `project_contract_load_info`, or `project_contract_validation`, preserve that state in the approval gate and continuation decision. Do not collapse a visible-but-blocked contract into a blank slate when deciding whether this is a fresh project or a continuation.
 
 If a blocking field is missing, ask exactly one repair prompt that targets only the missing field. Do not silently continue with placeholders.
+If no must-read references are confirmed yet, record that explicitly in the contract rather than inventing one.
+If the user does not know the anchor yet, preserve that explicitly in `scope.unresolved_questions`, `context_intake.context_gaps`, or `uncertainty_markers.weakest_anchors` rather than inventing a paper, benchmark, or baseline.
+Accepted shorthand like `need grounding` or `target not yet chosen` is fine when it clearly refers to the missing decisive anchor.
+If the user supplied explicit observables, deliverables, prior outputs, or stop conditions, preserve them in the contract using wording the user would still recognize. Do not paraphrase them into generic "benchmark" or "artifact" language unless the user asked you to broaden them.
+For observables, preserve any user-named decisive quantity, signal, or behavior, especially the first smoking-gun check they would trust over softer proxies or limiting cases.
+If the user named a prior output or review checkpoint that must ground approval or be carried forward, put it in `context_intake.must_include_prior_outputs`. Use `context_intake.crucial_inputs` for user-stated observables, stop conditions, review requests, or constraints that must stay visible but do not themselves replace approved-mode grounding.
+Do not approve a scoping contract that strips decisive outputs, anchors, prior outputs, or review/stop triggers down to generic placeholders. The approved contract must preserve the user guidance that downstream planning needs.
+If the only checks captured so far are limiting cases, sanity checks, or qualitative expectations, treat the contract as still underspecified unless the user explicitly states that these are the decisive standard.
+Missing-anchor notes preserve uncertainty, but they do not satisfy approval on their own. Do not offer approval until at least one concrete anchor, reference, prior-output constraint, or baseline is present.
+Before you ask for approval, keep the contract as a literal JSON object for the `project_contract` subsection of `templates/state-json-schema.md`, and use that schema as the canonical source of truth for the object rules. Do not restate the full contract rules here; keep only the approval-critical reminders below.
 
 Before you show the approval gate, build the raw contract as a literal JSON object for the `project_contract` subsection of `templates/state-json-schema.md`:
 
 - author only the JSON object that will be stored in `project_contract`, not the surrounding `state.json` envelope
 - follow the `project_contract` object rules in `templates/state-json-schema.md` exactly
-
-- `project_contract` is a JSON object, not prose
-- `observables`, `claims`, `deliverables`, `acceptance_tests`, `references`, `forbidden_proxies`, and `links` are arrays of objects, not strings
-- every object in those arrays must declare a stable `id`
-- same-kind IDs must be unique within each section; do not repeat an `id` inside `observables[]`, `claims[]`, `deliverables[]`, `acceptance_tests[]`, `references[]`, `forbidden_proxies[]`, or `links[]`
-- `context_intake`, `approach_policy`, and `uncertainty_markers` are objects, not strings or lists
-- `schema_version` must be the integer `1`
-- `references[].must_surface` must be a boolean `true` or `false`, not a quoted synonym
-- `context_intake.must_read_refs` must contain only `references[].id` values
-- `claims[].observables`, `claims[].deliverables`, `claims[].acceptance_tests`, and `claims[].references` must point only to declared IDs
-- `claims[].proof_deliverables` must point only to declared `deliverables[].id` values
-- `acceptance_tests[].subject`, `references[].applies_to`, and `forbidden_proxies[].subject` must point to a claim ID or deliverable ID, never an observable label or free text
-- `acceptance_tests[].evidence_required`, `links[].source`, and `links[].target` may only point to declared claim, deliverable, acceptance-test, or reference IDs
-- for enum fields, use only the exact schema vocabulary:
-  - `observables[].kind`: `scalar | curve | map | classification | proof_obligation | other`
-  - `deliverables[].kind`: `figure | table | dataset | data | derivation | code | note | report | other`
-  - `acceptance_tests[].kind`: `existence | schema | benchmark | consistency | cross_method | limiting_case | symmetry | dimensional_analysis | convergence | oracle | proxy | reproducibility | proof_hypothesis_coverage | proof_parameter_coverage | proof_quantifier_domain | claim_to_proof_alignment | lemma_dependency_closure | counterexample_search | human_review | other`
-  - `acceptance_tests[].automation`: `automated | hybrid | human`
-  - `references[].kind`: `paper | dataset | prior_artifact | spec | user_anchor | other`
-  - `references[].role`: `definition | benchmark | method | must_consider | background | other`
-  - `links[].relation`: `supports | computes | visualizes | benchmarks | depends_on | evaluated_by | proves | uses_hypothesis | depends_on_lemma | other`
-- treat a claim as proof-bearing whenever any of these is true: `claim_kind` is `theorem`, `lemma`, `corollary`, `proposition`, or `claim`; the statement is theorem-like (`prove/show that`, explicit `for all` / `exists`, or uniqueness language); any proof field is already populated (`parameters`, `hypotheses`, `quantifiers`, `conclusion_clauses`, or `proof_deliverables`); or `observables[]` references a `proof_obligation` target
-- proof-bearing claims must include non-empty `proof_deliverables[]`, `parameters[]`, `hypotheses[]`, and `conclusion_clauses[]`
-- proof-bearing claims must include at least one proof-specific acceptance test kind in `claims[].acceptance_tests[]` (`proof_hypothesis_coverage`, `proof_parameter_coverage`, `proof_quantifier_domain`, `claim_to_proof_alignment`, `lemma_dependency_closure`, or `counterexample_search`)
-- if `references[].must_surface` is `true`, both `references[].applies_to[]` and `references[].required_actions[]` must be non-empty; do not leave must-surface anchors implicit
-- `references[].carry_forward_to[]` is free-text workflow scope such as `planning`, `execution`, `verification`, or `writing`; it is not an enum and must not match any declared contract ID from `observables[]`, `claims[]`, `deliverables[]`, `acceptance_tests[]`, `references[]`, `forbidden_proxies[]`, or `links[]`
-- do **not** invent near-miss enum values such as `anchor`, `manual`, `content-check`, `benchmark-record`, or `anchors`; rewrite them to the exact schema term before approval
-- the contract schema is closed: do not add invented top-level or nested keys, and do not use scalar shortcuts for list fields
-- list fields must stay lists even for single-item values, and blank or duplicate list entries are invalid after trimming whitespace
+- do not paraphrase the schema here; reuse its exact keys, enum values, list/object shapes, ID-linkage rules, and proof-bearing claim requirements
+- do not invent near-miss enum values, extra keys, or scalar shortcuts for list fields; fix them to the schema before approval
+- `context_intake`, `approach_policy`, and `uncertainty_markers` must each stay as objects, not strings or lists.
+- `schema_version` must be the integer `1`, and `references[].must_surface` must be a boolean `true` or `false`, not a quoted synonym.
+- preserve any init-surfaced `project_contract`, `project_contract_load_info`, and `project_contract_validation` state while deciding whether this is fresh work or a continuation
 - if the user chooses "Review raw contract", show the exact JSON object that will be validated and persisted
 
 Then present a concise scoping summary and require explicit approval:
@@ -789,66 +775,13 @@ If you only have limiting cases, sanity checks, or generic benchmark language wi
 
 ## 4. Synthesize The Approved Project Contract And Write PROJECT.md
 
-**If auto mode:** Synthesize the scoping contract from the provided document, ask at most one repair prompt for blocking gaps, and require one explicit scope approval before continuing.
+Use the scoping-contract procedure from Step M1.5 for every flow before writing `PROJECT.md`.
 
-Before writing `PROJECT.md`, synthesize a canonical project contract with at least these elements:
+- Standard flow: synthesize the contract from the questioning conversation.
+- Auto mode: synthesize it from the provided document, ask at most one repair prompt for blocking gaps, and still require one explicit scope approval before continuing.
+- Minimal mode: the intake already happened in Step M1; continue only after the Step M1.5 contract is approved, validated, and persisted.
 
-- `scope.question`
-- `scope.in_scope`
-- `scope.out_of_scope`
-- `scope.unresolved_questions`
-- `context_intake.must_read_refs`
-- `context_intake.must_include_prior_outputs`
-- `context_intake.user_asserted_anchors`
-- `context_intake.known_good_baselines`
-- `context_intake.context_gaps`
-- `context_intake.crucial_inputs` for user-stated observables, deliverables, stop conditions, or anything the user said must stay visible even when it is not itself approved-mode grounding
-- `observables` for any user-named decisive quantity, signal, or behavior, especially the first smoking-gun check they would trust over softer proxies or limiting cases
-- at least one decisive claim, observable, or deliverable
-- any forbidden proxy or false-progress signal that the user called out
-- `uncertainty_markers.weakest_anchors`
-- `uncertainty_markers.unvalidated_assumptions`
-- `uncertainty_markers.competing_explanations`
-- `uncertainty_markers.disconfirming_observations`
-`context_intake`, `approach_policy`, and `uncertainty_markers` must each stay as objects, not strings or lists.
-`schema_version` must be the integer `1`, and `references[].must_surface` must be a boolean `true` or `false`, not a quoted synonym.
-
-If no must-read references are confirmed yet, record that explicitly in the contract rather than inventing one.
-If the user does not know the anchor yet, preserve that explicitly in `scope.unresolved_questions`, `context_intake.context_gaps`, or `uncertainty_markers.weakest_anchors` rather than inventing a paper, benchmark, or baseline.
-Accepted shorthand like `need grounding` or `target not yet chosen` is fine when it clearly refers to the missing decisive anchor.
-If the user supplied explicit observables, deliverables, prior outputs, or stop conditions, preserve them in the contract using wording the user would still recognize. Do not paraphrase them into generic "benchmark" or "artifact" language unless the user asked you to broaden them.
-If the user named a prior output or review checkpoint that must ground approval or be carried forward, put it in `context_intake.must_include_prior_outputs`. Use `context_intake.crucial_inputs` for user-stated observables, stop conditions, review requests, or constraints that must stay visible but do not themselves replace approved-mode grounding.
-Do not approve a scoping contract that strips decisive outputs, anchors, prior outputs, or review/stop triggers down to generic placeholders. The approved contract must preserve the user guidance that downstream planning needs.
-If the only checks captured so far are limiting cases, sanity checks, or qualitative expectations, treat the contract as still underspecified unless the user explicitly states that these are the decisive standard.
-Missing-anchor notes preserve uncertainty, but they do not satisfy approval on their own. Do not offer approval until at least one concrete anchor, reference, prior-output constraint, or baseline is present.
-
-Before you ask for approval, keep the contract as a literal JSON object for the `project_contract` subsection of `templates/state-json-schema.md`, and use that schema as the canonical source of truth for the object rules. Do not restate the contract rules here.
-
-Present a concise scoping summary and require explicit approval before downstream artifact generation:
-
-- header: "Scope"
-- question: "Does this scoping contract look right before I generate project artifacts?"
-- options:
-  - "Approve scope" -- proceed
-  - "Adjust scope" -- revise the contract before writing files
-  - "Review raw contract" -- show the structured contract
-  - "Stop here" -- exit without creating downstream artifacts
-
-Validate the approved contract before persisting it:
-
-```bash
-printf '%s\n' "$PROJECT_CONTRACT_JSON" | gpd --raw validate project-contract - --mode approved
-```
-
-If validation fails, show the errors, revise the scoping contract, and do NOT continue.
-
-Persist the approved contract into `GPD/state.json` from the same stdin payload:
-
-```bash
-printf '%s\n' "$PROJECT_CONTRACT_JSON" | gpd state set-project-contract -
-```
-
-Do not write `/tmp` intermediates for the approved contract. Prefer piping the exact approved JSON directly to `gpd ... -`. Only write a file if the user explicitly wants a durable saved copy, and if so place it under the project, not an OS temp directory.
+Keep the same blocking fields, preservation rules, schema discipline, approval options, validation command, and `gpd state set-project-contract -` persistence path from Step M1.5. Do not define a second scoping-contract variant here.
 
 If `GPD/config.json` does not exist yet, run Step 5 now before generating or committing `PROJECT.md`. This keeps the opening focused on the physics question while still letting `planning.commit_docs` and other durable workflow settings apply before the first project-artifact commit. After Step 5 completes, return here and continue.
 

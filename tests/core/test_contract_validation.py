@@ -1349,7 +1349,6 @@ def test_validate_project_contract_approved_mode_rejects_out_of_tree_path_like_g
     "value",
     [
         "https://example.org/missing-data-benchmark.csv",
-        "GPD/phases/03-missing-energy/03-01-SUMMARY.md",
     ],
 )
 def test_validate_project_contract_approved_mode_accepts_placeholder_word_locators_in_non_reference_grounding(
@@ -1368,6 +1367,27 @@ def test_validate_project_contract_approved_mode_accepts_placeholder_word_locato
     assert result.valid is True
     assert result.mode == "approved"
     assert result.guidance_signal_count == 1
+
+
+def test_validate_project_contract_approved_mode_rejects_rootless_project_local_baseline_locator() -> None:
+    contract = _load_contract_fixture()
+    contract["references"] = []
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["must_include_prior_outputs"] = []
+    contract["context_intake"]["user_asserted_anchors"] = []
+    contract["context_intake"]["known_good_baselines"] = ["GPD/phases/03-missing-energy/03-01-SUMMARY.md"]
+    contract["scope"]["unresolved_questions"] = []
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is False
+    assert result.mode == "approved"
+    assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
+    assert any(
+        "context_intake.known_good_baselines entry requires a resolved project_root to verify artifact grounding"
+        in warning
+        for warning in result.warnings
+    )
 
 
 def test_referee_decision_input_rejects_string_booleans() -> None:

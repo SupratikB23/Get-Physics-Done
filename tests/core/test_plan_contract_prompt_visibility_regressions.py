@@ -37,11 +37,13 @@ def test_planner_prompt_surfaces_default_salvage_and_specific_semantics() -> Non
 
     assert "Use `@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md` as the canonical contract source." in planner_prompt
     assert "Keep this prompt for scope selection, mode flags, and return conventions only." in planner_prompt
-    assert "Use the included schema as the source of truth." in planner_prompt
+    assert "Keep `project_contract` as the structured grounding ledger." in planner_prompt
+    assert "Use `effective_reference_intake` and `active_reference_context` only to surface the same anchors in readable form." in planner_prompt
+    assert "Treat `approach_policy` as execution policy only." in planner_prompt
+    assert "It does not substitute for grounding." in planner_prompt
     assert "For proof-bearing work, keep hypotheses, quantified variables, and named parameters explicit enough to audit." in planner_prompt
     assert "The contract still exposes defaultable semantic fields" not in planner_prompt
     assert "Stale proof review gate" not in planner_prompt
-    assert "Treat `approach_policy` as execution policy only; it does not substitute for grounding." in planner_prompt
 
 
 def test_phase_prompt_surfaces_default_salvage_and_hard_plan_requirements() -> None:

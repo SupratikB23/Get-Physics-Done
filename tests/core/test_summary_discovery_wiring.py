@@ -113,15 +113,17 @@ def test_progress_workflow_counts_standalone_and_numbered_phase_pairs() -> None:
 
 def test_command_surfaces_list_standalone_and_numbered_phase_artifacts() -> None:
     progress = (COMMANDS_DIR / "progress.md").read_text(encoding="utf-8")
+    progress_workflow = (WORKFLOWS_DIR / "progress.md").read_text(encoding="utf-8")
     regression_check = (COMMANDS_DIR / "regression-check.md").read_text(encoding="utf-8")
     show_phase = (COMMANDS_DIR / "show-phase.md").read_text(encoding="utf-8")
     audit = (COMMANDS_DIR / "audit-milestone.md").read_text(encoding="utf-8")
     write_paper = (COMMANDS_DIR / "write-paper.md").read_text(encoding="utf-8")
 
-    assert "GPD/phases/[current-phase-dir]/PLAN.md" in progress
-    assert "GPD/phases/[current-phase-dir]/*-PLAN.md" in progress
-    assert "GPD/phases/[current-phase-dir]/SUMMARY.md" in progress
-    assert "GPD/phases/[current-phase-dir]/*-SUMMARY.md" in progress
+    assert "@{GPD_INSTALL_DIR}/workflows/progress.md" in progress
+    assert "GPD/phases/[current-phase-dir]/PLAN.md" in progress_workflow
+    assert "GPD/phases/[current-phase-dir]/*-PLAN.md" in progress_workflow
+    assert "GPD/phases/[current-phase-dir]/SUMMARY.md" in progress_workflow
+    assert "GPD/phases/[current-phase-dir]/*-SUMMARY.md" in progress_workflow
     assert "standalone `PLAN.md` and numbered `*-PLAN.md`" in show_phase
     assert "`SUMMARY.md` / `*-SUMMARY.md` artifact" in show_phase
     assert "DISCOVERY" not in show_phase
