@@ -2,35 +2,21 @@
 Create executable phase prompts (PLAN.md files) for a research phase with integrated literature review and verification. Default flow: Research (if needed) -> Plan -> Verify -> Done. Orchestrates gpd-phase-researcher, gpd-planner, and gpd-plan-checker agents with a revision loop (max 3 iterations).
 </purpose>
 
-<required_reading>
-Read all files referenced by the invoking prompt's execution_context before starting.
-
-Read these files using the file_read tool:
-- {GPD_INSTALL_DIR}/references/ui/ui-brand.md
-- {GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md -- Template for spawning gpd-planner agents (placeholders, continuation format, failure protocol)
-- {GPD_INSTALL_DIR}/templates/phase-prompt.md -- PLAN.md output format (frontmatter, task XML, contract-native wiring)
-- {GPD_INSTALL_DIR}/templates/plan-contract-schema.md -- Canonical contract schema and hard validation rules that the planner must satisfy before `gpd validate plan-contract`
-</required_reading>
-
 <process>
 
 ## 1. Initialize
 
-Load all context in one call (include file contents to avoid redundant reads):
+Bootstrap with only the phase metadata and contract gate:
 
 ```bash
-INIT=$(gpd --raw init plan-phase "$PHASE" --include state,roadmap,requirements,context,research,verification,validation)
+BOOTSTRAP_INIT=$(gpd --raw init plan-phase "$PHASE" --stage phase_bootstrap)
 if [ $? -ne 0 ]; then
-  echo "ERROR: gpd initialization failed: $INIT"
+  echo "ERROR: gpd initialization failed: $BOOTSTRAP_INIT"
   exit 1
 fi
 ```
 
-Parse JSON for: `researcher_model`, `planner_model`, `checker_model`, `research_enabled`, `plan_checker_enabled`, `commit_docs`, `autonomy`, `research_mode`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_research`, `has_context`, `has_plans`, `plan_count`, `planning_exists`, `roadmap_exists`, `project_contract`, `project_contract_gate`, `project_contract_validation`, `project_contract_load_info`, `contract_intake`, `effective_reference_intake`, `selected_protocol_bundle_ids`, `protocol_bundle_context`, `protocol_bundle_verifier_extensions`, `active_reference_context`, `reference_artifacts_content`.
-
-**Structured state fields (always surfaced when recoverable):** `derived_convention_lock`, `derived_convention_lock_count`, `derived_intermediate_results`, `derived_intermediate_result_count`, `derived_approximations`, `derived_approximation_count`, plus reference-artifact fields from init JSON.
-
-**File contents (from --include):** `state_content`, `roadmap_content`, `requirements_content`, `context_content`, `research_content`, `verification_content`, `validation_content`. These are null if files don't exist.
+Parse JSON for: `researcher_model`, `planner_model`, `checker_model`, `research_enabled`, `plan_checker_enabled`, `commit_docs`, `autonomy`, `research_mode`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_research`, `has_context`, `has_plans`, `plan_count`, `planning_exists`, `roadmap_exists`, `project_contract`, `project_contract_gate`, `project_contract_validation`, `project_contract_load_info`, `platform`.
 
 **Mode-aware behavior:**
 - `autonomy=supervised`: Present the written draft plans for user review before treating them as approved or moving on to execution. Do not weaken the contract gate just because the draft is human-reviewed.
@@ -47,23 +33,21 @@ Parse JSON for: `researcher_model`, `planner_model`, `checker_model`, `research_
 
 ```bash
 REQUESTED_PHASE="${PHASE}"
-PHASE=$(echo "$INIT" | gpd json get .phase_number --default "${REQUESTED_PHASE}")
-PHASE_DIR=$(echo "$INIT" | gpd json get .phase_dir --default "")
-AUTONOMY=$(echo "$INIT" | gpd json get .autonomy --default balanced)
-RESEARCH_MODE=$(echo "$INIT" | gpd json get .research_mode --default balanced)
+PHASE=$(echo "$BOOTSTRAP_INIT" | gpd json get .phase_number --default "${REQUESTED_PHASE}")
+PHASE_DIR=$(echo "$BOOTSTRAP_INIT" | gpd json get .phase_dir --default "")
+AUTONOMY=$(echo "$BOOTSTRAP_INIT" | gpd json get .autonomy --default balanced)
+RESEARCH_MODE=$(echo "$BOOTSTRAP_INIT" | gpd json get .research_mode --default balanced)
 ```
 
 **If `planning_exists` is false:** Error -- run `gpd:new-project` first.
 
-**If `project_contract_load_info.status` starts with `blocked`:** STOP and checkpoint with the user. Show the specific `project_contract_load_info.errors` / `warnings`; do not silently continue from `ROADMAP.md`, `REQUIREMENTS.md`, or `active_reference_context` alone when the stored contract could not even be loaded cleanly.
+**If `project_contract_load_info.status` starts with `blocked`:** STOP and checkpoint with the user. Show the specific `project_contract_load_info.errors` / `warnings`; do not silently continue from `ROADMAP.md` or `REQUIREMENTS.md` alone when the stored contract could not even be loaded cleanly.
 
 **If `project_contract` is empty or null:** STOP and checkpoint with the user. Planning requires an approved scoping contract in `GPD/state.json`; do not infer phase scope from `ROADMAP.md` or `REQUIREMENTS.md` alone.
 
 **Treat `project_contract` as authoritative only when `project_contract_gate.authoritative` is true.** If the gate is false, keep the contract visible as context and diagnostics, not as approved planning scope.
 
 **If `project_contract_validation.valid` is false:** STOP and checkpoint with the user. Quote the `project_contract_validation.errors` explicitly and repair the contract before planning; a visible-but-blocked contract is not an approved planning contract.
-
-Treat `effective_reference_intake` as the machine-readable carry-forward anchor ledger for this phase. Do not rely only on the rendered `active_reference_context` prose when deciding what must stay visible.
 
 ## 1.5 Proof-Obligation Planning Gate
 
@@ -216,6 +200,18 @@ Explore mode may surface this choice more often, but it still does not auto-appr
 
 **Exploit-mode rule:** If `research_mode=exploit`, suppress optional tangents entirely unless the user explicitly requests them or the current approach is blocked by contract, anchor, or physics-validity failure. Do not volunteer `gpd:branch-hypothesis` as the default response in exploit mode.
 
+## 4.7 Refresh Research-Routing Context
+
+Load only the routing-time file surfaces needed to decide whether research should be reused, refreshed, or skipped:
+
+```bash
+INIT=$(gpd --raw init plan-phase "$PHASE" --stage research_routing)
+if [ $? -ne 0 ]; then
+  echo "ERROR: staged plan-phase init failed: $INIT"
+  exit 1
+fi
+```
+
 ## 5. Handle Research
 
 **Skip if:** `--gaps` flag, `--skip-research` flag, or `research_enabled` is false (from init) without `--research` override.
@@ -290,7 +286,8 @@ Display banner:
 ```
 
 ### Spawn gpd-phase-researcher
-@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+Load `references/orchestration/runtime-delegation-note.md` only when spawning the researcher.
 
 ```bash
 PHASE_DESC=$(gpd --raw roadmap get-phase "${PHASE}" | gpd json get .section --default "")
@@ -476,7 +473,7 @@ task(
 - **`EXPERIMENT DESIGN COMPLETE`:** Verify EXPERIMENT-DESIGN.md exists, display confirmation, continue to step 6
 - **`DESIGN BLOCKED`:** Display blocker, offer: 1) Provide context, 2) Skip experiment design, 3) Abort
 
-**If EXPERIMENT-DESIGN.md created:** The planner (step 8) receives this as additional context. Add to the planner prompt:
+**If EXPERIMENT-DESIGN.md created:** The planner stage payload already carries this as `experiment_design_content`. Keep it in the stage-local payload rather than re-reading it from disk.
 
 ```markdown
 **Experiment Design:** {experiment_design_content}
@@ -494,10 +491,19 @@ ls "${PHASE_DIR}"/*-PLAN.md 2>/dev/null
 
 ## 7. Use Context Files from INIT
 
-Most file contents are already loaded via `--include` in step 1 (`@` syntax doesn't work across task() boundaries):
+Refresh the full planning payload now that research routing is complete. This is the first stage that should load file contents, protocol-bundle context, reference-artifact content, and stage-local experiment design data for planner/checker prompts:
 
 ```bash
-# Extract from INIT JSON
+INIT=$(gpd --raw init plan-phase "$PHASE" --stage planner_authoring)
+if [ $? -ne 0 ]; then
+  echo "ERROR: staged plan-phase init failed: $INIT"
+  exit 1
+fi
+```
+
+Extract the full planning context from INIT (`@` syntax does not cross `task()` boundaries):
+
+```bash
 STATE_CONTENT=$(echo "$INIT" | gpd json get .state_content --default "")
 ROADMAP_CONTENT=$(echo "$INIT" | gpd json get .roadmap_content --default "")
 REQUIREMENTS_CONTENT=$(echo "$INIT" | gpd json get .requirements_content --default "")
@@ -510,30 +516,8 @@ ACTIVE_REFERENCE_CONTEXT=$(echo "$INIT" | gpd json get .active_reference_context
 REFERENCE_ARTIFACTS_CONTENT=$(echo "$INIT" | gpd json get .reference_artifacts_content --default "")
 ```
 
-**CRITICAL: Re-read RESEARCH.md from disk if the researcher was spawned in step 5.**
-
-The `research_content` from INIT (step 1) is **stale** — it was loaded before the researcher wrote RESEARCH.md.
-If you pass the stale INIT value to the planner, the planner will plan WITHOUT the researcher's output.
-**ALWAYS** read the fresh file from disk after step 5 completes:
-
-```bash
-# Re-read RESEARCH.md from disk (researcher may have just created/updated it)
-RESEARCH_FILE=$(ls "${PHASE_DIR}"/*-RESEARCH.md 2>/dev/null | head -1)
-if [ -n "$RESEARCH_FILE" ]; then
-  RESEARCH_CONTENT=$(cat "$RESEARCH_FILE")
-else
-  RESEARCH_CONTENT=$(echo "$INIT" | gpd json get .research_content --default "")
-fi
-```
-
-**Load EXPERIMENT-DESIGN.md if it was created in step 5.5:**
-
-```bash
-EXPERIMENT_FILE=$(ls "${PHASE_DIR}"/*-EXPERIMENT-DESIGN.md 2>/dev/null | head -1)
-if [ -n "$EXPERIMENT_FILE" ]; then
-  EXPERIMENT_DESIGN_CONTENT=$(cat "$EXPERIMENT_FILE")
-fi
-```
+RESEARCH_CONTENT=$(echo "$INIT" | gpd json get .research_content --default "")
+EXPERIMENT_DESIGN_CONTENT=$(echo "$INIT" | gpd json get .experiment_design_content --default "")
 
 ## 8. Spawn gpd-planner Agent
 
@@ -549,7 +533,7 @@ Display banner:
 
 Planner prompt:
 
-@{GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md
+Use `templates/planner-subagent-prompt.md` here as the stage-local planner spawn template and render its `## Standard Planning Template` section.
 
 ```markdown
 Render the template's `## Standard Planning Template` into `filled_prompt` with these bindings:
@@ -610,6 +594,16 @@ Display banner (include iteration count if in revision loop):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 * Spawning plan checker...
+```
+
+Refresh the checker/revision payload before entering the checker loop:
+
+```bash
+INIT=$(gpd --raw init plan-phase "$PHASE" --stage checker_revision)
+if [ $? -ne 0 ]; then
+  echo "ERROR: staged plan-phase init failed: $INIT"
+  exit 1
+fi
 ```
 
 ```bash
@@ -741,7 +735,7 @@ fi
 
 Revision prompt:
 
-@{GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md
+Use `templates/planner-subagent-prompt.md` here as the stage-local revision template and render its `## Revision Template` section.
 
 ```markdown
 Render the template's `## Revision Template` into `revision_prompt` with these bindings:

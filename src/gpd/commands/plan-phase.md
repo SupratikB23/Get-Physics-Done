@@ -22,8 +22,6 @@ Create executable phase prompts for a research phase.
 
 <execution_context>
 @{GPD_INSTALL_DIR}/workflows/plan-phase.md
-@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md
-@{GPD_INSTALL_DIR}/references/ui/ui-brand.md
 </execution_context>
 
 <context>
