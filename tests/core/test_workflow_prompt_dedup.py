@@ -9,6 +9,7 @@ from gpd.adapters.install_utils import expand_at_includes
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / "src/gpd/specs/workflows"
 TEMPLATES_DIR = REPO_ROOT / "src/gpd/specs/templates"
+AGENTS_DIR = REPO_ROOT / "src/gpd/agents"
 
 
 def _read(name: str) -> str:
@@ -31,26 +32,23 @@ def test_planner_workflows_expand_the_shared_planner_template_once_per_route() -
     plan_phase_raw = _read("plan-phase.md")
     quick_raw = _read("quick.md")
     verify_work_raw = _read("verify-work.md")
+    planner_agent_raw = (AGENTS_DIR / "gpd-planner.md").read_text(encoding="utf-8")
 
     plan_phase = _expand("plan-phase.md")
     quick = _expand("quick.md")
     verify_work = _expand("verify-work.md")
     planner_template = (TEMPLATES_DIR / "planner-subagent-prompt.md").read_text(encoding="utf-8")
 
-    for raw_text in (plan_phase_raw, quick_raw, verify_work_raw):
+    for raw_text in (plan_phase_raw, verify_work_raw):
         assert "templates/planner-subagent-prompt.md" in raw_text
-        assert "templates/phase-prompt.md" in raw_text
         assert "# Planner Subagent Prompt Template" not in raw_text
 
     assert plan_phase_raw.count("templates/planner-subagent-prompt.md") == 3
-    assert plan_phase_raw.count("templates/phase-prompt.md") == 3
-    assert plan_phase_raw.count("templates/plan-contract-schema.md") == 3
-    assert quick_raw.count("templates/planner-subagent-prompt.md") == 1
-    assert quick_raw.count("templates/phase-prompt.md") == 1
-    assert quick_raw.count("templates/plan-contract-schema.md") == 1
     assert verify_work_raw.count("templates/planner-subagent-prompt.md") == 2
-    assert verify_work_raw.count("templates/phase-prompt.md") == 2
-    assert verify_work_raw.count("templates/plan-contract-schema.md") == 2
+    assert "templates/planner-subagent-prompt.md" not in quick_raw
+    assert planner_agent_raw.count("@{GPD_INSTALL_DIR}/templates/phase-prompt.md") == 1
+    assert planner_agent_raw.count("@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md") == 1
+    assert "canonical planner read surface" in planner_agent_raw
 
     assert planner_template.count("## Standard Planning Template") == 1
     assert planner_template.count("## Revision Template") == 1
@@ -70,6 +68,8 @@ def test_planner_workflows_expand_the_shared_planner_template_once_per_route() -
     assert "project_contract_gate.authoritative" in planner_template
     plan_phase_prompt = _between(plan_phase_raw, "Planner prompt:", "task(")
     assert "project_contract_gate.authoritative" not in plan_phase_prompt
+    assert "{GPD_INSTALL_DIR}/templates/phase-prompt.md" not in plan_phase_prompt
+    assert "{GPD_INSTALL_DIR}/templates/plan-contract-schema.md" not in plan_phase_prompt
     assert "<physics_planning_requirements>" not in plan_phase_prompt
     assert "<downstream_consumer>" not in plan_phase_prompt
     assert "<quality_gate>" not in plan_phase_prompt

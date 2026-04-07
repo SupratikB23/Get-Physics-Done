@@ -1749,8 +1749,7 @@ def test_plan_tool_preflight_surfaces_across_planning_and_execution_prompts() ->
     assert "reference-main" in research_verification
     assert "## CHECKPOINT REACHED" not in verify_workflow
     assert verify_workflow.count("templates/planner-subagent-prompt.md") == 2
-    assert verify_workflow.count("templates/phase-prompt.md") == 2
-    assert verify_workflow.count("templates/plan-contract-schema.md") == 2
+    assert verify_workflow.count("First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.") == 2
     for token in (
         "tool_requirements",
         "gap_closure",
@@ -3306,9 +3305,7 @@ def test_stage7_runtime_parity_docs_use_canonical_model_resolution_and_generic_h
     assert "Handoff verification" in execute_phase
     assert "False failure report despite delivered work" in execute_phase
     assert "Handoff verification" in quick
-    assert "templates/planner-subagent-prompt.md" in quick
-    assert "templates/phase-prompt.md" in quick
-    assert "templates/plan-contract-schema.md" in quick
+    assert "First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions." in quick
     assert "project_contract_load_info.status" in quick
     assert "project_contract_validation.valid" in quick
     assert "project_contract_validation" in quick
