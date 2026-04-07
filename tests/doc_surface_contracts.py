@@ -141,7 +141,6 @@ def _public_surface_contract_payload() -> dict[str, object]:
             "durable_authority_phrase": contract.resume_authority.durable_authority_phrase,
             "public_vocabulary_intro": contract.resume_authority.public_vocabulary_intro,
             "public_fields": list(contract.resume_authority.public_fields),
-            "top_level_boundary_phrase": contract.resume_authority.top_level_boundary_phrase,
         },
         "recovery_ladder": {
             "title": contract.recovery_ladder.title,
@@ -219,14 +218,12 @@ def _resume_authority_contract() -> dict[str, object]:
         "durable_authority_phrase",
         "public_vocabulary_intro",
         "public_fields",
-        "top_level_boundary_phrase",
     }
     assert required_keys.issubset(section)
     assert not (set(section) - required_keys)
     _contract_string(section, "durable_authority_phrase", label="resume_authority")
     _contract_string(section, "public_vocabulary_intro", label="resume_authority")
     _contract_string_list(section, "public_fields", label="resume_authority")
-    _contract_string(section, "top_level_boundary_phrase", label="resume_authority")
     return section
 
 
@@ -1130,13 +1127,6 @@ def assert_resume_authority_contract(
     assert _contract_string(contract, "public_vocabulary_intro", label="resume_authority") in content
     for field in _contract_string_list(contract, "public_fields", label="resume_authority"):
         assert f"`{field}`" in content
-    _assert_contains_any(
-        content,
-        (
-            _contract_string(contract, "top_level_boundary_phrase", label="resume_authority"),
-        ),
-        label="resume top-level boundary",
-    )
     if allow_explicit_alias_examples:
         _assert_contains_any(
             content,
@@ -1167,7 +1157,7 @@ def assert_resume_authority_contract(
             lowered_content,
             (
                 compatibility_note.lower(),
-                _contract_string(contract, "top_level_boundary_phrase", label="resume_authority").lower(),
+                _contract_string(contract, "public_vocabulary_intro", label="resume_authority").lower(),
             ),
             label="generic compatibility note",
         )

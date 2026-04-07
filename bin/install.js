@@ -765,11 +765,6 @@ function validateSharedPublicSurfaceContract(contractPayload) {
   );
   const publicVocabularyIntro = requireNonEmptyString(resumeAuthority, "public_vocabulary_intro", "resume_authority");
   const publicFields = requireNonEmptyStringList(resumeAuthority, "public_fields", "resume_authority");
-  const topLevelBoundaryPhrase = requireNonEmptyString(
-    resumeAuthority,
-    "top_level_boundary_phrase",
-    "resume_authority"
-  );
   const recoveryTitle = requireNonEmptyString(recoveryLadder, "title", "recovery_ladder");
   const recoveryLocalSnapshotCommand = requireListedCommand(
     localCliBridgeCommands,
@@ -844,7 +839,6 @@ function validateSharedPublicSurfaceContract(contractPayload) {
       durableAuthorityPhrase,
       publicVocabularyIntro,
       publicFields,
-      topLevelBoundaryPhrase,
     },
     recoveryLadder: {
       title: recoveryTitle,

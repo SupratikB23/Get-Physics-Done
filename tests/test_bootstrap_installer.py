@@ -749,7 +749,6 @@ assert.equal(
 );
 assert.equal(sharedText.resumeAuthority.publicVocabularyIntro, payload.resume_authority.public_vocabulary_intro);
 assert.deepEqual(sharedText.resumeAuthority.publicFields, payload.resume_authority.public_fields);
-assert.equal(sharedText.resumeAuthority.topLevelBoundaryPhrase, payload.resume_authority.top_level_boundary_phrase);
 assert.equal(sharedText.recoveryLadder.localSnapshotCommand, payload.recovery_ladder.local_snapshot_command);
 assert.equal(sharedText.recoveryLadder.crossWorkspaceCommand, payload.recovery_ladder.cross_workspace_command);
 

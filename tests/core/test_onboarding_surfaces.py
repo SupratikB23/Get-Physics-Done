@@ -200,7 +200,7 @@ def test_resume_authority_contract_exposes_full_validated_surface() -> None:
 
     assert "canonical continuation fields" in contract.public_vocabulary_intro.casefold()
     assert contract.public_fields == resume_authority_fields()
-    assert contract.top_level_boundary_phrase == "Canonical continuation fields define the public resume vocabulary"
+    assert not hasattr(contract, "top_level_boundary_phrase")
     assert not hasattr(contract, "compat_surface")
     assert not hasattr(contract, "session_mirror")
     assert not hasattr(contract, "compatibility_phrase")
@@ -215,7 +215,6 @@ def test_resume_authority_helper_rejects_legacy_compatibility_keys(monkeypatch: 
             "active_resume_origin",
             "active_resume_pointer",
         ],
-        "top_level_boundary_phrase": "Canonical continuation fields define the public resume vocabulary",
         "compat_surface": "legacy compatibility surface",
         "session_mirror": "legacy session mirror",
         "compatibility_phrase": "legacy compatibility note",
@@ -560,7 +559,6 @@ def test_doc_surface_contract_helpers_read_runtime_normalized_contract(
             durable_authority_phrase="Durable authority phrase",
             public_vocabulary_intro="Public vocabulary intro",
             public_fields=("resume_file",),
-            top_level_boundary_phrase="Top-level boundary phrase",
         ),
         recovery_ladder=public_surface_contract_module.RecoveryLadderContract(
             title="Recovery ladder title",

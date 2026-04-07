@@ -129,7 +129,6 @@ class ResumeAuthorityContract:
     durable_authority_phrase: str
     public_vocabulary_intro: str
     public_fields: tuple[str, ...]
-    top_level_boundary_phrase: str
 
     def render_public_field_list(self) -> str:
         return ", ".join(f"`{field}`" for field in self.public_fields)
@@ -610,11 +609,6 @@ def load_public_surface_contract() -> PublicSurfaceContract:
             ),
             public_fields=resume_authority_public_fields,
             public_vocabulary_intro=resume_authority_public_vocabulary_intro,
-            top_level_boundary_phrase=_require_string(
-                resume_authority_payload,
-                "top_level_boundary_phrase",
-                label="resume_authority",
-            ),
         ),
         recovery_ladder=RecoveryLadderContract(
             title=_require_string(recovery_payload, "title", label="recovery_ladder"),

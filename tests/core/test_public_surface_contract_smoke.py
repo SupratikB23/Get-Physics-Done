@@ -10,10 +10,6 @@ def test_public_surface_contract_smoke_surfaces_current_resume_authority_phrase(
         contract.resume_authority.public_vocabulary_intro
         == "Canonical continuation fields define the public resume vocabulary"
     )
-    assert (
-        contract.resume_authority.top_level_boundary_phrase
-        == "Canonical continuation fields define the public resume vocabulary"
-    )
 
 
 def test_public_surface_contract_smoke_keeps_bridge_commands_and_named_commands_aligned() -> None:

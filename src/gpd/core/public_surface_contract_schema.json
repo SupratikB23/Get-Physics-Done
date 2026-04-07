@@ -58,12 +58,7 @@
       "keys": ["primary_sentence", "default_sentence"]
     },
     "resume_authority": {
-      "keys": [
-        "durable_authority_phrase",
-        "public_vocabulary_intro",
-        "public_fields",
-        "top_level_boundary_phrase"
-      ]
+      "keys": ["durable_authority_phrase", "public_vocabulary_intro", "public_fields"]
     },
     "recovery_ladder": {
       "keys": [

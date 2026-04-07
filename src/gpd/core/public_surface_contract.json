@@ -75,8 +75,7 @@
       "recorded_continuity_handoff_file",
       "missing_continuity_handoff_file",
       "resume_candidates"
-    ],
-    "top_level_boundary_phrase": "Canonical continuation fields define the public resume vocabulary"
+    ]
   },
   "recovery_ladder": {
     "title": "Recovery ladder",
