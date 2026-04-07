@@ -4,7 +4,7 @@ This directory contains the automated test suite for GPD: core CLI and state reg
 
 The final section of this README keeps the full checked-in repository interdependency graph that the graph guardrail tests read directly.
 
-Default `uv run pytest tests/ -q` uses the fast daily suite declared in `tests/conftest.py` and inherits `-n auto --dist=loadscope` from `pyproject.toml`, so pytest parallelizes by default while keeping related tests grouped. If you need a serial run for debugging, override that default explicitly with `uv run pytest tests/ -q -n 0`. For a focused smoke pass, run `uv run pytest tests/test_runtime_abstraction_boundaries.py tests/core/test_contract_schema_prompt_parity.py tests/core/test_review_contract_prompt_visibility.py tests/mcp/test_tool_contract_visibility.py tests/core/test_verifier_prompt_contract_visibility.py tests/core/test_verification_surface_alignment_regressions.py -q`. The GitHub Actions workflow runs the complementary heavy suite with `--full-suite` and the shared ignore helper while relying on the same default pytest parallelism policy.
+Default `uv run pytest` runs the full checked-in suite, and `uv run pytest -q` does the same with quieter output. Both inherit `-n auto --dist=worksteal` from `pyproject.toml`, so pytest parallelizes by default and can rebalance giant modules across idle workers. For default full-suite local runs, `tests/conftest.py` also raises xdist auto-worker selection toward the current CI shard fanout, so local `uv run pytest` stays in the same rough parallelism range as CI without changing what gets collected. If you need a serial run for debugging, override that default explicitly with `uv run pytest -n 0`. For a focused smoke pass, run `uv run pytest tests/test_runtime_abstraction_boundaries.py tests/core/test_contract_schema_prompt_parity.py tests/core/test_review_contract_prompt_visibility.py tests/mcp/test_tool_contract_visibility.py tests/core/test_verifier_prompt_contract_visibility.py tests/core/test_verification_surface_alignment_regressions.py -q`. The GitHub Actions workflow runs that same full suite as category-named runtime-informed shards: `root 1/9` through `root 9/9`, `adapters 1/2` through `adapters 2/2`, `hooks 1/2` through `hooks 2/2`, `mcp`, and `core 1/5` through `core 5/5`. `tests/ci_sharding.py` still weights files by collected test counts, boosts root modules that have been slow on GitHub Actions, splits known hotspot modules such as `tests/test_runtime_cli.py`, `tests/test_registry.py`, `tests/test_update_workflow.py`, and `tests/hooks/test_runtime_detect.py`, and greedily rebalances those work units inside each category so the thematic shard names remain close to the well-balanced anonymous-shard timings while each shard still inherits the same default pytest work-stealing parallelism policy.
 
 ## Repository Interdependency Graph
 
@@ -35,7 +35,7 @@ This graph therefore includes:
 - `src/gpd/specs/references/**/*.md`: `168`
 - `src/gpd/adapters/*.py`: `9`
 - `src/gpd/hooks/*.py`: `11`
-- `src/gpd/mcp/servers/*.py`: `8`
+- `src/gpd/mcp/servers/*.py`: `9`
 - `infra/gpd-*.json`: `8`
 
 Excluded as noise from node counting, but still modeled where contractually relevant:
@@ -1220,14 +1220,17 @@ They explicitly preserve:
 - `src/gpd/mcp/builtin_servers.py -> external binary {python}`
   `external-binary`
 
-- `src/gpd/mcp/builtin_servers.py -> external Python package {arxiv_mcp_server}`
+- `src/gpd/mcp/builtin_servers.py -> src/gpd/mcp/servers/arxiv_bridge.py`
+  `hard-import`
+
+- `src/gpd/mcp/servers/arxiv_bridge.py -> external Python package {arxiv_mcp_server}`
   `external-package`
 
 - `infra/gpd-{conventions,errors,patterns,protocols,skills,state,verification,arxiv}.json -> external binary {python}`
   `external-binary`
 
-- `infra/gpd-arxiv.json -> external Python package {arxiv_mcp_server}`
-  `external-package`
+- `infra/gpd-arxiv.json -> src/gpd/mcp/servers/arxiv_bridge.py`
+  `hard-import`
 
 - `src/gpd/mcp/servers/state_server.py -> src/gpd/core/{config,health,state,errors}.py`
   `hard-import`

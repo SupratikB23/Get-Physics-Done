@@ -359,13 +359,16 @@ class TestInstall:
 
         for agent_file in (target / "agents").glob("gpd-*.md"):
             content = agent_file.read_text(encoding="utf-8")
+            frontmatter = content
+            if content.startswith("---\n"):
+                _, frontmatter, _ = content.split("---\n", 2)
             assert "color:" not in content
             assert "allowed-tools:" not in content
-            assert "commit_authority:" not in content
-            assert "surface:" not in content
-            assert "role_family:" not in content
-            assert "artifact_write_authority:" not in content
-            assert "shared_state_authority:" not in content
+            assert "commit_authority:" not in frontmatter
+            assert "surface:" not in frontmatter
+            assert "role_family:" not in frontmatter
+            assert "artifact_write_authority:" not in frontmatter
+            assert "shared_state_authority:" not in frontmatter
 
     def test_install_enables_experimental_agents(self, adapter: GeminiAdapter, gpd_root: Path, tmp_path: Path) -> None:
         target = tmp_path / ".gemini"

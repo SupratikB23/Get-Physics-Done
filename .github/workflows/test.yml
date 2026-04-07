@@ -56,8 +56,88 @@ jobs:
         run: uv run ruff check .
 
   pytest:
-    name: pytest (3.11)
+    name: pytest ${{ matrix.display_name }} (3.11)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - display_name: root 1/9
+            category: root
+            shard_index: 1
+            shard_total: 9
+          - display_name: root 2/9
+            category: root
+            shard_index: 2
+            shard_total: 9
+          - display_name: root 3/9
+            category: root
+            shard_index: 3
+            shard_total: 9
+          - display_name: root 4/9
+            category: root
+            shard_index: 4
+            shard_total: 9
+          - display_name: root 5/9
+            category: root
+            shard_index: 5
+            shard_total: 9
+          - display_name: root 6/9
+            category: root
+            shard_index: 6
+            shard_total: 9
+          - display_name: root 7/9
+            category: root
+            shard_index: 7
+            shard_total: 9
+          - display_name: root 8/9
+            category: root
+            shard_index: 8
+            shard_total: 9
+          - display_name: root 9/9
+            category: root
+            shard_index: 9
+            shard_total: 9
+          - display_name: adapters 1/2
+            category: adapters
+            shard_index: 1
+            shard_total: 2
+          - display_name: adapters 2/2
+            category: adapters
+            shard_index: 2
+            shard_total: 2
+          - display_name: hooks 1/2
+            category: hooks
+            shard_index: 1
+            shard_total: 2
+          - display_name: hooks 2/2
+            category: hooks
+            shard_index: 2
+            shard_total: 2
+          - display_name: mcp
+            category: mcp
+            shard_index: 1
+            shard_total: 1
+          - display_name: core 1/5
+            category: core
+            shard_index: 1
+            shard_total: 5
+          - display_name: core 2/5
+            category: core
+            shard_index: 2
+            shard_total: 5
+          - display_name: core 3/5
+            category: core
+            shard_index: 3
+            shard_total: 5
+          - display_name: core 4/5
+            category: core
+            shard_index: 4
+            shard_total: 5
+          - display_name: core 5/5
+            category: core
+            shard_index: 5
+            shard_total: 5
 
     steps:
       - name: Check out repository
@@ -79,15 +159,56 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run fast test suite
-        run: uv run pytest tests/ -q
-
-      - name: Run complementary heavy suite
+      - name: Resolve pytest shard targets
+        env:
+          PYTEST_CATEGORY: ${{ matrix.category }}
+          PYTEST_SHARD_INDEX: ${{ matrix.shard_index }}
+          PYTEST_SHARD_TARGET_FILE: ${{ runner.temp }}/pytest-targets.txt
+          PYTEST_SHARD_TOTAL: ${{ matrix.shard_total }}
         run: |
-          HEAVY_SUITE_IGNORE_ARGS="$(uv run python - <<'PY'
-          from tests.conftest import complementary_heavy_suite_ignore_args
+          uv run python - <<'PY'
+          import os
+          from pathlib import Path
 
-          print(" ".join(complementary_heavy_suite_ignore_args()))
+          from tests.ci_sharding import write_ci_shard_targets_file
+
+          targets = write_ci_shard_targets_file(
+              target_file=Path(os.environ["PYTEST_SHARD_TARGET_FILE"]),
+              category=os.environ["PYTEST_CATEGORY"],
+              shard_index=int(os.environ["PYTEST_SHARD_INDEX"]),
+              shard_total=int(os.environ["PYTEST_SHARD_TOTAL"]),
+          )
+          print(
+              f"Resolved {len(targets)} pytest targets for {os.environ['PYTEST_CATEGORY']} "
+              f"shard {os.environ['PYTEST_SHARD_INDEX']}/{os.environ['PYTEST_SHARD_TOTAL']}"
+          )
           PY
-          )"
-          uv run pytest tests/ -q --full-suite $HEAVY_SUITE_IGNORE_ARGS
+
+      - name: Run pytest shard
+        env:
+          PYTEST_SHARD_TARGET_FILE: ${{ runner.temp }}/pytest-targets.txt
+        run: |
+          mapfile -t PYTEST_TARGETS < "$PYTEST_SHARD_TARGET_FILE"
+          uv run pytest -q "${PYTEST_TARGETS[@]}"
+
+  # ── Trigger GPD Web staging rebuild on push to main ──
+  trigger-staging-rebuild:
+    name: trigger GPD Web staging rebuild
+    needs: [pytest]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch rebuild to gpd-web
+        env:
+          GPD_WEB_TOKEN: ${{ secrets.GPD_WEB_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GPD_WEB_TOKEN" ]; then
+            echo "::warning::GPD_WEB_DISPATCH_TOKEN not configured — skipping staging rebuild trigger"
+            exit 0
+          fi
+          curl -sf -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GPD_WEB_TOKEN}" \
+            https://api.github.com/repos/physicalsuperintelligence/gpd-web/dispatches \
+            -d '{"event_type":"rebuild-gpd","client_payload":{"source":"github","version":"main","image_tag":"staging"}}'
+          echo "Dispatched staging rebuild to gpd-web"

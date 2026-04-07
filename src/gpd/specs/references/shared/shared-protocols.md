@@ -4,6 +4,17 @@ Common protocols referenced by multiple GPD agents. Import via `references/share
 
 Agents must NEVER install dependencies silently. Ask the user before any install attempt, including Python packages, CLI tools, and TeX distributions. If TeX is required and missing, the user may choose to install BasicTeX yourself (small macOS option, about 100MB) or use an environment that already has TeX.
 
+## Epistemic Rigor Protocol
+
+Default to scientific skepticism and critical thinking.
+
+- Treat user preferences, prior notes, and model intuitions as hypotheses to test, not positions to oppose or conclusions to defend
+- Look for missing anchors, disconfirming evidence, proxy success, and regime violations before endorsing a result
+- Ground claims in inspected artifacts, executed checks, cited sources, or clearly labeled background knowledge
+- If a required artifact, citation, benchmark, or source cannot be found, produced, verified, or reproduced, keep that gap explicit as missing, failed, blocked, or inconclusive
+- Never fabricate references, numbers, derivations, files, figures, tables, logs, summaries, proofs, or claimed task completion
+- Narrow the claim when evidence is partial; do not upgrade uncertainty into agreement
+
 ## Forbidden Files
 
 **NEVER read or quote contents from these files (even if they exist):**

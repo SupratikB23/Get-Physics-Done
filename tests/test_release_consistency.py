@@ -310,17 +310,28 @@ def test_merge_gate_workflow_uses_main_branch_pytest_on_python_311() -> None:
     assert "push:" in workflow
     assert "branches: [main]" in workflow
     assert "workflow_dispatch:" in workflow
-    assert "name: pytest (3.11)" in workflow
+    assert "name: pytest ${{ matrix.display_name }} (3.11)" in workflow
+    assert "fail-fast: false" in workflow
+    assert "display_name: root 1/9" in workflow
+    assert "display_name: root 9/9" in workflow
+    assert "display_name: adapters 1/2" in workflow
+    assert "display_name: adapters 2/2" in workflow
+    assert "display_name: hooks 1/2" in workflow
+    assert "display_name: hooks 2/2" in workflow
+    assert "display_name: mcp" in workflow
+    assert "display_name: core 5/5" in workflow
     assert "actions/checkout@v6" in workflow
     assert "actions/setup-python@v6" in workflow
     assert 'python-version: "3.11"' in workflow
     assert "astral-sh/setup-uv@v7" in workflow
     assert "uv sync --dev" in workflow
-    assert 'addopts = "-n auto --dist=loadscope"' in pyproject
-    assert "Run fast test suite" in workflow
-    assert "Run complementary heavy suite" in workflow
-    assert "uv run pytest tests/ -q" in workflow
-    assert "uv run pytest tests/ -q --full-suite $HEAVY_SUITE_IGNORE_ARGS" in workflow
+    assert 'addopts = "-n auto --dist=worksteal"' in pyproject
+    assert "Resolve pytest shard targets" in workflow
+    assert "Run pytest shard" in workflow
+    assert "from tests.ci_sharding import write_ci_shard_targets_file" in workflow
+    assert "PYTEST_CATEGORY" in workflow
+    assert 'uv run pytest -q "${PYTEST_TARGETS[@]}"' in workflow
+    assert "needs: [pytest]" in workflow
 
 
 def test_prepare_release_workflow_creates_release_pr_without_publishing() -> None:
@@ -400,7 +411,7 @@ def test_public_runtime_dependency_surface_stays_curated() -> None:
     optional = project.get("optional-dependencies", {})
 
     assert _normalized_dependency_names(dependencies) == _expected_runtime_dependency_names()
-    assert optional == {"arxiv": ["arxiv-mcp-server>=0.3.2"]}
+    assert optional == {"arxiv": ["arxiv-mcp-server>=0.4.11"]}
 
 
 
@@ -436,10 +447,6 @@ def test_public_gpd_infra_descriptors_use_entry_points_not_python() -> None:
 
     for path in sorted((repo_root / "infra").glob("gpd-*.json")):
         descriptor = json.loads(path.read_text(encoding="utf-8"))
-        if path.stem == "gpd-arxiv":
-            assert descriptor["command"] == "${GPD_PYTHON}"
-            continue
-
         assert descriptor["command"].startswith("gpd-mcp-")
         assert descriptor["args"] == []
 
@@ -454,6 +461,87 @@ def test_gitignore_covers_repo_local_tmp_root() -> None:
     content = (repo_root / ".gitignore").read_text(encoding="utf-8")
 
     assert "tmp/" in content
+
+
+def test_gitignore_does_not_exclude_gpd_directory() -> None:
+    """Regression: GPD/ must not be gitignored.
+
+    Workflow commit commands (``gpd commit``) include GPD/ files; gitignoring
+    them causes ``git add`` failures.  A pre-commit hook strips GPD/ from
+    commits to the codebase repo instead.
+    """
+    repo_root = _repo_root()
+    content = (repo_root / ".gitignore").read_text(encoding="utf-8")
+    for pattern in ("GPD/", "GPD/*", "GPD/STATE.md", "GPD/state.json", "GPD/state.json.bak"):
+        assert pattern not in content, f".gitignore must not contain {pattern!r}"
+
+
+def test_pre_commit_config_blocks_gpd_directory() -> None:
+    """The pre-commit config must include the block-gpd-directory hook."""
+    import yaml
+
+    repo_root = _repo_root()
+    config = yaml.safe_load((repo_root / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    hook_ids = [h["id"] for repo in config["repos"] for h in repo["hooks"]]
+    assert "block-gpd-directory" in hook_ids
+
+
+def test_block_gpd_commit_hook_script_exists_and_is_executable() -> None:
+    repo_root = _repo_root()
+    hook_script = repo_root / "scripts" / "block-gpd-commit.sh"
+    assert hook_script.exists(), "scripts/block-gpd-commit.sh must exist"
+    assert os.access(hook_script, os.X_OK), "scripts/block-gpd-commit.sh must be executable"
+
+
+def test_block_gpd_commit_hook_unstages_gpd_files(tmp_path: Path) -> None:
+    """Integration: the hook script strips GPD/ files from the index."""
+    repo_root = _repo_root()
+    hook_script = repo_root / "scripts" / "block-gpd-commit.sh"
+
+    # Set up a throwaway git repo.
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"],
+        cwd=tmp_path, check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"],
+        cwd=tmp_path, check=True, capture_output=True,
+    )
+
+    # Seed an initial commit so HEAD exists.
+    (tmp_path / "README.md").write_text("seed\n")
+    subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=tmp_path, check=True, capture_output=True,
+    )
+
+    # Stage a GPD file and a non-GPD file.
+    gpd_dir = tmp_path / "GPD"
+    gpd_dir.mkdir()
+    (gpd_dir / "STATE.md").write_text("state\n")
+    (tmp_path / "real.txt").write_text("real\n")
+    subprocess.run(["git", "add", "GPD/STATE.md", "real.txt"], cwd=tmp_path, check=True, capture_output=True)
+
+    # Run the hook script.
+    result = subprocess.run(
+        [str(hook_script)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+
+    # GPD/STATE.md should be unstaged; real.txt should remain staged.
+    staged = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        cwd=tmp_path, capture_output=True, text=True, check=True,
+    )
+    staged_files = staged.stdout.strip().splitlines()
+    assert "real.txt" in staged_files
+    assert "GPD/STATE.md" not in staged_files
 
 
 def test_npm_pack_dry_run_uses_temp_cache_outside_repo(tmp_path: Path) -> None:

@@ -560,6 +560,64 @@ def test_parse_contract_results_data_artifact_rejects_blank_and_duplicate_list_m
         )
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected_error"),
+    [
+        (
+            {
+                "claims": {"claim-main": {"status": "failed"}},
+                "uncertainty_markers": {
+                    "weakest_anchors": ["anchor-1"],
+                    "disconfirming_observations": ["obs-1"],
+                },
+            },
+            "claims.claim-main.status=failed requires summary, notes, or evidence explaining the gap",
+        ),
+        (
+            {
+                "deliverables": {"deliv-main": {"status": "blocked"}},
+                "uncertainty_markers": {
+                    "weakest_anchors": ["anchor-1"],
+                    "disconfirming_observations": ["obs-1"],
+                },
+            },
+            "deliverables.deliv-main.status=blocked requires summary, notes, or evidence explaining the gap",
+        ),
+        (
+            {
+                "references": {
+                    "ref-main": {
+                        "status": "missing",
+                        "missing_actions": ["cite"],
+                    }
+                },
+                "uncertainty_markers": {
+                    "weakest_anchors": ["anchor-1"],
+                    "disconfirming_observations": ["obs-1"],
+                },
+            },
+            "references.ref-main.status=missing requires summary or evidence explaining what is missing",
+        ),
+        (
+            {
+                "forbidden_proxies": {"fp-main": {"status": "unresolved"}},
+                "uncertainty_markers": {
+                    "weakest_anchors": ["anchor-1"],
+                    "disconfirming_observations": ["obs-1"],
+                },
+            },
+            "forbidden_proxies.fp-main.status=unresolved requires notes or evidence explaining the proxy issue",
+        ),
+    ],
+)
+def test_parse_contract_results_data_artifact_rejects_underspecified_incomplete_statuses(
+    payload: dict[str, object],
+    expected_error: str,
+) -> None:
+    with pytest.raises(ValueError, match=re.escape(expected_error)):
+        parse_contract_results_data_artifact(payload)
+
+
 def test_parse_project_contract_data_salvage_reports_recoverable_findings() -> None:
     contract = _load_contract_fixture()
     contract["scope"]["legacy_notes"] = "nested extra field"
@@ -2785,6 +2843,54 @@ def test_contract_results_strict_mode_rejects_duplicate_linked_ids_and_actions()
     assert "claims.claim-main.linked_ids" in message
     assert "references.ref-main.completed_actions.0 must use exact literal 'read'" in message
     assert "references.ref-main.completed_actions.1 is a duplicate" in message
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_error"),
+    [
+        (
+            {
+                "claims": {"claim-main": {"status": "failed"}},
+                "uncertainty_markers": {
+                    "weakest_anchors": ["anchor-main"],
+                    "disconfirming_observations": ["observation-main"],
+                },
+            },
+            "claims.claim-main.status=failed requires summary, notes, or evidence explaining the gap",
+        ),
+        (
+            {
+                "references": {
+                    "ref-main": {
+                        "status": "missing",
+                        "missing_actions": ["cite"],
+                    }
+                },
+                "uncertainty_markers": {
+                    "weakest_anchors": ["anchor-main"],
+                    "disconfirming_observations": ["observation-main"],
+                },
+            },
+            "references.ref-main.status=missing requires summary or evidence explaining what is missing",
+        ),
+        (
+            {
+                "forbidden_proxies": {"fp-main": {"status": "unresolved"}},
+                "uncertainty_markers": {
+                    "weakest_anchors": ["anchor-main"],
+                    "disconfirming_observations": ["observation-main"],
+                },
+            },
+            "forbidden_proxies.fp-main.status=unresolved requires notes or evidence explaining the proxy issue",
+        ),
+    ],
+)
+def test_contract_results_strict_mode_rejects_underspecified_incomplete_statuses(
+    payload: dict[str, object],
+    expected_error: str,
+) -> None:
+    with pytest.raises(ValidationError, match=re.escape(expected_error)):
+        ContractResults.model_validate(normalize_contract_results_input(payload))
 
 
 def test_contract_results_strict_mode_rejects_proof_audit_blank_and_duplicate_list_members() -> None:

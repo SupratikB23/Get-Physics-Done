@@ -138,11 +138,13 @@ Rules:
 - `required_actions`, `completed_actions`, and `missing_actions` use the same closed action vocabulary: `read`, `use`, `compare`, `cite`, `avoid`.
 - Every strict string list is trimmed before validation. Blank-after-trim entries are invalid, and duplicate-after-trim entries are invalid. This includes `linked_ids`, `completed_actions`, `missing_actions`, and the list-valued proof-audit coverage fields.
 - Artifact readers may recover singleton string/list drift and closed-enum case drift when parsing existing ledgers, but newly written YAML must still use canonical lists and exact lowercase literals.
+- `claims`, `deliverables`, and `acceptance_tests` entries with `status: failed|blocked` must include at least one of `summary`, `notes`, or non-empty `evidence` so the gap is explained instead of implied.
 - For `contract_results.references`:
   `status: completed` requires non-empty `completed_actions` and empty `missing_actions`.
-  `status: missing` requires non-empty `missing_actions`.
+  `status: missing` requires non-empty `missing_actions` plus `summary` or non-empty `evidence` explaining what is missing.
   `status: not_applicable` requires both `completed_actions` and `missing_actions` to stay empty.
   `completed_actions` and `missing_actions` must not overlap.
+- For `contract_results.forbidden_proxies`, `status: violated|unresolved` requires `notes` or non-empty `evidence` explaining the proxy issue.
 - For decisive acceptance tests, benchmark requirements must close with `comparison_kind: benchmark` and cross-method requirements must close with `comparison_kind: cross_method`; `prior_work`, `experiment`, `baseline`, and `other` do not satisfy those decisive mappings on their own.
 - For list-typed proof-audit fields (`covered_hypothesis_ids`, `missing_hypothesis_ids`, `covered_parameter_symbols`, `missing_parameter_symbols`, `uncovered_quantifiers`, `uncovered_conclusion_clause_ids`), even a single item must stay a YAML list. Scalar strings are invalid.
 - `status`, `proof_audit.completeness`, and evidence literals such as `confidence`, `quantifier_status`, and `counterexample_status` use the exact lowercase literals shown here. Near-matches like `Passed` or `High` are invalid.

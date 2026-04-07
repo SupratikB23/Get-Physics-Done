@@ -1189,6 +1189,7 @@ def test_resume_recent_raw_surfaces_machine_local_recent_projects(
         encoding="utf-8",
     )
     monkeypatch.setattr(cli_module.Path, "home", lambda: home)
+    monkeypatch.delenv("GPD_DATA_DIR", raising=False)
 
     result = runner.invoke(app, ["--raw", "resume", "--recent"])
     parsed = json.loads(result.output)
@@ -1274,6 +1275,7 @@ def test_resume_recent_raw_downgrades_missing_handoff_rows_to_non_resumable(
         encoding="utf-8",
     )
     monkeypatch.setattr(cli_module.Path, "home", lambda: home)
+    monkeypatch.delenv("GPD_DATA_DIR", raising=False)
 
     result = runner.invoke(app, ["--raw", "resume", "--recent"])
     parsed = json.loads(result.output)
@@ -3299,6 +3301,7 @@ def test_result_help_surfaces_show_command_and_dependency_chain() -> None:
     assert result.exit_code == 0
     normalized_output = " ".join(result.output.split())
     assert "show" in normalized_output
+    assert "downstream" in normalized_output
     assert "Show a canonical result" in normalized_output
     assert "direct/transitive" in normalized_output
 
@@ -3309,6 +3312,16 @@ def test_result_show_help_surfaces_required_result_id_argument() -> None:
     assert result.exit_code == 0
     normalized_output = _normalize_cli_output(result.output)
     assert "Show a canonical result and its direct/transitive dependency chain." in normalized_output
+    assert "RESULT_ID" in normalized_output
+    assert "Canonical result ID [required]" in normalized_output
+
+
+def test_result_downstream_help_surfaces_required_result_id_argument() -> None:
+    result = runner.invoke(app, ["result", "downstream", "--help"])
+
+    assert result.exit_code == 0
+    normalized_output = _normalize_cli_output(result.output)
+    assert "Show the direct and transitive dependents of a canonical result." in normalized_output
     assert "RESULT_ID" in normalized_output
     assert "Canonical result ID [required]" in normalized_output
 

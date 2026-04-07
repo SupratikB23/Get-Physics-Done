@@ -139,7 +139,7 @@ AUTONOMY=$(gpd --raw config get autonomy 2>/dev/null | gpd json get .value --def
 **Mode-aware behavior:**
 - `autonomy=supervised`: Pause after each debugger agent returns findings. Present the diagnosis to the user before proceeding to a fix.
 - `autonomy=balanced` (default): Spawn the debugger agents, collect findings, and apply routine fixes automatically. Pause only if there are multiple plausible root causes or the fix changes assumptions or scope.
-- `autonomy=yolo`: Spawn debuggers, apply first plausible fix immediately without detailed diagnosis.
+- `autonomy=yolo`: Spawn debuggers and continue automatically only after a specific evidence-backed root cause is identified. Do not apply a merely plausible fix.
 
 **Spawn investigation agents in parallel:**
 
@@ -158,7 +158,7 @@ task(
 )
 ```
 
-**If any debugger agent fails to spawn or returns an error:** Continue with remaining agents. A single failed agent does not invalidate other investigations. After all agents complete, report which investigations failed and offer: 1) Retry failed investigations, 2) Investigate the failed truths in the main context, 3) Skip failed truths and proceed with available root causes.
+**If any debugger agent fails to spawn or returns an error:** Continue with remaining agents. A single failed agent does not invalidate other investigations. After all agents complete, report which investigations failed and offer: 1) Retry failed investigations, 2) Investigate the failed truths in the main context, 3) Proceed only with the evidence-backed root causes that were actually established while keeping unresolved gaps open.
 
 **All agents spawn in single message** (parallel execution).
 
@@ -319,7 +319,7 @@ Agents only diagnose -- plan-phase --gaps handles fixes (no fix application).
 
 - Mark gap as "needs expert review"
 - Continue with other gaps
-- Report incomplete diagnosis
+- Report incomplete diagnosis and keep the gap unresolved; do not generate a speculative fix plan for that gap
 
 **Agent times out:**
 
@@ -330,7 +330,7 @@ Agents only diagnose -- plan-phase --gaps handles fixes (no fix application).
 
 - Something systemic (environment, dependencies, etc.)
 - Report for expert investigation
-- Fall back to plan-phase --gaps without root causes (less precise)
+- Return blocked with the unresolved gaps and missing diagnostic evidence; do not fall back to plan-phase --gaps without root causes
   </failure_handling>
 
 <success_criteria>

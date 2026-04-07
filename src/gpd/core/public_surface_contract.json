@@ -11,7 +11,8 @@
       "GPD is not a standalone app.",
       "GPD does not install your runtime for you.",
       "GPD does not include model access, billing, or API credits.",
-      "This hub is the beginner path, not the full reference."
+      "This hub is the beginner path, not the full reference.",
+      "If evidence, references, or artifacts are missing, say so explicitly; GPD should not invent them."
     ],
     "startup_ladder": [
       "help",
@@ -59,7 +60,7 @@
   },
   "post_start_settings": {
     "primary_sentence": "After your first successful start or later, use the runtime `settings` command to review autonomy, workflow defaults, model-cost posture, runtime permission sync, and preset/tier overrides.",
-    "default_sentence": "The safest starting point is `review` plus runtime defaults."
+    "default_sentence": "The safest starting point is `review` plus runtime defaults. Favor scientific rigor and explicit uncertainty over agreement-seeking, and keep missing evidence or artifacts explicit instead of inventing them."
   },
   "resume_authority": {
     "durable_authority_phrase": "`state.json.continuation` is the durable authority",

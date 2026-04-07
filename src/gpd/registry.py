@@ -29,6 +29,7 @@ from gpd.core.model_visible_text import (
     VALID_CONTEXT_MODES,
     agent_visibility_note,
     command_visibility_note,
+    skeptical_rigor_guardrails_section,
 )
 from gpd.core.review_contract_prompt import (
     normalize_review_contract_frontmatter_payload,
@@ -756,6 +757,49 @@ def render_agent_requirements_section(
     )
 
 
+def render_agent_visibility_sections_from_frontmatter(frontmatter: str, *, agent_name: str) -> str:
+    """Render canonical model-visible agent constraints from raw frontmatter."""
+
+    _validate_raw_agent_frontmatter(frontmatter, agent_name=agent_name)
+    meta = _load_frontmatter_mapping(frontmatter, error_prefix=f"Malformed frontmatter for {agent_name}")
+    tools = _merge_tool_lists(
+        _parse_tools(meta.get("tools"), owner_name=agent_name),
+        _parse_tools(meta.get("allowed-tools"), field_name="allowed-tools", owner_name=agent_name),
+    )
+    return render_agent_requirements_section(
+        tools=tools,
+        commit_authority=_parse_commit_authority(meta.get("commit_authority"), agent_name=agent_name),
+        surface=_parse_agent_metadata_enum(
+            meta.get("surface"),
+            field_name="surface",
+            agent_name=agent_name,
+            valid_values=AGENT_SURFACES,
+            default="internal",
+        ),
+        role_family=_parse_agent_metadata_enum(
+            meta.get("role_family"),
+            field_name="role_family",
+            agent_name=agent_name,
+            valid_values=AGENT_ROLE_FAMILIES,
+            default="analysis",
+        ),
+        artifact_write_authority=_parse_agent_metadata_enum(
+            meta.get("artifact_write_authority"),
+            field_name="artifact_write_authority",
+            agent_name=agent_name,
+            valid_values=AGENT_ARTIFACT_WRITE_AUTHORITIES,
+            default="scoped_write",
+        ),
+        shared_state_authority=_parse_agent_metadata_enum(
+            meta.get("shared_state_authority"),
+            field_name="shared_state_authority",
+            agent_name=agent_name,
+            valid_values=AGENT_SHARED_STATE_AUTHORITIES,
+            default="return_only",
+        ),
+    )
+
+
 def _command_visibility_payload(
     *,
     context_mode: str,
@@ -907,7 +951,8 @@ def _agent_model_content(
             role_family=role_family,
             artifact_write_authority=artifact_write_authority,
             shared_state_authority=shared_state_authority,
-        )
+        ),
+        skeptical_rigor_guardrails_section(),
     ]
     if body:
         sections.append(body)
@@ -938,6 +983,7 @@ def _command_model_content(
     )
     if visibility_sections:
         sections.append(visibility_sections)
+    sections.append(skeptical_rigor_guardrails_section())
     if body:
         sections.append(body)
     return "\n\n".join(sections)
@@ -1493,6 +1539,7 @@ __all__ = [
     "list_commands",
     "list_review_commands",
     "list_skills",
+    "render_agent_visibility_sections_from_frontmatter",
     "render_agent_requirements_section",
     "render_command_visibility_sections",
     "render_command_visibility_sections_from_frontmatter",

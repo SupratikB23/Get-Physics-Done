@@ -10,8 +10,9 @@ VERIFICATION_SERVER_DESCRIPTION_INTRO = (
 VERIFICATION_CONTRACT_SURFACE_SUMMARY_TEXT = (
     "Contract-aware request surfaces are closed and schema-driven. The full contract payload "
     "rules live on the `contract` input schema. Proof-oriented checks still require an "
-    "authoritative contract payload. Use `suggest_contract_checks(...)` to surface the exact "
-    "per-check request metadata before calling `run_contract_check(...)`."
+    "authoritative contract payload. Missing grounding, evidence, or proof artifacts stay explicit "
+    "and must not be invented. Use `suggest_contract_checks(...)` to surface the exact per-check "
+    "request metadata before calling `run_contract_check(...)`."
 )
 
 VERIFICATION_BINDING_TARGETS = (
@@ -55,6 +56,8 @@ _VERIFICATION_CONTRACT_POLICY_CLAUSES = (
     "claim/deliverable/acceptance-test/reference kinds when that would make resolution ambiguous.",
     "Contract context must stay consistent with metadata defaults and explicit metadata fields, "
     "so benchmark anchors, regime labels, and family selections cannot contradict it.",
+    "Missing grounding, evidence, prior outputs, or proof artifacts are blockers to surface explicitly, "
+    "never invitations to invent replacement content or inferred completion state.",
     "For proof-oriented checks, omit or exactly match derived "
     "`metadata.expected_behavior`, `metadata.claim_statement`, "
     "`metadata.hypothesis_ids`, `metadata.theorem_parameter_symbols`, and "

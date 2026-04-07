@@ -16,7 +16,7 @@ def _assert_strict_envelope(result: object, expected_payload: dict[str, object])
 
 
 def test_protocols_success_envelope() -> None:
-    from gpd.mcp.servers.protocols_server import get_protocol
+    from gpd.mcp.servers.protocols_server import _PROTOCOL_USAGE_CAUTION, get_protocol
 
     store = MagicMock()
     store.get.return_value = {
@@ -46,6 +46,7 @@ def test_protocols_success_envelope() -> None:
             "steps": ["Identify small parameter"],
             "checkpoints": ["Verify limiting cases"],
             "content": "# Perturbation Theory Protocol\n",
+            "usage_caution": _PROTOCOL_USAGE_CAUTION,
         },
     )
 

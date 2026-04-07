@@ -10,6 +10,7 @@ from gpd.adapters.install_utils import project_markdown_for_runtime
 from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.core.model_visible_text import (
     REVIEW_CONTRACT_REQUIRED_STATES,
+    agent_visibility_note,
     command_visibility_note,
     review_contract_visibility_note,
 )
@@ -31,6 +32,7 @@ COMMAND_SURFACES = {
 }
 PLAN_AGENT_SURFACES = {
     "gpd-planner": (
+        agent_visibility_note(),
         "tool_requirements",
         "must_surface",
         "`wolfram` and `command`",
@@ -38,6 +40,7 @@ PLAN_AGENT_SURFACES = {
 }
 RESULT_AGENT_SURFACES = {
     "gpd-verifier": (
+        agent_visibility_note(),
         "contract_results",
         "comparison_verdicts",
         "suggested_contract_checks",
@@ -46,6 +49,7 @@ RESULT_AGENT_SURFACES = {
         "inconclusive` / `tension`",
     ),
     "gpd-executor": (
+        agent_visibility_note(),
         "plan_contract_ref",
         "contract_results",
         "comparison_verdicts",

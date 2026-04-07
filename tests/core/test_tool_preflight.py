@@ -1110,6 +1110,7 @@ def test_build_plan_tool_preflight_optional_missing_tool_without_fallback_stays_
     assert result.passed is True
     assert result.checks[0].blocking is False
     assert result.guidance == (
-        "Optional specialized tools are unavailable; continue only if the plan can genuinely proceed without them."
+        "Optional specialized tools are unavailable; continue only if the plan can genuinely proceed without them. "
+        "Otherwise report the gap instead of fabricating outputs."
     )
     assert any("no fallback is declared" in warning for warning in result.warnings)

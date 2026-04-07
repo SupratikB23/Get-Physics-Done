@@ -262,4 +262,8 @@ def test_preset_and_local_bridge_phrases_remain_command_oriented() -> None:
         post_start_settings_note()
         == "After your first successful start or later, use the runtime `settings` command to review autonomy, workflow defaults, model-cost posture, runtime permission sync, and preset/tier overrides."
     )
-    assert post_start_settings_recommendation() == "The safest starting point is `review` plus runtime defaults."
+    assert (
+        post_start_settings_recommendation()
+        == "The safest starting point is `review` plus runtime defaults. Favor scientific rigor and explicit "
+        "uncertainty over agreement-seeking, and keep missing evidence or artifacts explicit instead of inventing them."
+    )

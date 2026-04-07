@@ -67,7 +67,7 @@ _BUILTIN_SERVERS: dict[str, _ServerDef] = {
     },
     "gpd-arxiv": {
         "command": _PYTHON_COMMAND_SENTINEL,
-        "args": ["-m", "arxiv_mcp_server"],
+        "args": ["-m", "gpd.mcp.servers.arxiv_bridge"],
         "env": {},
         "optional": True,
         "module_check": "arxiv_mcp_server",
@@ -141,7 +141,8 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
     "gpd-protocols": {
         "description": (
             "Physics computation protocols for GPD research workflows. Provides step-by-step methodology, "
-            "verification checkpoints, and auto-routing across the live protocol catalog."
+            "verification checkpoints, and auto-routing across the live protocol catalog. Use them as rigor-first "
+            "procedural guidance; do not invent missing evidence, artifacts, or completion state."
         ),
         "capabilities": [
             "get_protocol",
@@ -159,7 +160,8 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
     "gpd-skills": {
         "description": (
             "GPD skill discovery and routing. Tools for listing, retrieving, auto-routing, "
-            "and indexing GPD workflow skills for agent prompt injection."
+            "and indexing GPD workflow skills for agent prompt injection. Treat missing evidence or artifacts as "
+            "missing, blocked, failed, or inconclusive; never fabricate fallback outputs."
         ),
         "capabilities": [
             "list_skills",
@@ -217,15 +219,16 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
     },
     "gpd-arxiv": {
         "description": (
-            "Optional/conditional arXiv paper search and retrieval via arxiv-mcp-server. "
+            "Optional/conditional arXiv paper search, retrieval, and source-archive download via arxiv-mcp-server. "
             "Available only when the optional arxiv-mcp-server dependency is installed; "
-            "search for physics papers, fetch abstracts, and download full text."
+            "search for physics papers, fetch abstracts, download full text, and download raw source archives."
         ),
         "capabilities": [
             "search_papers",
             "download_paper",
             "list_papers",
             "read_paper",
+            "download_source",
         ],
         "registry_prefix": "gpd_arxiv",
         "health_check": {
@@ -279,8 +282,6 @@ def _is_module_available(module_name: str, *, python_path: str | None = None) ->
 
 def _build_public_alternatives(name: str) -> dict[str, dict[str, object]] | None:
     """Build fallback launch alternatives for a public built-in server descriptor."""
-    if name == "gpd-arxiv":
-        return None
     if not name.startswith("gpd-"):
         return None
     raw = _BUILTIN_SERVERS[name]
@@ -302,7 +303,7 @@ def build_public_descriptor(name: str) -> dict[str, object]:
     env = dict(raw.get("env", {})) if isinstance(raw.get("env"), dict) else {}
     command = str(raw["command"])
     args = default_args
-    if name != "gpd-arxiv" and name.startswith("gpd-"):
+    if name.startswith("gpd-"):
         command = f"gpd-mcp-{name.removeprefix('gpd-')}"
         args = []
     elif command == _PYTHON_COMMAND_SENTINEL:

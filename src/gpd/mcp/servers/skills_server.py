@@ -94,6 +94,11 @@ _MARKDOWN_REFERENCE_RE = re.compile(
     r"(?:references|workflows|templates|agents|commands|bundles|shared|domains|execution|verification|conventions|research|publication|protocols|subfields|orchestration|GPD|src/gpd)/)"
     r"[^\s`\"')]+?\.md)"
 )
+_SKILL_BEHAVIORAL_GUARDRAIL_HINT = (
+    "Use scientific skepticism and critical thinking without treating the user as an adversary. Treat missing "
+    "evidence or artifacts as missing, blocked, failed, or inconclusive, and never fabricate references, results, "
+    "files, or completion state."
+)
 
 
 def _load_skill_index() -> list[content_registry.SkillDef]:
@@ -152,10 +157,16 @@ def _skill_loading_hint(*, source_kind: str, referenced_files: bool, reference_d
     else:
         dependency_hint = "Treat `content` as the wrapper/context surface."
     if source_kind == "command":
-        return f"{dependency_hint} It already embeds the model-visible `Command Requirements` section."
+        return (
+            f"{dependency_hint} It already embeds the model-visible `Command Requirements` section. "
+            f"{_SKILL_BEHAVIORAL_GUARDRAIL_HINT}"
+        )
     if source_kind == "agent":
-        return f"{dependency_hint} It already embeds the model-visible `Agent Requirements` section."
-    return dependency_hint
+        return (
+            f"{dependency_hint} It already embeds the model-visible `Agent Requirements` section. "
+            f"{_SKILL_BEHAVIORAL_GUARDRAIL_HINT}"
+        )
+    return f"{dependency_hint} {_SKILL_BEHAVIORAL_GUARDRAIL_HINT}"
 
 
 def _skill_review_contract_payload(review_contract: content_registry.ReviewCommandContract | None) -> dict[str, object] | None:
@@ -813,7 +824,10 @@ def route_skill(
                     "confidence": 0.1,
                     "alternatives": [name for name in ("gpd-progress", "gpd-discover") if name in available_names],
                     "task_description": task_description,
-                    "note": "No strong match found — try your runtime's GPD help command for available commands",
+                    "note": (
+                        "No strong match found — routing is advisory only. Verify the actual task constraints and "
+                        "available evidence, and try your runtime's GPD help command for available commands."
+                    ),
                 }
             )
         except (GPDError, OSError, ValueError, TimeoutError) as e:
@@ -849,7 +863,7 @@ def get_skill_index() -> dict:
                         "has_review_contract": command.review_contract is not None,
                     }
 
-            lines = ["# Available GPD Skills", ""]
+            lines = ["# Available GPD Skills", "", _SKILL_BEHAVIORAL_GUARDRAIL_HINT, ""]
             for cat in sorted(by_category):
                 lines.append(f"## {cat.title()}")
                 for name in sorted(by_category[cat]):

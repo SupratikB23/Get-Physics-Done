@@ -23,6 +23,10 @@ from gpd.adapters.runtime_catalog import (
 )
 from gpd.adapters.tool_names import CONTEXTUAL_TOOL_REFERENCE_NAMES
 from gpd.core.constants import HOME_DATA_DIR_NAME
+from gpd.core.model_visible_text import (
+    SKEPTICAL_RIGOR_GUARDRAILS_HEADING,
+    skeptical_rigor_guardrails_section,
+)
 from gpd.core.public_surface_contract import local_cli_bridge_commands
 
 # ---------------------------------------------------------------------------
@@ -533,10 +537,75 @@ def _strip_top_level_markdown_section(body: str, *, heading: str) -> str:
     return "".join([*lines[:start_index], *lines[end_index:]])
 
 
-def _inject_command_visibility_sections_from_frontmatter(content: str) -> str:
-    """Front-load model-visible command constraints into installed markdown once."""
+def _leading_top_level_section_end(text: str) -> int:
+    """Return the character offset that ends the first top-level section in *text*."""
 
-    from gpd.registry import render_command_visibility_sections_from_frontmatter
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return 0
+
+    in_fence = False
+    offset = len(text)
+    for index, line in enumerate(lines[1:], start=1):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("## "):
+            offset = sum(len(entry) for entry in lines[:index])
+            break
+    return offset
+
+
+def _split_leading_model_visible_sections(body: str) -> tuple[str, str]:
+    """Return leading command-visibility sections and the remaining markdown body."""
+
+    working = body.lstrip("\r\n")
+    prefixes: list[str] = []
+    allowed_headings = ("Agent Requirements", "Command Requirements", "Review Contract")
+
+    while True:
+        heading = next((candidate for candidate in allowed_headings if working.startswith(f"## {candidate}")), None)
+        if heading is None:
+            break
+        section_end = _leading_top_level_section_end(working)
+        prefixes.append(working[:section_end].rstrip("\r\n"))
+        working = working[section_end:].lstrip("\r\n")
+
+    return "\n\n".join(prefixes), working
+
+
+def _inject_skeptical_rigor_guardrails_section(content: str) -> str:
+    """Insert the shared skeptical-rigor section once per top-level prompt surface."""
+
+    preamble, frontmatter, separator, body = split_markdown_frontmatter(content)
+    if not frontmatter:
+        return content
+
+    eol = _preferred_markdown_eol(preamble, frontmatter, separator, body)
+    normalized_section = _normalize_markdown_eol(skeptical_rigor_guardrails_section(), eol=eol).rstrip("\r\n")
+    body_without_guardrails = _strip_top_level_markdown_section(
+        body,
+        heading=SKEPTICAL_RIGOR_GUARDRAILS_HEADING,
+    ).strip("\r\n")
+    prefix, remainder = _split_leading_model_visible_sections(body_without_guardrails)
+
+    segments = [segment for segment in (prefix, normalized_section, remainder) if segment]
+    new_body = f"{eol}{eol}".join(segments)
+    if body.endswith(("\r\n", "\n", "\r")) and not new_body.endswith(("\r\n", "\n", "\r")):
+        new_body += eol
+    return render_markdown_frontmatter(preamble, frontmatter, separator, new_body)
+
+
+def _inject_command_visibility_sections_from_frontmatter(content: str) -> str:
+    """Front-load model-visible command or agent constraints into installed markdown once."""
+
+    from gpd.registry import (
+        render_agent_visibility_sections_from_frontmatter,
+        render_command_visibility_sections_from_frontmatter,
+    )
 
     preamble, frontmatter, separator, body = split_markdown_frontmatter(content)
     if not frontmatter:
@@ -564,20 +633,33 @@ def _inject_command_visibility_sections_from_frontmatter(content: str) -> str:
             r"^project_reentry_capable:\s*.+$",
         )
     )
-    if not command_name.startswith("gpd:") and has_agent_only_frontmatter:
-        return content
-    if not command_name.startswith("gpd:") and not has_command_only_frontmatter:
+    if not command_name.startswith("gpd:") and not has_agent_only_frontmatter and not has_command_only_frontmatter:
         return content
     eol = _preferred_markdown_eol(preamble, frontmatter, separator, body)
-    section = render_command_visibility_sections_from_frontmatter(frontmatter, command_name=command_name)
+    section = ""
+    section_heading = ""
+    if command_name.startswith("gpd:") or has_command_only_frontmatter:
+        section = render_command_visibility_sections_from_frontmatter(frontmatter, command_name=command_name)
+        section_heading = "Command Requirements"
+    elif has_agent_only_frontmatter:
+        section = render_agent_visibility_sections_from_frontmatter(frontmatter, agent_name=command_name or "agent")
+        section_heading = "Agent Requirements"
     if not section:
         return content
     normalized_section = _normalize_markdown_eol(section, eol=eol)
-    body_without_constraints = _strip_top_level_markdown_section(body, heading="Review Contract")
-    body_without_constraints = _strip_top_level_markdown_section(
-        body_without_constraints,
-        heading="Command Requirements",
-    ).strip("\r\n")
+    body_without_constraints = body
+    if section_heading == "Command Requirements":
+        body_without_constraints = _strip_top_level_markdown_section(body_without_constraints, heading="Review Contract")
+        body_without_constraints = _strip_top_level_markdown_section(
+            body_without_constraints,
+            heading="Command Requirements",
+        )
+    else:
+        body_without_constraints = _strip_top_level_markdown_section(
+            body_without_constraints,
+            heading="Agent Requirements",
+        )
+    body_without_constraints = body_without_constraints.strip("\r\n")
     trailing_newline = eol if body.endswith(("\r\n", "\n", "\r")) else ""
     new_body = (
         f"{normalized_section}{eol}{eol}{body_without_constraints}" if body_without_constraints else normalized_section
@@ -1027,7 +1109,8 @@ def compile_markdown_for_runtime(
             explicit_target=explicit_target,
         )
 
-    return _inject_command_visibility_sections_from_frontmatter(content)
+    content = _inject_command_visibility_sections_from_frontmatter(content)
+    return _inject_skeptical_rigor_guardrails_section(content)
 
 
 def project_markdown_for_runtime(
