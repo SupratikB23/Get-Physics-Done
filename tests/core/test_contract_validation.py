@@ -1439,7 +1439,7 @@ def test_validate_project_contract_draft_mode_warns_for_invalid_grounding_entrie
     )
 
 
-def test_validate_project_contract_approved_mode_blocks_invalid_must_surface_locator_even_with_other_grounding(
+def test_validate_project_contract_approved_mode_warns_for_invalid_must_surface_locator_with_global_non_reference_grounding(
     tmp_path: Path,
 ) -> None:
     contract = _load_contract_fixture()
@@ -1471,6 +1471,89 @@ def test_validate_project_contract_approved_mode_blocks_invalid_must_surface_loc
         "reference ref-placeholder is must_surface but locator is not concrete enough to ground validation"
         not in result.errors
     )
+
+
+def test_validate_project_contract_approved_mode_blocks_placeholder_must_surface_for_ungrounded_target() -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    contract["observables"].append(
+        {
+            "id": "obs-second",
+            "name": "secondary observable",
+            "kind": "scalar",
+            "definition": "Second decisive observable",
+        }
+    )
+    contract["claims"].append(
+        {
+            "id": "claim-second",
+            "statement": "Recover the second benchmark value within tolerance",
+            "observables": ["obs-second"],
+            "deliverables": ["deliv-second"],
+            "acceptance_tests": ["test-second"],
+            "references": ["ref-second"],
+        }
+    )
+    contract["deliverables"].append(
+        {
+            "id": "deliv-second",
+            "kind": "figure",
+            "path": "figures/second-benchmark.png",
+            "description": "Second benchmark comparison figure",
+            "must_contain": ["second baseline curve"],
+        }
+    )
+    contract["acceptance_tests"].append(
+        {
+            "id": "test-second",
+            "subject": "claim-second",
+            "kind": "benchmark",
+            "procedure": "Compare against the second benchmark reference",
+            "pass_condition": "Matches the second reference within tolerance",
+            "evidence_required": ["deliv-second", "ref-second"],
+            "automation": "hybrid",
+        }
+    )
+    contract["references"] = [
+        {
+            "id": "ref-benchmark",
+            "kind": "paper",
+            "locator": "doi:10.1234/example",
+            "aliases": [],
+            "role": "benchmark",
+            "why_it_matters": "Concrete anchor for the first claim only.",
+            "applies_to": ["claim-benchmark"],
+            "carry_forward_to": [],
+            "must_surface": True,
+            "required_actions": ["read", "compare"],
+        },
+        {
+            "id": "ref-second",
+            "kind": "paper",
+            "locator": "TBD",
+            "aliases": [],
+            "role": "benchmark",
+            "why_it_matters": "Placeholder anchor for the second claim must still block approval.",
+            "applies_to": ["claim-second"],
+            "carry_forward_to": [],
+            "must_surface": True,
+            "required_actions": ["read"],
+        },
+    ]
+    contract["forbidden_proxies"].append(
+        {
+            "id": "fp-second",
+            "subject": "claim-second",
+            "proxy": "qualitative agreement without the second benchmark comparison",
+            "reason": "Would miss the decisive second target.",
+        }
+    )
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is False
+    assert "reference ref-second is must_surface but locator is not concrete enough to ground validation" in result.errors
+    assert "reference ref-second is must_surface but locator is not concrete enough to ground validation" not in result.warnings
 
 
 @pytest.mark.parametrize(

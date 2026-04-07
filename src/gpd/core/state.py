@@ -62,7 +62,6 @@ from gpd.core.contract_validation import (
     _collect_list_shape_drift_errors,
     _has_authoritative_scalar_schema_findings,
     _project_contract_schema_version_missing_error,
-    is_authoritative_project_contract_schema_finding,
     is_repair_relevant_project_contract_schema_finding,
     salvage_project_contract,
     split_project_contract_schema_findings,
@@ -775,15 +774,10 @@ def _project_contract_missing_required_schema_errors(raw_contract: object) -> li
 
 
 def _project_contract_schema_reference_for_errors(errors: list[str]) -> str:
-    """Return the most specific schema reference for one project-contract failure set."""
+    """Return the canonical schema reference for project-contract write failures."""
 
-    if any(
-        is_repair_relevant_project_contract_schema_finding(error)
-        or is_authoritative_project_contract_schema_finding(error)
-        for error in errors
-    ):
-        return "templates/project-contract-schema.md"
-    return "templates/state-json-schema.md"
+    _ = errors
+    return "templates/project-contract-schema.md"
 
 
 def _load_raw_project_contract_payload(cwd: Path) -> tuple[Path, object] | None:
@@ -3881,7 +3875,7 @@ def state_set_project_contract(cwd: Path, contract_data: dict[str, object] | Res
     """
     warning_messages: list[str] = []
 
-    def _failure(reason: str, *, schema_reference: str = "templates/state-json-schema.md") -> StateUpdateResult:
+    def _failure(reason: str, *, schema_reference: str = "templates/project-contract-schema.md") -> StateUpdateResult:
         return StateUpdateResult(
             updated=False,
             reason=reason,

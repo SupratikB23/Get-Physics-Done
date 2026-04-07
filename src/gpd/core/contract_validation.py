@@ -1227,6 +1227,69 @@ def _must_surface_locator_warnings(
     return warnings
 
 
+def _concrete_must_surface_targets(
+    contract: ResearchContract,
+    *,
+    project_root: Path | None = None,
+) -> set[str]:
+    """Return subject ids covered by concrete must-surface references."""
+
+    targets: set[str] = set()
+    for reference in contract.references:
+        if not reference.must_surface:
+            continue
+        if not _is_concrete_reference_locator(
+            reference.locator,
+            reference_kind=reference.kind,
+            project_root=project_root,
+        ):
+            continue
+        targets.update(reference.applies_to)
+    return targets
+
+
+def _split_approved_mode_must_surface_locator_findings(
+    contract: ResearchContract,
+    *,
+    project_root: Path | None = None,
+) -> tuple[list[str], list[str]]:
+    """Return approved-mode must-surface locator errors and warnings.
+
+    Placeholder must-surface references stay warnings only when another
+    approved grounding path already covers the same scoped obligation or a
+    non-reference grounding signal makes the contract globally grounded.
+    """
+
+    errors: list[str] = []
+    warnings: list[str] = []
+    has_global_non_reference_grounding = _has_non_reference_grounding_signal(contract, project_root=project_root)
+    concrete_targets = _concrete_must_surface_targets(contract, project_root=project_root)
+
+    for reference in contract.references:
+        if not reference.must_surface:
+            continue
+        if _is_concrete_reference_locator(
+            reference.locator,
+            reference_kind=reference.kind,
+            project_root=project_root,
+        ):
+            continue
+
+        finding = f"reference {reference.id} is must_surface but locator is not concrete enough to ground validation"
+        if has_global_non_reference_grounding:
+            warnings.append(finding)
+            continue
+        if not reference.applies_to:
+            errors.append(finding)
+            continue
+        if any(target not in concrete_targets for target in reference.applies_to):
+            errors.append(finding)
+            continue
+        warnings.append(finding)
+
+    return errors, warnings
+
+
 def validate_project_contract(
     contract: ResearchContract | dict[str, object],
     *,
@@ -1299,11 +1362,15 @@ def validate_project_contract(
     errors.extend(collect_proof_bearing_claim_integrity_errors(parsed))
 
     warnings.extend(_context_intake_guidance_warnings(parsed, project_root=project_root))
-    must_surface_locator_warnings = _must_surface_locator_warnings(parsed, project_root=project_root)
-    if mode == "approved" and not _has_approved_grounding_signal(parsed, project_root=project_root):
-        errors.extend(must_surface_locator_warnings)
-    else:
+    if mode == "approved":
+        must_surface_locator_errors, must_surface_locator_warnings = _split_approved_mode_must_surface_locator_findings(
+            parsed,
+            project_root=project_root,
+        )
+        errors.extend(must_surface_locator_errors)
         warnings.extend(must_surface_locator_warnings)
+    else:
+        warnings.extend(_must_surface_locator_warnings(parsed, project_root=project_root))
 
     has_non_reference_grounding = _has_non_reference_grounding_signal(parsed, project_root=project_root)
 

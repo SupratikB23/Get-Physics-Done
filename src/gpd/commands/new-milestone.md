@@ -60,8 +60,6 @@ Load late-stage authorities only when the workflow reaches the matching stage:
 - Parse milestone name from arguments if present
 
 **Flags:** None currently defined.
-
-Execute the workflow end-to-end and preserve its gates.
 </process>
 
 <success_criteria>
