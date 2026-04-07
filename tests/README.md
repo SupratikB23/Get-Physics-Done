@@ -7,7 +7,7 @@ The final section of this README keeps the full checked-in repository interdepen
 ## Repository Interdependency Graph
 
 <!-- repo-graph-generated-on:start -->
-Generated on `2026-03-26` from the current worktree.
+Generated on `2026-04-07` from the current worktree.
 <!-- repo-graph-generated-on:end -->
 
 ## Status
@@ -26,7 +26,7 @@ This graph therefore includes:
 
 <!-- repo-graph-scope:start -->
 
-- Live repo files analyzed in the current tree: `681`
+- Live repo files analyzed in the current tree: `683`
 - Python files under `src/` and `tests/`: `241`
 - `src/gpd/commands/*.md`: `61`
 - `src/gpd/agents/*.md`: `23`

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_on": "2026-03-26",
+  "generated_on": "2026-04-07",
   "excluded_graph_dirs": [
     ".git",
     ".mcp.json",
@@ -18,7 +18,7 @@
     "dist"
   ],
   "scope_counts": {
-    "Live repo files analyzed in the current tree": 681,
+    "Live repo files analyzed in the current tree": 683,
     "Python files under `src/` and `tests/`": 241,
     "`src/gpd/commands/*.md`": 61,
     "`src/gpd/agents/*.md`": 23,
