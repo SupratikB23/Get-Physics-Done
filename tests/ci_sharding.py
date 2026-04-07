@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 CI_CATEGORY_SHARD_COUNTS = {
-    "root": 6,
+    "root": 8,
     "adapters": 2,
     "hooks": 2,
     "mcp": 1,
@@ -19,13 +19,13 @@ CI_CATEGORY_SHARD_COUNTS = {
 # category-local planners can spread the slow work rather than pinning one
 # thematic shard to a single expensive module.
 CI_HOT_TEST_FILE_SPLITS = {
-    "test_runtime_cli.py": 6,
-    "test_cli_integration.py": 3,
-    "test_registry.py": 2,
+    "test_runtime_cli.py": 8,
+    "test_cli_integration.py": 4,
+    "test_registry.py": 4,
     "test_cli_commands.py": 2,
     "test_install_utils_edge.py": 2,
     "test_install_edge_cases.py": 2,
-    "test_update_workflow.py": 2,
+    "test_update_workflow.py": 4,
     "adapters/test_codex.py": 2,
     "adapters/test_gemini.py": 2,
     "adapters/test_opencode.py": 2,
@@ -39,6 +39,9 @@ CI_HOT_TEST_FILE_SPLITS = {
 CI_HOT_TEST_FILE_WEIGHT_MULTIPLIERS = {
     "test_runtime_cli.py": 6.0,
     "test_cli_integration.py": 3.0,
+    "test_registry.py": 2.0,
+    "test_cli_commands.py": 1.5,
+    "test_install_utils_edge.py": 1.5,
     "test_update_workflow.py": 2.0,
     "core/test_cli.py": 1.5,
     "core/test_contract_validation.py": 1.4,
