@@ -432,6 +432,9 @@ def test_install_banner_uses_display_names(tmp_path: Path):
         result = runner.invoke(app, ["--cwd", str(tmp_path), "install", _PRIMARY_INSTALL_DESCRIPTOR.runtime_name, "--local"])
 
     assert result.exit_code == 0
+    assert "GPD v" in result.output
+    assert "© 2026 Physical Superintelligence PBC (PSI)" in result.output
+    assert "██████" in result.output
     assert f"Installing GPD (local) for: {_PRIMARY_INSTALL_DESCRIPTOR.display_name}" in result.output
     assert f"Installing GPD (local) for: {_PRIMARY_INSTALL_DESCRIPTOR.runtime_name}" not in result.output
 
@@ -812,6 +815,7 @@ def test_install_raw_outputs_json(tmp_path: Path):
     assert '"installed"' in result.output
     # Should NOT contain rich table formatting
     assert "Install Summary" not in result.output
+    assert "GPD v" not in result.output
 
 
 def test_install_raw_includes_failures(tmp_path: Path):

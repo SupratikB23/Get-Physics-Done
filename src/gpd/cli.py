@@ -8181,6 +8181,16 @@ def _format_install_header_lines(version: str) -> tuple[str, str]:
     )
 
 
+def _print_install_header(version: str) -> None:
+    """Render the branded install banner for human-facing install flows."""
+    console.print(_GPD_BANNER, style=f"bold {_INSTALL_LOGO_COLOR}")
+    console.print()
+    header_line, attribution_line = _format_install_header_lines(version)
+    console.print(header_line, style=f"bold {_INSTALL_TITLE_COLOR}", markup=False, highlight=False)
+    console.print(attribution_line, style=f"dim {_INSTALL_META_COLOR}", markup=False, highlight=False)
+    console.print()
+
+
 def _render_install_option_line(index: int, label: str, *details: str, label_width: int | None = None) -> Text:
     """Return a single-line formatted install menu option."""
     rendered = Text("  ")
@@ -8741,11 +8751,15 @@ def install(
     from rich.progress import Progress, SpinnerColumn, TextColumn
 
     from gpd.core.health import runtime_doctor_hint
+    from gpd.version import resolve_active_version
 
     if global_install and local_install:
         _error("Cannot specify both --global and --local")
         return  # unreachable
     _validate_all_runtime_selection("install", runtimes, install_all)
+
+    if not _raw:
+        _print_install_header(resolve_active_version(_get_cwd()))
 
     # Resolve which runtimes to install
     selected: list[str]
@@ -8757,15 +8771,6 @@ def install(
         _error("Raw install requires one or more runtimes or --all")
     else:
         # Interactive mode
-        from gpd.version import resolve_active_version
-
-        if not _raw:
-            console.print(_GPD_BANNER, style=f"bold {_INSTALL_LOGO_COLOR}")
-            console.print()
-            header_line, attribution_line = _format_install_header_lines(resolve_active_version(_get_cwd()))
-            console.print(header_line, style=f"bold {_INSTALL_TITLE_COLOR}", markup=False, highlight=False)
-            console.print(attribution_line, style=f"dim {_INSTALL_META_COLOR}", markup=False, highlight=False)
-            console.print()
         selected = _prompt_runtimes()
 
     _validate_target_dir_runtime_selection("install", selected, target_dir)
