@@ -401,6 +401,10 @@ def _get_store() -> ProtocolStore:
 
 
 mcp = FastMCP("gpd-protocols")
+_PROTOCOL_USAGE_CAUTION = (
+    "Protocol content is methodological guidance only. Do not claim any step, checkpoint, artifact, or result was "
+    "completed unless it was actually executed or observed. Missing inputs remain blockers, not invitations to improvise."
+)
 
 
 @mcp.tool()
@@ -435,6 +439,7 @@ def get_protocol(name: Annotated[str, Field(min_length=1, pattern=r"\S")]) -> di
                     "steps": protocol["steps"],
                     "checkpoints": protocol["checkpoints"],
                     "content": protocol["body"],
+                    "usage_caution": _PROTOCOL_USAGE_CAUTION,
                 }
             )
         except Exception as exc:  # pragma: no cover - defensive envelope
@@ -498,6 +503,7 @@ def route_protocol(
                     "query": computation_type,
                     "match_count": len(matches),
                     "protocols": matches[:10],  # Top 10 matches
+                    "usage_caution": _PROTOCOL_USAGE_CAUTION,
                 }
             )
         except Exception as exc:  # pragma: no cover - defensive envelope
@@ -530,6 +536,7 @@ def get_protocol_checkpoints(name: Annotated[str, Field(min_length=1, pattern=r"
                     "title": protocol["title"],
                     "checkpoints": protocol["checkpoints"],
                     "checkpoint_count": len(protocol["checkpoints"]),
+                    "usage_caution": _PROTOCOL_USAGE_CAUTION,
                 }
             )
         except Exception as exc:  # pragma: no cover - defensive envelope

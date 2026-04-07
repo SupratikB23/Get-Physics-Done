@@ -247,6 +247,30 @@ def _normalize_required_str(value: object) -> object:
     return value
 
 
+def _has_explanatory_text(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _has_non_empty_list(value: object) -> bool:
+    return isinstance(value, list) and bool(value)
+
+
+def _has_explanatory_contract_entry_content(*, summary: object = None, notes: object = None, evidence: object = None) -> bool:
+    return _has_explanatory_text(summary) or _has_explanatory_text(notes) or _has_non_empty_list(evidence)
+
+
+def _contract_result_gap_message(status: str) -> str:
+    return f"status={status} requires summary, notes, or evidence explaining the gap"
+
+
+def _contract_reference_gap_message(status: str) -> str:
+    return f"status={status} requires summary or evidence explaining what is missing"
+
+
+def _contract_forbidden_proxy_gap_message(status: str) -> str:
+    return f"status={status} requires notes or evidence explaining the proxy issue"
+
+
 def _normalize_strict_bool(value: object) -> object:
     if type(value) is bool:
         return value
@@ -1011,6 +1035,32 @@ def _collect_strict_contract_results_errors(value: _StrictContractResultsInput) 
                         path=f"{section_name}.{entry_id}.status",
                         choices=("rejected", "violated", "unresolved", "not_applicable"),
                     )
+                status = entry.get("status")
+                if section_name in {"claims", "deliverables", "acceptance_tests"} and status in {"failed", "blocked"}:
+                    if not _has_explanatory_contract_entry_content(
+                        summary=entry.get("summary"),
+                        notes=entry.get("notes"),
+                        evidence=entry.get("evidence"),
+                    ):
+                        errors.append(
+                            f"{section_name}.{entry_id}.{_contract_result_gap_message(str(status))}"
+                        )
+                elif section_name == "references" and status == "missing":
+                    if not _has_explanatory_contract_entry_content(
+                        summary=entry.get("summary"),
+                        evidence=entry.get("evidence"),
+                    ):
+                        errors.append(
+                            f"{section_name}.{entry_id}.{_contract_reference_gap_message(str(status))}"
+                        )
+                elif section_name == "forbidden_proxies" and status in {"violated", "unresolved"}:
+                    if not _has_explanatory_contract_entry_content(
+                        notes=entry.get("notes"),
+                        evidence=entry.get("evidence"),
+                    ):
+                        errors.append(
+                            f"{section_name}.{entry_id}.{_contract_forbidden_proxy_gap_message(str(status))}"
+                        )
 
     for section_name, field_names in _STRICT_CONTRACT_RESULTS_STRING_LIST_FIELDS.items():
         section = value.get(section_name)
@@ -1469,6 +1519,16 @@ class ContractResultEntry(ContractEvidenceEntry):
     def _normalize_status(cls, value: object) -> object:
         return _normalize_literal_choice(value, ("passed", "partial", "failed", "blocked", "not_attempted"))
 
+    @model_validator(mode="after")
+    def _validate_gap_explanation(self) -> ContractResultEntry:
+        if self.status in {"failed", "blocked"} and not _has_explanatory_contract_entry_content(
+            summary=self.summary,
+            notes=self.notes,
+            evidence=self.evidence,
+        ):
+            raise ValueError(_contract_result_gap_message(self.status))
+        return self
+
 
 ContractReferenceActionStatus = Literal["completed", "missing", "not_applicable"]
 
@@ -1514,6 +1574,11 @@ class ContractReferenceUsage(BaseModel):
                 raise ValueError("status=missing requires missing_actions")
         elif self.completed_actions or self.missing_actions:
             raise ValueError("status=not_applicable requires completed_actions and missing_actions to be empty")
+        if self.status == "missing" and not _has_explanatory_contract_entry_content(
+            summary=self.summary,
+            evidence=self.evidence,
+        ):
+            raise ValueError(_contract_reference_gap_message(self.status))
 
         return self
 
@@ -1534,6 +1599,15 @@ class ContractForbiddenProxyResult(BaseModel):
     @classmethod
     def _normalize_status(cls, value: object) -> object:
         return _normalize_literal_choice(value, ("rejected", "violated", "unresolved", "not_applicable"))
+
+    @model_validator(mode="after")
+    def _validate_gap_explanation(self) -> ContractForbiddenProxyResult:
+        if self.status in {"violated", "unresolved"} and not _has_explanatory_contract_entry_content(
+            notes=self.notes,
+            evidence=self.evidence,
+        ):
+            raise ValueError(_contract_forbidden_proxy_gap_message(self.status))
+        return self
 
 
 class ContractResults(BaseModel):

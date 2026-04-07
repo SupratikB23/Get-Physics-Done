@@ -2227,7 +2227,11 @@ def test_validate_frontmatter_verification_rejects_passed_status_with_unresolved
     verification_path = phase_dir / "01-VERIFICATION.md"
     verification_path.write_text(
         _verification_with_contract_results()
-        .replace("      status: rejected\n", "      status: unresolved\n", 1),
+        .replace(
+            "      status: rejected\n",
+            "      status: unresolved\n      notes: Proxy rejection remains open pending the decisive rerun.\n",
+            1,
+        ),
         encoding="utf-8",
     )
 

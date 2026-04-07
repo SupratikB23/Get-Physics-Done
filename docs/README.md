@@ -21,6 +21,7 @@ Make sure these are already true:
 - GPD is not a standalone app. It installs commands into Claude Code, Codex, Gemini CLI, or OpenCode.
 - GPD does not install your runtime for you.
 - GPD does not include model access, billing, or API credits.
+- If evidence, references, or artifacts are missing, say so explicitly; GPD should not invent them.
 - This hub is the beginner path, not the full reference. Use the OS guide, runtime guide, and later `help` / `gpd --help` for the exact commands and deeper diagnostics.
 
 </details>
@@ -51,6 +52,8 @@ reopen a different workspace first, use `gpd resume --recent`, then come back
 into the runtime.
 
 </details>
+
+GPD favors scientific rigor and explicit uncertainty. Treat preferred answers as hypotheses to test, and if a citation, result, or artifact cannot be found or produced, keep that gap explicit instead of guessing.
 
 ## First: terminal vs runtime
 

@@ -2841,8 +2841,6 @@ def test_contract_tools_reject_blank_scalar_to_list_contract_drift(
     contract = _load_project_contract_fixture()
     mutator(contract)
 
-    expected = {"error": f"Invalid contract payload: {expected_error}", "schema_version": 1}
-
     request = {
         "check_key": "contract.benchmark_reproduction",
         "contract": contract,
@@ -2851,8 +2849,13 @@ def test_contract_tools_reject_blank_scalar_to_list_contract_drift(
         "observed": {"metric_value": 0.01, "threshold_value": 0.02},
     }
 
-    assert run_contract_check(request) == expected
-    assert suggest_contract_checks(contract) == expected
+    for result in (run_contract_check(request), suggest_contract_checks(contract)):
+        assert result["schema_version"] == 1
+        assert result["error"].startswith(f"Invalid contract payload: {expected_error}")
+        assert result["contract_error_details"] == [
+            expected_error,
+            expected_error.replace(" must not be blank", " was normalized from blank string to empty list"),
+        ]
 
 
 @pytest.mark.parametrize("payload", ["not-a-dict", ["claim-benchmark"], 3])
@@ -3124,12 +3127,19 @@ def test_contract_tools_surface_full_contract_error_details_for_multi_error_payl
 
     expected_details = [
         "scope.in_scope must not be blank",
+        "scope.in_scope was normalized from blank string to empty list",
         "claims.0.references must not be blank",
+        "claims.0.references was normalized from blank string to empty list",
         "references.0.aliases must not be blank",
+        "references.0.aliases was normalized from blank string to empty list",
         "references.0.required_actions.3: Input should be 'read', 'use', 'compare', 'cite' or 'avoid'",
     ]
 
-    assert run_result["error"] == "Invalid contract payload: scope.in_scope must not be blank; claims.0.references must not be blank; references.0.aliases must not be blank; +1 more"
+    assert run_result["error"] == (
+        "Invalid contract payload: scope.in_scope must not be blank; "
+        "scope.in_scope was normalized from blank string to empty list; "
+        "claims.0.references must not be blank; +4 more"
+    )
     assert run_result["contract_error_details"] == expected_details
     assert suggest_result["error"] == run_result["error"]
     assert suggest_result["contract_error_details"] == expected_details

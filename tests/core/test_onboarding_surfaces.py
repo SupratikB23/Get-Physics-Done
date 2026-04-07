@@ -117,6 +117,7 @@ def test_beginner_onboarding_surface_contract_exposes_hub_and_ladder() -> None:
         "GPD does not install your runtime for you.",
         "GPD does not include model access, billing, or API credits.",
         "This hub is the beginner path, not the full reference.",
+        "If evidence, references, or artifacts are missing, say so explicitly; GPD should not invent them.",
     )
 
 

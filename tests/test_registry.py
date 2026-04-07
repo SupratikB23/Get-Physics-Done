@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from gpd import registry
-from gpd.core.model_visible_text import agent_visibility_note, command_visibility_note, review_contract_visibility_note
+from gpd.core.model_visible_text import (
+    agent_visibility_note,
+    command_visibility_note,
+    review_contract_visibility_note,
+    skeptical_rigor_guardrails_section,
+)
 from gpd.registry import (
     AgentDef,
     CommandDef,
@@ -205,6 +210,7 @@ class TestParseAgentFile:
         assert "artifact_write_authority: scoped_write" in agent.system_prompt
         assert "shared_state_authority: direct" in agent.system_prompt
         assert "tools:\n- file_read\n- file_write" in agent.system_prompt
+        assert skeptical_rigor_guardrails_section() in agent.system_prompt
         assert agent.system_prompt.endswith("System prompt.")
         assert agent.source == "agents"
 
@@ -230,6 +236,7 @@ class TestParseAgentFile:
         assert agent.color == ""
         assert agent.source == "agents"
         assert agent.system_prompt.startswith("## Agent Requirements\n")
+        assert skeptical_rigor_guardrails_section() in agent.system_prompt
         assert agent.system_prompt.endswith("Prompt.")
 
     def test_agent_file_parses_explicit_commit_authority(self, tmp_path: Path) -> None:
@@ -363,7 +370,8 @@ class TestParseAgentFile:
         assert agent.system_prompt.startswith("## Agent Requirements\n")
         assert "Agent YAML rules. Use this YAML." in agent.system_prompt
         assert "commit_authority:" in agent.system_prompt
-        assert agent.system_prompt.endswith("```")
+        assert skeptical_rigor_guardrails_section() in agent.system_prompt
+        assert agent.system_prompt.rstrip().endswith("disconfirming check still needed.")
 
     def test_agent_file_invalid_frontmatter_raises_with_path(self, tmp_path: Path) -> None:
         f = tmp_path / "broken.md"
@@ -423,6 +431,7 @@ class TestParseCommandFile:
         assert "Strict booleans only." in cmd.content
         assert command_visibility_note() in cmd.content
         assert "GPD/ROADMAP.md" in cmd.content
+        assert skeptical_rigor_guardrails_section() in cmd.content
         assert cmd.content.endswith("Command body.")
 
     def test_command_file_with_requires_and_review_contract_renders_requirements_first(

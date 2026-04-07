@@ -24,7 +24,9 @@ __all__ = [
     "REVIEW_CONTRACT_PROMPT_WRAPPER_KEY",
     "REVIEW_CONTRACT_REQUIRED_STATES",
     "REVIEW_CONTRACT_WRAPPER_KEYS",
+    "SKEPTICAL_RIGOR_GUARDRAILS_HEADING",
     "review_contract_visibility_note",
+    "skeptical_rigor_guardrails_section",
 ]
 
 REVIEW_CONTRACT_FRONTMATTER_KEY = "review-contract"
@@ -33,6 +35,7 @@ REVIEW_CONTRACT_WRAPPER_KEYS = (
     REVIEW_CONTRACT_PROMPT_WRAPPER_KEY,
     REVIEW_CONTRACT_FRONTMATTER_KEY,
 )
+SKEPTICAL_RIGOR_GUARDRAILS_HEADING = "Scientific Rigor Guardrails"
 VALID_CONTEXT_MODES = ("global", "projectless", "project-aware", "project-required")
 AGENT_COMMIT_AUTHORITIES = ("direct", "orchestrator")
 AGENT_SURFACES = ("public", "internal")
@@ -72,6 +75,12 @@ REVIEW_CONTRACT_PREFLIGHT_CHECKS = (
     "phase_summaries",
     "phase_proof_review",
 )
+_EPISTEMIC_GUARDRAIL_CLAUSES = (
+    "Apply scientific skepticism and critical thinking. Stress-test both the user's preferred explanation and your own first impression without treating the user as an adversary.",
+    "Prefer skeptical verification, disconfirming evidence, and explicit uncertainty over agreeable affirmation.",
+    "Do not claim any result, citation, file, or artifact exists unless you directly observed it in the provided context or produced it in this session.",
+    "If search, execution, or generation fails, report the failure plainly instead of inventing fallback content.",
+)
 
 
 def _join_disjunction(values: tuple[str, ...]) -> str:
@@ -95,6 +104,7 @@ def agent_visibility_note() -> str:
         f"`role_family` must be {_join_disjunction(AGENT_ROLE_FAMILIES)};",
         f"`artifact_write_authority` must be {_join_disjunction(AGENT_ARTIFACT_WRITE_AUTHORITIES)};",
         f"`shared_state_authority` must be {_join_disjunction(AGENT_SHARED_STATE_AUTHORITIES)}.",
+        *_EPISTEMIC_GUARDRAIL_CLAUSES,
     )
 
 
@@ -115,6 +125,8 @@ def command_visibility_note() -> str:
         "Empty optional fields may be omitted.",
         agent_clause,
         "`project_reentry_capable` must be `true` or `false` and may be `true` only when `context_mode` is `project-required`.",
+        "Missing required files or other decisive evidence are blocking for strong claims; do not treat omissions or proxies as success.",
+        *_EPISTEMIC_GUARDRAIL_CLAUSES,
     )
 
 
@@ -136,4 +148,25 @@ def review_contract_visibility_note() -> str:
         "Each `conditional_requirements[].when` value may appear at most once.",
         "List fields reject blank entries and duplicates.",
         "Each conditional requirement must declare at least one non-empty field.",
+        "Missing required outputs or evidence must stay explicit; do not omit, invent, or replace them with proxies.",
+        *_EPISTEMIC_GUARDRAIL_CLAUSES,
+    )
+
+
+def skeptical_rigor_guardrails_section() -> str:
+    return (
+        f"## {SKEPTICAL_RIGOR_GUARDRAILS_HEADING}\n\n"
+        "- Use scientific skepticism and critical thinking by default: look for contradictions, missing anchors, overclaims, "
+        "and failure modes before endorsing a result.\n"
+        "- Stress-test claims, including the user's preferred interpretation and your own first impression, without "
+        "framing the user as an opponent.\n"
+        "- Agreement is not evidence. Do not mirror a preferred conclusion or a document's self-description unless "
+        "the supporting evidence is actually present.\n"
+        "- Ground claims in inspected artifacts, cited sources, executed checks, or explicitly labeled background knowledge.\n"
+        "- If information or artifacts cannot be found, produced, read, verified, or reproduced, report that plainly and "
+        "keep the status missing, failed, blocked, or inconclusive.\n"
+        "- Never fabricate references, numbers, derivations, files, figures, tables, logs, summaries, proofs, or claimed "
+        "task completion. Do not use ungrounded fallback content as a substitute for missing evidence or failed execution.\n"
+        "- When certainty is not warranted, narrow the claim, lower confidence, and name the weakest anchor or "
+        "disconfirming check still needed.\n"
     )

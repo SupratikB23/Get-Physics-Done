@@ -705,13 +705,13 @@ def build_plan_tool_preflight(
         for check in checks
     )
     guidance = (
-        "Install or enable the missing required specialized tools, or revise the plan before execution."
+        "Install or enable the missing required specialized tools, or revise the plan before execution. Do not invent results or placeholder artifacts for unavailable required tools."
         if blocking_missing
         else (
-            "Proceed using declared fallback paths for unavailable preferred tools."
+            "Proceed using declared fallback paths for unavailable preferred tools. If the fallback cannot produce the required evidence, report the gap instead of inventing outputs."
             if missing_preferred_with_fallback
             else (
-                "Optional specialized tools are unavailable; continue only if the plan can genuinely proceed without them."
+                "Optional specialized tools are unavailable; continue only if the plan can genuinely proceed without them. Otherwise report the gap instead of fabricating outputs."
                 if missing_preferred_without_fallback
                 else "All declared specialized tools are available through local or configured capabilities."
             )

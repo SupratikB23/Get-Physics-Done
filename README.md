@@ -92,6 +92,8 @@ GPD is for physics research projects that need more structure than a one-off cha
 
 It is designed for long-horizon projects that require rigorous verification, structured research memory, multi-step analytical work, complex numerical studies, and manuscript writing or review.
 
+GPD is built to favor scientific rigor and critical thinking over agreeability. Treat preferred explanations as hypotheses to test, and keep missing evidence, failed lookups, and unproduced artifacts explicit instead of inventing them.
+
 We welcome contributions and feedback via GitHub issues or pull requests; if GPD is useful in your work, please star the repo, and share it with colleagues who might benefit.
 
 ## Quick Start
