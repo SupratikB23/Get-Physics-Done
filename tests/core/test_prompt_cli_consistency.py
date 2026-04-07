@@ -601,7 +601,7 @@ def test_prompt_and_public_surface_contract_agree_on_runtime_readiness_and_plan_
     assert local_cli_doctor_local_command() in help_workflow
     assert local_cli_doctor_global_command() in help_workflow
     assert local_cli_validate_command_context_command() in help_workflow
-    assert "local install, readiness, validation, permissions, observability, diagnostics, recovery, cost, preset, and shared Wolfram integration surface" in bridge_note
+    assert public_surface_contract_module.local_cli_bridge_purpose_phrase() in bridge_note
 
 
 def test_help_workflow_mentions_all_authoritative_local_cli_bridge_commands() -> None:

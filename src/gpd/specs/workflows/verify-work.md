@@ -1008,40 +1008,45 @@ Display:
 Spawn gpd-planner in --gaps mode:
 > **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
+Planner prompt:
+
+@{GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md
+
+```markdown
+Render the template's `## Standard Planning Template` into `gap_closure_prompt` with these bindings:
+
+- `{phase_number}` -> {phase_number}
+- `{standard | gap_closure}` -> `gap_closure`
+- `{full | light}` -> `full`
+- `{research_mode}` -> {research_mode}
+- `{autonomy}` -> {autonomy}
+- `{state_content}` -> Read `GPD/STATE.md` before drafting.
+- `{project_contract}` -> {project_contract}
+- `{project_contract_gate}` -> {project_contract_gate}
+- `{project_contract_load_info}` -> {project_contract_load_info}
+- `{project_contract_validation}` -> {project_contract_validation}
+- `{contract_intake}` -> {contract_intake}
+- `{effective_reference_intake}` -> {effective_reference_intake}
+- `{roadmap_content}` -> Read `GPD/ROADMAP.md` before drafting.
+- `{requirements_content}` -> Use `${phase_dir}/${phase_number}-VERIFICATION.md` as the diagnosed gap list; no separate requirements file is preloaded here.
+- `{protocol_bundle_context}` -> {protocol_bundle_context}
+- `{active_reference_context}` -> {active_reference_context}
+- `{reference_artifacts_content}` -> {reference_artifacts_content}
+- `{context_content}` -> No extra phase context is preloaded here; keep the plan scoped to diagnosed verification gaps and surfaced contract/reference anchors.
+- `{research_content}` -> No separate research artifact is preloaded for gap closure.
+- `{experiment_design_content}` -> No separate experiment-design artifact is preloaded for gap closure.
+- `{verification_content}` -> Read `${phase_dir}/${phase_number}-VERIFICATION.md` before drafting.
+- `{validation_content}` -> Use existing phase validation notes only if they already exist and matter to the diagnosed gaps.
+
+Also read `{GPD_INSTALL_DIR}/templates/phase-prompt.md` before drafting so PLAN output stays canonical.
+The included template already brings in `@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md`; do not restate schema rules here.
+If the downstream fix plan needs specialized tooling or other machine-checkable hard requirements, keep them in PLAN frontmatter `tool_requirements`.
+Keep the prompt scoped to diagnosed verification gaps. Do not restate template-owned contract gates, tangent control, context-budget guidance, downstream-consumer rules, or the quality gate here.
+```
+
 ```
 task(
-  prompt="""First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.
-Then read {GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md, {GPD_INSTALL_DIR}/templates/phase-prompt.md, and {GPD_INSTALL_DIR}/templates/plan-contract-schema.md before drafting the fix plan.
-
-<planning_context>
-**Phase:** {phase_number}
-**Mode:** gap_closure
-**Project Contract:** {project_contract}
-**Project Contract Gate:** {project_contract_gate}
-**Project Contract Load Info:** {project_contract_load_info}
-**Project Contract Validation:** {project_contract_validation}
-**Contract Intake:** {contract_intake}
-**Effective Reference Intake:** {effective_reference_intake}
-**Protocol Bundles:** {protocol_bundle_context}
-**Active References:** {active_reference_context}
-**Reference Artifacts:** {reference_artifacts_content}
-
-If the downstream fix plan needs specialized tooling or any other machine-checkable hard validation requirement, surface it in PLAN frontmatter `tool_requirements`.
-
-<files_to_read>
-Read these files using the file_read tool:
-- Validation with diagnoses: ${phase_dir}/${phase_number}-VERIFICATION.md
-- Structured init payload: `project_contract_gate`, `effective_reference_intake`, `active_reference_context`, `derived_active_references`, `citation_source_files`, `derived_citation_sources`, `reference_artifacts_content`
-- Roadmap: GPD/ROADMAP.md
-</files_to_read>
-
-</planning_context>
-
-<downstream_consumer>
-Output consumed by gpd:execute-phase
-Plans must be executable prompts.
-</downstream_consumer>
-""",
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.\n\n" + gap_closure_prompt,
   subagent_type="gpd-planner",
   model="{planner_model}",
   readonly=false,
@@ -1133,41 +1138,38 @@ Spawn gpd-planner with revision context:
 
 > **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
+Revision prompt:
+
+@{GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md
+
+```markdown
+Render the template's `## Revision Template` into `revision_prompt` with these bindings:
+
+- `{phase_number}` -> {phase_number}
+- `{plans_content}` -> Read all PLAN.md files in `${phase_dir}/` before revising.
+- `{structured_issues_from_checker}` -> {structured_issues_from_checker}
+- `{state_content}` -> Read `GPD/STATE.md` before revising.
+- `{project_contract}` -> {project_contract}
+- `{project_contract_gate}` -> {project_contract_gate}
+- `{project_contract_load_info}` -> {project_contract_load_info}
+- `{project_contract_validation}` -> {project_contract_validation}
+- `{contract_intake}` -> {contract_intake}
+- `{effective_reference_intake}` -> {effective_reference_intake}
+- `{protocol_bundle_context}` -> {protocol_bundle_context}
+- `{active_reference_context}` -> {active_reference_context}
+- `{reference_artifacts_content}` -> {reference_artifacts_content}
+- `{context_content}` -> Keep revisions scoped to checker feedback plus the diagnosed verification gaps already surfaced in `${phase_dir}/${phase_number}-VERIFICATION.md`.
+
+Also read `{GPD_INSTALL_DIR}/templates/phase-prompt.md` before rewriting so edited PLAN output stays canonical.
+The included template already brings in `@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md`; do not restate schema rules here.
+If the revised fix plan still needs specialized tooling or other machine-checkable hard requirements, keep them in PLAN frontmatter `tool_requirements`.
+Treat `effective_reference_intake` as the structured source of carry-forward anchors; `active_reference_context` is the readable projection, not the source of truth.
+Keep the revision prompt scoped to targeted checker fixes. Do not restate template-owned revision policy here.
+```
+
 ```
 task(
-  prompt="""First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.
-Then read {GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md, {GPD_INSTALL_DIR}/templates/phase-prompt.md, and {GPD_INSTALL_DIR}/templates/plan-contract-schema.md before rewriting the fix plan.
-
-<revision_context>
-**Phase:** {phase_number}
-**Mode:** revision
-**Project Contract:** {project_contract}
-**Project Contract Gate:** {project_contract_gate}
-**Project Contract Load Info:** {project_contract_load_info}
-**Project Contract Validation:** {project_contract_validation}
-**Contract Intake:** {contract_intake}
-**Effective Reference Intake:** {effective_reference_intake}
-**Protocol Bundles:** {protocol_bundle_context}
-**Active References:** {active_reference_context}
-**Reference Artifacts:** {reference_artifacts_content}
-
-If the revised fix plan still needs specialized tooling or any other machine-checkable hard validation requirement, keep it in PLAN frontmatter `tool_requirements`.
-Treat `effective_reference_intake` as the structured source of carry-forward anchors; `active_reference_context` is the readable projection, not the source of truth.
-
-<files_to_read>
-Read all PLAN.md files in ${phase_dir}/ using the file_read tool.
-</files_to_read>
-
-**Checker issues:**
-{structured_issues_from_checker}
-
-</revision_context>
-
-<instructions>
-Read existing PLAN.md files. Make targeted updates to address checker issues.
-Do NOT replan from scratch unless issues are fundamental.
-</instructions>
-""",
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.\n\n" + revision_prompt,
   subagent_type="gpd-planner",
   model="{planner_model}",
   readonly=false,

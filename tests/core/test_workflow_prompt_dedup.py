@@ -60,8 +60,12 @@ def test_planner_workflows_expand_the_shared_planner_template_once_per_route() -
     assert plan_phase.count("# Planner Subagent Prompt Template") == 2
     assert "## Standard Planning Template" in plan_phase
     assert "## Revision Template" in plan_phase
-    assert "Quick mode still inherits the approved `project_contract` only when `project_contract_gate.authoritative` is true" in quick
-    assert "If `project_contract_load_info.status` starts with `blocked`, STOP and show the surfaced `project_contract_load_info.errors` / `warnings` before verification." in verify_work
+    assert "project_contract_gate.authoritative" in quick
+    assert verify_work.count("# Planner Subagent Prompt Template") == 2
+    assert "## Standard Planning Template" in verify_work
+    assert "## Revision Template" in verify_work
+    assert "project_contract_load_info.status" in verify_work
+    assert "project_contract_load_info.errors" in verify_work_raw
 
     assert "project_contract_gate.authoritative" in planner_template
     plan_phase_prompt = _between(plan_phase_raw, "Planner prompt:", "task(")

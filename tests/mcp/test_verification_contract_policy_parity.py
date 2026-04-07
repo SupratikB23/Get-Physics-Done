@@ -56,11 +56,14 @@ def test_verification_contract_policy_text_stays_aligned_across_public_surfaces(
     assert tools["suggest_contract_checks"].description.count(VERIFICATION_CONTRACT_POLICY_TEXT) == 0
     assert verification_contract_surface_summary_text() in tools["run_contract_check"].description
     assert verification_contract_surface_summary_text() in tools["suggest_contract_checks"].description
-    assert "``request`` input schema itself" in tools["run_contract_check"].description
+    assert "``request`` object" in tools["run_contract_check"].description
+    assert "``request`` input schema" in tools["run_contract_check"].description
+    assert "``request.contract`` is optional" in tools["run_contract_check"].description
     assert "project_dir" in tools["run_contract_check"].description
     assert "request_template" in tools["suggest_contract_checks"].description
     assert "active_checks" in tools["suggest_contract_checks"].description
-    assert "contract payload" in tools["suggest_contract_checks"].description
+    assert "``contract`` must be an object" in tools["suggest_contract_checks"].description
+    assert "schema_required_request_fields" in tools["suggest_contract_checks"].description
     assert "Nested object schemas are closed at every level" in VERIFICATION_CONTRACT_POLICY_TEXT
     assert "unknown top-level or nested keys" in VERIFICATION_CONTRACT_POLICY_TEXT
     for field_name in VERIFICATION_BINDING_FIELD_NAMES:

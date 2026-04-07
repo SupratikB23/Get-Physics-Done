@@ -1509,6 +1509,7 @@ def test_phase_research_and_verification_surfaces_keep_anchor_checks_mandatory()
     phase_researcher = (AGENTS_DIR / "gpd-phase-researcher.md").read_text(encoding="utf-8")
     planner_agent = (AGENTS_DIR / "gpd-planner.md").read_text(encoding="utf-8")
     verify_workflow = (WORKFLOWS_DIR / "verify-work.md").read_text(encoding="utf-8")
+    verify_workflow_expanded = expand_at_includes(verify_workflow, REPO_ROOT / "src/gpd", "/runtime/")
 
     assert "## Active Anchor References" in phase_researcher
     assert "contract-critical anchors as mandatory inputs" in phase_researcher
@@ -1522,7 +1523,8 @@ def test_phase_research_and_verification_surfaces_keep_anchor_checks_mandatory()
     assert "project_contract_load_info" in verify_workflow
     assert "visible-but-blocked contract must be repaired before it is used as authoritative verification scope" in verify_workflow
     assert "suggest_contract_checks(contract)" in verify_workflow
-    assert verify_workflow.count("**Project Contract Gate:** {project_contract_gate}") == 3
+    assert verify_workflow.count("**Project Contract Gate:** {project_contract_gate}") == 1
+    assert verify_workflow_expanded.count("**Project Contract Gate:** {project_contract_gate}") >= 3
     assert (
         verify_workflow.count(
             "Treat `effective_reference_intake` as the structured source of carry-forward anchors; "
@@ -3039,7 +3041,8 @@ def test_verify_work_gap_closure_delegation_surfaces_contract_gate_inputs() -> N
     assert "**Project Contract Validation:** {project_contract_validation}" in verify_work
     assert "**Contract Intake:** {contract_intake}" in verify_work
     assert "**Effective Reference Intake:** {effective_reference_intake}" in verify_work
-    assert "surface it in PLAN frontmatter `tool_requirements`" in verify_work
+    assert "tool_requirements" in verify_work
+    assert "machine-checkable hard requirements" in verify_work
     assert "The shared planner template owns the canonical planning policy and contract gate." not in verify_work
 
 

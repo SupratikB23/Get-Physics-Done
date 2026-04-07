@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from gpd.adapters import iter_runtime_descriptors
-from gpd.adapters.runtime_catalog import RuntimeDescriptor, get_runtime_descriptor
+from gpd.adapters.runtime_catalog import RuntimeDescriptor, get_runtime_descriptor, normalize_runtime_name
 from gpd.core.public_surface_contract import beginner_onboarding_hub_url, beginner_startup_ladder_text
 
 __all__ = [
@@ -61,7 +61,13 @@ def _beginner_runtime_surface_from_descriptor(descriptor: RuntimeDescriptor) -> 
 
 
 def beginner_runtime_surface(runtime_name: str) -> BeginnerRuntimeSurface:
-    descriptor = get_runtime_descriptor(runtime_name)
+    try:
+        descriptor = get_runtime_descriptor(runtime_name)
+    except KeyError:
+        normalized_runtime = normalize_runtime_name(runtime_name)
+        if normalized_runtime is None:
+            raise
+        descriptor = get_runtime_descriptor(normalized_runtime)
     return _beginner_runtime_surface_from_descriptor(descriptor)
 
 
