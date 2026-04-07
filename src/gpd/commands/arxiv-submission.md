@@ -90,7 +90,7 @@ Paper directory: $ARGUMENTS (optional; when omitted, resolve only from `paper/`,
 </context>
 
 <process>
-Apply the loaded artifact-manifest, bibliography-audit, review-ledger, referee-decision, and peer-review reliability documents literally when validating packaging readiness. Do not invent fallback review heuristics, blank `manuscript_path` placeholders, or ad hoc manuscript-root authority rules. Do not invent hidden fields or placeholder `manuscript_path` fallbacks when repairing review artifacts.
+@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md
 
 ## 1. Locate Paper
 

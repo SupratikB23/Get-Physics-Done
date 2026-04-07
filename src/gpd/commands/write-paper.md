@@ -124,8 +124,7 @@ cat GPD/research-map/FORMALISM.md 2>/dev/null
 <process>
 **Follow the write-paper workflow** from `@{GPD_INSTALL_DIR}/workflows/write-paper.md`.
 
-When the workflow asks for constrained artifacts such as `${PAPER_DIR}/PAPER-CONFIG.json`, `${PAPER_DIR}/ARTIFACT-MANIFEST.json`, `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json`, `${PAPER_DIR}/reproducibility-manifest.json`, or `${PAPER_DIR}/FIGURE_TRACKER.md`, use the canonical schema/template surfaces it loads there rather than inventing keys from memory. The artifact manifest and bibliography audit are hard review inputs; the loaded schema docs for those JSON files are part of the required model-visible contract. Do not invent hidden fields, placeholder `manuscript_path` fallbacks, or repair values from prior runs.
-When the staged peer-review loop writes `GPD/review/REVIEW-LEDGER{round_suffix}.json` and `GPD/review/REFEREE-DECISION{round_suffix}.json`, use the loaded review-ledger/referee-decision schemas plus `peer-review-panel.md` / `peer-review-reliability.md` as the authoritative contract instead of inferring those JSON shapes from prior runs. Do not invent hidden fields or placeholder `manuscript_path` fallbacks.
+@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md
 If the workflow is resuming an existing manuscript, keep the active manuscript root bound to the canonical manifest/config/entrypoint resolver rather than picking the first matching `*.tex` or `*.md` file by wildcard expansion.
 
 The workflow handles the rest:

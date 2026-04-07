@@ -38,15 +38,13 @@ def test_verifier_prompt_points_to_canonical_verification_schema_sources() -> No
 
     assert "@{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md" in verifier_lines
     assert "@{GPD_INSTALL_DIR}/references/verification/meta/verifier-profile-checks.md" in verifier_lines
-    assert "`@{GPD_INSTALL_DIR}/templates/verification-report.md` is the canonical `VERIFICATION.md` frontmatter/body surface." in verifier
-    assert "`@{GPD_INSTALL_DIR}/templates/contract-results-schema.md` is the canonical source of truth for `plan_contract_ref`, `contract_results`, `comparison_verdicts`, and verification-side `suggested_contract_checks`." in verifier
+    assert "@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md" in verifier_lines
     assert "Immediately before writing frontmatter, reload those canonical schema files and obey those ledger rules literally." in verifier
     assert "## Data Boundary" not in verifier
     assert "## Canonical LLM Error References" in verifier
     assert "`@{GPD_INSTALL_DIR}/references/verification/errors/llm-physics-errors.md` -- index and entry point" in verifier
     assert "`@{GPD_INSTALL_DIR}/references/verification/errors/llm-errors-traceability.md` -- compact detection matrix" in verifier
     assert "Load only the split file(s) needed for the current physics context." in verifier
-    assert "Do not invent a verifier-local schema, relax required ledgers, or treat body prose as a substitute for frontmatter consumed by validation and downstream tooling." in verifier
     assert "include a machine-readable `ASSERT_CONVENTION` comment immediately after the YAML frontmatter in `VERIFICATION.md`." in verifier
     assert "Changed phase verification artifacts now fail `gpd pre-commit-check` if the required header is missing or mismatched." in verifier
     assert "## Data Boundary" in expanded_verifier
@@ -54,10 +52,12 @@ def test_verifier_prompt_points_to_canonical_verification_schema_sources() -> No
     assert "Prefer copy-pasteable GPD commands" in expanded_verifier
     assert "# Verifier Profile-Specific Checks" in expanded_verifier
     assert "[] Proof structure" in expanded_verifier
+    assert "Do not invent hidden fields, extra keys, placeholder fallbacks, flattened shapes, or alternate JSON payloads from prior runs." in expanded_verifier
     for legacy_alias in ("must_haves", "verification_inputs", "contract_evidence", "independently_confirmed"):
         assert legacy_alias not in verifier
     assert "@{GPD_INSTALL_DIR}/templates/verification-report.md" in verifier_lines
     assert "@{GPD_INSTALL_DIR}/templates/contract-results-schema.md" in verifier_lines
+    assert verifier_lines.count("@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md") == 1
     assert "@{GPD_INSTALL_DIR}/references/verification/meta/verifier-profile-checks.md" not in expanded_lines
 
 
@@ -106,8 +106,9 @@ def test_verifier_prompt_loads_conventions_from_state_json_with_degraded_state_m
 def test_verifier_prompt_reloads_the_canonical_schema_files_once() -> None:
     verifier = _read_verifier_prompt()
 
-    assert verifier.count("@{GPD_INSTALL_DIR}/templates/verification-report.md") == 2
-    assert verifier.count("@{GPD_INSTALL_DIR}/templates/contract-results-schema.md") == 2
+    assert verifier.count("@{GPD_INSTALL_DIR}/templates/verification-report.md") == 1
+    assert verifier.count("@{GPD_INSTALL_DIR}/templates/contract-results-schema.md") == 1
+    assert verifier.count("@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md") == 1
     assert "reload those canonical schema files and obey those ledger rules literally." in verifier
     assert "from Step 2" not in verifier
 

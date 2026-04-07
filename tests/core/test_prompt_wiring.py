@@ -960,7 +960,10 @@ def _assert_parse_line_includes_tokens(parse_line: str, fields: tuple[str, ...])
 def test_new_project_wiring_mentions_contract_persistence_and_contract_first_downstream_generation() -> None:
     workflow_text = (WORKFLOWS_DIR / "new-project.md").read_text(encoding="utf-8")
     command_text = (COMMANDS_DIR / "new-project.md").read_text(encoding="utf-8")
+    expanded_workflow = expand_at_includes(workflow_text, REPO_ROOT / "src/gpd", "/runtime/")
+    expanded_command = expand_at_includes(command_text, REPO_ROOT / "src/gpd", "/runtime/")
     parse_line = next(line for line in workflow_text.splitlines() if line.startswith("Parse JSON for:"))
+    shared_include = "@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md"
 
     assert "gpd state set-project-contract" in workflow_text
     assert "gpd --raw validate project-contract - --mode approved" in workflow_text
@@ -1004,6 +1007,10 @@ def test_new_project_wiring_mentions_contract_persistence_and_contract_first_dow
         "explicit approval",
     )
     assert "@{GPD_INSTALL_DIR}/templates/project-contract-schema.md" in command_text
+    assert shared_include in workflow_text
+    assert shared_include in command_text
+    assert "For project-scoping work, keep `project_contract` literal and preserve cross-referenced IDs, gate state, and approval blockers exactly." in expanded_workflow
+    assert "For project-scoping work, keep `project_contract` literal and preserve cross-referenced IDs, gate state, and approval blockers exactly." in expanded_command
 
 
 def test_new_project_defers_workflow_setup_until_after_scope_approval() -> None:
@@ -2263,6 +2270,7 @@ def test_publication_prompts_surface_strict_semantic_manuscript_gates() -> None:
     peer_review = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
     arxiv = (COMMANDS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
     respond = (COMMANDS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
+    shared_discipline = (REFERENCES_DIR / "shared" / "canonical-schema-discipline.md").read_text(encoding="utf-8")
     peer_review_workflow = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
     write_paper_workflow = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
     arxiv_workflow = (WORKFLOWS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
@@ -2275,13 +2283,14 @@ def test_publication_prompts_surface_strict_semantic_manuscript_gates() -> None:
         assert "templates/paper/review-ledger-schema.md" in content
         assert "templates/paper/referee-decision-schema.md" in content
         assert "references/publication/peer-review-reliability.md" in content
+        assert "@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md" in content
+        expanded_content = expand_at_includes(content, REPO_ROOT / "src/gpd", "/runtime/")
+        assert "Do not invent hidden fields, extra keys, placeholder fallbacks, flattened shapes, or alternate JSON payloads from prior runs." in expanded_content
     assert "references/publication/peer-review-panel.md" in peer_review
     assert "references/publication/peer-review-panel.md" in write_paper
-    assert "Do not invent fields, relax round-suffix alignment, or accept blank `manuscript_path` placeholders." in peer_review
-    assert "schema-governed artifacts" in respond
-    assert "Do not invent fallback review heuristics, blank `manuscript_path` placeholders" in arxiv
-    assert "use the loaded review-ledger/referee-decision schemas" in respond
-    assert "use the loaded review-ledger/referee-decision schemas plus `peer-review-panel.md` / `peer-review-reliability.md`" in write_paper
+    assert "Do not invent hidden fields, extra keys, placeholder fallbacks, flattened shapes, or alternate JSON payloads from prior runs." in shared_discipline
+    assert "If a field is hard-enforced, surface it in model-visible schema text before asking the model to satisfy it." in shared_discipline
+    assert "For publication and review artifacts, treat `VERIFICATION.md`, `contract_results`, `comparison_verdicts`, `REVIEW-LEDGER{round_suffix}.json`, `REFEREE-DECISION{round_suffix}.json`, `manuscript_path`, and `manuscript_sha256` as hard contracts." in shared_discipline
 
 
 def test_publication_command_contexts_surface_schema_docs_before_generation() -> None:
@@ -2289,6 +2298,7 @@ def test_publication_command_contexts_surface_schema_docs_before_generation() ->
     peer_review = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
     arxiv = (COMMANDS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
     respond = (COMMANDS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
+    shared_include = "@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md"
 
     for content in (write_paper, peer_review, arxiv):
         assert "templates/paper/paper-config-schema.md" in content
@@ -2300,14 +2310,8 @@ def test_publication_command_contexts_surface_schema_docs_before_generation() ->
     assert "templates/paper/review-ledger-schema.md" in peer_review
     assert "templates/paper/referee-decision-schema.md" in peer_review
     assert "templates/paper/bibliography-audit-schema.md" in respond
-    assert "Do not invent hidden fields" in write_paper
-    assert "Do not invent hidden fields" in peer_review
-    assert "Do not invent hidden fields" in respond
-    assert "Do not invent hidden fields" in arxiv
-    assert "placeholder `manuscript_path` fallbacks" in write_paper
-    assert "placeholder `manuscript_path` fallbacks" in peer_review
-    assert "placeholder `manuscript_path` fallbacks" in respond
-    assert "blank `manuscript_path` placeholders" in arxiv
+    for content in (write_paper, peer_review, respond, arxiv):
+        assert shared_include in content
 
 
 def test_research_verification_body_scaffold_keeps_body_only_subject_labels_distinct() -> None:

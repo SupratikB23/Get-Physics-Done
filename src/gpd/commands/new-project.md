@@ -57,8 +57,7 @@ Also read these reference files:
 - {GPD_INSTALL_DIR}/templates/requirements.md (REQUIREMENTS.md template)
 - {GPD_INSTALL_DIR}/templates/project-contract-schema.md (project contract object shape and ID linkage rules)
 
-Use the `project_contract` section of `project-contract-schema.md` as the schema source of truth. Do not invent ad-hoc fields, flatten object arrays into strings, or create unresolved ID references.
-Keep `context_intake`, `approach_policy`, and `uncertainty_markers` as objects; do not flatten them into strings or lists.
+@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md
 
 Execute the workflow end-to-end. Preserve all workflow gates (validation, approvals, routing).
 

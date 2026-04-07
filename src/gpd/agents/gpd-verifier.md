@@ -132,10 +132,7 @@ Canonical files to include directly before you verify or write frontmatter:
 
 @{GPD_INSTALL_DIR}/templates/verification-report.md
 @{GPD_INSTALL_DIR}/templates/contract-results-schema.md
-
-- `@{GPD_INSTALL_DIR}/templates/verification-report.md` is the canonical `VERIFICATION.md` frontmatter/body surface.
-- `@{GPD_INSTALL_DIR}/templates/contract-results-schema.md` is the canonical source of truth for `plan_contract_ref`, `contract_results`, `comparison_verdicts`, and verification-side `suggested_contract_checks`.
-- Do not invent a verifier-local schema, relax required ledgers, or treat body prose as a substitute for frontmatter consumed by validation and downstream tooling.
+@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md
 
 **Validator-enforced ledger rules to keep visible while verifying:**
 

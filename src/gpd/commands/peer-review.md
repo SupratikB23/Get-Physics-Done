@@ -131,8 +131,7 @@ fi
 
 The workflow forwards the resolved `$ARGUMENTS` manuscript target into review preflight and keeps manuscript-root-relative support artifacts anchored to that same explicit root instead of falling back to `paper/...`.
 In strict mode the preflight gate is semantic, not just file-presence based: the manuscript-root bibliography audit must clear `bibliography_audit_clean`, and the reproducibility manifest must clear `reproducibility_ready` before the staged panel proceeds.
-When Stage 6 writes `GPD/review/REVIEW-LEDGER{round_suffix}.json` and `GPD/review/REFEREE-DECISION{round_suffix}.json`, use the loaded `review-ledger-schema.md`, `referee-decision-schema.md`, and `peer-review-reliability.md` as the authoritative contract. Do not invent fields, relax round-suffix alignment, or accept blank `manuscript_path` placeholders.
-Do not invent hidden fields or placeholder `manuscript_path` fallbacks when repairing review-ledger or referee-decision artifacts.
+@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md
 
 When announcing the panel to the user, say what each stage does in one concise sentence, for example:
 
