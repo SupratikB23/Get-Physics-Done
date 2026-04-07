@@ -103,11 +103,6 @@ class ProjectReentryResolution(BaseModel):
                     return candidate
         return next((candidate for candidate in self.candidates if candidate.project_root == selected_root), None)
 
-    @property
-    def selected_candidate_summary(self) -> str | None:
-        return project_reentry_candidate_summary(self.selected_candidate)
-
-
 def recoverable_project_context(project_root: Path) -> tuple[bool, bool, bool]:
     """Return whether a project root has enough durable state for recovery.
 
