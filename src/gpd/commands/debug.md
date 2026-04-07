@@ -9,16 +9,12 @@ allowed-tools:
   - task
   - ask_user
 ---
-
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
-
 <objective>
 Debug physics calculations using systematic isolation with subagent investigation.
 
 **Orchestrator role:** Gather symptoms, spawn gpd-debugger agent, handle checkpoints, spawn continuations.
 
-**Why subagent:** Investigation burns context fast (reading derivations, forming hypotheses, testing limiting cases, running numerical checks). Fresh 200k context per investigation. Main context stays lean for user interaction.
+**Why subagent:** Investigation burns context fast. Fresh context keeps the orchestrator lean.
 
 Physics debugging differs fundamentally from software debugging. In software, a bug is deterministic: same input gives same wrong output. In physics calculations, errors can be subtle — a sign error that only matters in one regime, a factor of 2 from a symmetry argument, a gauge artifact that looks like a physical effect, a numerical instability that masquerades as a phase transition. The debugger must think like a physicist, not a programmer.
 </objective>
@@ -43,7 +39,7 @@ ls GPD/debug/*.md 2>/dev/null | grep -v resolved | head -5
 ## 0. Initialize Context
 
 ```bash
-INIT=$(gpd init progress --include state,roadmap,config)
+INIT=$(gpd --raw init progress --include state,roadmap,config)
 ```
 
 Extract `commit_docs` from init JSON. Resolve debugger model:
@@ -166,7 +162,7 @@ task(
 - Classify the error type (sign error, missing factor, wrong convention, numerical issue, conceptual error)
 - Offer options:
   - "Fix now" — spawn fix subagent
-  - "Plan fix" — suggest /gpd:plan-phase --gaps
+  - "Plan fix" — suggest gpd:plan-phase --gaps
   - "Manual fix" — done (provide the identified error location and correction)
 
 **If `## CHECKPOINT REACHED`:**

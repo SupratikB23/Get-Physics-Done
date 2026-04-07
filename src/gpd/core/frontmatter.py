@@ -8,9 +8,12 @@ Core operations:
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
+from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -18,12 +21,20 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as PydanticValidationError
 
 from gpd.contracts import (
+    PROOF_ACCEPTANCE_TEST_KINDS,
+    PROOF_AUDIT_REVIEWER,
     ComparisonVerdict,
     ContractResults,
+    ProjectContractParseResult,
     ResearchContract,
     SuggestedContractCheck,
-    collect_contract_integrity_errors,
-    normalize_contract_results_input,
+    claim_requires_proof_audit,
+    collect_plan_contract_integrity_errors,
+    collect_proof_audit_alignment_errors,
+    contract_has_explicit_context_intake,
+    parse_comparison_verdicts_data_strict,
+    parse_contract_results_data_artifact,
+    parse_project_contract_data_strict,
 )
 from gpd.core.constants import (
     PLAN_SUFFIX,
@@ -31,14 +42,12 @@ from gpd.core.constants import (
     STANDALONE_SUMMARY,
     SUMMARY_SUFFIX,
 )
-from gpd.core.contract_validation import (
-    _format_schema_error,
-    _sanitize_contract_scalars,
-    _split_project_contract_schema_findings,
-    salvage_project_contract,
-)
+from gpd.core.contract_validation import _format_schema_error
 from gpd.core.errors import GPDError
-from gpd.core.observability import instrument_gpd_function, resolve_project_root
+from gpd.core.observability import instrument_gpd_function
+from gpd.core.root_resolution import resolve_project_root
+from gpd.core.strict_yaml import load_strict_yaml
+from gpd.core.tool_preflight import PlanToolPreflightError, parse_plan_tool_requirements
 from gpd.core.utils import matching_phase_artifact_count, phase_artifact_display_name, phase_artifact_id, safe_read_file
 
 # ---------------------------------------------------------------------------
@@ -78,6 +87,8 @@ __all__ = [
     "verify_artifacts",
 ]
 
+PLAN_FRONTMATTER_TYPES = ("execute", "tdd")
+SUMMARY_DEPTH_VALUES = ("minimal", "standard", "full", "complex")
 VERIFICATION_REPORT_STATUSES = ("passed", "gaps_found", "expert_needed", "human_needed")
 
 # ---------------------------------------------------------------------------
@@ -99,10 +110,21 @@ class FrontmatterValidationError(GPDError, ValueError):
 
 _FRONTMATTER_RE = re.compile(r"^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)")
 _EMPTY_FRONTMATTER_RE = re.compile(r"^---[ \t]*\r?\n---[ \t]*(?:\r?\n|$)")
+_LEADING_BLANK_LINES_BEFORE_FRONTMATTER_RE = re.compile(r"^(?:[ \t]*\r?\n)+(?=---[ \t]*\r?\n)")
 
 # Matches the full frontmatter block (including empty) for replacement operations.
 # Uses a lookahead so the trailing newline is preserved for the caller to reattach.
 _FRONTMATTER_BLOCK_RE = re.compile(r"^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?=\r?\n|$)")
+
+
+def _split_frontmatter_rewrite_content(content: str) -> tuple[str, str]:
+    """Return any preserved leading prefix plus rewriteable content."""
+    bom = "\ufeff" if content.startswith("\ufeff") else ""
+    clean = content[len(bom) :]
+    prefix_match = _LEADING_BLANK_LINES_BEFORE_FRONTMATTER_RE.match(clean)
+    if prefix_match is None:
+        return bom, clean
+    return bom + clean[: prefix_match.end()], clean[prefix_match.end() :]
 
 
 def extract_frontmatter(content: str) -> tuple[dict, str]:
@@ -117,13 +139,14 @@ def extract_frontmatter(content: str) -> tuple[dict, str]:
         FrontmatterParseError: If the YAML inside the ``---`` block is malformed.
     """
     clean = content.lstrip("\ufeff")  # strip BOM
+    frontmatter_candidate = _LEADING_BLANK_LINES_BEFORE_FRONTMATTER_RE.sub("", clean, count=1)
 
-    match = _FRONTMATTER_RE.match(clean)
+    match = _FRONTMATTER_RE.match(frontmatter_candidate)
     if match:
         yaml_str = match.group(1)
-        body = clean[match.end() :]
+        body = frontmatter_candidate[match.end() :]
         try:
-            meta = yaml.safe_load(yaml_str)
+            meta = load_strict_yaml(yaml_str)
             if meta is None:
                 meta = {}
         except yaml.YAMLError as exc:
@@ -133,9 +156,9 @@ def extract_frontmatter(content: str) -> tuple[dict, str]:
         return meta, body
 
     # Empty frontmatter (---\n---)
-    match = _EMPTY_FRONTMATTER_RE.match(clean)
+    match = _EMPTY_FRONTMATTER_RE.match(frontmatter_candidate)
     if match:
-        return {}, clean[match.end() :]
+        return {}, frontmatter_candidate[match.end() :]
 
     # No frontmatter at all
     return {}, clean
@@ -173,11 +196,11 @@ def splice_frontmatter(content: str, updates: dict) -> str:
     eol = "\r\n" if "\r\n" in content else "\n"
     yaml_str = _dump_yaml(meta)
 
-    clean = content.lstrip("\ufeff")
-    fm_match = _FRONTMATTER_BLOCK_RE.match(clean)
+    prefix, rewriteable = _split_frontmatter_rewrite_content(content)
+    fm_match = _FRONTMATTER_BLOCK_RE.match(rewriteable)
     if fm_match:
-        return f"---{eol}{yaml_str}{eol}---" + clean[fm_match.end() :]
-    return f"---{eol}{yaml_str}{eol}---{eol}{eol}" + clean
+        return prefix + f"---{eol}{yaml_str}{eol}---" + rewriteable[fm_match.end() :]
+    return prefix + f"---{eol}{yaml_str}{eol}---{eol}{eol}" + rewriteable
 
 
 def deep_merge_frontmatter(content: str, merge_data: dict) -> str:
@@ -200,11 +223,11 @@ def deep_merge_frontmatter(content: str, merge_data: dict) -> str:
     eol = "\r\n" if "\r\n" in content else "\n"
     yaml_str = _dump_yaml(meta)
 
-    clean = content.lstrip("\ufeff")
-    fm_match = _FRONTMATTER_BLOCK_RE.match(clean)
+    prefix, rewriteable = _split_frontmatter_rewrite_content(content)
+    fm_match = _FRONTMATTER_BLOCK_RE.match(rewriteable)
     if fm_match:
-        return f"---{eol}{yaml_str}{eol}---" + clean[fm_match.end() :]
-    return f"---{eol}{yaml_str}{eol}---{eol}{eol}" + clean
+        return prefix + f"---{eol}{yaml_str}{eol}---" + rewriteable[fm_match.end() :]
+    return prefix + f"---{eol}{yaml_str}{eol}---{eol}{eol}" + rewriteable
 
 
 @dataclass(slots=True)
@@ -235,47 +258,81 @@ def _prefixed_validation_errors(field_name: str, exc: Exception) -> list[str]:
     return [f"{field_name}: {exc}"]
 
 
+def _source_path_project_root(source_path: Path | None) -> Path | None:
+    """Return the project root inferred from a file source path, when available."""
+
+    if source_path is None:
+        return None
+    return resolve_project_root(source_path.parent, require_layout=False)
+
+
+def _normalize_frontmatter_contract_mapping(contract_data: object) -> object:
+    """Normalize frontmatter-authored blank nested proof-list scalars to empty lists."""
+
+    if not isinstance(contract_data, dict):
+        return contract_data
+
+    normalized = deepcopy(contract_data)
+    claims = normalized.get("claims")
+    if not isinstance(claims, list):
+        return normalized
+
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        parameters = claim.get("parameters")
+        if isinstance(parameters, list):
+            for parameter in parameters:
+                if (
+                    isinstance(parameter, dict)
+                    and isinstance(parameter.get("aliases"), str)
+                    and not parameter["aliases"].strip()
+                ):
+                    parameter["aliases"] = []
+        hypotheses = claim.get("hypotheses")
+        if isinstance(hypotheses, list):
+            for hypothesis in hypotheses:
+                if (
+                    isinstance(hypothesis, dict)
+                    and isinstance(hypothesis.get("symbols"), str)
+                    and not hypothesis["symbols"].strip()
+                ):
+                    hypothesis["symbols"] = []
+    return normalized
+
+
 def _validate_contract_mapping(
     contract_data: object,
     *,
     enforce_plan_semantics: bool,
+    project_root: Path | None = None,
 ) -> _PlanContractResolution:
-    """Return validated contract data plus explicit scalar/schema/semantic errors."""
+    """Return validated contract data plus explicit strict/semantic errors."""
 
     if not isinstance(contract_data, dict):
         return _PlanContractResolution(errors=["expected an object"])
 
-    scalar_errors: list[str] = []
-    sanitized_contract_data = _sanitize_contract_scalars(contract_data, errors=scalar_errors)
-    if not isinstance(sanitized_contract_data, dict):
-        return _PlanContractResolution(errors=["expected an object"])
-    if scalar_errors:
-        return _PlanContractResolution(errors=list(dict.fromkeys(scalar_errors)))
+    normalized_contract_data = _normalize_frontmatter_contract_mapping(contract_data)
+    strict_result: ProjectContractParseResult = parse_project_contract_data_strict(normalized_contract_data)
+    if strict_result.errors:
+        return _PlanContractResolution(errors=list(dict.fromkeys(strict_result.errors)))
 
-    normalized_contract, schema_findings = salvage_project_contract(sanitized_contract_data)
-    schema_warnings, schema_errors = _split_project_contract_schema_findings(
-        schema_findings,
-        allow_singleton_defaults=False,
-    )
-    if schema_errors:
-        return _PlanContractResolution(errors=list(dict.fromkeys(schema_errors)))
-    try:
-        contract = normalized_contract or ResearchContract.model_validate(sanitized_contract_data)
-    except PydanticValidationError as exc:
-        return _PlanContractResolution(errors=_format_pydantic_validation_errors(exc))
+    contract = strict_result.contract
+    if contract is None:
+        return _PlanContractResolution(errors=["contract could not be normalized"])
 
     if not enforce_plan_semantics:
         return _PlanContractResolution(contract=contract)
 
     semantic_errors: list[str] = []
-    if "context_intake" not in sanitized_contract_data:
+    if "context_intake" not in contract_data:
         semantic_errors.append("missing context_intake")
-    elif not _has_explicit_context_intake(contract):
+    elif not contract_has_explicit_context_intake(contract, project_root=project_root):
         semantic_errors.append("context_intake must not be empty")
-    for error in _collect_plan_contract_explicit_field_errors(sanitized_contract_data):
+    for error in _collect_plan_contract_explicit_field_errors(contract_data):
         if error not in semantic_errors:
             semantic_errors.append(error)
-    for error in (*collect_contract_integrity_errors(contract), *_validate_plan_contract(contract)):
+    for error in collect_plan_contract_integrity_errors(contract, project_root=project_root):
         if error not in semantic_errors:
             semantic_errors.append(error)
     if semantic_errors:
@@ -283,13 +340,17 @@ def _validate_contract_mapping(
     return _PlanContractResolution(contract=contract)
 
 
-def parse_contract_block(content: str) -> ResearchContract | None:
+def parse_contract_block(content: str, *, source_path: Path | None = None) -> ResearchContract | None:
     """Extract and validate the optional ``contract`` block from frontmatter."""
 
     meta, _ = extract_frontmatter(content)
     if "contract" not in meta:
         return None
-    resolution = _validate_contract_mapping(meta.get("contract"), enforce_plan_semantics=True)
+    resolution = _validate_contract_mapping(
+        meta.get("contract"),
+        enforce_plan_semantics=True,
+        project_root=_source_path_project_root(source_path),
+    )
     if resolution.errors:
         raise FrontmatterValidationError(
             "Invalid contract frontmatter: " + "; ".join(resolution.errors)
@@ -326,18 +387,26 @@ FRONTMATTER_SCHEMAS: dict[str, dict[str, list[str]]] = {
 UNSUPPORTED_FRONTMATTER_FIELDS: dict[str, dict[str, str]] = {
     "plan": {
         "must_haves": "must_haves is not part of the contract-first plan schema; encode verification targets in contract claims, deliverables, links, references, and acceptance_tests",
+        "verification_inputs": "verification_inputs is not part of the contract-first plan schema; capture execution inputs in the contract block instead",
+        "contract_evidence": "contract_evidence is not part of the contract-first plan schema; plans must declare claims, deliverables, and acceptance tests instead",
+        "contract_results": "contract_results is summary/verification output, not plan input; keep plans contract-first",
+        "comparison_verdicts": "comparison_verdicts belong to completed summaries, not plans",
+        "suggested_contract_checks": "suggested_contract_checks is verification-only; plans must define acceptance_tests in the contract instead",
     },
     "summary": {
+        "must_haves": "must_haves is not part of the contract-first summary schema; use contract_results and comparison_verdicts instead",
         "verification_inputs": "verification_inputs is not part of the contract-first summary schema; use contract_results and comparison_verdicts instead",
         "contract_evidence": "contract_evidence is not part of the contract-first summary schema; use contract_results instead",
+        "suggested_contract_checks": "suggested_contract_checks is verification-only; summaries use contract_results and comparison_verdicts instead",
     },
     "verification": {
+        "must_haves": "must_haves is not part of the contract-first verification schema; use contract_results and comparison_verdicts instead",
         "verification_inputs": "verification_inputs is not part of the contract-first verification schema; use contract_results and comparison_verdicts instead",
         "contract_evidence": "contract_evidence is not part of the contract-first verification schema; use contract_results instead",
+        "independently_confirmed": "independently_confirmed is not part of the contract-first verification schema; keep aggregate confirmation counts in body prose instead",
     },
 }
 
-_DECISIVE_COMPARISON_KINDS = frozenset({"benchmark", "prior_work", "experiment", "cross_method", "baseline"})
 _DECISIVE_EXTERNAL_COMPARISON_KINDS = frozenset({"benchmark", "prior_work", "experiment", "baseline"})
 _DECISIVE_REFERENCE_COMPARISON_KINDS = frozenset({"benchmark", "prior_work", "experiment", "cross_method", "baseline"})
 _DECISIVE_ACCEPTANCE_TEST_COMPARISON_KINDS: dict[str, frozenset[str]] = {
@@ -348,6 +417,33 @@ _DECISIVE_ACCEPTANCE_TEST_COMPARISON_KINDS: dict[str, frozenset[str]] = {
 # defaults in the schema models; downstream validation should stabilize them rather
 # than reject otherwise valid model output for restating "other".
 _PLAN_CONTRACT_EXPLICIT_COLLECTION_FIELDS: tuple[tuple[str, str], ...] = ()
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _resolve_contract_artifact_path(
+    *,
+    project_root: Path | None,
+    artifact_dir: Path | None,
+    path_text: str,
+) -> tuple[Path | None, str | None]:
+    artifact_path = Path(path_text)
+    if artifact_path.is_absolute():
+        return None, "must be a project-relative path"
+
+    anchor_dir = artifact_dir or project_root
+    if anchor_dir is None:
+        return artifact_path, None
+
+    resolved_root = (project_root or anchor_dir).resolve(strict=False)
+    candidate = (anchor_dir / artifact_path).resolve(strict=False)
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError:
+        return None, "must resolve inside the project root"
+    return candidate, None
 
 
 class FrontmatterValidation(BaseModel):
@@ -363,6 +459,89 @@ class FrontmatterValidation(BaseModel):
 def _resolve_field(meta: dict, name: str) -> str | None:
     """Return *name* when present in *meta*, otherwise ``None``."""
     return name if name in meta else None
+
+
+def _validate_required_string_field(meta: dict[str, object], field_name: str, errors: list[str]) -> None:
+    """Append an error when a required field is not a non-empty string."""
+    if field_name not in meta:
+        return
+    value = meta.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        errors.append(f"{field_name}: expected a non-empty string")
+
+
+def _validate_required_scalar_field(meta: dict[str, object], field_name: str, errors: list[str]) -> None:
+    """Append an error when a required field is not a non-null scalar."""
+    if field_name not in meta:
+        return
+    value = meta.get(field_name)
+    if value is None or isinstance(value, (list, dict, bool)):
+        errors.append(f"{field_name}: expected a non-null scalar")
+
+
+def _validate_required_int_field(meta: dict[str, object], field_name: str, errors: list[str]) -> None:
+    """Append an error when a required field is not a strict integer."""
+    if field_name not in meta:
+        return
+    if type(meta.get(field_name)) is not int:
+        errors.append(f"{field_name}: expected an integer")
+
+
+def _validate_required_bool_field(meta: dict[str, object], field_name: str, errors: list[str]) -> None:
+    """Append an error when a required field is not a strict boolean."""
+    if field_name not in meta:
+        return
+    if type(meta.get(field_name)) is not bool:
+        errors.append(f"{field_name}: expected a boolean")
+
+
+def _validate_required_object_field(meta: dict[str, object], field_name: str, errors: list[str]) -> None:
+    """Append an error when a required field is not an object."""
+    if field_name not in meta:
+        return
+    if not isinstance(meta.get(field_name), dict):
+        errors.append(f"{field_name}: expected an object")
+
+
+def _validate_string_enum_field(
+    meta: dict[str, object],
+    field_name: str,
+    errors: list[str],
+    *,
+    allowed_values: tuple[str, ...],
+) -> None:
+    """Append an error when a required string field uses an undocumented literal."""
+
+    if field_name not in meta:
+        return
+    value = meta.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        return
+    if value.strip() not in allowed_values:
+        errors.append(f"{field_name}: must be one of {', '.join(allowed_values)}")
+
+
+def _validate_timestamp_scalar_field(meta: dict[str, object], field_name: str, errors: list[str]) -> None:
+    """Append an error when a scalar field is not an ISO 8601 timestamp."""
+
+    if field_name not in meta:
+        return
+    value = meta.get(field_name)
+    if value is None or isinstance(value, (list, dict, bool)):
+        return
+    if isinstance(value, datetime):
+        return
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or "T" not in stripped.upper():
+            errors.append(f"{field_name}: expected an ISO 8601 timestamp")
+            return
+        try:
+            datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+        except ValueError:
+            errors.append(f"{field_name}: expected an ISO 8601 timestamp")
+        return
+    errors.append(f"{field_name}: expected an ISO 8601 timestamp")
 
 
 def _collect_plan_contract_explicit_field_errors(contract_data: dict[str, object]) -> list[str]:
@@ -386,209 +565,17 @@ def _collect_plan_contract_explicit_field_errors(contract_data: dict[str, object
     return errors
 
 
-def _has_contract_grounding_context(contract: ResearchContract) -> bool:
-    """Return whether the contract carries explicit grounding outside references."""
-
-    return any(
-        (
-            contract.context_intake.must_include_prior_outputs,
-            contract.context_intake.user_asserted_anchors,
-            contract.context_intake.known_good_baselines,
-            contract.context_intake.context_gaps,
-            contract.context_intake.crucial_inputs,
-            contract.approach_policy.formulations,
-            contract.approach_policy.stop_and_rethink_conditions,
-        )
-    )
-
-
-def _has_explicit_context_intake(contract: ResearchContract) -> bool:
-    """Return whether context_intake carries any explicit non-empty field."""
-
-    return any(
-        (
-            contract.context_intake.must_read_refs,
-            contract.context_intake.must_include_prior_outputs,
-            contract.context_intake.user_asserted_anchors,
-            contract.context_intake.known_good_baselines,
-            contract.context_intake.context_gaps,
-            contract.context_intake.crucial_inputs,
-        )
-    )
-
-
-def _is_scoping_contract(contract: ResearchContract) -> bool:
-    """Return whether the contract is still framing the work rather than proving it."""
-
-    return (
-        not contract.claims
-        and not contract.acceptance_tests
-        and (
-            bool(contract.observables)
-            or bool(contract.deliverables)
-            or bool(contract.scope.unresolved_questions)
-            or _has_contract_grounding_context(contract)
-        )
-    )
-
-
-def _is_exploratory_contract(contract: ResearchContract) -> bool:
-    """Return whether the contract semantics describe setup/exploratory work."""
-
-    exploratory_test_kinds = {
-        "existence",
-        "schema",
-        "human_review",
-        "consistency",
-        "limiting_case",
-        "symmetry",
-        "dimensional_analysis",
-        "convergence",
-        "other",
-    }
-    exploratory_deliverable_kinds = {"code", "note", "report", "derivation", "figure", "table", "dataset", "data", "other"}
-
-    return (
-        not _is_scoping_contract(contract)
-        and (bool(contract.acceptance_tests) or _has_contract_grounding_context(contract))
-        and all(test.kind in exploratory_test_kinds for test in contract.acceptance_tests)
-        and all(deliverable.kind in exploratory_deliverable_kinds for deliverable in contract.deliverables)
-    )
-
-
-def _validate_plan_contract(contract: ResearchContract) -> list[str]:
-    """Return completeness issues for contract-backed PLAN.md frontmatter."""
-    issues: list[str] = []
-    scoping_contract = _is_scoping_contract(contract)
-    exploratory_contract = _is_exploratory_contract(contract)
-
-    if not contract.claims and not scoping_contract:
-        issues.append("missing claims")
-    if not contract.deliverables and not scoping_contract:
-        issues.append("missing deliverables")
-    if not contract.acceptance_tests and not scoping_contract:
-        issues.append("missing acceptance_tests")
-    if not contract.references and not (_has_contract_grounding_context(contract) or exploratory_contract or scoping_contract):
-        issues.append("missing references or explicit grounding context")
-    if not contract.forbidden_proxies and not (exploratory_contract or scoping_contract):
-        issues.append("missing forbidden_proxies")
-    if not contract.uncertainty_markers.weakest_anchors:
-        issues.append("missing uncertainty_markers.weakest_anchors")
-    if not contract.uncertainty_markers.disconfirming_observations:
-        issues.append("missing uncertainty_markers.disconfirming_observations")
-    if scoping_contract and not (
-        contract.observables
-        or contract.deliverables
-        or contract.scope.unresolved_questions
-        or _has_contract_grounding_context(contract)
-    ):
-        issues.append("scoping contracts must preserve at least one target, open question, or carry-forward input")
-
-    def _append_duplicate_ids(kind: str, ids: list[str]) -> None:
-        seen: set[str] = set()
-        duplicates: set[str] = set()
-        for item_id in ids:
-            if item_id in seen:
-                duplicates.add(item_id)
-            seen.add(item_id)
-        for duplicate in sorted(duplicates):
-            issues.append(f"duplicate {kind} id {duplicate}")
-
-    _append_duplicate_ids("claim", [claim.id for claim in contract.claims])
-    _append_duplicate_ids("deliverable", [deliverable.id for deliverable in contract.deliverables])
-    _append_duplicate_ids("acceptance_test", [test.id for test in contract.acceptance_tests])
-    _append_duplicate_ids("reference", [reference.id for reference in contract.references])
-    _append_duplicate_ids("forbidden_proxy", [proxy.id for proxy in contract.forbidden_proxies])
-    _append_duplicate_ids("link", [link.id for link in contract.links])
-
-    observable_ids = {observable.id for observable in contract.observables}
-    claim_ids = {claim.id for claim in contract.claims}
-    deliverable_ids = {deliverable.id for deliverable in contract.deliverables}
-    acceptance_test_ids = {test.id for test in contract.acceptance_tests}
-    reference_ids = {reference.id for reference in contract.references}
-    known_ids = claim_ids | deliverable_ids | acceptance_test_ids | reference_ids
-
-    if contract.references and not any(reference.must_surface for reference in contract.references):
-        issues.append("references must include at least one must_surface=true anchor")
-    for must_read_ref in contract.context_intake.must_read_refs:
-        if must_read_ref not in reference_ids:
-            issues.append(f"context_intake.must_read_refs references unknown reference {must_read_ref}")
-
-    for claim in contract.claims:
-        if not claim.deliverables:
-            issues.append(f"claim {claim.id} missing deliverables")
-        if not claim.acceptance_tests:
-            issues.append(f"claim {claim.id} missing acceptance_tests")
-        for observable_id in claim.observables:
-            if observable_id not in observable_ids:
-                issues.append(f"claim {claim.id} references unknown observable {observable_id}")
-        for deliverable_id in claim.deliverables:
-            if deliverable_id not in deliverable_ids:
-                issues.append(f"claim {claim.id} references unknown deliverable {deliverable_id}")
-        for test_id in claim.acceptance_tests:
-            if test_id not in acceptance_test_ids:
-                issues.append(f"claim {claim.id} references unknown acceptance test {test_id}")
-        for reference_id in claim.references:
-            if reference_id not in reference_ids:
-                issues.append(f"claim {claim.id} references unknown reference {reference_id}")
-
-    for test in contract.acceptance_tests:
-        if test.subject not in claim_ids and test.subject not in deliverable_ids:
-            issues.append(f"acceptance test {test.id} targets unknown subject {test.subject}")
-        for evidence_id in test.evidence_required:
-            if evidence_id not in known_ids:
-                issues.append(f"acceptance test {test.id} references unknown evidence {evidence_id}")
-
-    for reference in contract.references:
-        if reference.must_surface and not reference.required_actions:
-            issues.append(f"reference {reference.id} is must_surface but missing required_actions")
-        if reference.must_surface and not reference.applies_to:
-            issues.append(f"reference {reference.id} is must_surface but missing applies_to")
-        for applies_to_id in reference.applies_to:
-            if applies_to_id not in claim_ids and applies_to_id not in deliverable_ids:
-                issues.append(f"reference {reference.id} applies_to unknown target {applies_to_id}")
-
-    for forbidden_proxy in contract.forbidden_proxies:
-        if forbidden_proxy.subject not in claim_ids and forbidden_proxy.subject not in deliverable_ids:
-            issues.append(
-                f"forbidden proxy {forbidden_proxy.id} targets unknown subject {forbidden_proxy.subject}"
-            )
-
-    for link in contract.links:
-        if link.source not in known_ids:
-            issues.append(f"link {link.id} references unknown source {link.source}")
-        if link.target not in known_ids:
-            issues.append(f"link {link.id} references unknown target {link.target}")
-        for verification_id in link.verified_by:
-            if verification_id not in acceptance_test_ids:
-                issues.append(f"link {link.id} references unknown acceptance test {verification_id}")
-
-    return issues
-
-
 def _parse_contract_results(meta: dict) -> ContractResults | None:
     """Parse a summary contract-results block when present."""
-    raw = meta.get("contract_results")
-    if raw is None:
+    if "contract_results" not in meta:
         return None
-    return ContractResults.model_validate(normalize_contract_results_input(raw, strict=True))
+    raw = meta.get("contract_results")
+    return parse_contract_results_data_artifact(raw)
 
 
 def _parse_comparison_verdicts(meta: dict) -> list[ComparisonVerdict]:
     """Parse the optional summary comparison-verdict ledger."""
-    raw = meta.get("comparison_verdicts")
-    if raw is None:
-        return []
-    if not isinstance(raw, list):
-        raise ValueError("expected a list")
-    verdicts: list[ComparisonVerdict] = []
-    for index, entry in enumerate(raw):
-        try:
-            verdicts.append(ComparisonVerdict.model_validate(entry))
-        except PydanticValidationError as exc:
-            details = "; ".join(f"[{index}] {message}" for message in _format_pydantic_validation_errors(exc))
-            raise ValueError(details) from exc
-    return verdicts
+    return parse_comparison_verdicts_data_strict(meta.get("comparison_verdicts"))
 
 
 def _parse_suggested_contract_checks(meta: dict) -> list[SuggestedContractCheck]:
@@ -605,7 +592,14 @@ def _parse_suggested_contract_checks(meta: dict) -> list[SuggestedContractCheck]
         try:
             suggestions.append(SuggestedContractCheck.model_validate(item))
         except PydanticValidationError as exc:
-            details = "; ".join(f"[{index}] {message}" for message in _format_pydantic_validation_errors(exc))
+            details = "; ".join(
+                (
+                    f"[{index}] must provide suggested_subject_kind and suggested_subject_id together"
+                    if "suggested_subject_kind and suggested_subject_id must appear together" in message
+                    else f"[{index}] {message}"
+                )
+                for message in _format_pydantic_validation_errors(exc)
+            )
             raise ValueError(details) from exc
     return suggestions
 
@@ -617,6 +611,19 @@ def _unsupported_frontmatter_errors(schema_name: str, meta: dict[str, object]) -
         for unsupported_field, message in UNSUPPORTED_FRONTMATTER_FIELDS.get(schema_name, {}).items()
         if unsupported_field in meta
     ]
+
+
+def _validate_non_empty_string_list_field(meta: dict[str, object], field_name: str, errors: list[str]) -> None:
+    """Append validation errors when a field is not a list of non-empty strings."""
+    if field_name not in meta:
+        return
+    value = meta.get(field_name)
+    if not isinstance(value, list):
+        errors.append(f"{field_name}: expected a list")
+        return
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            errors.append(f"{field_name}: entry {index} must be a non-empty string")
 
 
 def _plan_contract_ref_fragment_error(plan_contract_ref: str) -> str | None:
@@ -658,6 +665,109 @@ def _plan_contract_ref_path_error(plan_contract_ref: str) -> str | None:
     return None
 
 
+def _proof_specific_acceptance_test_ids(
+    *,
+    claim_acceptance_tests: list[str],
+    acceptance_test_kind_by_id: dict[str, str],
+) -> list[str]:
+    return [
+        test_id
+        for test_id in claim_acceptance_tests
+        if acceptance_test_kind_by_id.get(test_id) in PROOF_ACCEPTANCE_TEST_KINDS
+    ]
+
+
+def _claim_pass_proof_audit_errors(
+    contract: ResearchContract,
+    *,
+    claim_id: str,
+    claim_result,
+    contract_results: ContractResults,
+    acceptance_test_kind_by_id: dict[str, str],
+    deliverable_path_by_id: dict[str, str | None],
+) -> list[str]:
+    claim_by_id = {claim.id: claim for claim in contract.claims}
+    observable_kind_by_id = {observable.id: observable.kind for observable in contract.observables}
+    claim = claim_by_id.get(claim_id)
+    if claim is None or not claim_requires_proof_audit(claim, observable_kind_by_id):
+        return []
+    if claim_result.status != "passed":
+        return []
+
+    audit = claim_result.proof_audit
+    if audit is None:
+        return [f"claim {claim_id} status=passed requires proof_audit for proof-bearing claim"]
+
+    errors: list[str] = []
+
+    proof_test_ids = _proof_specific_acceptance_test_ids(
+        claim_acceptance_tests=claim.acceptance_tests,
+        acceptance_test_kind_by_id=acceptance_test_kind_by_id,
+    )
+    if not proof_test_ids:
+        errors.append(f"claim {claim_id} status=passed requires at least one proof-specific acceptance_test")
+    else:
+        nonpassing_proof_test_ids = sorted(
+            test_id
+            for test_id in proof_test_ids
+            if contract_results.acceptance_tests.get(test_id) is None
+            or contract_results.acceptance_tests[test_id].status != "passed"
+        )
+        if nonpassing_proof_test_ids:
+            errors.append(
+                "claim "
+                f"{claim_id} status=passed requires all declared proof-specific acceptance_tests to pass: "
+                + ", ".join(nonpassing_proof_test_ids)
+            )
+        elif not any(
+            contract_results.acceptance_tests.get(test_id) is not None
+            and contract_results.acceptance_tests[test_id].status == "passed"
+            for test_id in proof_test_ids
+        ):
+            errors.append(
+                f"claim {claim_id} status=passed requires a passed proof-specific acceptance_test: {', '.join(sorted(proof_test_ids))}"
+            )
+
+    if audit.completeness != "complete":
+        errors.append(f"claim {claim_id} status=passed requires proof_audit.completeness=complete")
+    if audit.reviewer != PROOF_AUDIT_REVIEWER:
+        errors.append(f"claim {claim_id} status=passed requires proof_audit.reviewer={PROOF_AUDIT_REVIEWER}")
+    if not audit.reviewed_at:
+        errors.append(f"claim {claim_id} status=passed requires proof_audit.reviewed_at")
+    if audit.stale:
+        errors.append(f"claim {claim_id} status=passed is incompatible with proof_audit.stale=true")
+    if claim.quantifiers and audit.quantifier_status != "matched":
+        errors.append(f"claim {claim_id} status=passed requires proof_audit.quantifier_status=matched")
+    if audit.scope_status != "matched":
+        errors.append(f"claim {claim_id} status=passed requires proof_audit.scope_status=matched")
+    if audit.counterexample_status != "none_found":
+        errors.append(f"claim {claim_id} status=passed requires proof_audit.counterexample_status=none_found")
+    if not audit.proof_artifact_sha256:
+        errors.append(f"claim {claim_id} status=passed requires proof_audit.proof_artifact_sha256")
+    if not audit.audit_artifact_path:
+        errors.append(f"claim {claim_id} status=passed requires proof_audit.audit_artifact_path")
+    if not audit.audit_artifact_sha256:
+        errors.append(f"claim {claim_id} status=passed requires proof_audit.audit_artifact_sha256")
+
+    expected_statement_sha256 = _sha256_text(claim.statement)
+    if audit.claim_statement_sha256 != expected_statement_sha256:
+        errors.append(
+            f"claim {claim_id} status=passed requires proof_audit.claim_statement_sha256 to match the current claim statement"
+        )
+
+    allowed_proof_paths = {
+        path
+        for deliverable_id in claim.proof_deliverables
+        if (path := deliverable_path_by_id.get(deliverable_id))
+    }
+    if allowed_proof_paths and audit.proof_artifact_path not in allowed_proof_paths:
+        errors.append(
+            f"claim {claim_id} status=passed requires proof_audit.proof_artifact_path to match a declared proof_deliverables path"
+        )
+
+    return errors
+
+
 def _matches_decisive_acceptance_test_verdict(
     verdict: ComparisonVerdict,
     *,
@@ -688,14 +798,118 @@ def _matches_decisive_reference_verdict(
     )
 
 
+def _proof_audit_errors(
+    contract: ResearchContract,
+    contract_results: ContractResults,
+    *,
+    project_root: Path | None = None,
+    artifact_dir: Path | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    observable_kind_by_id = {observable.id: observable.kind for observable in contract.observables}
+    acceptance_test_kind_by_id = {test.id: test.kind for test in contract.acceptance_tests}
+    deliverable_path_by_id = {
+        deliverable.id: deliverable.path
+        for deliverable in contract.deliverables
+    }
+
+    for claim in contract.claims:
+        if not claim_requires_proof_audit(claim, observable_kind_by_id):
+            continue
+
+        result = contract_results.claims.get(claim.id)
+        if result is None:
+            continue
+
+        proof_audit = result.proof_audit
+        if proof_audit is None:
+            if result.status == "passed":
+                errors.append(f"claim {claim.id} passed without proof_audit")
+            continue
+
+        errors.extend(
+            collect_proof_audit_alignment_errors(
+                claim,
+                proof_audit,
+                deliverable_path_by_id=deliverable_path_by_id,
+            )
+        )
+
+        if proof_audit.proof_artifact_path:
+            resolved_artifact, artifact_error = _resolve_contract_artifact_path(
+                project_root=project_root,
+                artifact_dir=artifact_dir,
+                path_text=proof_audit.proof_artifact_path,
+            )
+            if artifact_error is not None:
+                errors.append(f"claim {claim.id} proof_audit proof_artifact_path {artifact_error}")
+            elif proof_audit.proof_artifact_sha256:
+                try:
+                    assert resolved_artifact is not None
+                    actual_sha = hashlib.sha256(resolved_artifact.read_bytes()).hexdigest()
+                except OSError:
+                    actual_sha = None
+                if actual_sha is None:
+                    errors.append(
+                        f"claim {claim.id} proof_audit proof_artifact_path does not resolve to a readable file"
+                    )
+                elif actual_sha != proof_audit.proof_artifact_sha256:
+                    errors.append(f"claim {claim.id} proof_audit proof_artifact_sha256 is stale")
+
+        if proof_audit.audit_artifact_path and proof_audit.audit_artifact_sha256:
+            resolved_audit_artifact, artifact_error = _resolve_contract_artifact_path(
+                project_root=project_root,
+                artifact_dir=artifact_dir,
+                path_text=proof_audit.audit_artifact_path,
+            )
+            if artifact_error is not None:
+                errors.append(f"claim {claim.id} proof_audit audit_artifact_path {artifact_error}")
+            else:
+                try:
+                    assert resolved_audit_artifact is not None
+                    actual_audit_sha = hashlib.sha256(resolved_audit_artifact.read_bytes()).hexdigest()
+                except OSError:
+                    actual_audit_sha = None
+                if actual_audit_sha is None:
+                    errors.append(
+                        f"claim {claim.id} proof_audit audit_artifact_path does not resolve to a readable file"
+                    )
+                elif actual_audit_sha != proof_audit.audit_artifact_sha256:
+                    errors.append(f"claim {claim.id} proof_audit audit_artifact_sha256 is stale")
+
+        if result.status != "passed":
+            continue
+
+        errors.extend(
+            _claim_pass_proof_audit_errors(
+                contract,
+                claim_id=claim.id,
+                claim_result=result,
+                contract_results=contract_results,
+                acceptance_test_kind_by_id=acceptance_test_kind_by_id,
+                deliverable_path_by_id=deliverable_path_by_id,
+            )
+        )
+
+    return errors
+
+
 def _summary_contract_errors(
     contract: ResearchContract,
     contract_results: ContractResults,
     comparison_verdicts: list[ComparisonVerdict],
+    *,
+    project_root: Path | None = None,
+    artifact_dir: Path | None = None,
 ) -> list[str]:
     """Return summary-to-contract alignment issues for a contract-backed plan."""
 
-    errors: list[str] = []
+    errors = _proof_audit_errors(
+        contract,
+        contract_results,
+        project_root=project_root,
+        artifact_dir=artifact_dir,
+    )
 
     claim_ids = {claim.id for claim in contract.claims}
     deliverable_ids = {deliverable.id for deliverable in contract.deliverables}
@@ -892,10 +1106,19 @@ def _verification_contract_errors(
     contract_results: ContractResults,
     comparison_verdicts: list[ComparisonVerdict],
     suggested_contract_checks: list[SuggestedContractCheck],
+    *,
+    project_root: Path | None = None,
+    artifact_dir: Path | None = None,
 ) -> list[str]:
     """Return verification-specific alignment issues for contract-backed plans."""
 
-    errors = _summary_contract_errors(contract, contract_results, comparison_verdicts)
+    errors = _summary_contract_errors(
+        contract,
+        contract_results,
+        comparison_verdicts,
+        project_root=project_root,
+        artifact_dir=artifact_dir,
+    )
 
     decisive_incomplete = False
     for test in contract.acceptance_tests:
@@ -1049,6 +1272,8 @@ def _frontmatter_identity_matches(candidate_meta: dict[str, object], artifact_me
 def _resolve_plan_contract_candidate(
     candidate: Path,
     artifact_meta: dict[str, object],
+    *,
+    project_root: Path | None = None,
 ) -> tuple[bool, _PlanContractResolution]:
     """Inspect one PLAN candidate and return whether its identity matches."""
 
@@ -1069,7 +1294,11 @@ def _resolve_plan_contract_candidate(
     if "contract" not in meta:
         return True, _PlanContractResolution(errors=["referenced PLAN is missing contract frontmatter"])
 
-    resolution = _validate_contract_mapping(meta.get("contract"), enforce_plan_semantics=True)
+    resolution = _validate_contract_mapping(
+        meta.get("contract"),
+        enforce_plan_semantics=True,
+        project_root=project_root,
+    )
     if resolution.errors:
         return True, _PlanContractResolution(
             errors=[f"referenced PLAN contract: {error}" for error in resolution.errors]
@@ -1077,8 +1306,16 @@ def _resolve_plan_contract_candidate(
     return True, resolution
 
 
-def _find_matching_plan_contract(summary_dir: Path, summary_meta: dict) -> _PlanContractResolution:
+def _find_matching_plan_contract(
+    summary_dir: Path,
+    summary_meta: dict,
+    *,
+    project_root: Path | None = None,
+) -> _PlanContractResolution:
     """Return the sibling plan contract for a summary when one can be resolved."""
+
+    if project_root is None:
+        project_root = resolve_project_root(summary_dir)
 
     plan_contract_ref = summary_meta.get("plan_contract_ref")
     if isinstance(plan_contract_ref, str):
@@ -1089,13 +1326,23 @@ def _find_matching_plan_contract(summary_dir: Path, summary_meta: dict) -> _Plan
             return _PlanContractResolution()
         plan_ref_path = plan_contract_ref.split("#", 1)[0].strip()
         relative_plan_path = Path(plan_ref_path[2:] if plan_ref_path.startswith("./") else plan_ref_path)
-        project_root = resolve_project_root(summary_dir)
         if project_root is None:
             return _PlanContractResolution()
-        candidate = (project_root / relative_plan_path).resolve(strict=False)
+        candidate, path_error = _resolve_contract_artifact_path(
+            project_root=project_root,
+            artifact_dir=project_root,
+            path_text=relative_plan_path.as_posix(),
+        )
+        if path_error is not None:
+            return _PlanContractResolution(errors=[f"plan_contract_ref: {path_error}"])
+        assert candidate is not None
         if not candidate.exists():
             return _PlanContractResolution()
-        matched, resolution = _resolve_plan_contract_candidate(candidate, summary_meta)
+        matched, resolution = _resolve_plan_contract_candidate(
+            candidate,
+            summary_meta,
+            project_root=project_root,
+        )
         if matched:
             return resolution
         return _PlanContractResolution()
@@ -1115,7 +1362,11 @@ def _find_matching_plan_contract(summary_dir: Path, summary_meta: dict) -> _Plan
             continue
         if "contract" not in meta:
             continue
-        resolution = _validate_contract_mapping(meta.get("contract"), enforce_plan_semantics=True)
+        resolution = _validate_contract_mapping(
+            meta.get("contract"),
+            enforce_plan_semantics=True,
+            project_root=project_root,
+        )
         if resolution.errors:
             matching_candidates.append(
                 _PlanContractResolution(
@@ -1145,6 +1396,7 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
         FrontmatterParseError: On malformed YAML.
         FrontmatterValidationError: If *schema_name* is unknown.
     """
+    project_root = _source_path_project_root(source_path)
     schema = FRONTMATTER_SCHEMAS.get(schema_name)
     if schema is None:
         available = ", ".join(FRONTMATTER_SCHEMAS)
@@ -1159,6 +1411,29 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
 
     errors.extend(_unsupported_frontmatter_errors(schema_name, meta))
 
+    if schema_name == "plan":
+        for field_name in ("phase", "plan"):
+            _validate_required_scalar_field(meta, field_name, errors)
+        _validate_required_string_field(meta, "type", errors)
+        _validate_string_enum_field(meta, "type", errors, allowed_values=PLAN_FRONTMATTER_TYPES)
+        _validate_required_int_field(meta, "wave", errors)
+        for field_name in ("depends_on", "files_modified"):
+            _validate_non_empty_string_list_field(meta, field_name, errors)
+        _validate_required_bool_field(meta, "interactive", errors)
+        _validate_required_object_field(meta, "conventions", errors)
+    elif schema_name == "summary":
+        for field_name in ("phase", "plan", "completed"):
+            _validate_required_scalar_field(meta, field_name, errors)
+        _validate_required_string_field(meta, "depth", errors)
+        _validate_string_enum_field(meta, "depth", errors, allowed_values=SUMMARY_DEPTH_VALUES)
+        _validate_non_empty_string_list_field(meta, "provides", errors)
+    elif schema_name == "verification":
+        _validate_required_scalar_field(meta, "phase", errors)
+        _validate_required_scalar_field(meta, "verified", errors)
+        _validate_timestamp_scalar_field(meta, "verified", errors)
+        _validate_required_string_field(meta, "status", errors)
+        _validate_required_string_field(meta, "score", errors)
+
     if schema_name == "verification" and "status" in meta:
         raw_status = meta.get("status")
         if not isinstance(raw_status, str):
@@ -1169,10 +1444,20 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
             )
 
     if isinstance(meta.get("contract"), dict):
-        resolution = _validate_contract_mapping(meta["contract"], enforce_plan_semantics=(schema_name == "plan"))
+        resolution = _validate_contract_mapping(
+            meta["contract"],
+            enforce_plan_semantics=(schema_name == "plan"),
+            project_root=project_root,
+        )
         errors.extend(f"contract: {issue}" for issue in resolution.errors)
     elif "contract" in meta:
         errors.append("contract: expected an object")
+
+    if schema_name == "plan" and "tool_requirements" in meta:
+        try:
+            parse_plan_tool_requirements(meta.get("tool_requirements"))
+        except PlanToolPreflightError as exc:
+            errors.append(f"tool_requirements: {exc}")
 
     if schema_name in {"summary", "verification"}:
         plan_contract_ref = meta.get("plan_contract_ref")
@@ -1194,26 +1479,12 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
             errors.append("plan_contract_ref: required when contract_results or comparison_verdicts are present")
 
         contract_results = None
-        raw_contract_results = meta.get("contract_results")
         comparison_verdicts: list[ComparisonVerdict] = []
         suggested_contract_checks: list[SuggestedContractCheck] = []
         try:
             contract_results = _parse_contract_results(meta)
         except (PydanticValidationError, TypeError, ValueError) as exc:
             errors.extend(_prefixed_validation_errors("contract_results", exc))
-        if (
-            schema_name == "verification"
-            and isinstance(raw_contract_results, dict)
-            and "uncertainty_markers" not in raw_contract_results
-            and not any(
-                error.startswith("contract_results:") and "uncertainty_markers" in error
-                for error in errors
-            )
-        ):
-            errors.append(
-                "contract_results: uncertainty_markers must be explicit in contract-backed contract_results"
-            )
-
         try:
             comparison_verdicts = _parse_comparison_verdicts(meta)
         except (PydanticValidationError, TypeError, ValueError) as exc:
@@ -1226,7 +1497,12 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
                 errors.extend(_prefixed_validation_errors("suggested_contract_checks", exc))
 
         if source_path is not None:
-            plan_contract_resolution = _find_matching_plan_contract(Path(source_path).parent, meta)
+            artifact_dir = source_path.parent
+            plan_contract_resolution = _find_matching_plan_contract(
+                artifact_dir,
+                meta,
+                project_root=project_root,
+            )
             plan_contract = plan_contract_resolution.contract
             errors.extend(f"plan_contract_ref: {issue}" for issue in plan_contract_resolution.errors)
             if (
@@ -1249,6 +1525,8 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
                             contract_results,
                             comparison_verdicts,
                             suggested_contract_checks,
+                            project_root=project_root,
+                            artifact_dir=artifact_dir,
                         )
                         errors.extend(verification_errors)
                         errors.extend(
@@ -1259,7 +1537,15 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
                             )
                         )
                     else:
-                        errors.extend(_summary_contract_errors(plan_contract, contract_results, comparison_verdicts))
+                        errors.extend(
+                            _summary_contract_errors(
+                                plan_contract,
+                                contract_results,
+                                comparison_verdicts,
+                                project_root=project_root,
+                                artifact_dir=artifact_dir,
+                            )
+                        )
 
     return FrontmatterValidation(
         valid=len(missing) == 0 and not errors,
@@ -1378,6 +1664,7 @@ _FILE_MENTION_VERB = re.compile(
     r"(?:Created|Modified|Added|Updated|Edited):\s*`?([^\s`]+\.[a-zA-Z][a-zA-Z0-9]*)`?",
     re.IGNORECASE,
 )
+_FILE_REFERENCE_SUFFIX = re.compile(r"\.[a-zA-Z][a-zA-Z0-9]*$")
 
 # Commit hash patterns: `abc1234` or "commit abc1234"
 _COMMIT_HASH_RE = re.compile(
@@ -1389,6 +1676,35 @@ _COMMIT_HASH_RE = re.compile(
 _SELF_CHECK_HEADING = re.compile(r"##\s*(?:Self[- ]?Check|Verification|Quality Check)", re.IGNORECASE)
 _SELF_CHECK_PASS = re.compile(r"\b(?:(?:all\s+)?pass(?:ed)?|complete[d]?|succeeded)\b", re.IGNORECASE)
 _SELF_CHECK_FAIL = re.compile(r"\b(?:fail(?:ed)?|incomplete|blocked)\b", re.IGNORECASE)
+
+
+def _looks_like_local_file_reference(value: str, *, allow_bare_filename: bool) -> bool:
+    """Return whether *value* looks like a local file path worth spot-checking."""
+    candidate = value.strip()
+    if not candidate or candidate.startswith(("http://", "https://")):
+        return False
+    if "/" in candidate:
+        return True
+    if not allow_bare_filename:
+        return False
+    return _FILE_REFERENCE_SUFFIX.search(Path(candidate).name) is not None
+
+
+def _append_ordered_file_reference(
+    mentioned: list[str],
+    seen: set[str],
+    value: object,
+    *,
+    allow_bare_filename: bool,
+) -> None:
+    """Record one file reference while preserving declaration order."""
+    if not isinstance(value, str):
+        return
+    candidate = value.strip()
+    if not _looks_like_local_file_reference(candidate, allow_bare_filename=allow_bare_filename) or candidate in seen:
+        return
+    seen.add(candidate)
+    mentioned.append(candidate)
 
 
 @instrument_gpd_function("frontmatter.verify_summary")
@@ -1429,26 +1745,24 @@ def verify_summary(
     errors.extend(f"{field} is required" for field in schema_validation.missing)
 
     # --- Spot-check files mentioned in summary ---
-    mentioned: set[str] = set()
+    mentioned: list[str] = []
+    seen_mentions: set[str] = set()
     raw_key_files = meta.get("key-files")
     if isinstance(raw_key_files, dict):
         for key in ("created", "modified"):
             value = raw_key_files.get(key)
             if isinstance(value, list):
                 for item in value:
-                    if isinstance(item, str) and "/" in item:
-                        mentioned.add(item)
+                    _append_ordered_file_reference(mentioned, seen_mentions, item, allow_bare_filename=True)
     elif isinstance(raw_key_files, list):
         for item in raw_key_files:
-            if isinstance(item, str) and "/" in item:
-                mentioned.add(item)
-    for pattern in (_FILE_MENTION_BACKTICK, _FILE_MENTION_VERB):
-        for m in pattern.finditer(content):
-            fp = m.group(1)
-            if fp and not fp.startswith("http") and "/" in fp:
-                mentioned.add(fp)
+            _append_ordered_file_reference(mentioned, seen_mentions, item, allow_bare_filename=True)
+    for m in _FILE_MENTION_BACKTICK.finditer(content):
+        _append_ordered_file_reference(mentioned, seen_mentions, m.group(1), allow_bare_filename=False)
+    for m in _FILE_MENTION_VERB.finditer(content):
+        _append_ordered_file_reference(mentioned, seen_mentions, m.group(1), allow_bare_filename=True)
 
-    files_to_check = list(mentioned)[:check_file_count]
+    files_to_check = mentioned[:check_file_count]
     missing_files = [f for f in files_to_check if not (cwd / f).exists()]
 
     # --- Commit hashes ---
@@ -1515,23 +1829,9 @@ def verify_plan_structure(cwd: Path, file_path: Path) -> PlanValidation:
 
     errors: list[str] = []
     warnings: list[str] = []
-
-    if "must_haves" in meta:
-        errors.append(
-            "Unsupported frontmatter field: must_haves. Encode execution and verification targets in the contract block."
-        )
-
-    # Required frontmatter fields use the canonical underscore schema.
-    for fname in FRONTMATTER_SCHEMAS["plan"]["required"]:
-        if _resolve_field(meta, fname) is None:
-            errors.append(f"Missing required frontmatter field: {fname}")
-
-    # Contract-backed validation
-    if isinstance(meta.get("contract"), dict):
-        resolution = _validate_contract_mapping(meta["contract"], enforce_plan_semantics=True)
-        errors.extend(f"Invalid contract: {issue}" for issue in resolution.errors)
-    elif "contract" in meta:
-        errors.append("Invalid contract: expected an object")
+    schema_validation = validate_frontmatter(content, "plan", source_path=full_path)
+    errors.extend(list(schema_validation.errors))
+    errors.extend(f"Missing required frontmatter field: {field_name}" for field_name in schema_validation.missing)
 
     # Parse task elements
     tasks: list[TaskInfo] = []
@@ -1732,7 +2032,7 @@ def verify_artifacts(cwd: Path, plan_file_path: Path) -> ArtifactVerification:
         )
 
     try:
-        contract = parse_contract_block(content)
+        contract = parse_contract_block(content, source_path=full_path)
     except FrontmatterValidationError as exc:
         return ArtifactVerification(
             all_passed=False,
@@ -1748,6 +2048,18 @@ def verify_artifacts(cwd: Path, plan_file_path: Path) -> ArtifactVerification:
         )
 
     deliverables = [deliverable for deliverable in contract.deliverables if deliverable.path]
+    if contract.deliverables and not deliverables:
+        return ArtifactVerification(
+            all_passed=False,
+            passed_count=0,
+            total=len(contract.deliverables),
+            artifacts=[
+                ArtifactCheck(
+                    path=str(plan_file_path),
+                    issues=["Plan contract declares deliverables, but none have a verifiable path"],
+                )
+            ],
+        )
     if not deliverables:
         return ArtifactVerification(
             all_passed=True,
@@ -1756,9 +2068,12 @@ def verify_artifacts(cwd: Path, plan_file_path: Path) -> ArtifactVerification:
         )
 
     results: list[ArtifactCheck] = []
+    artifact_root = full_path.parent
     for deliverable in deliverables:
         art_path = str(deliverable.path)
-        art_full = cwd / art_path
+        art_full = Path(art_path)
+        if not art_full.is_absolute():
+            art_full = artifact_root / art_full
         exists = art_full.exists()
         check = ArtifactCheck(path=art_path, exists=exists)
 

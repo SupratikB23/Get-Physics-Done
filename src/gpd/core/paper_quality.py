@@ -512,7 +512,6 @@ def score_paper_quality(data: PaperQualityInput) -> PaperQualityReport:
         ]
         if issue is not None
     )
-
     blockers: list[PaperQualityIssue] = []
     if not data.citations.missing_placeholders.passed and not data.citations.missing_placeholders.not_applicable:
         blockers.append(
@@ -524,6 +523,16 @@ def score_paper_quality(data: PaperQualityInput) -> PaperQualityReport:
                 blocking=True,
             )
         )
+    if not data.citations.hallucination_free.not_applicable and not data.citations.hallucination_free.passed:
+        blockers.append(
+            PaperQualityIssue(
+                category="citations",
+                check="hallucination_free",
+                severity=Severity.blocker,
+                summary="Citation audit is missing or unresolved where citations are in play.",
+                blocking=True,
+            )
+        )
     if unreliable_count > 0:
         blockers.append(
             PaperQualityIssue(
@@ -531,6 +540,16 @@ def score_paper_quality(data: PaperQualityInput) -> PaperQualityReport:
                 check="no_unreliable_results",
                 severity=Severity.blocker,
                 summary="At least one key result is marked UNRELIABLE.",
+                blocking=True,
+            )
+        )
+    if not data.results.comparison_with_prior_work_present.not_applicable and not data.results.comparison_with_prior_work_present.passed:
+        blockers.append(
+            PaperQualityIssue(
+                category="results",
+                check="comparison_with_prior_work_present",
+                severity=Severity.blocker,
+                summary="Decisive comparison work is missing or unresolved.",
                 blocking=True,
             )
         )
@@ -572,6 +591,23 @@ def score_paper_quality(data: PaperQualityInput) -> PaperQualityReport:
                 blocking=True,
             )
         )
+
+    integrity_blockers = {
+        "contract_results_parse_ok": "Contract-results ledger could not be parsed cleanly.",
+        "contract_results_alignment_ok": "Contract-results ledger is not aligned with the active contract.",
+        "comparison_verdicts_valid": "Comparison verdict ledgers are malformed or inconsistent.",
+    }
+    for check_name, summary in integrity_blockers.items():
+        if check_name in data.journal_extra_checks and not data.journal_extra_checks[check_name]:
+            blockers.append(
+                PaperQualityIssue(
+                    category="results",
+                    check=check_name,
+                    severity=Severity.blocker,
+                    summary=summary,
+                    blocking=True,
+                )
+            )
 
     base_score = round(sum(category.score for category in categories.values()), 2)
 

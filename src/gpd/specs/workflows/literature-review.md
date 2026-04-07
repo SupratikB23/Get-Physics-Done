@@ -1,7 +1,9 @@
 <purpose>
 Conduct a systematic literature review for a physics research topic. Map the intellectual landscape: foundational works, methodological approaches, key results, controversies, and open questions. Produce LITERATURE-REVIEW.md consumed by planning and paper-writing workflows.
 
-Called from /gpd:literature-review command.
+Also emit a machine-readable `GPD/literature/{slug}-CITATION-SOURCES.json` sidecar containing strict `CitationSource` records keyed by stable `reference_id` values so paper-writing can reuse the discovered references without manual transcription.
+
+Called from gpd:literature-review command.
 </purpose>
 
 <core_principle>
@@ -45,14 +47,14 @@ A physics literature review is not a bibliography. It is a structured map of who
 **Load project context (if available):**
 
 ```bash
-INIT=$(gpd init progress --include state,config)
+INIT=$(gpd --raw init progress --include state,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
 fi
 ```
 
-Parse JSON for: `commit_docs`, `state_exists`, `project_exists`, `project_contract`, `project_contract_load_info`, `project_contract_validation`, `contract_intake`, `effective_reference_intake`, `active_reference_context`, `reference_artifact_files`, `reference_artifacts_content`.
+Parse JSON for: `commit_docs`, `state_exists`, `project_exists`, `project_contract`, `project_contract_gate`, `project_contract_load_info`, `project_contract_validation`, `contract_intake`, `effective_reference_intake`, `active_reference_context`, `reference_artifact_files`, `reference_artifacts_content`.
 
 **Read mode settings:**
 
@@ -64,6 +66,7 @@ RESEARCH_MODE=$(gpd --raw config get research_mode 2>/dev/null | gpd json get .v
 **Mode-aware behavior:**
 - `research_mode=explore`: Comprehensive review (30+ papers), include tangential fields, map full citation network, identify open questions.
 - `research_mode=exploit`: Focused review (8-12 papers), direct relevance only, extract key results and methods.
+- `research_mode=balanced` (default): Use the standard review depth for this workflow and keep the default anchor and contract coverage unless the topic needs broader or narrower review.
 - `research_mode=adaptive`: Start with 15 papers, expand if citation network reveals critical gaps.
 - `autonomy=supervised`: Pause after each review round for user feedback on scope and direction.
 - `autonomy=balanced` (default): Complete the full review pipeline automatically. Pause only if the literature reveals scope ambiguity, contradictory evidence, or a change in recommendation.
@@ -73,7 +76,7 @@ RESEARCH_MODE=$(gpd --raw config get research_mode 2>/dev/null | gpd json get .v
 - **If `state_exists` is false** (standalone usage): Proceed — the user will specify the topic directly.
 - Treat `effective_reference_intake` as the machine-readable carry-forward ledger for anchors, prior outputs, baselines, user-mandated context, and unresolved gaps. Re-surface those items in the review even if the broader search expands beyond them.
 - Use `reference_artifacts_content` as supporting evidence when existing literature/research-map artifacts already pin down benchmark values, prior outputs, or anchor wording that should remain stable.
-- Treat `project_contract` as authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes. If either gate is blocked, keep the contract visible as context but do not promote it to approved review truth.
+- Treat `project_contract` as authoritative only when `project_contract_gate.authoritative` is true. If the gate is blocked, keep the contract visible as context but do not promote it to approved review truth.
 
 Project context helps focus the review on conventions and methods relevant to the current research.
 </step>
@@ -384,6 +387,19 @@ For someone entering this area, read in this order:
 {Formatted citations, organized by topic/method}
 ```
 
+Then write `GPD/literature/{slug}-CITATION-SOURCES.json` as a JSON array of strict `CitationSource` objects for the same references. The closed contract is:
+
+- `source_type`: `paper`, `tool`, `data`, or `website`
+- `reference_id`: stable project-local identifier for the canonical reference
+- `bibtex_key`: optional preferred key, only when already verified; include `bibtex_key` only when it is already known and verified
+- `title`
+- `authors` when available
+- `year` when available
+- `arxiv_id`, `doi`, `url`, `journal`, `volume`, and `pages` when available
+
+Keep the sidecar synchronized with the review's Full Reference List, keep `reference_id` stable across reruns, and do not add extra keys. Downstream `gpd paper-build --citation-sources` rejects unknown fields, so the sidecar must stay aligned with the published contract before it reaches the build step.
+Extra keys are rejected by the downstream parser.
+
 </step>
 
 <step name="verify_citations">
@@ -396,7 +412,7 @@ Resolve bibliographer model:
 ```bash
 BIBLIO_MODEL=$(gpd resolve-model gpd-bibliographer)
 ```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
 
 ```
 task(
@@ -430,6 +446,7 @@ Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
 - Read the audit report
 - Fix or remove hallucinated citations from the review document
 - Update corrected metadata in the reference list
+- Refresh `GPD/literature/{slug}-CITATION-SOURCES.json` so the sidecar stays aligned with the corrected review and reference keys.
 - Note unresolvable citations in the return summary
 
 **If BIBLIOGRAPHY UPDATED:**
@@ -466,6 +483,8 @@ Format:
 **Recommended starting point:** {key reference}
 **Citation verification:** {all verified | N issues found -- see GPD/literature/{slug}-CITATION-AUDIT.md}
 ```
+
+If the review also emitted `GPD/literature/{slug}-CITATION-SOURCES.json`, note that path in the return summary so downstream manuscript drafting can reuse it directly.
 
 If the review is incomplete (too broad, need user guidance):
 

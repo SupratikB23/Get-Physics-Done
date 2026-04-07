@@ -10,14 +10,17 @@ import time
 from pathlib import Path
 
 from gpd.adapters.install_utils import CACHE_DIR_NAME, GPD_INSTALL_DIR_NAME, UPDATE_CACHE_FILENAME
-from gpd.core.constants import ENV_GPD_DEBUG, PLANNING_DIR_NAME
+from gpd.adapters.runtime_catalog import get_shared_install_metadata
+from gpd.core.constants import ENV_GPD_DEBUG
+from gpd.hooks.install_context import should_prefer_self_owned_install
 from gpd.hooks.install_metadata import config_dir_has_complete_install
 
+_SHARED_INSTALL_METADATA = get_shared_install_metadata()
 SECONDS_PER_HOUR = 3600
 UPDATE_CHECK_TTL_SECONDS = 12 * SECONDS_PER_HOUR
 UPDATE_CHECK_INFLIGHT_TTL_SECONDS = 5 * 60
-NPM_PACKAGE_NAME = "get-physics-done"
-NPM_LATEST_RELEASE_URL = f"https://registry.npmjs.org/{NPM_PACKAGE_NAME}/latest"
+NPM_PACKAGE_NAME = _SHARED_INSTALL_METADATA.bootstrap_package_name
+NPM_LATEST_RELEASE_URL = _SHARED_INSTALL_METADATA.latest_release_url
 _VERSION_RELEASE_RE = re.compile(r"^\s*v?(?P<release>\d+(?:\.\d+)*)(?P<suffix>.*)$")
 
 
@@ -47,7 +50,7 @@ def _suffix_rank(suffix: str) -> tuple[int, int]:
         return -1, _extract_number("beta") or _extract_number("b")
     if "rc" in normalized:
         return 0, _extract_number("rc")
-    return -1, 0
+    return 1, 0
 
 
 def _version_key(version: str) -> tuple[tuple[int, ...], int, int, str]:
@@ -246,6 +249,69 @@ def _clear_inflight_marker(cache_file: Path) -> None:
         return
 
 
+def _relevant_update_cache_candidates(
+    *,
+    self_config_dir: Path | None,
+    resolved_cwd: Path,
+    resolved_home: Path,
+) -> tuple[list[object], Path]:
+    from gpd.hooks.install_context import detect_self_owned_install
+    from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, UpdateCacheCandidate, detect_runtime_install_target
+    from gpd.hooks.update_resolution import (
+        ordered_update_cache_candidates,
+        primary_update_cache_file,
+        resolve_update_cache_inputs,
+    )
+
+    workspace_path, resolved_home, active_installed_runtime, preferred_runtime = resolve_update_cache_inputs(
+        cwd=resolved_cwd,
+        home=resolved_home,
+    )
+    shared_candidates = ordered_update_cache_candidates(
+        cwd=workspace_path,
+        home=resolved_home,
+        active_installed_runtime=active_installed_runtime,
+        preferred_runtime=preferred_runtime,
+    )
+
+    if self_config_dir is not None:
+        self_install = detect_self_owned_install(__file__)
+        active_install_target = (
+            detect_runtime_install_target(active_installed_runtime, cwd=workspace_path, home=resolved_home)
+            if active_installed_runtime not in (None, "", RUNTIME_UNKNOWN)
+            else None
+        )
+        if should_prefer_self_owned_install(
+            self_install,
+            active_install_target=active_install_target,
+            active_runtime=active_installed_runtime,
+            workspace_path=workspace_path,
+        ):
+            self_candidate = (
+                UpdateCacheCandidate(path=self_config_dir / CACHE_DIR_NAME / UPDATE_CACHE_FILENAME)
+                if self_install is None
+                else UpdateCacheCandidate(
+                    path=self_install.cache_file,
+                    runtime=self_install.runtime,
+                    scope=self_install.install_scope,
+                )
+            )
+            relevant_candidates = [self_candidate]
+            seen_paths = {self_candidate.path}
+            for candidate in shared_candidates:
+                candidate_path = getattr(candidate, "path", None)
+                if candidate_path in seen_paths:
+                    continue
+                seen_paths.add(candidate_path)
+                relevant_candidates.append(candidate)
+        else:
+            relevant_candidates = shared_candidates
+    else:
+        relevant_candidates = shared_candidates
+
+    return relevant_candidates, primary_update_cache_file(relevant_candidates, home=resolved_home)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Entry point: throttle-check for updates, spawn background worker if needed."""
     raw_argv = list(sys.argv[1:] if argv is None else argv)
@@ -255,60 +321,21 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     from gpd.hooks.runtime_detect import (
-        ALL_RUNTIMES,
-        RUNTIME_UNKNOWN,
-        UpdateCacheCandidate,
-        detect_active_runtime_with_gpd_install,
-        detect_runtime_for_gpd_use,
-        get_update_cache_candidates,
-        should_consider_update_cache_candidate,
+        supported_runtime_names,
     )
 
     resolved_cwd = Path.cwd()
     resolved_home = Path.home()
     self_config_dir = _self_config_dir()
-    if self_config_dir is not None:
-        cache_file = self_config_dir / CACHE_DIR_NAME / UPDATE_CACHE_FILENAME
-        relevant_candidates = [UpdateCacheCandidate(path=cache_file)]
-    else:
-        cache_candidates = get_update_cache_candidates(cwd=resolved_cwd, home=resolved_home)
-        active_installed_runtime = detect_active_runtime_with_gpd_install(cwd=resolved_cwd, home=resolved_home)
-        preferred_runtime = detect_runtime_for_gpd_use(cwd=resolved_cwd, home=resolved_home)
-        relevant_candidates = [
-            candidate
-            for candidate in cache_candidates
-            if should_consider_update_cache_candidate(
-                candidate,
-                active_installed_runtime=active_installed_runtime,
-                cwd=resolved_cwd,
-                home=resolved_home,
-            )
-        ]
-        if active_installed_runtime in (None, "", RUNTIME_UNKNOWN) and preferred_runtime in ALL_RUNTIMES:
-            preferred_candidates = [candidate for candidate in cache_candidates if candidate.runtime == preferred_runtime]
-            fallback_candidates = [candidate for candidate in relevant_candidates if candidate.runtime is None]
-            if preferred_candidates:
-                seen_paths: set[Path] = set()
-                preferred_first: list[UpdateCacheCandidate] = []
-                for candidate in [*preferred_candidates, *fallback_candidates]:
-                    if candidate.path in seen_paths:
-                        continue
-                    seen_paths.add(candidate.path)
-                    preferred_first.append(candidate)
-                relevant_candidates = preferred_first
-            relevant_candidates = [
-                candidate
-                for candidate in relevant_candidates
-                if candidate.runtime in (None, preferred_runtime)
-            ]
-        cache_file = (
-            relevant_candidates[0].path
-            if relevant_candidates
-            else (resolved_home / PLANNING_DIR_NAME / CACHE_DIR_NAME / UPDATE_CACHE_FILENAME)
-        )
+    relevant_candidates, cache_file = _relevant_update_cache_candidates(
+        self_config_dir=self_config_dir,
+        resolved_cwd=resolved_cwd,
+        resolved_home=resolved_home,
+    )
 
     # Throttle: skip only when the preferred runtime/home cache set is still fresh.
-    has_runtime_specific_candidate = any(candidate.runtime in ALL_RUNTIMES for candidate in relevant_candidates)
+    runtime_names = supported_runtime_names()
+    has_runtime_specific_candidate = any(candidate.runtime in runtime_names for candidate in relevant_candidates)
     for candidate in relevant_candidates:
         if candidate.runtime is None and has_runtime_specific_candidate:
             continue

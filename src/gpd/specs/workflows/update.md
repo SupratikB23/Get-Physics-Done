@@ -17,8 +17,9 @@ Use the installed runtime files, not Python import location:
 GPD_INSTALL_DIR="{GPD_INSTALL_DIR}"
 GPD_CONFIG_DIR="{GPD_CONFIG_DIR}"
 GPD_GLOBAL_CONFIG_DIR="{GPD_GLOBAL_CONFIG_DIR}"
-GPD_RUNTIME_FLAG="{GPD_RUNTIME_FLAG}"
 INSTALL_SCOPE="{GPD_INSTALL_SCOPE_FLAG}"
+UPDATE_COMMAND="{GPD_UPDATE_COMMAND}"
+PATCH_META="{GPD_PATCH_META}"
 PYTHON_BIN="${GPD_PYTHON:-}"
 
 if [ -z "$PYTHON_BIN" ]; then
@@ -33,53 +34,6 @@ if [ -f "$GPD_INSTALL_DIR/VERSION" ]; then
 else
   INSTALLED_VERSION="0.0.0"
 fi
-
-TARGET_DIR_ARG=""
-case "$INSTALL_SCOPE" in
-  --local)
-    case "$GPD_CONFIG_DIR" in
-      ./*) ;;
-      *)
-        TARGET_DIR_ARG=$("$PYTHON_BIN" - "$INSTALL_SCOPE" "$GPD_CONFIG_DIR" "$GPD_GLOBAL_CONFIG_DIR" <<'PY'
-import shlex
-import sys
-
-install_scope, config_dir, global_config_dir = sys.argv[1:4]
-if install_scope == "--local" and config_dir.startswith("./"):
-    print("")
-elif install_scope == "--global" and config_dir == global_config_dir:
-    print("")
-else:
-    print(f" --target-dir {shlex.quote(config_dir)}")
-PY
-)
-        ;;
-    esac
-    ;;
-  --global)
-    case "$GPD_CONFIG_DIR" in
-      "$GPD_GLOBAL_CONFIG_DIR") ;;
-      *)
-        TARGET_DIR_ARG=$("$PYTHON_BIN" - "$INSTALL_SCOPE" "$GPD_CONFIG_DIR" "$GPD_GLOBAL_CONFIG_DIR" <<'PY'
-import shlex
-import sys
-
-install_scope, config_dir, global_config_dir = sys.argv[1:4]
-if install_scope == "--local" and config_dir.startswith("./"):
-    print("")
-elif install_scope == "--global" and config_dir == global_config_dir:
-    print("")
-else:
-    print(f" --target-dir {shlex.quote(config_dir)}")
-PY
-)
-        ;;
-    esac
-    ;;
-esac
-
-UPDATE_COMMAND="npx -y get-physics-done $GPD_RUNTIME_FLAG $INSTALL_SCOPE$TARGET_DIR_ARG"
-PATCH_META="$GPD_CONFIG_DIR/gpd-local-patches/backup-meta.json"
 
 printf '%s\n%s\n%s\n%s\n%s\n' \
   "$INSTALLED_VERSION" \
@@ -101,14 +55,25 @@ If the version file is missing, treat the install as version `0.0.0` and continu
 </step>
 
 <step name="check_latest_version">
-Check the npm registry for the latest released `get-physics-done` version:
+Check the canonical release metadata endpoint for the latest released GPD version:
 
 ```bash
-"$PYTHON_BIN" - <<'PY'
+LATEST_RELEASE_URL="{GPD_RELEASE_LATEST_URL}"
+PYTHON_BIN="${GPD_PYTHON:-}"
+
+if [ -z "$PYTHON_BIN" ]; then
+  PYTHON_BIN=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
+fi
+if [ -z "$PYTHON_BIN" ]; then
+  PYTHON_BIN="python3"
+fi
+
+"$PYTHON_BIN" - "$LATEST_RELEASE_URL" <<'PY'
 import json
+import sys
 import urllib.request
 
-with urllib.request.urlopen("https://registry.npmjs.org/get-physics-done/latest", timeout=10) as resp:
+with urllib.request.urlopen(sys.argv[1], timeout=10) as resp:
     data = json.load(resp)
 print(data["version"])
 PY
@@ -119,7 +84,7 @@ If that fails, show:
 ```text
 ## GPD Update
 
-Couldn't check for updates (offline or npm unavailable).
+Couldn't check for updates (offline or release metadata unavailable).
 
 To update manually, run:
 `<UPDATE_COMMAND>`
@@ -163,7 +128,7 @@ If an update is available, fetch recent release notes before asking for confirma
 
 Preferred source:
 
-- GitHub Releases API: `https://api.github.com/repos/psi-oss/get-physics-done/releases`
+- GitHub Releases API: `{GPD_RELEASES_API_URL}`
 
 Show a short preview covering releases newer than the installed version and up to the latest version. If release notes cannot be fetched, say so briefly and continue with the update prompt anyway.
 
@@ -180,11 +145,11 @@ Display the confirmation prompt in this shape:
 
 >> **Note:** This reinstalls the current runtime's managed GPD files:
 - GPD command files for this runtime will be replaced
-- `get-physics-done/` will be replaced
+- `{GPD_INSTALL_ROOT_DIR_NAME}/` will be replaced
 - `gpd-*` agent files will be replaced
 
 Custom files outside the managed GPD install are preserved.
-If you've modified managed GPD files directly, they will be backed up to `gpd-local-patches/` and can be reapplied with `/gpd:reapply-patches` after the update.
+If you've modified managed GPD files directly, they will be backed up to `{GPD_PATCHES_DIR_NAME}/` and can be reapplied with `gpd:reapply-patches` after the update.
 ```
 
 > **Platform note:** If `ask_user` is not available, present the choices in plain text and wait for the user's freeform response.
@@ -214,7 +179,7 @@ Then clear update caches so indicators disappear immediately:
 rm -f \
   "{GPD_CONFIG_DIR}/cache/gpd-update-check.json" \
   "{GPD_GLOBAL_CONFIG_DIR}/cache/gpd-update-check.json" \
-  "$HOME/GPD/cache/gpd-update-check.json"
+  "$HOME/.gpd/cache/gpd-update-check.json"
 ```
 </step>
 
@@ -228,7 +193,7 @@ Format completion like:
 
 >> Restart your AI agent to pick up the new commands.
 
-[View releases](https://github.com/psi-oss/get-physics-done/releases)
+[View releases]({GPD_RELEASES_PAGE_URL})
 ```
 </step>
 
@@ -239,7 +204,7 @@ If patches were backed up, show:
 
 ```text
 Local patches were backed up before the update.
-Run /gpd:reapply-patches to merge your modifications into the new version.
+Run gpd:reapply-patches to merge your modifications into the new version.
 ```
 
 Otherwise continue normally.
@@ -249,7 +214,7 @@ Otherwise continue normally.
 <success_criteria>
 
 - [ ] Installed version read from the runtime install
-- [ ] Latest released version checked from npm
+- [ ] Latest released version checked from the canonical release metadata endpoint
 - [ ] Update skipped if already current
 - [ ] Recent release notes shown before updating when available
 - [ ] Clean reinstall warning shown

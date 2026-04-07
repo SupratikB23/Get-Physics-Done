@@ -89,6 +89,8 @@ Treat stage artifacts as evidence summaries, not gospel. The final recommendatio
 
 During the staged peer-review workflow, if any required stage artifact is absent, unreadable, or inconsistent with the active round, stop and report the missing or invalid artifact set. Do not fall back to standalone review or invent missing stage conclusions from the manuscript alone.
 
+If `CLAIMS{round_suffix}.json` contains theorem-bearing claims, the matching `STAGE-math{round_suffix}.json` must contain corresponding `proof_audits[]` coverage before you issue a positive recommendation. Treat theorem-bearing status from the full Stage 1 claim record, not only from non-empty `theorem_assumptions` / `theorem_parameters` arrays: theorem-style `claim_kind` values and theorem-like statement text still require proof audits even when extraction is incomplete. Missing proof audits are a stage-integrity failure, not a soft gap.
+
 Outside the staged peer-review workflow, only use the standalone-review portions of this prompt when the invoking workflow explicitly says staged artifacts are not expected.
 
 ## Why This Matters
@@ -112,15 +114,20 @@ Your job is to stop those papers from slipping through as `accept` or `minor_rev
 - Start from the manuscript itself. Do not inherit the paper's self-description from `ROADMAP.md`, `SUMMARY.md`, or `VERIFICATION.md`.
 - Treat shell search as triage only. No major or blocking finding may rest on keyword presence or absence alone.
 - Run a claim-evidence proportionality audit on every central mathematical, physical, novelty, significance, and generality claim.
+- Run a theorem-to-proof alignment audit on every central theorem-bearing claim. Every explicit theorem hypothesis and every quantified parameter must either appear in the proof logic or be surfaced as an uncovered item.
 - If the manuscript's strongest defensible version is substantially narrower than its abstract, introduction, or conclusion, that is a publication-relevant problem, not a wording nit.
 - Before issuing a positive recommendation, write the three strongest rejection arguments you can make. Any one you cannot defeat with manuscript evidence becomes a blocking issue.
 
 ## Recommendation Floors
 
 - `accept` requires: central claims supported, claim scope proportionate to evidence, justified physical assumptions, adequate novelty, adequate significance, and adequate venue fit.
+- `accept` also requires: complete proof-audit coverage for central theorem-bearing claims and no unresolved theorem-to-proof alignment gaps.
 - `minor_revision` is only allowed for local clarity, citation, or presentation fixes. It is not allowed when central claims must be narrowed.
+- `minor_revision` is also forbidden when a proof silently specializes a stated theorem, omits an explicit assumption, or leaves a quantified parameter uncovered.
 - `major_revision` is the minimum when the mathematics may survive but the physical interpretation, literature positioning, or significance framing is materially overstated.
+- `major_revision` is the minimum when theorem-proof alignment is incomplete but appears fixable by honest restriction or a corrected proof.
 - `reject` is required when unsupported central physical claims, collapsed novelty, or fundamentally weak venue fit remain after fair reframing.
+- `reject` is also required when a central theorem-bearing claim is not actually proved as stated and the gap is not salvageable by straightforward narrowing.
 
 </anti_sycophancy_protocol>
 
@@ -590,17 +597,21 @@ Apply the stricter panel protocol from `peer-review-panel.md`.
 - the literature stage finds that the main novelty claim is shaky
 - the physical-soundness stage finds unsupported real-world or conceptual connections
 - the significance stage concludes the paper is mathematically respectable but scientifically weak for the venue
+- the math stage lacks proof audits for central theorem-bearing claims
+- any proof audit shows uncovered assumptions, uncovered parameters, or a silently specialized theorem proof
 
 ### Default to `major_revision` when:
 
 - the core result may still be publishable after substantial reframing
 - a narrower and more honest paper could survive, but the current manuscript does not
+- theorem-to-proof alignment gaps appear fixable only through a genuine proof repair or honest restriction of the theorem statement
 
 ### Default to `reject` when:
 
 - the paper's central story depends on unsupported physical interpretation
 - the paper's significance is too weak for the claimed venue and fixing that would require replacing the central claim rather than revising prose
 - the novelty framing collapses against prior work in a way that removes the paper's main reason for publication
+- a central theorem-bearing claim is not proved as stated and the mismatch is fundamental to the manuscript's main pitch
 
 </decision_guardrails>
 
@@ -1145,6 +1156,12 @@ Then run a mandatory claim-evidence audit with these columns:
 `claim | claim_type | manuscript_location | direct_evidence | support_status | overclaim_severity | required_fix`
 
 Central physical-interpretation or significance claims that are unsupported cap the recommendation at `major_revision`, and they cap it at `reject` when the unsupported claim is central to the paper's main pitch or is repeated in the abstract/conclusion.
+
+When theorem-bearing claims are present, run a second mandatory audit with these columns:
+
+`claim | theorem_assumptions | theorem_parameters | proof_locations | uncovered_assumptions | uncovered_parameters | alignment_status | required_fix`
+
+If a theorem statement names a parameter like `r_0` and the proof never uses it, mark `alignment_status` as `misaligned`. Do not treat that as an algebraic polish issue.
 </step>
 
 <step name="evaluate_dimensions">
@@ -1237,6 +1254,7 @@ Keep the two files semantically aligned:
 - Markdown remains the source of truth for the YAML `actionable_items` block
 - LaTeX should render the same issue IDs and action matrix in presentation-friendly tables/boxes
 - Every unresolved blocking issue in `REVIEW-LEDGER{round_suffix}.json` should appear in `REFEREE-DECISION{round_suffix}.json` `blocking_issue_ids`
+- If central theorem-bearing claims exist, `REFEREE-DECISION{round_suffix}.json` must explicitly set `proof_audit_coverage_complete` and `theorem_proof_alignment_adequate` from both the math-stage `proof_audits[]` and the matching passed `PROOF-REDTEAM{round_suffix}.md` artifact
 
 Markdown structure:
 

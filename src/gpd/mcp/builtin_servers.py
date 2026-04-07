@@ -15,8 +15,15 @@ import subprocess
 import sys
 from copy import deepcopy
 
+from gpd.mcp.verification_contract_policy import verification_server_description
+
 logger = logging.getLogger(__name__)
 
+_PYTHON_COMMAND_SENTINEL = "__GPD_PYTHON__"
+_PUBLIC_PYTHON_PLACEHOLDER = "${GPD_PYTHON}"
+_PYTHON_LAUNCH_NOTES = (
+    f"Replace `{_PUBLIC_PYTHON_PLACEHOLDER}` with a Python >=3.11 interpreter that has GPD installed."
+)
 
 # Canonical definition of all GPD built-in MCP servers.
 # Mirrors infra/*.json but lives inside the package so it ships with the wheel.
@@ -24,42 +31,42 @@ _ServerDef = dict[str, str | list[str] | dict[str, str] | bool]
 
 _BUILTIN_SERVERS: dict[str, _ServerDef] = {
     "gpd-conventions": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.conventions_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-errors": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.errors_mcp"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-patterns": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.patterns_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-protocols": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.protocols_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-skills": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.skills_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-state": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.state_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-verification": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.verification_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-arxiv": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "arxiv_mcp_server"],
         "env": {},
         "optional": True,
@@ -68,21 +75,7 @@ _BUILTIN_SERVERS: dict[str, _ServerDef] = {
 }
 
 _PUBLIC_BOOTSTRAP_PREREQUISITE = "Install GPD before enabling built-in MCP servers."
-_ENTRY_POINT_NOTES = "Requires gpd package installed and Python >=3.11"
-
-
-class _VersionedPythonLauncher(str):
-    """Human-readable launcher label that compares equal to legacy bare-python descriptors."""
-
-    def __new__(cls, display_value: str = "python3") -> _VersionedPythonLauncher:
-        return str.__new__(cls, display_value)
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, str) and other in {"python", str(self)}:
-            return True
-        return str.__eq__(self, other)
-
-    __hash__ = None
+_ENTRY_POINT_NOTES = _PYTHON_LAUNCH_NOTES
 
 _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
     "gpd-conventions": {
@@ -197,25 +190,13 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
         ],
         "registry_prefix": "gpd_state",
         "health_check": {
-            "tool": "get_config",
-            "input": {"project_dir": "/tmp/test"},
-            "expect": "contains model_profile",
+            "tool": "get_state",
+            "input": {},
+            "expect": "returns a stable validation error envelope for missing required project_dir",
         },
     },
     "gpd-verification": {
-        "description": (
-            "GPD physics verification checks. Tools for running contract-aware checks, "
-            "dimensional analysis, domain and bundle-specific checklists, limiting case checks, "
-            "symmetry verification, and coverage gap analysis. Contract-aware tools accept "
-            "structured request objects or schema_version=1 contract payloads, expose the exact "
-            "request shape through `required_request_fields`, `optional_request_fields`, and "
-            "`request_template`, and surface the supported binding fields `binding.observable_id(s)`, "
-            "`binding.claim_id(s)`, `binding.deliverable_id(s)`, `binding.acceptance_test_id(s)`, "
-            "`binding.reference_id(s)`, and `binding.forbidden_proxy_id(s)`. These live semantic "
-            "integrity rules reject target IDs reused across contract kinds when that makes target "
-            "resolution ambiguous, and treat `references[].carry_forward_to` entries as workflow "
-            "scope labels only, never contract IDs."
-        ),
+        "description": verification_server_description(),
         "capabilities": [
             "run_check",
             "run_contract_check",
@@ -306,7 +287,7 @@ def _build_public_alternatives(name: str) -> dict[str, dict[str, object]] | None
     args = list(raw.get("args", [])) if isinstance(raw.get("args"), list) else []
     return {
         "python_module": {
-            "command": _VersionedPythonLauncher(),
+            "command": _PUBLIC_PYTHON_PLACEHOLDER,
             "args": args,
             "notes": _ENTRY_POINT_NOTES,
         }
@@ -324,6 +305,8 @@ def build_public_descriptor(name: str) -> dict[str, object]:
     if name != "gpd-arxiv" and name.startswith("gpd-"):
         command = f"gpd-mcp-{name.removeprefix('gpd-')}"
         args = []
+    elif command == _PYTHON_COMMAND_SENTINEL:
+        command = _PUBLIC_PYTHON_PLACEHOLDER
     descriptor: dict[str, object] = {
         "name": name,
         "description": str(metadata["description"]),
@@ -347,6 +330,8 @@ def build_public_descriptor(name: str) -> dict[str, object]:
             descriptor["availability_condition"] = (
                 f"Available only when the optional Python module '{module_check}' is installed."
             )
+    if command == _PUBLIC_PYTHON_PLACEHOLDER:
+        descriptor["notes"] = _PYTHON_LAUNCH_NOTES
     return descriptor
 
 
@@ -441,7 +426,7 @@ def build_mcp_servers_dict(
                 continue
 
         cmd = str(raw["command"])
-        if cmd == "python":
+        if cmd == _PYTHON_COMMAND_SENTINEL:
             cmd = python_path
 
         raw_args = raw.get("args", [])

@@ -12,8 +12,6 @@ allowed-tools:
   - find_files
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Display the cumulative decision log from GPD/DECISIONS.md with optional filtering by phase number or keyword search.
@@ -21,8 +19,8 @@ Display the cumulative decision log from GPD/DECISIONS.md with optional filterin
 Routes to the decisions workflow which handles:
 
 - Loading and parsing the decision log table
-- Filtering by phase number (e.g., `/gpd:decisions 3`)
-- Keyword search across all fields (e.g., `/gpd:decisions regularization`)
+- Filtering by phase number (e.g., `gpd:decisions 3`)
+- Keyword search across all fields (e.g., `gpd:decisions regularization`)
 - Formatted display with summary statistics
   </objective>
 

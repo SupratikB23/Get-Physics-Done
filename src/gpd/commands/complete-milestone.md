@@ -5,18 +5,15 @@ argument-hint: <version>
 context_mode: project-required
 requires:
   files: ["GPD/ROADMAP.md"]
-  recommended: ["audit-milestone"]
 allowed-tools:
   - file_read
   - file_write
   - shell
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Mark research milestone {{version}} complete, archive to milestones/, and update ROADMAP.md and REQUIREMENTS.md.
+Mark research milestone {version} complete, archive to milestones/, and update ROADMAP.md and REQUIREMENTS.md.
 
 Purpose: Create a historical record of completed research (e.g., "analytical derivation complete" or "numerical validation done"), archive milestone artifacts (roadmap + requirements), and prepare for the next stage of investigation.
 Output: Milestone archived (roadmap + requirements), PROJECT.md evolved, git tagged.
@@ -26,6 +23,7 @@ Output: Milestone archived (roadmap + requirements), PROJECT.md evolved, git tag
 **Load these files NOW (before proceeding):**
 
 - @{GPD_INSTALL_DIR}/workflows/complete-milestone.md (main workflow)
+- @{GPD_INSTALL_DIR}/templates/milestone.md (milestone template)
 - @{GPD_INSTALL_DIR}/templates/milestone-archive.md (archive template)
   </execution_context>
 
@@ -38,7 +36,7 @@ Output: Milestone archived (roadmap + requirements), PROJECT.md evolved, git tag
 
 **User input:**
 
-- Version: {{version}} (e.g., "1.0", "1.1", "2.0")
+- Version: {version} (e.g., "1.0", "1.1", "2.0")
   </context>
 
 <process>
@@ -49,21 +47,21 @@ If `--dry-run` flag is present, show what would be archived and deleted (milesto
 
 0. **Check for audit:**
 
-   - Look for `GPD/v{{version}}-MILESTONE-AUDIT.md`
-   - If missing or stale: recommend `/gpd:audit-milestone` first
-   - If audit status is `gaps_found`: recommend `/gpd:plan-milestone-gaps` first
+   - Look for `GPD/v{version}-MILESTONE-AUDIT.md`
+   - If missing or stale: recommend `gpd:audit-milestone` first
+   - If audit status is `gaps_found`: recommend `gpd:plan-milestone-gaps` first
    - If audit status is `passed`: proceed to step 1
 
    ```markdown
    ## Pre-flight Check
 
-   {If no v{{version}}-MILESTONE-AUDIT.md:}
-   No milestone audit found. Run `/gpd:audit-milestone` first to verify
+   {If no v{version}-MILESTONE-AUDIT.md:}
+   No milestone audit found. Run `gpd:audit-milestone` first to verify
    research question coverage, derivation completeness, and cross-phase consistency.
 
    {If audit has gaps:}
    Milestone audit found gaps (e.g., unchecked limits, missing error bars,
-   unsupported claims). Run `/gpd:plan-milestone-gaps` to create phases that
+   unsupported claims). Run `gpd:plan-milestone-gaps` to create phases that
    close the gaps, or proceed anyway to defer to the next milestone.
 
    {If audit passed:}
@@ -91,14 +89,14 @@ If `--dry-run` flag is present, show what would be archived and deleted (milesto
 
 4. **Archive milestone:**
 
-   - Create `GPD/milestones/v{{version}}-ROADMAP.md`
+   - Create `GPD/milestones/v{version}-ROADMAP.md`
    - Extract full phase details from ROADMAP.md
    - Fill milestone-archive.md template
    - Update ROADMAP.md to one-line summary with link
 
 5. **Archive requirements:**
 
-   - Create `GPD/milestones/v{{version}}-REQUIREMENTS.md`
+   - Create `GPD/milestones/v{version}-REQUIREMENTS.md`
    - Mark all requirements for this milestone as complete (checkboxes checked)
    - Note requirement outcomes (validated, adjusted, deferred, ruled out by physics)
    - Delete `GPD/REQUIREMENTS.md` (fresh one created for next milestone)
@@ -121,24 +119,24 @@ If `--dry-run` flag is present, show what would be archived and deleted (milesto
    Note: MILESTONES.md is CREATED by `gpd milestone complete` during this workflow. It does not need to exist beforehand.
 
    - Stage: MILESTONES.md, PROJECT.md, ROADMAP.md, STATE.md, archive files
-   - Commit: `chore: archive v{{version}} research milestone`
-   - Tag: `git tag -a v{{version}} -m "[milestone summary]"`
+   - Commit: `chore: archive v{version} research milestone`
+   - Tag: `git tag -a v{version} -m "[milestone summary]"`
    - Ask about pushing tag
 
 8. **Offer next steps:**
-   - `/gpd:new-milestone` — start next research milestone (questioning -> literature review -> requirements -> roadmap)
+   - `gpd:new-milestone` — start next research milestone (questioning -> literature review -> requirements -> roadmap)
 
 </process>
 
 <success_criteria>
 
-- Milestone archived to `GPD/milestones/v{{version}}-ROADMAP.md`
-- Requirements archived to `GPD/milestones/v{{version}}-REQUIREMENTS.md`
+- Milestone archived to `GPD/milestones/v{version}-ROADMAP.md`
+- Requirements archived to `GPD/milestones/v{version}-REQUIREMENTS.md`
 - `GPD/REQUIREMENTS.md` deleted (fresh for next milestone)
 - ROADMAP.md collapsed to one-line entry
 - PROJECT.md updated with current state of research
 - Pattern promotion reviewed (INSIGHTS.md checked for global library candidates)
-- Git tag v{{version}} created
+- Git tag v{version} created
 - Commit successful
 - User knows next steps (including need for fresh requirements)
   </success_criteria>
@@ -151,6 +149,6 @@ If `--dry-run` flag is present, show what would be archived and deleted (milesto
 - **Archive before deleting:** Always create archive files before updating/deleting originals
 - **One-line summary:** Collapsed milestone in ROADMAP.md should be single line with link
 - **Context efficiency:** Archive keeps ROADMAP.md and REQUIREMENTS.md constant size per milestone
-- **Fresh requirements:** Next milestone starts with `/gpd:new-milestone` which includes requirements definition
+- **Fresh requirements:** Next milestone starts with `gpd:new-milestone` which includes requirements definition
 - **Research continuity:** PROJECT.md must capture what was learned, not just what was done, so the next milestone builds on established results
   </critical_rules>

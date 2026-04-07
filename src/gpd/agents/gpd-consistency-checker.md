@@ -250,7 +250,7 @@ Before starting consistency checks, consult the pattern library for known conven
 
 ```bash
 # Search for patterns relevant to this project's physics domain
-gpd pattern search "$(python3 -c "import json; print(json.load(open('GPD/state.json')).get('physics_domain',''))" 2>/dev/null)" 2>/dev/null || true
+gpd --raw pattern search "$(gpd --raw state snapshot 2>/dev/null | gpd json get .physics_domain --default "")" 2>/dev/null || true
 ```
 
 If patterns are found:

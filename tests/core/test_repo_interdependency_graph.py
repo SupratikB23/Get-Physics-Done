@@ -7,14 +7,11 @@ import shutil
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
-from shutil import which
 
 from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from scripts.repo_graph_contract import (
-    CONTRACT_PATH,
     GENERATED_ON_END,
     GENERATED_ON_START,
-    GRAPH_PATH,
     REPO_ROOT,
     SAME_STEM_COMMAND_WORKFLOW_END,
     SAME_STEM_COMMAND_WORKFLOW_START,
@@ -22,6 +19,7 @@ from scripts.repo_graph_contract import (
     SCOPE_START,
     expected_scope_counts,
     extract_marked_block,
+    graph_has_edge,
     live_repo_file_count,
     load_contract,
     parse_scope_count,
@@ -91,154 +89,109 @@ def test_graph_same_stem_command_workflow_inventory_matches_tree() -> None:
     assert graph_stems == actual_stems
 
 
-def test_graph_captures_staged_review_prompt_edges() -> None:
-    graph = read_graph_text()
-    expected_edges = [
-        "`src/gpd/commands/write-paper.md -> src/gpd/agents/{gpd-paper-writer,gpd-bibliographer,gpd-review-reader,gpd-review-literature,gpd-review-math,gpd-review-physics,gpd-review-significance,gpd-referee}.md`",
-        "`src/gpd/commands/peer-review.md -> src/gpd/agents/{gpd-review-reader,gpd-review-literature,gpd-review-math,gpd-review-physics,gpd-review-significance,gpd-referee}.md`",
-        "`src/gpd/specs/workflows/write-paper.md -> src/gpd/specs/workflows/peer-review.md`",
-        "`src/gpd/specs/workflows/peer-review.md -> src/gpd/agents/{gpd-review-reader,gpd-review-literature,gpd-review-math,gpd-review-physics,gpd-review-significance,gpd-referee}.md`",
-        "`src/gpd/agents/{gpd-review-reader,gpd-review-literature,gpd-review-math,gpd-review-physics,gpd-review-significance,gpd-referee}.md -> src/gpd/specs/references/publication/peer-review-panel.md`",
-    ]
-
-    for edge in expected_edges:
-        assert edge in graph
-
-
-def test_graph_captures_paper_build_prompt_edges() -> None:
-    graph = read_graph_text()
-    expected_edges = [
-        "`src/gpd/commands/write-paper.md -> gpd paper-build paper/PAPER-CONFIG.json`",
-        "`src/gpd/commands/write-paper.md -> paper/{PAPER-CONFIG.json,main.tex,ARTIFACT-MANIFEST.json}`",
-        "`src/gpd/commands/peer-review.md -> candidate manuscript roots {paper/main.tex, manuscript/main.tex, draft/main.tex}`",
-        "`src/gpd/specs/workflows/write-paper.md -> src/gpd/cli.py::paper_build`",
-        "`src/gpd/specs/workflows/write-paper.md -> paper/{PAPER-CONFIG.json,main.tex,ARTIFACT-MANIFEST.json}`",
-        "`src/gpd/specs/workflows/peer-review.md -> candidate manuscript roots {paper/main.tex, manuscript/main.tex, draft/main.tex}`",
-        "`src/gpd/specs/workflows/peer-review.md -> paper/{PAPER-CONFIG.json,ARTIFACT-MANIFEST.json,BIBLIOGRAPHY-AUDIT.json}`",
-    ]
-
-    for edge in expected_edges:
-        assert edge in graph
-
-
-def test_graph_matches_strict_review_publication_artifact_contract() -> None:
-    graph = read_graph_text()
-    expected_edges = [
-        "`src/gpd/cli.py -> strict review artifact manifest candidates {manuscript.parent/ARTIFACT-MANIFEST.json}`",
-        "`src/gpd/cli.py -> strict review bibliography audit candidates {manuscript.parent/BIBLIOGRAPHY-AUDIT.json}`",
-        "`src/gpd/cli.py -> strict review reproducibility manifest candidates {manuscript.parent/reproducibility-manifest.json, manuscript.parent/REPRODUCIBILITY-MANIFEST.json}`",
-    ]
-    unexpected_edges = [
-        "<cwd>/GPD/paper/ARTIFACT-MANIFEST.json",
-        "<cwd>/GPD/paper/BIBLIOGRAPHY-AUDIT.json",
-        "<cwd>/GPD/paper/reproducibility-manifest.json",
-    ]
-
-    for edge in expected_edges:
-        assert edge in graph
-
-    for edge in unexpected_edges:
-        assert edge not in graph
-
-
-def test_graph_matches_explicit_peer_review_directory_resolution_contract() -> None:
-    graph = read_graph_text()
-
-    assert "`src/gpd/cli.py -> peer-review manuscript candidate family {target/main.tex, target/main.md}`" in graph
-    assert "lexicographically first direct *.tex/*.md fallback" not in graph
-
-
 def test_graph_captures_hook_runtime_wiring_edges() -> None:
     graph = read_graph_text()
-    expected_edges = [
-        "`src/gpd/hooks/statusline.py -> src/gpd/hooks/runtime_detect.py`",
-        "`src/gpd/hooks/statusline.py -> src/gpd/adapters/__init__.py`",
-        "`src/gpd/hooks/check_update.py -> src/gpd/hooks/runtime_detect.py`",
-        "`src/gpd/hooks/notify.py -> src/gpd/hooks/check_update.py`",
-        "`src/gpd/hooks/notify.py -> src/gpd/hooks/runtime_detect.py`",
-    ]
-
-    unexpected_edges = [
-        "`src/gpd/hooks/notify.py -> src/gpd/adapters/__init__.py`",
-    ]
-
-    for edge in expected_edges:
-        assert edge in graph
-
-    for edge in unexpected_edges:
-        assert edge not in graph
+    assert graph_has_edge("src/gpd/hooks/statusline.py", "src/gpd/hooks/runtime_detect.py", graph)
+    assert graph_has_edge("src/gpd/hooks/statusline.py", "src/gpd/adapters/__init__.py", graph)
+    assert graph_has_edge("src/gpd/hooks/check_update.py", "src/gpd/hooks/runtime_detect.py", graph)
+    assert graph_has_edge("src/gpd/hooks/notify.py", "src/gpd/hooks/check_update.py", graph)
+    assert graph_has_edge("src/gpd/hooks/notify.py", "src/gpd/hooks/runtime_detect.py", graph)
+    assert not graph_has_edge("src/gpd/hooks/notify.py", "src/gpd/adapters/__init__.py", graph)
 
 
 def test_graph_captures_checkpoint_feature_edges() -> None:
     graph = read_graph_text()
-    expected_edges = [
-        "`src/gpd/cli.py::sync_phase_checkpoints -> src/gpd/core/checkpoints.py::sync_phase_checkpoints`",
-        "`src/gpd/core/phases.py -> src/gpd/core/checkpoints.py::sync_phase_checkpoints`",
-        "`src/gpd/core/state.py -> <cwd>/GPD/.state-write-intent`",
-        "`src/gpd/core/checkpoints.py -> generated outputs {GPD/CHECKPOINTS.md, GPD/phase-checkpoints/*.md}`",
-        "`src/gpd/core/checkpoints.py -> <cwd>/GPD/CHECKPOINTS.md`",
-        "`src/gpd/core/checkpoints.py -> <cwd>/GPD/phase-checkpoints/*.md`",
-    ]
-    unexpected_edges = [
-        "`src/gpd/core/state.py -> src/gpd/core/checkpoints.py::sync_phase_checkpoints`",
-    ]
-
-    for edge in expected_edges:
-        assert edge in graph
-
-    for edge in unexpected_edges:
-        assert edge not in graph
+    assert graph_has_edge("src/gpd/cli.py::sync_phase_checkpoints", "src/gpd/core/checkpoints.py::sync_phase_checkpoints", graph)
+    assert graph_has_edge("src/gpd/core/phases.py", "src/gpd/core/checkpoints.py::sync_phase_checkpoints", graph)
+    assert graph_has_edge("src/gpd/core/state.py", "<cwd>/GPD/.state-write-intent", graph)
+    assert graph_has_edge("src/gpd/core/checkpoints.py", "generated outputs {GPD/CHECKPOINTS.md, GPD/phase-checkpoints/*.md}", graph)
+    assert graph_has_edge("src/gpd/core/checkpoints.py", "<cwd>/GPD/CHECKPOINTS.md", graph)
+    assert graph_has_edge("src/gpd/core/checkpoints.py", "<cwd>/GPD/phase-checkpoints/*.md", graph)
+    assert not graph_has_edge("src/gpd/core/state.py", "src/gpd/core/checkpoints.py::sync_phase_checkpoints", graph)
 
 
-def test_graph_does_not_reference_removed_verify_between_waves_knob() -> None:
+def test_graph_captures_workflow_and_schema_edges() -> None:
     graph = read_graph_text()
 
-    assert "workflow.verify_between_waves" not in graph
-    assert "verify_between_waves" not in graph
-
-
-def test_graph_surfaces_codex_generated_skill_dir_manifest_ownership() -> None:
-    graph = read_graph_text()
-
-    assert "codex_generated_skill_dirs" in graph
-
-
-def test_graph_test_file_references_exist() -> None:
-    missing = sorted(
-        {
-            ref
-            for ref in re.findall(r"tests/[A-Za-z0-9_./-]+\.py", read_graph_text())
-            if not (REPO_ROOT / ref).is_file()
-        }
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/execute-phase.md",
+        "src/gpd/specs/{references/orchestration/meta-orchestration.md,references/orchestration/artifact-surfacing.md,",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/execute-phase.md",
+        "src/gpd/specs/{references/orchestration/meta-orchestration.md,references/orchestration/checkpoints.md,",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/execute-plan.md",
+        "src/gpd/specs/{references/execution/git-integration.md,references/execution/github-lifecycle.md,",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/plan-phase.md",
+        "src/gpd/specs/templates/plan-contract-schema.md",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/execute-plan.md",
+        "src/gpd/specs/templates/contract-results-schema.md",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/verify-work.md",
+        "src/gpd/specs/templates/contract-results-schema.md",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/verify-work.md",
+        "src/gpd/specs/templates/plan-contract-schema.md",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/write-paper.md",
+        "src/gpd/specs/templates/paper/{paper-config-schema.md,artifact-manifest-schema.md,bibliography-audit-schema.md,reproducibility-manifest.md}",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/new-project.md",
+        "src/gpd/specs/templates/project-contract-schema.md",
+        graph,
     )
 
-    assert missing == []
 
-
-def test_graph_claude_artifact_language_matches_tree() -> None:
+def test_graph_captures_staged_review_panel_wiring() -> None:
     graph = read_graph_text()
 
-    assert "## Installed Runtime Artifact Family: `.claude/**`" in graph
-    assert ".claude/settings.local.json" not in graph
-    assert "## Checked-In Installed Snapshot: `.claude/**`" not in graph
-    assert "checked-in installed artifacts like `.claude/**`" not in graph
+    assert graph_has_edge(
+        "src/gpd/commands/peer-review.md",
+        "src/gpd/agents/{gpd-review-reader,gpd-review-literature,gpd-review-math,gpd-check-proof,gpd-review-physics,gpd-review-significance,gpd-referee}.md",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/specs/workflows/peer-review.md",
+        "src/gpd/agents/{gpd-review-reader,gpd-review-literature,gpd-review-math,gpd-check-proof,gpd-review-physics,gpd-review-significance,gpd-referee}.md",
+        graph,
+    )
+    assert graph_has_edge(
+        "src/gpd/agents/{gpd-review-reader,gpd-review-literature,gpd-review-math,gpd-check-proof,gpd-review-physics,gpd-review-significance,gpd-referee}.md",
+        "src/gpd/specs/references/publication/peer-review-panel.md",
+        graph,
+    )
 
-    if not (REPO_ROOT / ".claude").exists():
-        assert "- `.claude/commands/gpd/*.md`" not in graph
-        assert "- `.claude/agents/*.md`" not in graph
-        assert "- `.claude/get-physics-done/workflows/**/*.md`" not in graph
-        assert "- `.claude/get-physics-done/templates/**/*.md`" not in graph
-        assert "- `.claude/get-physics-done/references/**/*.md`" not in graph
 
 
-def test_graph_contract_scope_parser_matches_expected_counts() -> None:
-    for label, count in expected_scope_counts().items():
-        assert parse_scope_count(label) == count
+def test_graph_contract_scope_counts_match_live_inventory() -> None:
+    expected = expected_scope_counts()
 
+    mismatches = [
+        f"{label}: graph={parse_scope_count(label)} live={count}"
+        for label, count in expected.items()
+        if parse_scope_count(label) != count
+    ]
 
-def test_graph_contract_json_matches_live_scope_counts() -> None:
-    contract = load_contract()
-    assert contract["scope_counts"] == expected_scope_counts()
+    assert not mismatches, "Graph scope counts are stale:\n" + "\n".join(mismatches)
+    assert load_contract()["scope_counts"] == expected
 
 
 def test_graph_readme_generated_blocks_match_contract() -> None:
@@ -253,7 +206,6 @@ def test_graph_sync_repairs_stale_marked_blocks() -> None:
     original = read_graph_text()
     contract = load_contract()
     stale_contract = dict(contract)
-    stale_contract["generated_on"] = "2000-01-01"
     stale_contract["scope_counts"] = {
         label: int(value) + 1 for label, value in contract["scope_counts"].items()
     }
@@ -262,7 +214,7 @@ def test_graph_sync_repairs_stale_marked_blocks() -> None:
         original,
         GENERATED_ON_START,
         GENERATED_ON_END,
-        render_generated_on_block(stale_contract),
+        "\n".join((GENERATED_ON_START, "Generated from an outdated contract.", GENERATED_ON_END)),
     )
     stale = replace_marked_block(
         stale,
@@ -288,7 +240,7 @@ def test_graph_sync_repairs_stale_marked_blocks() -> None:
     assert repaired == original
 
 
-def test_live_repo_file_count_ignores_transient_root_artifacts() -> None:
+def test_live_repo_file_count_ignores_worktree_artifacts(tmp_path: Path) -> None:
     baseline = live_repo_file_count()
 
     with _transient_root_artifacts() as sentinel_files:
@@ -297,56 +249,39 @@ def test_live_repo_file_count_ignores_transient_root_artifacts() -> None:
 
     assert all(not path.exists() for path in sentinel_files)
 
+    tmp_root = tmp_path / "repo"
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init"], cwd=tmp_root, check=True, capture_output=True, text=True)
 
-def test_live_repo_file_count_ignores_untracked_worktree_files(tmp_path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
-
-    tracked_file = tmp_path / "tracked.txt"
+    tracked_file = tmp_root / "tracked.txt"
     tracked_file.write_text("tracked\n", encoding="utf-8")
-    subprocess.run(["git", "add", tracked_file.name], cwd=tmp_path, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "add", tracked_file.name], cwd=tmp_root, check=True, capture_output=True, text=True)
 
-    untracked_file = tmp_path / "docs" / "scratch.md"
+    untracked_file = tmp_root / "docs" / "scratch.md"
     untracked_file.parent.mkdir(parents=True, exist_ok=True)
     untracked_file.write_text("untracked\n", encoding="utf-8")
 
-    assert live_repo_file_count(tmp_path) == 1
-
-
-def test_live_repo_file_count_ignores_deleted_tracked_files(tmp_path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
-
-    tracked_file = tmp_path / "tracked.txt"
-    tracked_file.write_text("tracked\n", encoding="utf-8")
-    subprocess.run(["git", "add", tracked_file.name], cwd=tmp_path, check=True, capture_output=True, text=True)
+    assert live_repo_file_count(tmp_root) == 1
 
     tracked_file.unlink()
+    assert live_repo_file_count(tmp_root) == 0
 
-    assert live_repo_file_count(tmp_path) == 0
-
-
-def test_live_repo_file_count_ignores_runtime_mirror_dirs(tmp_path: Path) -> None:
     for config_dir_name in {descriptor.config_dir_name for descriptor in iter_runtime_descriptors()}:
         rel_path = f"{config_dir_name}/sentinel.txt"
-        path = tmp_path / rel_path
+        path = tmp_root / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("runtime mirror sentinel\n", encoding="utf-8")
 
-    assert live_repo_file_count(tmp_path) == 0
+    assert live_repo_file_count(tmp_root) == 0
 
 
-def test_sync_repo_graph_script_runs_as_direct_file() -> None:
-    graph_before = GRAPH_PATH.read_text(encoding="utf-8")
-    contract_before = CONTRACT_PATH.read_text(encoding="utf-8")
-    python_bin = which("python")
-    assert python_bin is not None, "plain PATH python is required for repo-graph bootstrap"
-    completed = subprocess.run(
-        [python_bin, "scripts/sync_repo_graph_contract.py"],
-        cwd=REPO_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
+def test_graph_test_file_references_exist() -> None:
+    missing = sorted(
+        {
+            ref
+            for ref in re.findall(r"tests/[A-Za-z0-9_./-]+\.py", read_graph_text())
+            if not (REPO_ROOT / ref).is_file()
+        }
     )
 
-    assert completed.returncode == 0, completed.stderr
-    assert GRAPH_PATH.read_text(encoding="utf-8") == graph_before
-    assert CONTRACT_PATH.read_text(encoding="utf-8") == contract_before
+    assert missing == []

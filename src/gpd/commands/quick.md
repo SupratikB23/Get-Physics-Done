@@ -1,7 +1,6 @@
 ---
 name: gpd:quick
 description: Execute a quick research task with GPD guarantees (atomic commits, state tracking) but skip optional agents
-argument-hint: ""
 context_mode: project-required
 allowed-tools:
   - file_read
@@ -14,18 +13,16 @@ allowed-tools:
   - ask_user
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Execute small, ad-hoc research tasks with GPD guarantees (atomic commits, STATE.md tracking) while skipping optional agents (research, plan-checker, verifier).
+Execute small, ad-hoc research tasks in an initialized GPD project with GPD guarantees (atomic commits and durable state tracking) while skipping optional agents (research, plan-checker, verifier).
 
 Quick mode is the same system with a shorter path:
 
 - Spawns gpd-planner (quick mode) + gpd-executor(s)
 - Skips gpd-phase-researcher, gpd-plan-checker, gpd-verifier
 - Quick tasks live in `GPD/quick/` separate from planned phases
-- Updates STATE.md "Quick Tasks Completed" table (NOT ROADMAP.md)
+- Records completion through structured `gpd state` commands and the quick-task summary files, not a custom STATE.md table.
 
 Use when: You know exactly what to do and the task is small enough to not need research or verification.
 
@@ -53,7 +50,7 @@ Typical quick tasks in physics research:
 
 ## When to Use Quick vs Full Workflow
 
-**Use `/gpd:quick` for:**
+**Use `gpd:quick` for:**
 
 - Single calculation (evaluate an integral, compute a coefficient, check an identity)
 - Formula or factor verification (is the prefactor 1/2 or 1/4?)
@@ -62,7 +59,7 @@ Typical quick tasks in physics research:
 - Quick numerical spot-check at known parameter values
 - Small self-contained tasks with a clear one-step answer
 
-**Use full workflow (`/gpd:plan-phase` + `/gpd:execute-phase`) for:**
+**Use full workflow (`gpd:plan-phase` + `gpd:execute-phase`) for:**
 
 - Multi-step derivations where intermediate results feed into later steps
 - Numerical pipelines requiring convergence testing and parameter sweeps
@@ -75,7 +72,7 @@ Quick mode skips research and verification agents, but the physics must still be
 
 - State assumptions and approximations even for quick tasks
 - Include dimensional analysis for any new expression produced
-- If a quick task reveals unexpected complexity, stop and promote it to a full phase with `/gpd:add-phase` or `/gpd:insert-phase`
+- If a quick task reveals unexpected complexity, stop and promote it to a full phase with `gpd:add-phase` or `gpd:insert-phase`
 
 </inline_guidance>
 

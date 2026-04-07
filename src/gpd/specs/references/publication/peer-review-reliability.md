@@ -5,6 +5,7 @@ load_when:
   - "review recovery"
   - "stage failure"
   - "review phase entry"
+type: peer-review-reliability
 tier: 2
 context_cost: low
 ---
@@ -19,9 +20,9 @@ This is the canonical reliability reference for the peer-review skill surface. F
 
 The peer review phase activates **after a complete manuscript draft exists** and **before final PDF packaging and submission**. Specifically:
 
-1. **After draft completion.** The `/gpd:write-paper` workflow produces a manuscript with all sections, equations, figures, and bibliography in place. Peer review does not run on incomplete drafts or outlines.
-2. **Before final PDF.** Peer review must complete and its findings must be addressed before the manuscript is packaged for submission (e.g., via `/gpd:arxiv-submission`).
-3. **Explicit invocation.** Peer review runs when the user invokes `/gpd:peer-review` or when the write-paper workflow reaches its internal review gate. It is not triggered automatically by file saves or partial edits.
+1. **After draft completion.** The `gpd:write-paper` workflow produces a manuscript with all sections, equations, figures, and bibliography in place. Peer review does not run on incomplete drafts or outlines.
+2. **Before final PDF.** Peer review must complete and its findings must be addressed before the manuscript is packaged for submission (e.g., via `gpd:arxiv-submission`).
+3. **Explicit invocation.** Peer review runs when the user invokes `gpd:peer-review` or when the write-paper workflow reaches its internal review gate. It is not triggered automatically by file saves or partial edits.
 
 ### Precondition Checklist
 
@@ -29,6 +30,7 @@ The peer review phase activates **after a complete manuscript draft exists** and
 - `GPD/STATE.md` and `GPD/ROADMAP.md` are present
 - Phase summaries and verification reports are available under `GPD/phases/`
 - `ARTIFACT-MANIFEST.json`, `BIBLIOGRAPHY-AUDIT.json`, and reproducibility manifest are present (strict mode)
+- Strict preflight semantic gates pass: `bibliography_audit_clean` and `reproducibility_ready`
 
 If any precondition fails, the review preflight blocks entry and reports the missing items.
 
@@ -54,18 +56,20 @@ Use internal review to catch overclaiming, missing evidence, mathematical errors
 All of the following must hold before the review phase begins:
 
 1. **Manuscript completeness.** All sections referenced in the paper structure are drafted. No placeholder or stub sections remain.
-2. **Artifact readiness.** `ARTIFACT-MANIFEST.json` and `BIBLIOGRAPHY-AUDIT.json` exist and pass validation.
+2. **Artifact readiness.** `ARTIFACT-MANIFEST.json` and `BIBLIOGRAPHY-AUDIT.json` exist and pass validation. In strict mode the bibliography audit must also clear `bibliography_audit_clean`, and the reproducibility manifest must clear `reproducibility_ready`.
 3. **Verification coverage.** At least one verification report exists under `GPD/phases/`.
-4. **Preflight pass.** `gpd validate review-preflight peer-review --strict` exits zero.
+4. **Preflight pass.** `gpd validate review-preflight peer-review "$ARGUMENTS" --strict` exits zero.
 
 ### Exit Criteria
 
 The review phase is complete when:
 
 1. **All six stages have run.** Stage artifacts exist for reader, literature, math, physics, interestingness, and the final referee decision.
-2. **Referee decision is valid.** `GPD/review/REFEREE-DECISION{round_suffix}.json` passes `gpd validate referee-decision ... --strict --ledger ...`, including non-empty `manuscript_path` alignment with the review ledger and stage artifacts.
-3. **Review ledger is valid.** `GPD/review/REVIEW-LEDGER{round_suffix}.json` passes `gpd validate review-ledger ...`, including a non-empty `manuscript_path`.
-4. **Findings are dispositioned.** Every blocking finding has either been addressed in a revision or explicitly acknowledged in an author response.
+2. **Auxiliary proof critique is complete.** If theorem-bearing claims are present, `GPD/review/PROOF-REDTEAM{round_suffix}.md` exists, is authored by `gpd-check-proof`, binds to the active manuscript snapshot, contains the canonical proof-audit sections, and reports `status: passed`.
+3. **Math proof-audit coverage is complete.** If `CLAIMS{round_suffix}.json` contains theorem-bearing claims in the claim record, the matching `STAGE-math{round_suffix}.json` contains one `proof_audits[]` entry per reviewed theorem-bearing claim, and central theorem-bearing claims are not left at `alignment_status: not_applicable`.
+4. **Referee decision is valid.** `GPD/review/REFEREE-DECISION{round_suffix}.json` passes `gpd validate referee-decision ... --strict --ledger ...`, including non-empty `manuscript_path` alignment with the review ledger and stage artifacts.
+5. **Review ledger is valid.** `GPD/review/REVIEW-LEDGER{round_suffix}.json` passes `gpd validate review-ledger ...`, including a non-empty `manuscript_path`.
+6. **Findings are dispositioned.** Every blocking finding has either been addressed in a revision or explicitly acknowledged in an author response.
 
 If the recommendation is `accept` or `minor_revision` with no unresolved blockers, the manuscript may proceed to submission packaging. If the recommendation is `major_revision` or `reject`, the manuscript must return to revision before re-entering peer review.
 When strict submission preflight sees `GPD/review/REVIEW-LEDGER*.json` and `GPD/review/REFEREE-DECISION*.json`, it treats the latest round-specific pair as authoritative and blocks packaging unless that condition is satisfied for the active manuscript.
@@ -84,6 +88,7 @@ Each of the six review stages can fail. The pipeline is **fail-closed**: a faile
 | Manuscript file not found | Stage 1 | Reader cannot locate `.tex` files | Verify manuscript path before retrying |
 | Timeout or resource limit | Any | Stage does not complete | Retry once; if persistent, reduce manuscript scope or run stages sequentially |
 | Claim index missing | Stages 2-6 | `CLAIMS{round_suffix}.json` absent after Stage 1 | Re-run Stage 1 before proceeding |
+| Theorem-proof audit missing or stale | Stages 3, 6 | The claim record contains theorem-bearing claims but `STAGE-math{round_suffix}.json` omits `proof_audits[]` for them, `PROOF-REDTEAM{round_suffix}.md` is missing or malformed, or central audits use `not_applicable` / leave explicit parameters uncovered | Re-run `gpd-check-proof` and Stage 3 with an explicit theorem-to-proof coverage checklist before allowing Stage 6 to adjudicate |
 
 ### Recovery Protocol
 
@@ -105,6 +110,7 @@ After each stage writes its artifact, confirm:
   - `gpd validate referee-decision GPD/review/REFEREE-DECISION{round_suffix}.json --strict --ledger GPD/review/REVIEW-LEDGER{round_suffix}.json`
 - Do not reimplement the schema checks manually in the workflow prose. The validators are the source of truth for required keys and cross-artifact consistency.
 - A blank `manuscript_path` in the review ledger or referee decision is a contract failure, not a recoverable omission.
+- For theorem-bearing claims, Stage 1 should preserve explicit theorem hypotheses and parameters in `CLAIMS{round_suffix}.json`, and Stage 3 should preserve the corresponding theorem-to-proof audit in `proof_audits[]`. The runtime determines theorem-bearing coverage from the claim record itself, not from a single proxy field. If that chain breaks, treat it as a stage failure rather than proceeding with a stale or inferred review.
 
 If validation fails, treat it as a stage failure and apply the retry protocol above.
 
@@ -133,9 +139,10 @@ Findings are classified by severity:
 
 1. **Read the review ledger.** Sort findings by severity (critical first, then major, then minor).
 2. **Address blocking issues.** Every finding with `"blocking": true` must be resolved or the claims must be narrowed to match the available evidence.
-3. **Write author response.** Document how each finding was addressed in `GPD/AUTHOR-RESPONSE{round_suffix}.md` (or `-R2.md` / `-R3.md` for subsequent rounds).
-4. **Re-enter review.** After revisions, re-run `/gpd:peer-review` for the next round. The pipeline detects prior reports and author responses to increment the round number automatically.
-5. **Converge.** The pipeline supports up to 3 review rounds. If the manuscript has not converged to `accept` or `minor_revision` after 3 rounds, consider restructuring the central contribution.
+3. **Treat uncovered theorem assumptions or parameters as blocking until resolved.** If a theorem statement quantifies over a parameter or names a hypothesis that the proof never uses, the manuscript must be corrected, narrowed, or explicitly re-proved before the next round.
+4. **Write author response.** Document how each finding was addressed in `GPD/AUTHOR-RESPONSE{round_suffix}.md` (or `-R2.md` / `-R3.md` for subsequent rounds).
+5. **Re-enter review.** After revisions, re-run `gpd:peer-review` for the next round. The pipeline detects prior reports and author responses to increment the round number automatically.
+6. **Converge.** The pipeline supports up to 3 review rounds. If the manuscript has not converged to `accept` or `minor_revision` after 3 rounds, consider restructuring the central contribution.
 
 ### Mapping Findings to Manuscript Changes
 

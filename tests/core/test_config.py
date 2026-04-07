@@ -1,5 +1,6 @@
 """Tests for gpd.core.config."""
 
+import builtins
 import json
 import re
 from pathlib import Path
@@ -69,8 +70,8 @@ class TestEnums:
 
 
 class TestModelProfiles:
-    def test_all_23_agents_present(self):
-        assert len(MODEL_PROFILES) == 23
+    def test_all_24_agents_present(self):
+        assert len(MODEL_PROFILES) == 24
 
     def test_all_agents_have_5_profiles(self):
         profiles = {"deep-theory", "numerical", "exploratory", "review", "paper-writing"}
@@ -107,6 +108,8 @@ class TestGPDProjectConfigDefaults:
         assert cfg.checkpoint_after_n_tasks == 3
         assert cfg.checkpoint_after_first_load_bearing_result is True
         assert cfg.checkpoint_before_downstream_dependent_tasks is True
+        assert cfg.project_usd_budget is None
+        assert cfg.session_usd_budget is None
         assert cfg.branching_strategy == BranchingStrategy.NONE
         assert cfg.model_overrides is None
 
@@ -135,6 +138,10 @@ class TestLoadConfig:
                     "review_cadence": "dense",
                     "research_mode": "explore",
                     "commit_docs": False,
+                    "execution": {
+                        "project_usd_budget": 12.5,
+                        "session_usd_budget": 2.25,
+                    },
                 }
             )
         )
@@ -144,6 +151,8 @@ class TestLoadConfig:
         assert cfg.review_cadence == ReviewCadence.DENSE
         assert cfg.research_mode == ResearchMode.EXPLORE
         assert cfg.commit_docs is False
+        assert cfg.project_usd_budget == 12.5
+        assert cfg.session_usd_budget == 2.25
 
     @pytest.mark.parametrize(
         "invalid_value",
@@ -156,6 +165,20 @@ class TestLoadConfig:
     ) -> None:
         (tmp_path / "GPD").mkdir()
         (tmp_path / "GPD" / "config.json").write_text(json.dumps({"autonomy": invalid_value}))
+
+        with pytest.raises(ConfigError, match="Invalid config.json values"):
+            load_config(tmp_path)
+
+    @pytest.mark.parametrize("invalid_budget", [0, -1, -0.5])
+    def test_invalid_budget_values_raise_config_error(
+        self,
+        tmp_path: Path,
+        invalid_budget: float,
+    ) -> None:
+        (tmp_path / "GPD").mkdir()
+        (tmp_path / "GPD" / "config.json").write_text(
+            json.dumps({"execution": {"project_usd_budget": invalid_budget}}),
+        )
 
         with pytest.raises(ConfigError, match="Invalid config.json values"):
             load_config(tmp_path)
@@ -267,6 +290,46 @@ class TestLoadConfig:
 
         _valid_runtime_names.cache_clear()
 
+    def test_model_overrides_accept_runtime_display_name_and_normalize_to_canonical_id(self, tmp_path: Path) -> None:
+        descriptor = next(
+            descriptor
+            for descriptor in _RUNTIME_DESCRIPTORS
+            if descriptor.display_name != descriptor.runtime_name
+        )
+        (tmp_path / "GPD").mkdir()
+        (tmp_path / "GPD" / "config.json").write_text(
+            json.dumps({"model_overrides": {descriptor.display_name: {"tier-1": "gpt-5.4"}}}),
+            encoding="utf-8",
+        )
+
+        cfg = load_config(tmp_path)
+
+        assert cfg.model_overrides == {descriptor.runtime_name: {"tier-1": "gpt-5.4"}}
+
+    def test_model_overrides_reject_duplicate_canonical_and_display_runtime_entries(self, tmp_path: Path) -> None:
+        descriptor = next(
+            descriptor
+            for descriptor in _RUNTIME_DESCRIPTORS
+            if descriptor.display_name != descriptor.runtime_name
+        )
+        (tmp_path / "GPD").mkdir()
+        (tmp_path / "GPD" / "config.json").write_text(
+            json.dumps(
+                {
+                    "model_overrides": {
+                        descriptor.runtime_name: {"tier-1": "canonical-model"},
+                        descriptor.display_name: {"tier-2": "display-model"},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        expected_match = re.escape(
+            f"model_overrides contains duplicate runtime entries for '{descriptor.runtime_name}'"
+        )
+        with pytest.raises(ConfigError, match=expected_match):
+            load_config(tmp_path)
 # ─── resolve_agent_tier ─────────────────────────────────────────────────────────
 
 
@@ -295,6 +358,34 @@ class TestResolveAgentTier:
         tier = resolve_agent_tier("gpd-registry-only", "review")
 
         assert tier == ModelTier.TIER_2
+
+    def test_registry_import_failure_falls_back_to_default_agent_names(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        original_import = builtins.__import__
+
+        def _missing_registry(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "gpd.registry":
+                raise ModuleNotFoundError("No module named 'gpd.registry'")
+            return original_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", _missing_registry)
+
+        tier = resolve_agent_tier("gpd-planner", "review")
+
+        assert tier == ModelTier.TIER_1
+
+    def test_registry_runtime_failure_surfaces_config_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import gpd.registry as content_registry
+
+        monkeypatch.setattr(content_registry, "list_agents", lambda: (_ for _ in ()).throw(RuntimeError("registry boom")))
+
+        with pytest.raises(ConfigError, match="Unable to resolve known agent names from registry"):
+            resolve_agent_tier("gpd-planner", "review")
 
 
 # ─── resolve_model ──────────────────────────────────────────────────────────────
@@ -340,6 +431,27 @@ class TestResolveModel:
         )
         model = resolve_model(tmp_path, "gpd-planner", runtime=descriptor.runtime_name)
         assert model is None
+
+    @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+    def test_normalizes_runtime_display_names_before_override_lookup(self, tmp_path: Path, descriptor) -> None:
+        display_name = descriptor.display_name
+        if display_name == descriptor.runtime_name:
+            pytest.skip(f"{descriptor.runtime_name} has no distinct display name")
+
+        (tmp_path / "GPD").mkdir()
+        (tmp_path / "GPD" / "config.json").write_text(
+            json.dumps(
+                {
+                    "model_overrides": {
+                        descriptor.runtime_name: {"tier-1": f"{descriptor.runtime_name}-tier-1"}
+                    }
+                }
+            )
+        )
+
+        model = resolve_model(tmp_path, "gpd-planner", runtime=display_name)
+
+        assert model == f"{descriptor.runtime_name}-tier-1"
 
 
 class TestResolveTier:

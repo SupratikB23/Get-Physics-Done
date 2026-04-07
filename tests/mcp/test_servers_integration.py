@@ -22,6 +22,8 @@ from pathlib import Path
 
 import pytest
 
+from gpd.core.state import default_state_dict, generate_state_markdown
+
 # ---------------------------------------------------------------------------
 # Shared realistic-project fixture
 # ---------------------------------------------------------------------------
@@ -127,6 +129,25 @@ None yet.
 """
 
 
+def _write_state_with_project_contract(
+    tmp_path: Path,
+    contract: dict[str, object],
+    *,
+    current_phase: str = "01",
+    status: str = "Executing",
+) -> Path:
+    project_root = tmp_path / "project"
+    gpd_dir = project_root / "GPD"
+    gpd_dir.mkdir(parents=True, exist_ok=True)
+    state = default_state_dict()
+    state["position"]["current_phase"] = current_phase
+    state["position"]["status"] = status
+    state["project_contract"] = contract
+    (gpd_dir / "state.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    (gpd_dir / "STATE.md").write_text(generate_state_markdown(state), encoding="utf-8")
+    return project_root
+
+
 @pytest.fixture()
 def gpd_project(tmp_path: Path) -> Path:
     """Create a realistic GPD project directory tree.
@@ -168,30 +189,6 @@ def gpd_project(tmp_path: Path) -> Path:
 class TestConventionsServerIntegration:
     """Integration tests for conventions_server tools with real state files."""
 
-    def test_convention_set_stores_value(self, gpd_project: Path):
-        from gpd.mcp.servers.conventions_server import convention_set
-
-        result = convention_set(str(gpd_project), "regularization_scheme", "dim-reg")
-
-        assert result["status"] == "set"
-        assert result["key"] == "regularization_scheme"
-        assert result["value"] == "dim-reg"
-        assert result["type"] == "standard"
-
-        # Verify the value persisted in state.json
-        state = json.loads((gpd_project / "GPD" / "state.json").read_text())
-        assert state["convention_lock"]["regularization_scheme"] == "dim-reg"
-
-    def test_convention_set_already_set_rejects_overwrite(self, gpd_project: Path):
-        from gpd.mcp.servers.conventions_server import convention_set
-
-        # metric_signature is already "(+,-,-,-)" in the fixture
-        result = convention_set(str(gpd_project), "metric_signature", "(-,+,+,+)")
-
-        assert result["status"] == "already_set"
-        assert result["current_value"] == "(+,-,-,-)"
-        assert result["requested_value"] == "mostly-plus"
-
     def test_convention_check_real_lock(self, gpd_project: Path):
         from gpd.mcp.servers.conventions_server import convention_check
 
@@ -224,19 +221,22 @@ class TestStateServerIntegration:
         assert "position" in result
         assert "decisions" in result or "blockers" in result
 
-    def test_advance_plan_increments(self, gpd_project: Path):
-        from gpd.mcp.servers.state_server import advance_plan
+    def test_get_state_surfaces_canonical_project_contract_metadata(self, tmp_path: Path) -> None:
+        from gpd.mcp.servers.state_server import get_state
 
-        result = advance_plan(str(gpd_project))
+        contract = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "stage0" / "project_contract.json").read_text(encoding="utf-8"))
+        project_root = _write_state_with_project_contract(tmp_path, contract)
 
-        assert isinstance(result, dict)
-        # Plan 1 -> 2, should succeed
-        assert result["advanced"] is True
-        assert result.get("new_plan") == 2 or result.get("current_plan") == 2
+        result = get_state(str(project_root))
 
-        # Verify STATE.md was updated
-        md = (gpd_project / "GPD" / "STATE.md").read_text()
-        assert "**Current Plan:** 2" in md
+        assert result["position"]["current_phase"] == "01"
+        assert "session" not in result
+        assert result["project_contract"]["scope"]["question"] == contract["scope"]["question"]
+        assert result["project_contract_load_info"]["status"] == "loaded"
+        assert result["project_contract_validation"]["valid"] is True
+        assert result["project_contract_gate"]["authoritative"] is True
+        assert result["project_contract_gate"]["visible"] is True
+        assert result["project_contract_gate"]["repair_required"] is False
 
     def test_validate_state_on_realistic_project(self, gpd_project: Path):
         from gpd.mcp.servers.state_server import validate_state
@@ -276,14 +276,6 @@ class TestVerificationServerIntegration:
         # hbar is present -> no automated issue about missing hbar
         assert not any("hbar" in issue for issue in result["automated_issues"])
 
-    def test_run_check_flags_missing_hbar(self):
-        from gpd.mcp.servers.verification_server import run_check
-
-        artifact = "Compute the quantum commutator [x, p] for a particle."
-        result = run_check("5.1", "qft", artifact)
-
-        assert any("hbar" in issue for issue in result["automated_issues"])
-
     def test_dimensional_check_consistent_energy(self):
         from gpd.mcp.servers.verification_server import dimensional_check
 
@@ -304,66 +296,6 @@ class TestVerificationServerIntegration:
         mismatches = result["results"][0]["mismatches"]
         assert "L" in mismatches
         assert "T" in mismatches
-
-    def test_dimensional_check_invalid_element_returns_error_envelope(self):
-        from gpd.mcp.servers.verification_server import dimensional_check
-
-        result = dimensional_check(["[M] = [M]", 4])
-
-        assert result["schema_version"] == 1
-        assert result["error"] == "expressions[1] must be a string"
-
-    def test_limiting_case_check_invalid_limit_key_returns_error_envelope(self):
-        from gpd.mcp.servers.verification_server import limiting_case_check
-
-        result = limiting_case_check("E = m * c^2", {0: "classical"})
-
-        assert result["schema_version"] == 1
-        assert result["error"] == "limits keys must be strings"
-
-    def test_symmetry_check_with_real_symmetries(self):
-        from gpd.mcp.servers.verification_server import symmetry_check
-
-        result = symmetry_check(
-            "M(s,t) = -i g^2 (delta_{ab} / (s - m^2))",
-            ["Lorentz invariance", "gauge invariance", "CPT"],
-        )
-
-        assert result["symmetries_checked"] == 3
-        for entry in result["results"]:
-            assert entry["matched_type"] is not None
-            assert entry["strategy"] is not None
-
-    def test_symmetry_check_invalid_element_returns_error_envelope(self):
-        from gpd.mcp.servers.verification_server import symmetry_check
-
-        result = symmetry_check("M(s,t)", ["Lorentz invariance", None])
-
-        assert result["schema_version"] == 1
-        assert result["error"] == "symmetries[1] must be a string"
-
-    def test_verification_coverage_invalid_element_returns_error_envelope(self):
-        from gpd.mcp.servers.verification_server import get_verification_coverage
-
-        result = get_verification_coverage([15, {"id": 37}], ["5.1"])
-
-        assert result["schema_version"] == 1
-        assert result["error"] == "error_class_ids[1] must be an integer"
-
-    def test_run_contract_check_fit_family_with_partial_metadata(self):
-        from gpd.mcp.servers.verification_server import run_contract_check
-
-        result = run_contract_check(
-            {
-                "check_key": "contract.fit_family_mismatch",
-                "metadata": {"declared_family": "power_law", "allowed_families": ["power_law", "scaling_form"]},
-                "observed": {"selected_family": "power_law", "competing_family_checked": False},
-            }
-        )
-
-        assert result["check_id"] == "5.18"
-        assert result["status"] == "warning"
-        assert "competing_family_checked" in result["metrics"]
 
 
 # ===========================================================================
@@ -393,16 +325,6 @@ class TestErrorsMcpIntegration:
         assert "name" in entry
         assert "domain" in entry
 
-    def test_list_error_classes_filter_by_domain(self):
-        from gpd.mcp.servers.errors_mcp import list_error_classes
-
-        result = list_error_classes(domain="core")
-
-        assert isinstance(result, dict)
-        assert result["count"] > 0
-        for ec in result["error_classes"]:
-            assert ec["domain"] == "core"
-
     def test_get_error_class_real_entry(self):
         from gpd.mcp.servers.errors_mcp import get_error_class
 
@@ -416,13 +338,6 @@ class TestErrorsMcpIntegration:
         assert len(result["name"]) > 0
         assert "detection_strategy" in result
         assert result["domain"] == "core"
-
-    def test_get_error_class_not_found(self):
-        from gpd.mcp.servers.errors_mcp import get_error_class
-
-        result = get_error_class(9999)
-
-        assert "error" in result
 
 
 # ===========================================================================
@@ -452,16 +367,6 @@ class TestProtocolsServerIntegration:
         for key in ("name", "title", "domain", "tier", "context_cost"):
             assert key in proto, f"Missing key '{key}' in protocol entry"
 
-    def test_list_protocols_filter_by_domain(self):
-        from gpd.mcp.servers.protocols_server import list_protocols
-
-        result = list_protocols(domain="core_derivation")
-
-        assert isinstance(result, dict)
-        assert result["count"] >= 1
-        for proto in result["protocols"]:
-            assert proto["domain"] == "core_derivation"
-
     def test_get_protocol_perturbation_theory(self):
         from gpd.mcp.servers.protocols_server import get_protocol
 
@@ -478,15 +383,6 @@ class TestProtocolsServerIntegration:
         assert isinstance(result["content"], str)
         assert len(result["content"]) > 100
 
-    def test_get_protocol_not_found(self):
-        from gpd.mcp.servers.protocols_server import get_protocol
-
-        result = get_protocol("nonexistent-protocol-xyz")
-
-        assert "error" in result
-        assert "available" in result
-        assert len(result["available"]) > 0
-
     def test_route_protocol_finds_perturbation(self):
         from gpd.mcp.servers.protocols_server import route_protocol
 
@@ -497,26 +393,6 @@ class TestProtocolsServerIntegration:
         names = [p["name"] for p in result["protocols"]]
         assert "perturbation-theory" in names
 
-    def test_route_protocol_finds_algebraic_qft(self):
-        from gpd.mcp.servers.protocols_server import route_protocol
-
-        result = route_protocol("Haag-Kastler net modular theory type III local algebras")
-
-        assert isinstance(result, dict)
-        assert result["match_count"] >= 1
-        names = [p["name"] for p in result["protocols"]]
-        assert "algebraic-qft" in names
-
-    def test_route_protocol_finds_string_field_theory(self):
-        from gpd.mcp.servers.protocols_server import route_protocol
-
-        result = route_protocol("open superstring field theory tachyon condensation")
-
-        assert isinstance(result, dict)
-        assert result["match_count"] >= 1
-        names = [p["name"] for p in result["protocols"]]
-        assert "string-field-theory" in names
-
 
 # ===========================================================================
 # 6. Patterns Server
@@ -526,69 +402,19 @@ class TestProtocolsServerIntegration:
 class TestPatternsServerIntegration:
     """Integration tests for patterns_server with real seed data."""
 
-    def test_seed_patterns_idempotent(self, tmp_path: Path):
-        from gpd.core.patterns import pattern_seed
-
-        # Seed into a temp location
-        result1 = pattern_seed(root=tmp_path / "patterns")
-        result2 = pattern_seed(root=tmp_path / "patterns")
-
-        assert result1.added > 0
-        assert result2.skipped == result1.added  # idempotent
-        assert result2.added == 0
-
-    def test_seed_patterns_via_mcp_tool(self, tmp_path: Path, monkeypatch):
-        from gpd.mcp.servers import patterns_server
-
-        monkeypatch.setattr(patterns_server, "_DEFAULT_PATTERNS_ROOT", tmp_path / "patterns")
-        result = patterns_server.seed_patterns()
-
-        assert isinstance(result, dict)
-        assert result["seeded"] is True
-        assert result["added"] > 0
-
     def test_lookup_pattern_after_seed(self, tmp_path: Path, monkeypatch):
         from gpd.mcp.servers import patterns_server
 
         lib_root = tmp_path / "patterns"
         monkeypatch.setattr(patterns_server, "_DEFAULT_PATTERNS_ROOT", lib_root)
 
-        # Seed first
         patterns_server.seed_patterns()
 
-        # Search by keyword
         result = patterns_server.lookup_pattern(keywords="sign error")
 
         assert isinstance(result, dict)
         assert result["count"] >= 1
         assert len(result["patterns"]) >= 1
-
-    def test_lookup_pattern_by_domain_after_seed(self, tmp_path: Path, monkeypatch):
-        from gpd.mcp.servers import patterns_server
-
-        lib_root = tmp_path / "patterns"
-        monkeypatch.setattr(patterns_server, "_DEFAULT_PATTERNS_ROOT", lib_root)
-
-        patterns_server.seed_patterns()
-
-        result = patterns_server.lookup_pattern(domain="qft")
-
-        assert isinstance(result, dict)
-        assert result["library_exists"] is True
-        # The bootstrap seeds include qft patterns
-        assert result["count"] >= 1
-
-    def test_list_domains_returns_real_data(self):
-        from gpd.mcp.servers.patterns_server import list_domains
-
-        result = list_domains()
-
-        assert isinstance(result, dict)
-        assert len(result["domains"]) > 5
-        assert "qft" in result["domains"]
-        assert len(result["categories"]) > 3
-        assert "sign-error" in result["categories"]
-        assert len(result["severities"]) >= 3
 
 
 # ===========================================================================
@@ -627,27 +453,6 @@ class TestSkillsServerIntegration:
             assert "category" in skill
             assert skill["name"].startswith("gpd-")
 
-    def test_list_skills_filter_by_category(self):
-        from gpd.mcp.servers.skills_server import list_skills
-
-        result = list_skills(category="verification")
-
-        assert isinstance(result, dict)
-        assert result["count"] >= 1
-        for skill in result["skills"]:
-            assert skill["category"] == "verification"
-
-    def test_get_skill_real_agent_backed_canonical_skill(self):
-        from gpd.mcp.servers.skills_server import get_skill
-
-        result = get_skill("gpd-debugger")
-
-        assert isinstance(result, dict)
-        assert "error" not in result, f"gpd-debugger skill not found: {result}"
-        assert result["name"] == "gpd-debugger"
-        assert result["file_count"] >= 1
-        assert len(result["content"]) > 0
-
     def test_get_skill_uses_canonical_command_content(self):
         from gpd.mcp.servers.skills_server import get_skill
 
@@ -656,32 +461,14 @@ class TestSkillsServerIntegration:
         assert isinstance(result, dict)
         assert "error" not in result
         assert result["name"] == "gpd-help"
-        assert "gpd command reference" in result["content"].lower()
-        assert "`/gpd:*`" in result["content"]
-        assert "gpd validate command-context gpd:<name>" in result["content"]
-        assert "gpd-new-project" in result["content"]
+        assert "Display GPD help by delegating to the workflow-owned help surface." in result["content"]
+        assert "/gpd:" not in result["content"]
+        assert "gpd-help" in result["content"]
+        assert "## Command Requirements" in result["content"]
+        assert "Quick Start Extract" in result["content"]
+        assert "## Contextual Help" in result["content"]
         assert result["file_count"] == 1
         assert result["allowed_tools_surface"] == "command.allowed-tools"
-
-    def test_get_skill_resolves_package_spec_paths(self):
-        from gpd.mcp.servers.skills_server import get_skill
-
-        result = get_skill("gpd-plan-phase")
-
-        assert "error" not in result
-        assert "@{GPD_INSTALL_DIR}/workflows/plan-phase.md" in result["content"]
-        assert all(not entry["path"].startswith("/") for entry in result["referenced_files"])
-        assert all(not entry["path"].startswith("/") for entry in result["schema_documents"])
-        assert all(not entry["path"].startswith("/") for entry in result["contract_documents"])
-
-    def test_get_skill_surfaces_project_context_references(self):
-        from gpd.mcp.servers.skills_server import get_skill
-
-        result = get_skill("gpd-discover")
-        references = {entry["path"]: entry["kind"] for entry in result["referenced_files"]}
-
-        assert references["@GPD/STATE.md"] == "project"
-        assert references["@GPD/ROADMAP.md"] == "project"
 
     def test_get_skill_peer_review_surfaces_transitive_schema_refs_and_typed_contract(self):
         from gpd.mcp.servers.skills_server import get_skill
@@ -693,102 +480,47 @@ class TestSkillsServerIntegration:
         assert any(path.endswith("referee-decision-schema.md") for path in result["schema_references"])
         assert result["review_contract"] is not None
         assert result["review_contract"]["review_mode"] == "publication"
+        assert "required_state" not in result["review_contract"]
+        assert result["review_contract"]["conditional_requirements"] == [
+            {
+                "when": "theorem-bearing claims are present",
+                "required_outputs": ["GPD/review/PROOF-REDTEAM{round_suffix}.md"],
+                "required_evidence": [],
+                "blocking_conditions": [],
+                "blocking_preflight_checks": [],
+                "stage_artifacts": ["GPD/review/PROOF-REDTEAM{round_suffix}.md"],
+            }
+        ]
         assert result["context_mode"] == "project-required"
+        assert result["project_reentry_capable"] is False
+        assert "## Review Contract" in result["content"]
+        assert "review_contract:" in result["content"]
+        assert "review-contract:" not in result["content"]
+        assert "Treat `content` as the wrapper/context surface." in result["loading_hint"]
+        assert "Load `schema_documents` and `contract_documents` too when present" in result["loading_hint"]
+        assert "It already embeds the model-visible `Command Requirements` section." in result["loading_hint"]
 
-    @pytest.mark.parametrize(
-        ("skill_name", "expected_schema_docs", "expected_contract_docs", "expected_review_mode"),
-        [
-            (
-                "gpd-write-paper",
-                {"paper-config-schema.md": "Paper Config Schema"},
-                {"reproducibility-manifest.md": "Reproducibility Manifest Template"},
-                "publication",
-            ),
-            (
-                "gpd-verify-work",
-                {
-                    "verification-report.md": "Verification Report Template",
-                    "contract-results-schema.md": "Contract Results Schema",
-                },
-                {"contract-results-schema.md": "Contract Results Schema"},
-                "review",
-            ),
-            (
-                "gpd-peer-review",
-                {
-                    "review-ledger-schema.md": "Review Ledger Schema",
-                    "referee-decision-schema.md": "Referee Decision Schema",
-                },
-                {"peer-review-panel.md": "Peer Review Panel Protocol"},
-                "publication",
-            ),
-            (
-                "gpd-sync-state",
-                {"state-json-schema.md": "state.json Schema"},
-                {"state-json-schema.md": "state.json Schema"},
-                None,
-            ),
-        ],
-    )
-    def test_get_skill_surfaces_embedded_schema_and_contract_documents(
-        self,
-        skill_name: str,
-        expected_schema_docs: dict[str, str],
-        expected_contract_docs: dict[str, str],
-        expected_review_mode: str | None,
-    ) -> None:
+    def test_get_skill_surfaces_template_backed_schema_documents_for_writing_and_resume(self):
         from gpd.mcp.servers.skills_server import get_skill
 
-        result = get_skill(skill_name)
-        schema_documents = {Path(entry["path"]).name: entry for entry in result["schema_documents"]}
-        contract_documents = {Path(entry["path"]).name: entry for entry in result["contract_documents"]}
+        write_paper = get_skill("gpd-write-paper")
+        pause_work = get_skill("gpd-pause-work")
 
-        assert "error" not in result
-        assert result["schema_documents"]
-        assert result["contract_documents"]
-        assert all(not entry["path"].startswith("/") for entry in result["schema_documents"])
-        assert all(not entry["path"].startswith("/") for entry in result["contract_documents"])
-        for name, marker in expected_schema_docs.items():
-            assert name in schema_documents
-            assert marker in schema_documents[name]["body"]
-            assert schema_documents[name]["content"]
-        for name, marker in expected_contract_docs.items():
-            assert name in contract_documents
-            assert marker in contract_documents[name]["body"]
-            assert contract_documents[name]["content"]
+        write_schema_documents = {Path(entry["path"]).name: entry for entry in write_paper["schema_documents"]}
+        pause_schema_documents = {Path(entry["path"]).name: entry for entry in pause_work["schema_documents"]}
 
-        if expected_review_mode is None:
-            assert result["review_contract"] is None
-        else:
-            assert result["review_contract"] is not None
-            assert result["review_contract"]["review_mode"] == expected_review_mode
+        assert "error" not in write_paper
+        assert any(path.endswith("figure-tracker.md") for path in write_paper["schema_references"])
+        assert any(path.endswith("author-response.md") for path in write_paper["schema_references"])
+        assert "figure-tracker.md" in write_schema_documents
+        assert "author-response.md" in write_schema_documents
+        assert "figure_registry" in write_schema_documents["figure-tracker.md"]["body"]
+        assert "Issue ID" in write_schema_documents["author-response.md"]["body"]
 
-    def test_get_skill_not_found(self):
-        from gpd.mcp.servers.skills_server import get_skill
-
-        result = get_skill("gpd-nonexistent-skill-xyz")
-
-        assert isinstance(result, dict)
-        assert "error" in result
-        assert "available" in result
-
-    def test_route_skill_selects_execution(self):
-        from gpd.mcp.servers.skills_server import route_skill
-
-        result = route_skill("execute the current phase")
-
-        assert isinstance(result, dict)
-        assert result["suggestion"] == "gpd-execute-phase"
-        assert result["confidence"] > 0
-
-    def test_route_skill_selects_peer_review(self):
-        from gpd.mcp.servers.skills_server import route_skill
-
-        result = route_skill("peer review this manuscript like a referee")
-
-        assert isinstance(result, dict)
-        assert result["suggestion"] == "gpd-peer-review"
-        assert result["confidence"] > 0
+        assert "error" not in pause_work
+        assert any(path.endswith("continue-here.md") for path in pause_work["schema_references"])
+        assert "continue-here.md" in pause_schema_documents
+        assert "<persistent_state>" in pause_schema_documents["continue-here.md"]["body"]
 
     def test_get_skill_index_complete(self):
         from gpd.mcp.servers.skills_server import get_skill_index

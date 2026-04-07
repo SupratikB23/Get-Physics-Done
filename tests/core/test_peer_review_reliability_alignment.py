@@ -47,6 +47,13 @@ def test_peer_review_reliability_reference_uses_canonical_gpd_paths_only() -> No
         "gpd validate referee-decision GPD/review/REFEREE-DECISION{round_suffix}.json --strict --ledger "
         "GPD/review/REVIEW-LEDGER{round_suffix}.json"
     ) in reliability
+    assert "bibliography_audit_clean" in reliability
+    assert "reproducibility_ready" in reliability
+    assert "proof_audits[]" in reliability
+    assert "theorem-bearing claims" in reliability
+    assert "claim record itself" in reliability
+    assert "theorem_assumptions" not in reliability
+    assert "theorem_parameters" not in reliability
     assert "`CLAIMS.json`" not in reliability
     assert "`REFEREE-DECISION.json`" not in reliability
     assert "`REVIEW-LEDGER.json`" not in reliability

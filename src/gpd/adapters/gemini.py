@@ -15,6 +15,8 @@ import logging
 import re
 import shlex
 import shutil
+import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 
 from gpd.adapters.base import RuntimeAdapter
@@ -27,7 +29,7 @@ from gpd.adapters.install_utils import (
     convert_tool_references_in_body,
     ensure_update_hook,
     hook_python_interpreter,
-    materialize_first_round_review_schema_headings,
+    parse_jsonc,
     process_attribution,
     protect_runtime_agent_prompt,
     prune_empty_ancestors,
@@ -35,6 +37,7 @@ from gpd.adapters.install_utils import (
     remove_empty_json_object_file,
     remove_stale_agents,
     render_markdown_frontmatter,
+    should_preserve_public_local_cli_command,
     split_markdown_frontmatter,
     strip_sub_tags,
     verify_installed,
@@ -45,6 +48,7 @@ from gpd.adapters.install_utils import (
     finish_install as _finish_install,
 )
 from gpd.adapters.tool_names import build_runtime_alias_map, reference_translation_map, translate_for_runtime
+from gpd.mcp import managed_integrations as _managed_integrations
 
 logger = logging.getLogger(__name__)
 
@@ -105,18 +109,18 @@ _GEMINI_STATIC_POLICY_COMMAND_PREFIXES: tuple[str, ...] = (
     "printf '%s\\n' \"$PROJECT_CONTRACT_JSON\"",
 )
 _SHELL_FENCE_LANGUAGES = frozenset({"bash", "sh", "shell", "zsh"})
-_INLINE_GPD_COMMAND_RE = re.compile(r"`(?P<command>gpd(?=\s)[^`]*?)`")
 _GEMINI_COMMAND_RUNTIME_NOTE = (
     "<gemini_runtime_notes>\n"
     "Gemini shell compatibility:\n"
     "- When shell steps call the GPD CLI, use {launcher} instead of the ambient `gpd` on PATH.\n"
+    "- Gemini's enforced shell-prefix allowlist for GPD auto-edit mode is:\n{allowlist}\n"
     "- Gemini policy checks are syntactic in headless auto-edit mode. Prefer direct commands and reason over stdout instead of wrapping approved commands in shell variables, `$(...)`, heredocs, or extra chained blocks.\n"
     "- Any remaining `VAR=$(...)` examples in rendered workflow guidance are non-runnable shorthand; do not copy them into Gemini auto-edit mode.\n"
     "- Keep contract JSON in-memory or under `GPD/`. Do not write approved contracts to `/tmp`.\n"
     "</gemini_runtime_notes>\n\n"
 )
 _GEMINI_NEW_PROJECT_INIT_BLOCK = """```bash
-INIT=$(gpd init new-project)
+INIT=$(gpd --raw init new-project)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed with the workflow.
@@ -125,13 +129,13 @@ fi
 _GEMINI_NEW_PROJECT_INIT_REPLACEMENT = """Run the init command as its own shell call in Gemini auto-edit mode. Do not wrap it in `INIT=$(...)` or an `if` block.
 
 ```bash
-gpd init new-project
+gpd --raw init new-project
 ```
 
 If the init command fails, stop, surface the error, and do not proceed with the workflow."""
 _GEMINI_SET_PROFILE_BLOCK = """```bash
 gpd config ensure-section
-INIT=$(gpd init progress --include state,config)
+INIT=$(gpd --raw init progress --include state,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -146,10 +150,22 @@ gpd config ensure-section
 Then run:
 
 ```bash
-gpd init progress --include state,config
+gpd --raw init progress --include state,config --no-project-reentry
 ```
 
 If the init command fails, stop, surface the error, and do not proceed."""
+_GEMINI_SET_PROFILE_BLOCK_RE = re.compile(
+    r"```bash\n"
+    r"gpd config ensure-section\n"
+    r"(?:#.*\n)*"
+    r"INIT=\$\((?:gpd --raw init progress --include state,config(?: --no-project-reentry)?)\)\n"
+    r"if \[ \$\? -ne 0 \]; then\n"
+    r"  echo \"ERROR: gpd initialization failed: \$INIT\"\n"
+    r"  # STOP — display the error to the user and do not proceed\.\n"
+    r"fi\n"
+    r"```",
+    re.MULTILINE,
+)
 _GEMINI_MINIMAL_COMMIT_BLOCK = """```bash
 mkdir -p GPD
 
@@ -200,6 +216,47 @@ def _convert_gemini_tool_name(tool_name: str) -> str | None:
     )
 
 
+def _gemini_settings_shape_is_valid(settings: dict[str, object]) -> bool:
+    hooks = settings.get("hooks")
+    if hooks is not None and not isinstance(hooks, dict):
+        return False
+    if isinstance(hooks, dict):
+        session_start = hooks.get("SessionStart")
+        if session_start is not None and not isinstance(session_start, list):
+            return False
+
+    experimental = settings.get("experimental")
+    if experimental is not None and not isinstance(experimental, dict):
+        return False
+
+    policy_paths = settings.get("policyPaths")
+    if policy_paths is not None and not isinstance(policy_paths, list):
+        return False
+
+    mcp_servers = settings.get("mcpServers")
+    if mcp_servers is not None and not isinstance(mcp_servers, dict):
+        return False
+    if isinstance(mcp_servers, dict) and any(not isinstance(entry, dict) for entry in mcp_servers.values()):
+        return False
+
+    return True
+
+
+def _read_gemini_settings_state(settings_path: Path) -> tuple[dict[str, object] | None, str | None]:
+    """Return parsed Gemini settings and a malformed marker when parsing fails."""
+    if not settings_path.exists():
+        return None, None
+    try:
+        parsed = parse_jsonc(settings_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, "malformed"
+    if not isinstance(parsed, dict):
+        return None, "malformed"
+    if not _gemini_settings_shape_is_valid(parsed):
+        return None, "malformed"
+    return parsed, None
+
+
 def _gemini_policy_command_prefixes(bridge_command: str) -> tuple[str, ...]:
     """Return the narrow shell prefixes GPD auto-approves for Gemini."""
     return (
@@ -208,12 +265,36 @@ def _gemini_policy_command_prefixes(bridge_command: str) -> tuple[str, ...]:
     )
 
 
+def _render_gemini_shell_allowlist(bridge_command: str) -> str:
+    """Render the enforced Gemini shell-prefix allowlist for model-facing content."""
+    return "\n".join(
+        f"  - `{prefix}`"
+        for prefix in _gemini_policy_command_prefixes(bridge_command)
+    )
+
+
+def _project_managed_mcp_servers(
+    env: Mapping[str, str] | None = None,
+    *,
+    cwd: Path | None = None,
+) -> dict[str, dict[str, object]]:
+    """Project shared optional integrations into Gemini's ``mcpServers`` shape."""
+    return _managed_integrations.projected_managed_optional_mcp_servers(env, cwd=cwd)
+
+
+def _managed_mcp_server_keys() -> frozenset[str]:
+    """Return GPD-managed Gemini MCP server keys, including optional integrations."""
+    from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
+
+    return frozenset(set(GPD_MCP_SERVER_KEYS) | set(_managed_integrations.managed_optional_mcp_server_keys()))
+
+
 def _rewrite_gpd_cli_invocations(content: str, bridge_command: str) -> str:
     """Rewrite shell-command ``gpd`` calls to the shared runtime CLI bridge.
 
-    Restrict rewrites to fenced shell code blocks and inline code spans that
-    actually contain runnable commands. This keeps prose and quoted strings
-    intact while still rewriting command positions.
+    Restrict rewrites to fenced shell code blocks and command positions only.
+    This keeps prose and inline code spans canonical while still rewriting
+    runnable shell steps.
     """
     rewritten: list[str] = []
     in_shell_fence = False
@@ -233,14 +314,9 @@ def _rewrite_gpd_cli_invocations(content: str, bridge_command: str) -> str:
             rewritten.append(_rewrite_gemini_shell_line(line, bridge_command))
             continue
 
-        rewritten.append(_rewrite_inline_gpd_command_spans(line, bridge_command))
+        rewritten.append(line)
 
     return "".join(rewritten)
-
-
-def _rewrite_inline_gpd_command_spans(content: str, bridge_command: str) -> str:
-    """Rewrite inline markdown code spans that execute ``gpd`` commands."""
-    return _INLINE_GPD_COMMAND_RE.sub(lambda match: f"`{bridge_command}{match.group('command')[3:]}`", content)
 
 
 def _rewrite_gemini_shell_line(line: str, bridge_command: str) -> str:
@@ -273,6 +349,10 @@ def _rewrite_gemini_shell_line(line: str, bridge_command: str) -> str:
             and _is_gpd_command_start(line, index)
             and _is_gpd_token_end(line, index + 3)
         ):
+            if should_preserve_public_local_cli_command(line[index:]):
+                pieces.append("gpd")
+                index += 3
+                continue
             pieces.append(bridge_command)
             index += 3
             continue
@@ -310,11 +390,48 @@ def _is_gpd_token_end(line: str, end_index: int) -> bool:
 
 def _inject_gemini_command_runtime_note(content: str, bridge_command: str) -> str:
     """Prepend Gemini-specific shell guidance to installed top-level commands."""
-    note = _GEMINI_COMMAND_RUNTIME_NOTE.format(launcher=bridge_command)
+    note = _GEMINI_COMMAND_RUNTIME_NOTE.format(
+        launcher=bridge_command,
+        allowlist=_render_gemini_shell_allowlist(bridge_command),
+    )
     preamble, frontmatter, separator, body = split_markdown_frontmatter(content)
     if not frontmatter:
         return note + content
     return render_markdown_frontmatter(preamble, frontmatter, separator, note + body)
+
+
+def _validate_existing_gemini_managed_state(target_dir: Path) -> None:
+    """Fail closed when the prior Gemini manifest tracks managed config with the wrong shape."""
+    manifest_path = target_dir / MANIFEST_NAME
+    if not manifest_path.exists():
+        return
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Gemini install manifest is malformed; refusing to overwrite managed config state.") from exc
+    if not isinstance(manifest, dict):
+        raise RuntimeError("Gemini install manifest is malformed; refusing to overwrite managed config state.")
+
+    managed_config = manifest.get("managed_config")
+    if managed_config is not None:
+        if not isinstance(managed_config, dict):
+            raise RuntimeError("Gemini managed_config is malformed; refusing to overwrite managed config state.")
+        enable_agents = managed_config.get("experimental.enableAgents")
+        if enable_agents is not None and not isinstance(enable_agents, bool):
+            raise RuntimeError("Gemini managed_config.experimental.enableAgents is malformed.")
+        policy_paths = managed_config.get("policyPaths")
+        if policy_paths is not None and not (
+            isinstance(policy_paths, list) and all(isinstance(path, str) and path for path in policy_paths)
+        ):
+            raise RuntimeError("Gemini managed_config.policyPaths is malformed.")
+
+    managed_runtime_files = manifest.get("managed_runtime_files")
+    if managed_runtime_files is not None and not (
+        isinstance(managed_runtime_files, list)
+        and all(isinstance(path, str) and path for path in managed_runtime_files)
+    ):
+        raise RuntimeError("Gemini managed_runtime_files is malformed.")
 
 
 def _rewrite_gemini_shell_workflow_guidance(content: str) -> str:
@@ -328,7 +445,7 @@ def _rewrite_gemini_shell_workflow_guidance(content: str) -> str:
     denied before GPD ever runs.
     """
     content = content.replace(_GEMINI_NEW_PROJECT_INIT_BLOCK, _GEMINI_NEW_PROJECT_INIT_REPLACEMENT)
-    content = content.replace(_GEMINI_SET_PROFILE_BLOCK, _GEMINI_SET_PROFILE_REPLACEMENT)
+    content = _GEMINI_SET_PROFILE_BLOCK_RE.sub(_GEMINI_SET_PROFILE_REPLACEMENT, content)
     content = content.replace(_GEMINI_MINIMAL_COMMIT_BLOCK, _GEMINI_MINIMAL_COMMIT_REPLACEMENT)
     content = re.sub(
         r'(?m)^([ \t]*)PRE_CHECK=\$\((gpd pre-commit-check --files [^\n]+) 2>&1\) \|\| true\n\1echo "\$PRE_CHECK"$',
@@ -473,7 +590,7 @@ gpd commit "docs: generate dependency graph" --files GPD/DEPENDENCY-GRAPH.md
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init phase-op)
+INIT=$(gpd --raw init phase-op)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -481,12 +598,12 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init phase-op
+gpd --raw init phase-op
 ```""",
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init progress --include state,roadmap,config)
+INIT=$(gpd --raw init progress --include state,roadmap,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -494,12 +611,12 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init progress --include state,roadmap,config
+gpd --raw init progress --include state,roadmap,config
 ```""",
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init progress --include state)
+INIT=$(gpd --raw init progress --include state)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -507,12 +624,12 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init progress --include state
+gpd --raw init progress --include state
 ```""",
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init phase-op --include state,config "${PHASE_ARG:-}")
+INIT=$(gpd --raw init phase-op --include state,config "${PHASE_ARG:-}")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -520,12 +637,12 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init phase-op --include state,config "${PHASE_ARG:-}"
+gpd --raw init phase-op --include state,config "${PHASE_ARG:-}"
 ```""",
     )
     content = content.replace(
         """```bash
-INIT=$(gpd init progress --include state,config)
+INIT=$(gpd --raw init progress --include state,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -533,7 +650,7 @@ fi
 ```""",
         """```bash
 # Gemini auto-edit: run initialization directly instead of capturing it in INIT.
-gpd init progress --include state,config
+gpd --raw init progress --include state,config
 ```""",
     )
     return _rewrite_gemini_capture_assignments(content)
@@ -681,16 +798,6 @@ def _merge_unique_strings(existing: object, additions: list[str]) -> tuple[list[
     return merged, added
 
 
-def _remove_strings(existing: object, removals: list[str]) -> tuple[list[str], bool]:
-    """Remove matching strings while preserving order."""
-    current = _normalize_string_list(existing)
-    if not current or not removals:
-        return current, False
-    removal_set = set(removals)
-    updated = [item for item in current if item not in removal_set]
-    return updated, updated != current
-
-
 def _managed_gemini_policy_path(target_dir: Path) -> Path:
     """Return the GPD-managed Gemini policy file path."""
     return target_dir / _GEMINI_POLICY_DIR_NAME / _GEMINI_POLICY_FILE_NAME
@@ -778,8 +885,6 @@ def _convert_to_gemini_toml(content: str) -> str:
         toml += f"prompt = '''\n{body}\n'''\n"
 
     return toml
-
-
 def _render_preserved_frontmatter_comments(frontmatter: str) -> str:
     """Render non-runtime frontmatter metadata as TOML comments.
 
@@ -870,7 +975,6 @@ def _copy_agents_gemini(
             install_scope=install_scope,
             src_root=source_root,
         )
-        content = materialize_first_round_review_schema_headings(content)
         content = process_attribution(content, attribution)
         content = protect_runtime_agent_prompt(content, "gemini")
         content = _convert_frontmatter_to_gemini(content)
@@ -898,6 +1002,7 @@ def _install_commands_as_toml(
     install_scope: str | None = None,
     *,
     bridge_command: str,
+    explicit_target: bool = False,
 ) -> None:
     """Install commands as .toml files in nested ``commands/gpd/`` structure.
 
@@ -920,6 +1025,7 @@ def _install_commands_as_toml(
         gpd_src_root,
         install_scope,
         bridge_command=bridge_command,
+        explicit_target=explicit_target,
     )
 
 
@@ -933,6 +1039,7 @@ def _copy_commands_recursive(
     install_scope: str | None = None,
     *,
     bridge_command: str,
+    explicit_target: bool = False,
 ) -> None:
     """Recursively copy commands, converting .md to .toml for Gemini."""
     for entry in sorted(src_dir.iterdir()):
@@ -948,6 +1055,7 @@ def _copy_commands_recursive(
                 gpd_src_root,
                 install_scope,
                 bridge_command=bridge_command,
+                explicit_target=explicit_target,
             )
         elif entry.suffix == ".md":
             content = compile_markdown_for_runtime(
@@ -957,6 +1065,7 @@ def _copy_commands_recursive(
                 install_scope=install_scope,
                 src_root=gpd_src_root,
                 workflow_target_dir=workflow_target_dir,
+                explicit_target=explicit_target,
             )
             content = process_attribution(content, attribution)
             content = strip_sub_tags(content)
@@ -988,9 +1097,36 @@ class GeminiAdapter(RuntimeAdapter):
     def runtime_name(self) -> str:
         return "gemini"
 
+    def project_markdown_surface(
+        self,
+        content: str,
+        *,
+        surface_kind: str,
+        path_prefix: str,
+        command_name: str | None = None,
+    ) -> str:
+        del path_prefix, command_name
+        if surface_kind != "command":
+            return super().project_markdown_surface(
+                content,
+                surface_kind=surface_kind,
+                path_prefix="",
+            )
+        prompt = tomllib.loads(_convert_to_gemini_toml(content)).get("prompt")
+        if not isinstance(prompt, str):
+            raise ValueError("gemini projected command surface must expose a prompt string")
+        return prompt
+
     def _runtime_bridge_only_relpaths(self) -> tuple[str, ...]:
         """Return Gemini artifacts that appear only after finalize_install()."""
         return ("settings.json",)
+
+    def runtime_install_required_relpaths(self) -> tuple[str, ...]:
+        """Return Gemini-owned files required for a complete install."""
+        return (
+            f"{_GEMINI_POLICY_DIR_NAME}/{_GEMINI_POLICY_FILE_NAME}",
+            *self._runtime_bridge_only_relpaths(),
+        )
 
     def install(
         self,
@@ -1033,8 +1169,9 @@ class GeminiAdapter(RuntimeAdapter):
             attribution=self.get_commit_attribution(),
             install_scope=self._current_install_scope_flag(),
             bridge_command=bridge_command,
+            explicit_target=getattr(self, "_install_explicit_target", False),
         )
-        if verify_installed(commands_dest, "commands/gpd"):
+        if verify_installed(commands_dest):
             logger.info("Installed commands/gpd (TOML format)")
         else:
             failures.append("commands/gpd")
@@ -1053,7 +1190,7 @@ class GeminiAdapter(RuntimeAdapter):
             install_scope=self._current_install_scope_flag(),
             bridge_command=bridge_command,
         )
-        if verify_installed(agents_dest, "agents"):
+        if verify_installed(agents_dest):
             logger.info("Installed agents")
         else:
             failures.append("agents")
@@ -1082,12 +1219,17 @@ class GeminiAdapter(RuntimeAdapter):
                 self.runtime_name,
                 install_scope=self._current_install_scope_flag(),
                 markdown_transform=_translate,
+                explicit_target=getattr(self, "_install_explicit_target", False),
             )
         )
 
     def _configure_runtime(self, target_dir: Path, is_global: bool) -> dict[str, object]:
         settings_path = target_dir / "settings.json"
-        settings = read_settings(settings_path)
+        _validate_existing_gemini_managed_state(target_dir)
+        settings_state, settings_parse_error = _read_gemini_settings_state(settings_path)
+        if settings_parse_error is not None:
+            raise RuntimeError("Gemini settings.json is malformed; refusing to overwrite it during install.")
+        settings = settings_state or {}
         self._managed_policy_paths = []
         self._managed_runtime_files = []
 
@@ -1145,6 +1287,10 @@ class GeminiAdapter(RuntimeAdapter):
         from gpd.mcp.builtin_servers import build_mcp_servers_dict, merge_managed_mcp_servers
 
         mcp_servers = build_mcp_servers_dict(python_path=hook_python_interpreter())
+        project_cwd = None if is_global or getattr(self, "_install_explicit_target", False) else target_dir.parent
+        managed_mcp_servers = _project_managed_mcp_servers(cwd=project_cwd)
+        if managed_mcp_servers:
+            mcp_servers.update(managed_mcp_servers)
         if mcp_servers:
             existing_mcp = settings.get("mcpServers", {})
             merged_mcp = merge_managed_mcp_servers(existing_mcp, mcp_servers)
@@ -1166,11 +1312,16 @@ class GeminiAdapter(RuntimeAdapter):
         wrapper_path = _managed_gemini_yolo_wrapper_path(target_dir)
         wrapper_exists = wrapper_path.is_file()
         desired_mode = "yolo" if autonomy == "yolo" else "default"
+        next_step: str | None = None
         message = "Gemini is using its normal approval-mode defaults."
         if desired_mode == "yolo":
             if wrapper_exists:
                 message = (
                     "Gemini only supports yolo at launch time. The GPD launcher is ready for the next session."
+                )
+                next_step = (
+                    "Exit the current Gemini session and relaunch with "
+                    f"{shlex.quote(str(wrapper_path))} so the runtime itself starts in yolo mode."
                 )
             else:
                 message = (
@@ -1182,9 +1333,11 @@ class GeminiAdapter(RuntimeAdapter):
             "desired_mode": desired_mode,
             "configured_mode": "launch-wrapper" if wrapper_exists else "default",
             "config_aligned": wrapper_exists if desired_mode == "yolo" else True,
+            "requires_relaunch": wrapper_exists if desired_mode == "yolo" else False,
             "managed_by_gpd": wrapper_exists,
             "launch_command": shlex.quote(str(wrapper_path)) if wrapper_exists else None,
             "message": message,
+            "next_step": next_step,
         }
 
     def sync_runtime_permissions(self, target_dir: Path, *, autonomy: str) -> dict[str, object]:
@@ -1240,18 +1393,10 @@ class GeminiAdapter(RuntimeAdapter):
             explicit_target=getattr(self, "_install_explicit_target", False),
         )
 
-    def install_completeness_relpaths(self) -> tuple[str, ...]:
-        """Return Gemini-specific artifacts required for a usable install."""
-        return (
-            *super().install_completeness_relpaths(),
-            f"{_GEMINI_POLICY_DIR_NAME}/{_GEMINI_POLICY_FILE_NAME}",
-            *self._runtime_bridge_only_relpaths(),
-        )
-
     def install_verification_relpaths(self) -> tuple[str, ...]:
         """Return Gemini artifacts that must exist before ``install()`` returns."""
         return (
-            *super().install_completeness_relpaths(),
+            *self.install_detection_relpaths(),
             f"{_GEMINI_POLICY_DIR_NAME}/{_GEMINI_POLICY_FILE_NAME}",
         )
 
@@ -1287,6 +1432,11 @@ class GeminiAdapter(RuntimeAdapter):
         settings = install_result.get("settings")
         statusline_command = install_result.get("statuslineCommand")
         if isinstance(settings_path, (str, Path)) and isinstance(settings, dict) and isinstance(statusline_command, str):
+            target_dir = Path(settings_path).expanduser().resolve(strict=False).parent
+            _validate_existing_gemini_managed_state(target_dir)
+            _, settings_parse_error = _read_gemini_settings_state(Path(settings_path))
+            if settings_parse_error is not None:
+                raise RuntimeError("Gemini settings.json is malformed; refusing to overwrite it during finalize.")
             self.finish_install(
                 settings_path,
                 settings,
@@ -1302,6 +1452,7 @@ class GeminiAdapter(RuntimeAdapter):
         Extends base uninstall with Gemini-specific settings.json cleanup.
         """
         manifest = read_settings(target_dir / MANIFEST_NAME)
+        has_authoritative_manifest = self._has_authoritative_install_manifest(target_dir)
         managed_config = manifest.get("managed_config")
         managed_runtime_files = manifest.get("managed_runtime_files")
         remove_managed_enable_agents = (
@@ -1361,24 +1512,6 @@ class GeminiAdapter(RuntimeAdapter):
                     del settings["experimental"]
                 modified = True
 
-            # Remove legacy tools.allowed entries GPD may have written before
-            # migrating to the Policy Engine (manifests from older installs).
-            legacy_allowed_tools = _normalize_string_list(
-                managed_config.get("tools.allowed") if isinstance(managed_config, dict) else None
-            )
-            if legacy_allowed_tools:
-                tools = settings.get("tools")
-                if isinstance(tools, dict):
-                    allowed_tools, changed = _remove_strings(tools.get("allowed"), legacy_allowed_tools)
-                    if changed:
-                        modified = True
-                        if allowed_tools:
-                            tools["allowed"] = allowed_tools
-                        else:
-                            tools.pop("allowed", None)
-                    if not tools:
-                        settings.pop("tools", None)
-
             policy_paths = _normalize_string_list(settings.get("policyPaths"))
             if policy_paths:
                 candidate_policy_paths = set(managed_policy_paths)
@@ -1396,9 +1529,7 @@ class GeminiAdapter(RuntimeAdapter):
             # Remove GPD MCP servers
             mcp_servers = settings.get("mcpServers")
             if isinstance(mcp_servers, dict):
-                from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
-
-                removed_keys = [key for key in list(mcp_servers) if key in GPD_MCP_SERVER_KEYS]
+                removed_keys = [key for key in list(mcp_servers) if key in _managed_mcp_server_keys()]
                 if removed_keys:
                     for key in removed_keys:
                         del mcp_servers[key]
@@ -1409,20 +1540,21 @@ class GeminiAdapter(RuntimeAdapter):
             if modified:
                 write_settings(settings_path, settings)
                 logger.info("Cleaned up Gemini settings.json (statusline, hooks, experimental, MCP)")
-            if remove_empty_json_object_file(settings_path):
+            if has_authoritative_manifest and remove_empty_json_object_file(settings_path):
                 result.setdefault("removed", []).append(settings_path.name)
 
-        policy_files = _normalize_string_list(managed_runtime_files)
-        if not policy_files:
-            policy_files = [str(_managed_gemini_policy_path(target_dir).relative_to(target_dir))]
-        for rel_path in policy_files:
-            candidate = target_dir / rel_path
-            if candidate.exists():
-                candidate.unlink()
-                result.setdefault("removed", []).append(rel_path)
         policy_dir = _managed_gemini_policy_path(target_dir).parent
-        if policy_dir.is_dir() and not any(policy_dir.iterdir()):
-            policy_dir.rmdir()
+        if has_authoritative_manifest:
+            policy_files = _normalize_string_list(managed_runtime_files)
+            if not policy_files:
+                policy_files = [str(_managed_gemini_policy_path(target_dir).relative_to(target_dir))]
+            for rel_path in policy_files:
+                candidate = target_dir / rel_path
+                if candidate.exists():
+                    candidate.unlink()
+                    result.setdefault("removed", []).append(rel_path)
+            if policy_dir.is_dir() and not any(policy_dir.iterdir()):
+                policy_dir.rmdir()
 
         for path in (
             target_dir / "commands",

@@ -13,6 +13,7 @@ from gpd.command_labels import (
     command_slug_from_label,
     rewrite_runtime_command_surfaces,
     runtime_command_prefixes,
+    runtime_public_command_prefixes,
 )
 from gpd.mcp.servers.skills_server import _canonicalize_command_surface
 
@@ -55,6 +56,21 @@ def test_runtime_command_prefixes_are_derived_from_the_runtime_catalog() -> None
     expected_prefixes.sort(key=len, reverse=True)
 
     assert runtime_command_prefixes() == tuple(expected_prefixes)
+
+
+def test_runtime_public_command_prefixes_are_derived_from_the_runtime_catalog() -> None:
+    expected_prefixes = []
+    seen: set[str] = set()
+    for descriptor in iter_runtime_descriptors():
+        prefix = descriptor.public_command_surface_prefix or descriptor.command_prefix
+        if prefix in seen:
+            continue
+        seen.add(prefix)
+        expected_prefixes.append(prefix)
+    expected_prefixes.sort(key=len, reverse=True)
+
+    assert runtime_public_command_prefixes() == tuple(expected_prefixes)
+    assert "/gpd-" in runtime_public_command_prefixes()
 
 
 @pytest.mark.parametrize("descriptor", iter_runtime_descriptors(), ids=lambda item: item.runtime_name)
@@ -112,10 +128,34 @@ def test_runtime_native_command_surfaces_rewrite_to_canonical_skill_labels(descr
     assert _canonicalize_command_surface(content) == rewritten
 
 
+@pytest.mark.parametrize("descriptor", iter_runtime_descriptors(), ids=lambda item: item.runtime_name)
+def test_runtime_native_command_wildcard_surfaces_rewrite_to_canonical_skill_wildcard(descriptor: object) -> None:
+    content = f"Use `{descriptor.command_prefix}*` to browse runtime commands.\n"
+
+    assert _canonicalize_command_surface(content) == "Use `gpd-*` to browse runtime commands.\n"
+
+
 def test_runtime_command_surface_rewrite_does_not_mutate_markdown_paths() -> None:
     content = "Read /tmp/specs/gpd-help.md and /tmp/agents/gpd-executor.md before continuing."
 
     assert rewrite_runtime_command_surfaces(content, canonical="skill") == content
+
+
+def test_runtime_command_surface_rewrite_skips_urls_and_paths_but_keeps_examples() -> None:
+    content = (
+        "Use /gpd:help when you want a real command example.\n"
+        "See https://example.test//gpd:help and /tmp//gpd:help.txt and /tmp/$gpd-help.txt.\n"
+        "Keep ./docs/gpd-help.md and foo$gpd-help/bar untouched.\n"
+    )
+
+    rewritten = rewrite_runtime_command_surfaces(content, canonical="skill")
+
+    assert "Use gpd-help when you want a real command example." in rewritten
+    assert "https://example.test//gpd:help" in rewritten
+    assert "/tmp//gpd:help.txt" in rewritten
+    assert "/tmp/$gpd-help.txt" in rewritten
+    assert "./docs/gpd-help.md" in rewritten
+    assert "foo$gpd-help/bar" in rewritten
 
 
 def test_foreign_bare_slash_command_is_not_canonicalized_into_gpd() -> None:

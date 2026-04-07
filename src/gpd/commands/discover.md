@@ -14,13 +14,11 @@ allowed-tools:
   - web_fetch
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Run a standalone discovery investigation for a research phase. Surveys the physics landscape: what is known, what methods exist, what approximations are valid, what data is available.
 
-Produces RESEARCH.md (with `depth: quick`) that informs subsequent planning via /gpd:plan-phase.
+`--depth quick` (`depth: quick`) is verification-only and returns without writing `RESEARCH.md`. Produces RESEARCH.md for `--depth medium` or `--depth deep`, which informs subsequent planning via gpd:plan-phase.
 
 **Use this when:**
 
@@ -72,11 +70,11 @@ Default depth: `medium` (Level 2).
 
 Follow the discover workflow for the determined depth level.
 
-## Step 3: Commit (if Level 2-3 produced RESEARCH.md)
+## Step 3: Persistence Policy (if Level 2-3 produced RESEARCH.md)
 
-```bash
-gpd commit "discover(${phase_number}): ${depth} discovery for ${phase_name}" --files "GPD/phases/${padded_phase}-${phase_slug}/RESEARCH.md"
-```
+Do not commit `RESEARCH.md` separately.
+If discovery ran phase-scoped, leave the phase `RESEARCH.md` in the working tree for the later phase-completion commit.
+If discovery ran in standalone mode, report the findings directly and do not emit phase-only commit messages or file paths.
 
 ## Step 4: Present Results and Next Steps
 
@@ -89,8 +87,8 @@ Show discovery summary, confidence level, and offer next actions.
 - [ ] Depth level determined (default medium)
 - [ ] Discovery executed at appropriate depth
 - [ ] Standard references consulted before general search
-- [ ] RESEARCH.md created (Level 2-3) with recommendation
+- [ ] RESEARCH.md created (Level 2-3) with recommendation, or Level 1 returned verification-only confirmation
 - [ ] Confidence gate applied
-- [ ] Committed to git (Level 2-3)
+- [ ] No separate RESEARCH.md commit
 - [ ] Next steps offered (plan-phase, dig deeper, review)
       </success_criteria>

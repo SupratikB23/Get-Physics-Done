@@ -24,7 +24,8 @@ from unittest.mock import patch
 import pytest
 
 from gpd import registry
-from gpd.adapters import get_adapter
+from gpd.adapters import get_adapter, iter_runtime_descriptors
+from gpd.adapters.base import RuntimeAdapter
 from gpd.adapters.install_utils import (
     MANIFEST_NAME,
     expand_at_includes,
@@ -32,10 +33,23 @@ from gpd.adapters.install_utils import (
     write_settings,
 )
 from gpd.registry import _parse_agent_file, _parse_frontmatter
+from tests.runtime_test_support import (
+    PRIMARY_RUNTIME,
+    runtime_empty_config_content,
+    runtime_primary_config_filename,
+    runtime_with_manifest_file_prefix,
+)
 
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+
+_RUNTIME_DESCRIPTORS = tuple(iter_runtime_descriptors())
+_ALL_RUNTIMES = tuple(descriptor.runtime_name for descriptor in _RUNTIME_DESCRIPTORS)
+_RUNTIMES_WITH_MANIFEST_FILE_PREFIXES = tuple(
+    descriptor.runtime_name for descriptor in _RUNTIME_DESCRIPTORS if descriptor.manifest_file_prefixes
+)
 
 
 def _make_gpd_root(tmp_path: Path) -> Path:
@@ -74,6 +88,15 @@ def _write_manifest(target: Path, *, runtime: str, install_scope: str = "local",
     )
 
 
+def _legacy_gpd_hook_body() -> str:
+    return (
+        "#!/usr/bin/env python3\n"
+        '"""Legacy GPD hook residue."""\n'
+        "from gpd.hooks.install_context import detect_self_owned_install\n"
+        "LEGACY = detect_self_owned_install\n"
+    )
+
+
 def _seed_ambiguous_install_target(target: Path, *, manifest_state: str) -> None:
     """Create a target that looks like an install but lacks trustworthy ownership data."""
     (target / "commands" / "gpd").mkdir(parents=True, exist_ok=True)
@@ -97,11 +120,26 @@ def _install_gemini_for_tests(gpd_root: Path, target: Path) -> None:
     adapter.finalize_install(result)
 
 
+class _CommitAttributionProbeAdapter(RuntimeAdapter):
+    @property
+    def runtime_name(self) -> str:
+        return "claude-code"
+
+    def runtime_install_required_relpaths(self) -> tuple[str, ...]:
+        return ("custom-config.json",)
+
+
+class _NoCommitAttributionProbeAdapter(RuntimeAdapter):
+    @property
+    def runtime_name(self) -> str:
+        return "claude-code"
+
+    def runtime_install_required_relpaths(self) -> tuple[str, ...]:
+        return ()
+
 _FOREIGN_RUNTIME_BY_RUNTIME = {
-    "claude-code": "gemini",
-    "codex": "claude-code",
-    "gemini": "opencode",
-    "opencode": "claude-code",
+    descriptor.runtime_name: _ALL_RUNTIMES[(index + 1) % len(_ALL_RUNTIMES)]
+    for index, descriptor in enumerate(_RUNTIME_DESCRIPTORS)
 }
 
 
@@ -121,7 +159,7 @@ class TestInstallReadOnlyDirectory:
         # Make target read-only
         target.chmod(stat.S_IRUSR | stat.S_IXUSR)
         try:
-            adapter = get_adapter("claude-code")
+            adapter = get_adapter(PRIMARY_RUNTIME)
             with pytest.raises((PermissionError, OSError)):
                 adapter.install(gpd_root, target, is_global=True)
         finally:
@@ -134,7 +172,10 @@ class TestInstallReadOnlyDirectory:
         readonly.chmod(stat.S_IRUSR | stat.S_IXUSR)
         try:
             with pytest.raises(PermissionError, match="Cannot write to settings"):
-                write_settings(readonly / "settings.json", {"key": "value"})
+                write_settings(
+                    readonly / runtime_primary_config_filename(PRIMARY_RUNTIME),
+                    {"key": "value"},
+                )
         finally:
             readonly.chmod(stat.S_IRWXU)
 
@@ -195,8 +236,8 @@ class TestInstallCorruptedPackage:
         (root / "hooks").mkdir(parents=True)
         # commands/ missing
 
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
         target.mkdir()
 
         with pytest.raises(FileNotFoundError, match="commands"):
@@ -213,8 +254,8 @@ class TestNonGpdFilesPreserved:
 
     def test_install_preserves_non_gpd_commands(self, tmp_path: Path) -> None:
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
 
         # Pre-populate with non-GPD commands
         user_cmds = target / "commands"
@@ -233,8 +274,8 @@ class TestNonGpdFilesPreserved:
 
     def test_uninstall_preserves_non_gpd_commands(self, tmp_path: Path) -> None:
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
 
         # Install first
         (target / "commands").mkdir(parents=True)
@@ -251,8 +292,8 @@ class TestNonGpdFilesPreserved:
 
     def test_uninstall_preserves_non_gpd_agents(self, tmp_path: Path) -> None:
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
         target.mkdir()
 
         adapter.install(gpd_root, target, is_global=True)
@@ -267,10 +308,47 @@ class TestNonGpdFilesPreserved:
         assert len(gpd_agents) == 0
         assert (target / "agents" / "my-custom-agent.md").exists()
 
+    def test_install_allows_user_agents_and_empty_runtime_config_without_manifest(self, tmp_path: Path) -> None:
+        gpd_root = _make_gpd_root(tmp_path)
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
+        agents_dir = target / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "my-custom-agent.md").write_text("custom agent\n", encoding="utf-8")
+        config_filename = runtime_primary_config_filename(adapter.runtime_name)
+        (target / config_filename).write_text(runtime_empty_config_content(adapter.runtime_name), encoding="utf-8")
+
+        adapter.install(gpd_root, target, is_global=True)
+
+        assert (target / config_filename).exists()
+        assert (agents_dir / "my-custom-agent.md").exists()
+        assert any(path.name.startswith("gpd-") for path in agents_dir.iterdir())
+
+    @pytest.mark.parametrize("descriptor", _RUNTIME_DESCRIPTORS, ids=lambda descriptor: descriptor.runtime_name)
+    def test_uninstall_preserves_empty_runtime_config_without_manifest(
+        self,
+        tmp_path: Path,
+        descriptor,
+    ) -> None:
+        adapter = get_adapter(descriptor.runtime_name)
+        target = tmp_path / adapter.config_dir_name
+        agents_dir = target / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "my-custom-agent.md").write_text("custom agent\n", encoding="utf-8")
+        config_filename = runtime_primary_config_filename(descriptor.runtime_name)
+        config_content = runtime_empty_config_content(descriptor.runtime_name)
+        (target / config_filename).write_text(config_content, encoding="utf-8")
+
+        result = adapter.uninstall(target)
+
+        assert result["removed"] == []
+        assert (target / config_filename).exists()
+        assert (agents_dir / "my-custom-agent.md").exists()
+
     def test_install_preserves_unmanaged_hook_with_matching_gpd_basename(self, tmp_path: Path) -> None:
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
         unmanaged_hook = target / "hooks" / "statusline.py"
         unmanaged_hook.parent.mkdir(parents=True)
         unmanaged_hook.write_text("# third-party statusline hook\n", encoding="utf-8")
@@ -279,6 +357,30 @@ class TestNonGpdFilesPreserved:
 
         assert unmanaged_hook.read_text(encoding="utf-8") == "# third-party statusline hook\n"
         assert (target / "hooks" / "check_update.py").exists()
+
+    def test_install_preserves_manifestless_hook_residue_with_matching_basename(self, tmp_path: Path) -> None:
+        gpd_root = _make_gpd_root(tmp_path)
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
+        stale_hook = target / "hooks" / "statusline.py"
+        stale_hook.parent.mkdir(parents=True)
+        stale_hook.write_text(_legacy_gpd_hook_body(), encoding="utf-8")
+
+        adapter.install(gpd_root, target, is_global=True)
+
+        assert stale_hook.read_text(encoding="utf-8") == _legacy_gpd_hook_body()
+
+    def test_uninstall_preserves_manifestless_hook_residue_with_matching_basename(self, tmp_path: Path) -> None:
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
+        stale_hook = target / "hooks" / "statusline.py"
+        stale_hook.parent.mkdir(parents=True)
+        stale_hook.write_text(_legacy_gpd_hook_body(), encoding="utf-8")
+
+        result = adapter.uninstall(target)
+
+        assert "1 GPD hooks" not in result["removed"]
+        assert stale_hook.exists()
 
 
 # =========================================================================
@@ -289,7 +391,7 @@ class TestNonGpdFilesPreserved:
 class TestCrossRuntimeManifestOwnershipRefusal:
     """Foreign manifests should block explicit installs and most uninstalls."""
 
-    @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+    @pytest.mark.parametrize("runtime", _ALL_RUNTIMES)
     def test_install_refuses_foreign_manifest_on_explicit_target(self, tmp_path: Path, runtime: str) -> None:
         gpd_root = _make_gpd_root(tmp_path)
         adapter = get_adapter(runtime)
@@ -302,7 +404,7 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         _write_manifest(target, runtime=foreign_runtime)
 
         install_kwargs: dict[str, object] = {"is_global": False, "explicit_target": True}
-        if runtime == "codex":
+        if runtime == runtime_with_manifest_file_prefix("skills/"):
             skills_dir = tmp_path / "skills"
             skills_dir.mkdir()
             install_kwargs["skills_dir"] = skills_dir
@@ -317,7 +419,7 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         assert preserved.read_text(encoding="utf-8") == "keep\n"
         assert json.loads((target / MANIFEST_NAME).read_text(encoding="utf-8"))["runtime"] == foreign_runtime
 
-    @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+    @pytest.mark.parametrize("runtime", _ALL_RUNTIMES)
     def test_install_refuses_corrupt_manifest_on_explicit_target_named_like_runtime_default(
         self, tmp_path: Path, runtime: str
     ) -> None:
@@ -331,7 +433,7 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         (target / MANIFEST_NAME).write_text("{not valid json", encoding="utf-8")
 
         install_kwargs: dict[str, object] = {"is_global": True, "explicit_target": True}
-        if runtime == "codex":
+        if runtime == runtime_with_manifest_file_prefix("skills/"):
             skills_dir = tmp_path / "skills"
             skills_dir.mkdir()
             install_kwargs["skills_dir"] = skills_dir
@@ -349,7 +451,7 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         self, tmp_path: Path, manifest_state: str
     ) -> None:
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
+        adapter = get_adapter(PRIMARY_RUNTIME)
         target = tmp_path / "ambiguous-target"
         target.mkdir()
         _seed_ambiguous_install_target(target, manifest_state=manifest_state)
@@ -364,7 +466,7 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         assert (target / "commands" / "gpd" / "help.md").exists()
         assert (target / "get-physics-done" / "VERSION").exists()
 
-    @pytest.mark.parametrize("runtime", ["codex", "opencode"])
+    @pytest.mark.parametrize("runtime", _RUNTIMES_WITH_MANIFEST_FILE_PREFIXES)
     def test_install_refuses_manifest_with_runtime_file_prefixes_but_no_runtime(
         self, tmp_path: Path, runtime: str
     ) -> None:
@@ -394,7 +496,7 @@ class TestCrossRuntimeManifestOwnershipRefusal:
     def test_uninstall_refuses_ambiguous_target_when_manifest_cannot_prove_ownership(
         self, tmp_path: Path, manifest_state: str
     ) -> None:
-        adapter = get_adapter("claude-code")
+        adapter = get_adapter(PRIMARY_RUNTIME)
         target = tmp_path / "ambiguous-target"
         target.mkdir()
         _seed_ambiguous_install_target(target, manifest_state=manifest_state)
@@ -409,7 +511,7 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         assert (target / "commands" / "gpd" / "help.md").exists()
         assert (target / "get-physics-done" / "VERSION").exists()
 
-    @pytest.mark.parametrize("runtime", ["codex", "opencode"])
+    @pytest.mark.parametrize("runtime", _RUNTIMES_WITH_MANIFEST_FILE_PREFIXES)
     def test_uninstall_refuses_manifest_with_runtime_file_prefixes_but_no_runtime(
         self, tmp_path: Path, runtime: str
     ) -> None:
@@ -434,7 +536,7 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         assert f"Refusing to uninstall from `{target}`" in message
         assert "manifest cannot be trusted" in message
 
-    @pytest.mark.parametrize("runtime", ["claude-code", "codex", "gemini", "opencode"])
+    @pytest.mark.parametrize("runtime", _ALL_RUNTIMES)
     def test_uninstall_refuses_foreign_manifest(self, tmp_path: Path, runtime: str) -> None:
         adapter = get_adapter(runtime)
         target = tmp_path / f"{runtime}-target"
@@ -445,7 +547,7 @@ class TestCrossRuntimeManifestOwnershipRefusal:
         preserved.parent.mkdir(parents=True, exist_ok=True)
         preserved.write_text("keep\n", encoding="utf-8")
 
-        if runtime == "codex":
+        if runtime == runtime_with_manifest_file_prefix("skills/"):
             skills_dir = tmp_path / "skills"
             skills_dir.mkdir()
             with pytest.raises(RuntimeError) as excinfo:
@@ -471,26 +573,46 @@ class TestGpdModelEnvVar:
 
     def test_install_with_invalid_model_succeeds(self, tmp_path: Path) -> None:
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
         target.mkdir()
 
         with patch.dict(os.environ, {"GPD_MODEL": "invalid:totally-fake-model"}):
             result = adapter.install(gpd_root, target, is_global=True)
 
-        assert result["runtime"] == "claude-code"
+        assert result["runtime"] == PRIMARY_RUNTIME
         assert (target / "commands" / "gpd").is_dir()
 
     def test_install_with_empty_model_succeeds(self, tmp_path: Path) -> None:
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
         target.mkdir()
 
         with patch.dict(os.environ, {"GPD_MODEL": ""}):
             result = adapter.install(gpd_root, target, is_global=True)
 
-        assert result["runtime"] == "claude-code"
+        assert result["runtime"] == PRIMARY_RUNTIME
+
+
+class TestCommitAttributionLookup:
+    def test_base_commit_attribution_uses_runtime_required_config_path(self, tmp_path: Path) -> None:
+        config_dir = tmp_path / "runtime-config"
+        config_dir.mkdir()
+        (config_dir / "custom-config.json").write_text(
+            json.dumps({"attribution": {"commit": "Custom Commit"}}),
+            encoding="utf-8",
+        )
+
+        adapter = _CommitAttributionProbeAdapter()
+
+        assert adapter.get_commit_attribution(explicit_config_dir=str(config_dir)) == "Custom Commit"
+        assert adapter.get_commit_attribution(explicit_config_dir=str(tmp_path / "missing")) == ""
+
+    def test_base_commit_attribution_returns_none_without_runtime_config_surface(self, tmp_path: Path) -> None:
+        adapter = _NoCommitAttributionProbeAdapter()
+
+        assert adapter.get_commit_attribution(explicit_config_dir=str(tmp_path / "missing")) is None
 
 
 # =========================================================================
@@ -503,8 +625,8 @@ class TestUninstallCorruptedManifest:
 
     def test_uninstall_with_corrupted_manifest(self, tmp_path: Path) -> None:
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
         target.mkdir()
 
         # Install normally
@@ -517,8 +639,8 @@ class TestUninstallCorruptedManifest:
             adapter.uninstall(target)
 
     def test_uninstall_with_missing_manifest(self, tmp_path: Path) -> None:
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
 
         # Create GPD structure manually (no manifest)
         (target / "commands" / "gpd").mkdir(parents=True)
@@ -532,8 +654,8 @@ class TestUninstallCorruptedManifest:
     def test_reinstall_after_corrupted_manifest(self, tmp_path: Path) -> None:
         """Re-install over a corrupted manifest should refuse unsafe ownership guesses."""
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
-        target = tmp_path / ".claude"
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        target = tmp_path / adapter.config_dir_name
         target.mkdir()
 
         adapter.install(gpd_root, target, is_global=True)
@@ -553,11 +675,11 @@ class TestLongPathNames:
 
     def test_long_target_dir_name(self, tmp_path: Path) -> None:
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
+        adapter = get_adapter(PRIMARY_RUNTIME)
 
         # Create a path with ~200 char total (within OS limits on most systems)
         long_name = "a" * 100
-        target = tmp_path / long_name / ".claude"
+        target = tmp_path / long_name / adapter.config_dir_name
         target.mkdir(parents=True)
 
         result = adapter.install(gpd_root, target, is_global=True)
@@ -568,12 +690,12 @@ class TestLongPathNames:
     def test_deeply_nested_target(self, tmp_path: Path) -> None:
         """Deeply nested but valid directory still works."""
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
+        adapter = get_adapter(PRIMARY_RUNTIME)
 
         nested = tmp_path
         for i in range(10):
             nested = nested / f"level{i}"
-        target = nested / ".claude"
+        target = nested / adapter.config_dir_name
         target.mkdir(parents=True)
 
         result = adapter.install(gpd_root, target, is_global=True)
@@ -590,34 +712,47 @@ class TestHomeUnset:
 
     def test_claude_config_dir_env_overrides_home(self, tmp_path: Path) -> None:
         """CLAUDE_CONFIG_DIR should be used instead of Path.home()."""
-        adapter = get_adapter("claude-code")
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        global_config = adapter.runtime_descriptor.global_config
         custom_dir = tmp_path / "custom-claude"
         custom_dir.mkdir()
 
-        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(custom_dir)}):
+        env_var = global_config.env_dir_var or global_config.env_var or global_config.env_file_var
+        assert env_var is not None
+        env_value = str(custom_dir / "config.json") if env_var == global_config.env_file_var else str(custom_dir)
+        with patch.dict(os.environ, {env_var: env_value}):
             assert adapter.global_config_dir == custom_dir
 
     def test_codex_config_dir_env_overrides_home(self, tmp_path: Path) -> None:
-        adapter = get_adapter("codex")
+        adapter = get_adapter(runtime_with_manifest_file_prefix("skills/"))
+        global_config = adapter.runtime_descriptor.global_config
         custom_dir = tmp_path / "custom-codex"
         custom_dir.mkdir()
 
-        with patch.dict(os.environ, {"CODEX_CONFIG_DIR": str(custom_dir)}):
+        env_var = global_config.env_dir_var or global_config.env_var or global_config.env_file_var
+        assert env_var is not None
+        env_value = str(custom_dir / "config.json") if env_var == global_config.env_file_var else str(custom_dir)
+        with patch.dict(os.environ, {env_var: env_value}):
             assert adapter.global_config_dir == custom_dir
 
     def test_global_dir_fallback_uses_home(self) -> None:
         """Without env vars, global_config_dir should use Path.home()."""
-        adapter = get_adapter("claude-code")
-        env_clean = {k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"}
+        adapter = get_adapter(PRIMARY_RUNTIME)
+        global_config = adapter.runtime_descriptor.global_config
+        env_clean = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {global_config.env_var, global_config.env_dir_var, global_config.env_file_var}
+        }
 
         with patch.dict(os.environ, env_clean, clear=True):
             result = adapter.global_config_dir
-            assert result == Path.home() / ".claude"
+            assert result == Path.home() / global_config.home_subpath
 
     def test_install_with_explicit_target_dir_ignores_home(self, tmp_path: Path) -> None:
         """Using --target-dir bypasses HOME entirely."""
         gpd_root = _make_gpd_root(tmp_path)
-        adapter = get_adapter("claude-code")
+        adapter = get_adapter(PRIMARY_RUNTIME)
         target = tmp_path / "explicit-target"
         target.mkdir()
 
@@ -640,7 +775,7 @@ class TestMultiRuntimeSameTarget:
         target = tmp_path / "shared"
         target.mkdir()
 
-        adapter1 = get_adapter("claude-code")
+        adapter1 = get_adapter(PRIMARY_RUNTIME)
         adapter1.install(gpd_root, target, is_global=True)
 
         # get-physics-done should exist
@@ -649,7 +784,7 @@ class TestMultiRuntimeSameTarget:
         first_content = version_file.read_text(encoding="utf-8")
 
         # Second install of the same runtime should keep the install valid.
-        adapter2 = get_adapter("claude-code")
+        adapter2 = get_adapter(PRIMARY_RUNTIME)
         adapter2.install(gpd_root, target, is_global=True)
 
         assert version_file.exists()
@@ -660,12 +795,12 @@ class TestMultiRuntimeSameTarget:
     def test_both_runtimes_leave_valid_structure(self, tmp_path: Path) -> None:
         """Both runtimes can create valid installs in separate directories."""
         gpd_root = _make_gpd_root(tmp_path)
-        target_cc = tmp_path / "claude"
+        target_cc = tmp_path / get_adapter(PRIMARY_RUNTIME).config_dir_name
         target_cc.mkdir()
         target_gem = tmp_path / "gemini"
         target_gem.mkdir()
 
-        adapter_cc = get_adapter("claude-code")
+        adapter_cc = get_adapter(PRIMARY_RUNTIME)
         adapter_cc.install(gpd_root, target_cc, is_global=True)
 
         _install_gemini_for_tests(gpd_root, target_gem)
@@ -706,6 +841,27 @@ class TestRegistryInvalidYaml:
         with pytest.raises(ValueError, match="Malformed YAML frontmatter"):
             _parse_frontmatter(text)
 
+    def test_registry_frontmatter_rejects_duplicate_keys(self) -> None:
+        """Duplicate keys in registry frontmatter should fail closed."""
+        text = "---\nname: first\nname: second\n---\nBody."
+        with pytest.raises(ValueError, match="duplicate key"):
+            _parse_frontmatter(text)
+
+    def test_registry_frontmatter_rejects_duplicate_nested_review_contract_keys(self) -> None:
+        """Duplicate keys inside nested review-contract payloads should fail closed."""
+        text = (
+            "---\n"
+            "name: review-test\n"
+            "review-contract:\n"
+            "  schema_version: 1\n"
+            "  review_mode: review\n"
+            "  review_mode: publication\n"
+            "---\n"
+            "Body."
+        )
+        with pytest.raises(ValueError, match="duplicate key"):
+            _parse_frontmatter(text)
+
     def test_valid_yaml_non_dict_raises(self) -> None:
         """Non-mapping registry frontmatter should also fail fast."""
         text = "---\n- list\n- items\n---\nBody."
@@ -731,12 +887,11 @@ class TestRegistryInvalidYaml:
             registry.invalidate_cache()
 
     def test_agent_with_empty_yaml_block(self, tmp_path: Path) -> None:
-        """Agent .md with empty YAML block (--- followed by ---) uses stem as name."""
+        """Agent .md with empty YAML block should fail closed on missing name."""
         f = tmp_path / "empty-yaml.md"
         f.write_text("---\n \n---\nBody text.", encoding="utf-8")
-        agent = _parse_agent_file(f, source="agents")
-        assert agent.name == "empty-yaml"  # Falls back to stem
-        assert agent.system_prompt == "Body text."
+        with pytest.raises(ValueError, match="name for empty-yaml must be a non-empty string"):
+            _parse_agent_file(f, source="agents")
 
 
 # =========================================================================

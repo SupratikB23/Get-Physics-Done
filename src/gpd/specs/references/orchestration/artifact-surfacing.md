@@ -32,8 +32,8 @@ Every artifact produced during a research project falls into one of the followin
 | **result-table** | Numerical outputs, data frames, benchmark comparisons | `.csv`, `.json`, `.md` | `data/eigenvalues.csv` |
 | **generated-figure** | Plots, diagrams, phase diagrams, convergence curves | `.pdf`, `.png`, `.eps`, `.svg` | `figures/dispersion.pdf` |
 | **draft-section** | Manuscript sections, appendix drafts | `.tex`, `.md` | `paper/sections/results.tex` |
-| **final-latex** | Complete compiled manuscript source | `.tex`, `.bib`, `.bst` | `paper/main.tex` |
-| **final-pdf** | Compiled PDF output | `.pdf` | `paper/output/main.pdf` |
+| **final-latex** | Complete compiled manuscript source | `.tex`, `.bib`, `.bst` | `paper/<topic_stem>.tex` |
+| **final-pdf** | Compiled PDF output | `.pdf` | `paper/<topic_stem>.pdf` |
 | **peer-review-output** | Review panel reports, referee responses | `.md`, `.tex`, `.json` | `GPD/review/CLAIMS{round_suffix}.json`, `GPD/review/STAGE-reader{round_suffix}.json`, `GPD/review/STAGE-literature{round_suffix}.json`, `GPD/review/STAGE-math{round_suffix}.json`, `GPD/review/STAGE-physics{round_suffix}.json`, `GPD/review/STAGE-interestingness{round_suffix}.json`, `GPD/review/REVIEW-LEDGER{round_suffix}.json`, `GPD/review/REFEREE-DECISION{round_suffix}.json`, `GPD/REFEREE-REPORT{round_suffix}.md`, `GPD/REFEREE-REPORT{round_suffix}.tex` |
 
 ---

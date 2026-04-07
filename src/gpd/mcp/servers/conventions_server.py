@@ -10,9 +10,7 @@ Usage:
 """
 
 import json
-import logging
 import re
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, TypeVar
@@ -27,9 +25,10 @@ from gpd.core.conventions import (
     KNOWN_CONVENTIONS,
     ConventionSetResult,
     convention_list,
+    convention_lock_data_from_state_payload,
+    convention_lock_from_state_payload,
     normalize_key,
     normalize_value,
-    validate_assertions,
 )
 from gpd.core.conventions import (
     convention_check as _convention_check,
@@ -42,15 +41,22 @@ from gpd.core.conventions import (
 )
 from gpd.core.errors import ConventionError
 from gpd.core.observability import gpd_span
-from gpd.mcp.servers import stable_mcp_error, stable_mcp_response
+from gpd.mcp.servers import (
+    ABSOLUTE_PROJECT_DIR_SCHEMA,
+    configure_mcp_logging,
+    resolve_absolute_project_dir,
+    stable_mcp_error,
+    stable_mcp_response,
+    tighten_registered_tool_contracts,
+)
 
 T = TypeVar("T")
 
-# MCP stdio uses stdout for JSON-RPC — redirect logging to stderr
-logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-logger = logging.getLogger("gpd-conventions")
+logger = configure_mcp_logging("gpd-conventions")
 
 mcp = FastMCP("gpd-conventions")
+
+AbsoluteProjectDirInput = Annotated[str, WithJsonSchema(ABSOLUTE_PROJECT_DIR_SCHEMA)]
 
 # ─── Convention Field Metadata (for MCP tool responses) ──────────────────────
 
@@ -108,7 +114,6 @@ ConventionValueInput = Annotated[
         }
     ),
 ]
-
 # ─── Subfield Default Conventions ─────────────────────────────────────────────
 
 SUBFIELD_DEFAULTS: dict[str, dict[str, str]] = {
@@ -198,21 +203,55 @@ SUBFIELD_DEFAULTS: dict[str, dict[str, str]] = {
 
 def _load_lock_from_project(project_dir: str) -> ConventionLock:
     """Load convention lock from project state.json."""
-    state_path = ProjectLayout(Path(project_dir)).state_json
-    try:
-        raw = json.loads(state_path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return ConventionLock()
-    except json.JSONDecodeError as e:
-        raise ConventionError(f"Malformed state.json: {e}") from e
+    project_root = Path(project_dir)
+    raw = _recoverable_state_payload(project_root, recover_intent=False)
+    return convention_lock_from_state_payload(raw, source_label="project state")
 
 
-    if not isinstance(raw, dict):
-        return ConventionLock()
-    lock_data = raw.get("convention_lock", {})
-    if not isinstance(lock_data, dict):
-        return ConventionLock()
-    return ConventionLock(**lock_data)
+def _recoverable_state_payload(
+    project_root: Path,
+    *,
+    acquire_lock: bool = True,
+    recover_intent: bool = False,
+) -> dict[str, object]:
+    """Return recoverable project state or fail closed when state exists but is unusable."""
+    from gpd.core.state import peek_state_json
+
+    layout = ProjectLayout(project_root)
+    if layout.state_json.exists():
+        try:
+            primary_state = json.loads(layout.state_json.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ConventionError(f"Malformed state.json: {exc}") from exc
+        except FileNotFoundError:
+            primary_state = None
+        except OSError:
+            primary_state = None
+        else:
+            if isinstance(primary_state, dict):
+                return primary_state
+    state_files_exist = any(path.exists() for path in (layout.state_json, layout.state_json_backup, layout.state_md))
+    if acquire_lock:
+        state_obj, _integrity_issues, _state_source = peek_state_json(
+            project_root,
+            recover_intent=recover_intent,
+            surface_blocked_project_contract=True,
+        )
+    else:
+        from gpd.core.state import _load_state_json_with_integrity_issues
+
+        state_obj, _integrity_issues, _state_source = _load_state_json_with_integrity_issues(
+            project_root,
+            persist_recovery=False,
+            recover_intent=recover_intent,
+            surface_blocked_project_contract=True,
+            acquire_lock=False,
+        )
+    if isinstance(state_obj, dict):
+        return state_obj
+    if state_files_exist:
+        raise ConventionError("Project state exists but is not recoverable")
+    return {}
 
 
 def _update_lock_in_project(
@@ -230,24 +269,12 @@ def _update_lock_in_project(
     from gpd.core.state import save_state_json_locked
     from gpd.core.utils import file_lock
 
-    state_path = ProjectLayout(Path(project_dir)).state_json
     cwd = Path(project_dir)
+    state_path = ProjectLayout(cwd).state_json
     with file_lock(state_path):
-        # --- read ---
-        try:
-            raw = json.loads(state_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = {}
-        except json.JSONDecodeError as e:
-            raise ConventionError(f"Malformed state.json: {e}") from e
-
-
-        if not isinstance(raw, dict):
-            raw = {}
-        lock_data = raw.get("convention_lock", {})
-        if not isinstance(lock_data, dict):
-            lock_data = {}
-        lock = ConventionLock(**lock_data)
+        raw = _recoverable_state_payload(cwd, acquire_lock=False, recover_intent=True)
+        lock_data = convention_lock_data_from_state_payload(raw, source_label="state.json")
+        lock = convention_lock_from_state_payload(raw, source_label="state.json")
 
         # --- mutate ---
         result = mutate_fn(lock)
@@ -265,15 +292,18 @@ def _update_lock_in_project(
 
 
 @mcp.tool()
-def convention_lock_status(project_dir: str) -> dict:
+def convention_lock_status(project_dir: AbsoluteProjectDirInput) -> dict:
     """Get the current convention lock state for a GPD project.
 
     Returns all set conventions and lists which of the 18 standard
     fields are still unset.
     """
+    cwd = resolve_absolute_project_dir(project_dir)
+    if cwd is None:
+        return stable_mcp_error("project_dir must be an absolute path")
     with gpd_span("mcp.conventions.lock_status"):
         try:
-            lock = _load_lock_from_project(project_dir)
+            lock = _load_lock_from_project(str(cwd))
             result = convention_list(lock)
 
             set_fields = [k for k, e in result.conventions.items() if e.is_set and e.canonical]
@@ -299,7 +329,7 @@ def convention_lock_status(project_dir: str) -> dict:
 
 @mcp.tool()
 def convention_set(
-    project_dir: str,
+    project_dir: AbsoluteProjectDirInput,
     key: ConventionKeyInput,
     value: ConventionValueInput,
     force: bool = False,
@@ -315,6 +345,9 @@ def convention_set(
     ``custom:my_convention``).
     Value must be non-empty and must not be a blank or placeholder string.
     """
+    cwd = resolve_absolute_project_dir(project_dir)
+    if cwd is None:
+        return stable_mcp_error("project_dir must be an absolute path")
     with gpd_span("mcp.conventions.set", convention_key=key):
         try:
             # Validate custom key eagerly (before acquiring the file lock).
@@ -333,7 +366,7 @@ def convention_set(
                 return _convention_set(lock, key, value, force=force)
 
             # Atomic read-modify-write under file lock to prevent TOCTOU races.
-            _lock, result = _update_lock_in_project(project_dir, _mutate)
+            _lock, result = _update_lock_in_project(str(cwd), _mutate)
         except (ConventionError, OSError, ValueError, TimeoutError) as exc:
             return stable_mcp_error(exc)
         except Exception as exc:  # pragma: no cover - defensive envelope
@@ -500,24 +533,32 @@ def assert_convention_validate(file_content: str, lock: dict) -> dict:
 
     Returns mismatches and missing assertions.
     """
-    from gpd.core.conventions import parse_assert_conventions
+    from gpd.core.conventions import check_assertions, parse_assert_conventions, required_assertion_keys
 
     with gpd_span("mcp.conventions.assert_validate"):
         try:
             parsed_lock = ConventionLock(**lock)
             assertions = parse_assert_conventions(file_content)
-            mismatches = validate_assertions(file_content, parsed_lock, filename="<mcp_input>")
+            result = check_assertions(
+                file_content,
+                parsed_lock,
+                filename="<mcp_input>",
+                require_assertions=True,
+                required_keys=required_assertion_keys(parsed_lock),
+            )
         except (ConventionError, OSError, ValueError, TimeoutError) as exc:
             return stable_mcp_error(exc)
         except Exception as exc:  # pragma: no cover - defensive envelope
             return stable_mcp_error(exc)
 
-    if not assertions:
+    if result.missing_required_assertions:
         return stable_mcp_response(
             {
                 "valid": False,
-                "assertions_found": 0,
+                "assertions_found": result.assertion_count,
                 "message": "No ASSERT_CONVENTION lines found. Every derivation file must include at least one.",
+                "required_keys": result.required_keys,
+                "missing_required_keys": result.missing_required_keys,
                 "mismatches": [],
                 "assertions": [],
             }
@@ -525,9 +566,11 @@ def assert_convention_validate(file_content: str, lock: dict) -> dict:
 
     return stable_mcp_response(
         {
-            "valid": len(mismatches) == 0,
-            "assertions_found": len(assertions),
+            "valid": result.passed,
+            "assertions_found": result.assertion_count,
             "assertions": [{"key": k, "value": v} for k, v in assertions],
+            "required_keys": result.required_keys,
+            "missing_required_keys": result.missing_required_keys,
             "mismatches": [
                 {
                     "key": m.key,
@@ -538,7 +581,7 @@ def assert_convention_validate(file_content: str, lock: dict) -> dict:
                         f"but lock has {m.key}={m.lock_value}"
                     ),
                 }
-                for m in mismatches
+                for m in result.mismatches
             ],
         }
     )
@@ -591,6 +634,9 @@ def main() -> None:
     from gpd.mcp.servers import run_mcp_server
 
     run_mcp_server(mcp, "GPD Conventions MCP Server")
+
+
+tighten_registered_tool_contracts(mcp)
 
 
 if __name__ == "__main__":

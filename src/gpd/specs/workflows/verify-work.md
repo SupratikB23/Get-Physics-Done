@@ -1,22 +1,22 @@
 <purpose>
-Validate research results through conversational research validation with persistent state. Creates the canonical `XX-VERIFICATION.md` artifact that tracks verification progress, survives /clear, and feeds gaps into /gpd:plan-phase --gaps.
+Validate research results through conversational verification with persistent state. This workflow creates the canonical `XX-VERIFICATION.md` artifact, survives /clear, and feeds gaps into `gpd:plan-phase --gaps`.
 
 Researcher validates, the AI records. One check at a time. Plain text responses.
 
-**Key upgrade: checks now include computational spot-checks that the AI performs before presenting to the researcher, and the researcher is walked through numerical verification rather than just qualitative confirmation.**
+**Key upgrade:** the workflow now runs computational spot-checks before presenting each check, so the researcher confirms concrete numerical evidence instead of only qualitative summaries.
 </purpose>
 
 <philosophy>
-**Show expected physics AND computational evidence, ask if reality matches.**
+**Show expected physics and computational evidence, then ask if reality matches.**
 
-The AI does not just present what the research SHOULD show — it COMPUTES what the research should show at specific test points, then asks the researcher to confirm.
+The AI computes the expected result at specific test points before asking the researcher to confirm it.
 
 - "yes" / "y" / "next" / empty -> pass
 - Anything else -> logged as issue, severity inferred
 
-Walk through derivation logic, perform numerical spot-checks, re-derive limiting cases, probe edge cases with actual computations. No formal review forms. Just: "Here is what I independently computed. Does your result match?"
+Walk through derivation logic, perform numerical spot-checks, re-derive limiting cases, and probe edge cases with actual computations. No formal review forms. Just: "Here is what I independently computed. Does your result match?"
 
-**Verification independence:** Derive validation checks from the phase goal, the PLAN `contract`, and the actual research artifacts — not from phase-summary claims about what was accomplished. Summary artifacts (`SUMMARY.md` and `*-SUMMARY.md`) `contract_results` and `comparison_verdicts` tell you WHERE evidence lives, but expected physics outcomes come from the phase goal, contract IDs, and domain knowledge. See @{GPD_INSTALL_DIR}/references/verification/meta/verification-independence.md.
+**Verification independence:** Derive validation checks from the phase goal, the PLAN `contract`, and the actual research artifacts — not from phase-summary claims about what was accomplished. Summary artifacts (`SUMMARY.md` and `*-SUMMARY.md`) `contract_results` and `comparison_verdicts` tell you where evidence lives; the expected physics comes from the phase goal, contract IDs, and domain knowledge. See @{GPD_INSTALL_DIR}/references/verification/meta/verification-independence.md.
 </philosophy>
 
 <template>
@@ -45,24 +45,27 @@ Parse `$ARGUMENTS` for specific check flags:
 - `--all` or no flags — Run full verification suite
 
 This allows targeted verification without running the full suite.
+
+Targeted flags narrow the optional check mix only. They do NOT waive mandatory proof red-teaming for proof-bearing or `proof_obligation` work.
 </step>
 
 <step name="initialize" priority="first">
 If $ARGUMENTS contains a phase number, load context:
 
 ```bash
-INIT=$(gpd init verify-work "${PHASE_ARG}")
+INIT=$(gpd --raw init verify-work "${PHASE_ARG}")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
 fi
 ```
 
-Parse JSON for: `planner_model`, `checker_model`, `commit_docs`, `autonomy`, `research_mode`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `has_verification`, `has_validation`, `project_contract`, `project_contract_validation`, `project_contract_load_info`, `contract_intake`, `effective_reference_intake`, `selected_protocol_bundle_ids`, `protocol_bundle_context`, `protocol_bundle_verifier_extensions`, `active_reference_context`, `reference_artifacts_content`.
+Parse JSON for: `planner_model`, `checker_model`, `verifier_model`, `commit_docs`, `autonomy`, `research_mode`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `has_verification`, `has_validation`, `phase_proof_review_status`, `project_contract`, `project_contract_validation`, `project_contract_load_info`, `project_contract_gate`, `contract_intake`, `effective_reference_intake`, `derived_active_references`, `derived_active_reference_count`, `citation_source_files`, `citation_source_count`, `citation_source_warnings`, `derived_citation_sources`, `derived_citation_source_count`, `active_references`, `active_reference_count`, `convention_lock`, `convention_lock_count`, `derived_convention_lock`, `derived_convention_lock_count`, `selected_protocol_bundle_ids`, `protocol_bundle_count`, `protocol_bundle_context`, `protocol_bundle_verifier_extensions`, `active_reference_context`, `literature_review_files`, `literature_review_count`, `research_map_reference_files`, `research_map_reference_count`, `reference_artifact_files`, `reference_artifacts_content`.
 
 **Mode-aware behavior:**
 - `autonomy=supervised`: Pause after each verification round for user review. Present findings and wait for confirmation before writing the canonical `XX-VERIFICATION.md` artifact.
 - `autonomy=balanced` (default): Run the full verification pipeline. Pause only if verification reveals critical issues that require user judgment or claim-level decisions.
+- `research_mode=balanced` (default): Keep the full contract-critical floor and the balanced review cadence. Run the standard verification pipeline unless another `research_mode` is explicitly selected.
 - `autonomy=yolo`: Run verification but skip optional cross-checks and literature comparison. Do NOT skip contract-critical anchors, decisive benchmarks, or user-mandated references.
 - `research_mode=explore`: Thorough verification — run all check types, compare against literature, verify intermediate steps. More spawned verifier agents.
 - `research_mode=exploit`: Keep the full contract-critical floor, but narrow optional breadth around the already-validated method family. Favor decisive comparisons over extra exploratory audits.
@@ -76,7 +79,7 @@ ERROR: Phase not found: ${PHASE_ARG}
 Available phases:
 $(gpd phase list)
 
-Usage: /gpd:verify-work <phase-number>
+Usage: gpd:verify-work <phase-number>
 ```
 
 Exit.
@@ -102,6 +105,58 @@ If `project_contract_load_info.status` starts with `blocked`, STOP and show the 
 If `project_contract_validation.valid` is false, STOP and show `project_contract_validation.errors` before verification. A visible-but-blocked contract must be repaired before it is used as authoritative verification scope.
 </step>
 
+<step name="proof_obligation_gate">
+Detect whether the selected phase contains proof-bearing work before finalizing the check inventory.
+
+Treat the phase as proof-bearing when any of the following are true:
+
+- the approved contract or plan contract includes an observable or claim with kind `proof_obligation`
+- the phase goal, plan contract, or artifacts mention `theorem`, `lemma`, `corollary`, `proposition`, `claim`, `proof`, `prove`, `show that`, `existence`, or `uniqueness`
+- a derivation artifact is being used as a formal proof whose correctness depends on explicit coverage of named hypotheses, parameters, or quantifiers
+
+If ambiguous, default to proof-bearing.
+
+For proof-bearing work:
+
+- require a canonical `*-PROOF-REDTEAM.md` artifact for each proof-bearing plan or derivation
+- read that artifact before presenting any researcher-facing "passed" outcome
+- confirm it inventories theorem text, named parameters, hypotheses, quantifier/domain obligations, conclusion clauses, and at least one adversarial special-case or counterexample probe
+- treat missing artifact, missing coverage inventory, or `status != passed` as a blocking gap
+- do not let `--dimensional`, `--limits`, `--convergence`, exploratory mode, or manual urgency waive this gate
+- if `phase_proof_review_status` is present, use it as the structured freshness summary for the phase proof-review manifest instead of re-deriving freshness from file greps.
+
+When runtime delegation is available and a required proof-redteam artifact is missing, malformed, or stale, spawn `gpd-check-proof` once before finalizing the gap ledger:
+
+```bash
+CHECK_PROOF_MODEL=$(gpd resolve-model gpd-check-proof)
+```
+
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+```
+task(
+  subagent_type="gpd-check-proof",
+  model="{check_proof_model}",
+  readonly=false,
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-check-proof.md for your role and instructions.
+
+Operate in proof-redteam remediation mode with a fresh context.
+
+Write to the missing or stale sibling `*-PROOF-REDTEAM.md` artifact for the proof-bearing target under review.
+
+Files to read:
+- The proof-bearing plan or derivation artifact
+- The current verification artifact
+- Supporting summary / verification / contract artifacts for this phase
+
+Reconstruct the exact theorem inventory before judging the proof. Do not self-repair missing assumptions or narrowed scope silently.",
+  description="Proof redteam remediation for phase {phase_number}"
+)
+```
+
+If `gpd-check-proof` still cannot produce a passed audit, keep the verification status fail-closed.
+</step>
+
 <step name="load_anchor_context">
 Use `active_reference_context` from init JSON as a mandatory input to verification.
 
@@ -118,7 +173,11 @@ Use `protocol_bundle_context` from init JSON as additive specialized guidance.
 - Call `get_bundle_checklist(selected_protocol_bundle_ids)` through the verification server only when the init payload lacks those extensions or when you need a fallback consistency check.
 - Bundle guidance may add estimator checks, decisive artifact expectations, or domain-specific audits, but it does NOT replace the plan contract or reduce anchor obligations.
 - Use `protocol_bundle_verifier_extensions` as the machine-readable quick map when deciding which contract-aware checks deserve deeper scrutiny first.
-- If the phase has a PLAN `contract`, call `suggest_contract_checks(contract)` through the verification server before finalizing the check inventory. Treat the returned items as the default contract-aware check seed unless they are clearly inapplicable to this phase. For each returned check, use the returned `request_template` as the starting request, fill the listed `required_request_fields`, stay within the returned `supported_binding_fields`, and then call `run_contract_check(request=...)` so contract-aware checks are executed rather than only discovered.
+- If the phase has a PLAN `contract` and project-local anchors or prior-output paths matter, use this contract-check loop before finalizing the inventory:
+  1. Call `suggest_contract_checks(contract, project_dir=...)`.
+  2. Treat the returned items as the default contract-aware seed unless they are clearly inapplicable.
+  3. For each returned check, start from `request_template`, satisfy `required_request_fields` and `schema_required_request_fields`, satisfy one full alternative from `schema_required_request_anyof_fields`, stay within `supported_binding_fields` for `request.binding`, and keep `project_dir` as the top-level absolute project root argument.
+  4. Call `run_contract_check(request=..., project_dir=...)` so contract-aware checks are executed rather than only discovered.
 </step>
 
 <step name="check_active_session">
@@ -161,7 +220,7 @@ If no, continue to `create_verification_file`.
 ```
 No active verification sessions.
 
-Provide a phase number to start validation (e.g., /gpd:verify-work 4)
+Provide a phase number to start validation (e.g., gpd:verify-work 4)
 ```
 
 **If no active sessions AND $ARGUMENTS provided:**
@@ -185,7 +244,7 @@ If a SUMMARY has `contract_results` or `comparison_verdicts`, use them only as e
 Also load the phase goal from ROADMAP.md to derive expected physics outcomes independently:
 
 ```bash
-gpd roadmap get-phase "${phase_number}"
+gpd --raw roadmap get-phase "${phase_number}"
 ```
 
 </step>
@@ -201,6 +260,7 @@ Parse for:
 4. **Reference actions** - Must-read anchors that require read / compare / cite / reproduce actions
 5. **Forbidden proxies** - Outputs that would look like progress but do not establish success
 6. **Suggested contract checks** - Decisive checks the verifier thinks should exist if the contract is incomplete
+7. **Proof-redteam evidence** - Required `*-PROOF-REDTEAM.md` artifacts for theorem-style or `proof_obligation` work
 
 Focus on VERIFIABLE RESEARCH OUTCOMES the researcher can recognize in the phase promise, not implementation details. Use contract IDs (`claim_id`, `deliverable_id`, `acceptance_test_id`, `reference_id`, `forbidden_proxy_id`) as canonical names throughout the verification file.
 If a contract item is only meaningful as an internal process milestone, do not make it a researcher-facing check; map it to the user-visible claim or deliverable it was supposed to establish, or drop it from validation.
@@ -210,7 +270,7 @@ For each contract-backed check, create a validation record that includes **both 
 - name: Brief check name
 - expected: What the physics should show (specific, verifiable)
 - computation: A specific numerical test the AI will perform before presenting to the researcher
-- check_subject_kind: `claim | deliverable | acceptance_test | reference`
+- check_subject_kind: `claim|deliverable|acceptance_test|reference`
 - subject_id: Contract ID when available
 
 Keep `check_subject_kind` and `gap_subject_kind` aligned with the canonical frontmatter-safe subject vocabulary. Use `forbidden_proxy_id` for explicit proxy-rejection checks, and keep missing decisive checks in the `suggested_contract_checks` ledger instead of inventing extra body subject kinds.
@@ -221,7 +281,8 @@ Rules:
 - If a forbidden proxy exists, create an explicit rejection check rather than assuming silence means success.
 - If the contract lacks an obvious decisive check, create a structured `suggested_contract_checks` entry with a short rationale instead of silently dropping the concern.
 - Only create `suggested_contract_checks` entries for obvious decisive gaps on user-visible targets, not for paperwork preferences or generic workflow niceties.
-- Each `suggested_contract_checks` entry must stay structured: `check`, `reason`, optional paired `suggested_subject_kind` + `suggested_subject_id` when the gap can be bound to a known contract target, and `evidence_path`. If no target is known yet, omit both keys instead of leaving one blank.
+- Each `suggested_contract_checks` entry must stay structured: `check`, `reason`, optional paired `suggested_subject_kind` + `suggested_subject_id` when the gap can be bound to a known contract target, and `evidence_path`. If no target is known yet, omit both keys instead of leaving one blank. When the gap comes from `suggest_contract_checks(contract)`, copy the returned `check_key` into the frontmatter `check` field.
+- For proof-bearing checks, create explicit validation records for theorem statement coverage, parameter coverage, hypothesis coverage, quantifier/domain coverage, conclusion-clause coverage, and special-case / counterexample probes. A theorem parameter that never appears in the proof is a failure, not a style issue.
 
 **Examples with computational verification:**
 
@@ -258,6 +319,8 @@ Skip internal/non-observable items (code refactors, file reorganization, checkli
 **Code output requirement:** The final verification artifact must contain at least one fenced code block showing actual execution output. A verification report with only text analysis and zero computational evidence is INCOMPLETE. If the pre-computation step produces no code outputs, flag the verification as incomplete before presenting to the researcher.
 
 These 3 minimum checks must be among the checks presented to the researcher, even when the exploratory profile reduces the total check count.
+
+For proof-bearing or `proof_obligation` work, an additional mandatory floor applies: every required `*-PROOF-REDTEAM.md` artifact must exist, must include theorem-coverage tables plus an adversarial probe, and must report `status: passed` before the verification session may end at `status: passed`.
 </step>
 
 <step name="precompute_checks">
@@ -296,24 +359,25 @@ import numpy as np
 mkdir -p "$phase_dir"
 ```
 
-**Check for existing verification artifact** (e.g., from a prior `/gpd:execute-phase` → `verify-phase` run):
+**Check for existing verification artifact** (e.g., from a prior `gpd:execute-phase` → `verify-phase` run):
 
 ```bash
 EXISTING_VERIFICATION=$(ls "$phase_dir"/*-VERIFICATION.md 2>/dev/null | head -1)
 ```
 
-If an existing verification artifact is found (e.g., from a prior `/gpd:execute-phase` → `verify-phase` automated run):
+If an existing verification artifact is found (e.g., from a prior `gpd:execute-phase` → `verify-phase` automated run):
 1. Read it to preserve any prior automated verification results
 2. Do NOT overwrite — instead, append a `## Researcher Validation` section after the existing content
 3. The new researcher checks go under this section, keeping the automated checks intact
-4. **Status merge rule:** The combined verification `status` uses the MORE RESTRICTIVE verification-report vocabulary (`passed | gaps_found | expert_needed | human_needed`). If automated verification passed but the researcher finds issues, the combined status becomes `gaps_found`. If automated found gaps but the researcher confirms they are acceptable, the combined status stays `gaps_found` unless the researcher explicitly upgrades each gap to `pass`. Keep `session_status` for conversational progress only.
-5. The `independently_confirmed` count in the report should aggregate both automated and researcher-confirmed checks
+4. **Status merge rule:** The combined verification `status` uses the MORE RESTRICTIVE verification-report vocabulary (`passed|gaps_found|expert_needed|human_needed`). If automated verification passed but the researcher finds issues, the combined status becomes `gaps_found`. If automated found gaps but the researcher confirms they are acceptable, the combined status stays `gaps_found` unless the researcher explicitly upgrades each gap to `pass`. Keep `session_status` for conversational progress only.
+5. If you report an aggregate independently confirmed tally, keep it in body prose or tables rather than adding a non-canonical verification frontmatter key
 
 If no existing verification artifact exists, create a new one from scratch.
 
 Build check list from extracted contract-backed checks, including computational test specifications.
 Checks with non-empty `comparison_kind` are decisive and must end with either a recorded `comparison_verdict` or a recorded gap before the file can finish. Exploratory or partial verification is allowed to end at `inconclusive` or `tension`; it is not allowed to imply a pass from suggestive but non-decisive evidence.
 If a decisive benchmark / cross-method check remains `partial`, `not_attempted`, or still lacks a decisive verdict, add a structured `suggested_contract_checks` entry before final validation. Do not replace that ledger with prose.
+If proof-bearing work is present, mirror missing or open proof-redteam audits into the verification gaps. Never let the frontmatter `status` be `passed` while any required `*-PROOF-REDTEAM.md` artifact is missing, malformed, or reports `gaps_found` / `human_needed`.
 
 If the PLAN has a `contract`, every body check in this file must carry the relevant `check_subject_kind`, `subject_id`, `claim_id`, `deliverable_id`, `acceptance_test_id`, `reference_ids`, and `forbidden_proxy_id` when applicable.
 Mirror decisive verdicts into frontmatter `comparison_verdicts`. The body `## Comparison Verdicts` section is a readable summary, not a substitute for the frontmatter ledger consumed by validation and downstream publication tooling.
@@ -322,32 +386,33 @@ Create file (or extend existing):
 
 ```markdown
 ---
-phase: {phase_number}-{phase_name}
-verified: [ISO timestamp]
-status: passed | gaps_found | expert_needed | human_needed
-score: 0/{total contract targets} contract targets verified
-plan_contract_ref: GPD/phases/{phase_number}-{phase_name}/{phase_number}-{plan}-PLAN.md#/contract
+phase: 01-benchmark
+verified: 2026-04-06T00:00:00Z
+status: gaps_found
+# Allowed status values: passed|gaps_found|expert_needed|human_needed
+score: 0/4 contract targets verified
+plan_contract_ref: GPD/phases/01-benchmark/01-plan-PLAN.md#/contract
 contract_results:
   claims:
-    claim-id:
+    claim-main:
       status: not_attempted
       summary: "verification not started yet"
   deliverables:
-    deliverable-id:
+    deliverable-main:
       status: not_attempted
       summary: "verification not started yet"
   acceptance_tests:
-    acceptance-test-id:
+    acceptance-test-main:
       status: not_attempted
       summary: "verification not started yet"
   references:
-    reference-id:
+    reference-main:
       status: missing
       completed_actions: []
       missing_actions: [read]
       summary: "verification not started yet"
   forbidden_proxies:
-    forbidden-proxy-id:
+    forbidden-proxy-main:
       status: unresolved
       notes: "verification not started yet"
   uncertainty_markers:
@@ -356,129 +421,135 @@ contract_results:
     competing_explanations: [alternative-1]
     disconfirming_observations: [observation-1]
 comparison_verdicts:
-  - subject_id: claim-id
+  - subject_id: claim-main
     subject_kind: claim
     subject_role: decisive
-    reference_id: reference-id
+    reference_id: reference-main
     comparison_kind: benchmark
     metric: relative_error
     threshold: "<= 0.01"
     verdict: inconclusive
     recommended_action: "close the decisive benchmark once the evidence is written"
-    notes: "template placeholder; replace with the first decisive verdict"
+    notes: "The benchmark evidence is close but not yet decisive."
 suggested_contract_checks:
   - check: "missing decisive benchmark comparison"
-    reason: "why the missing check matters"
+    reason: "The contract still needs a named benchmark check for the main claim."
     suggested_subject_kind: acceptance_test
-    suggested_subject_id: acceptance-test-id
+    suggested_subject_id: acceptance-test-main
     evidence_path: "artifact path or expected evidence path"
   - check: "missing decisive reference comparison"
-    reason: "why the missing compare-required reference matters"
+    reason: "The reference-backed comparison is still missing."
     suggested_subject_kind: reference
-    suggested_subject_id: reference-id
+    suggested_subject_id: reference-main
     evidence_path: "artifact path or expected evidence path"
 source: ["list of phase-summary files"]
 started: "ISO timestamp"
 updated: "ISO timestamp"
 session_status: validating
+# Allowed session_status values: validating|completed|diagnosed
 ---
 
 ## Current Check
 
 <!-- OVERWRITE each check - shows where we are -->
+<!-- Omit unused `subject_id`, `claim_id`, `deliverable_id`, `acceptance_test_id`, and `forbidden_proxy_id` fields instead of leaving blank placeholders. -->
+<!-- Copy-safe scalar examples: `expected: "verifiable physics outcome"` and `computation: "specific numerical test performed"`. -->
+<!-- Allowed body enum values:
+`check_subject_kind`: claim|deliverable|acceptance_test|reference
+`comparison_kind`: benchmark|prior_work|experiment|cross_method|baseline|other
+`suggested_subject_kind`: claim|deliverable|acceptance_test|reference
+-->
 
 number: 1
-name: "first check name"
-check_subject_kind: [claim | deliverable | acceptance_test | reference]
-subject_id: "contract id or \"\""
-claim_id: "claim-id or \"\""
-deliverable_id: "deliverable-id or \"\""
-acceptance_test_id: "acceptance-test-id or \"\""
-reference_ids: ["reference-id", "..."]
-forbidden_proxy_id: "forbidden-proxy-id or \"\""
-comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | other]
-comparison_reference_id: "reference-id"
+name: "benchmark comparison"
+check_subject_kind: claim
+subject_id: "claim-main"
+claim_id: "claim-main"
+reference_ids: ["reference-main"]
+comparison_kind: benchmark
+comparison_reference_id: "reference-main"
 # If this check is not comparison-backed yet, omit both `comparison_kind` and `comparison_reference_id` instead of leaving blank placeholders.
 expected: |
-  [what the physics should show]
+  The derived benchmark should match the reference within 1%.
 computation: |
-  [what computational test was performed]
+  Evaluated the benchmark at k = 0.5 and k = 1.0.
 precomputed_result: |
-  [result of AI's independent computation]
+  Independent arithmetic gives a relative error of 0.006.
 # Benchmark acceptance tests require `comparison_kind: benchmark`.
 # cross-method acceptance tests require `comparison_kind: cross_method`.
 suggested_contract_checks:
   # If you cannot bind the gap to a known contract target yet, omit both
   # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.
   - check: "missing decisive check"
-    reason: "why the missing check matters"
-    suggested_subject_kind: [claim | deliverable | acceptance_test | reference]
-    suggested_subject_id: "matching contract id"
-    evidence_path: "artifact path or expected evidence path"
+    reason: "The decisive benchmark comparison still needs an explicit contract target."
+    suggested_subject_kind: acceptance_test
+    suggested_subject_id: "acceptance-test-main"
+    evidence_path: "GPD/phases/01-benchmark/benchmark-comparison.csv"
   # Add a reference-backed decisive gap here whenever a benchmark reference or
   # a reference with required_actions including `compare` is still incomplete.
 awaiting: researcher response
 
 ## Checks
 
-### 1. [Check Name]
+### 1. Benchmark Comparison
 
-check_subject_kind: [claim | deliverable | acceptance_test | reference]
-subject_id: "contract id or \"\""
-claim_id: "claim-id or \"\""
-deliverable_id: "deliverable-id or \"\""
-acceptance_test_id: "acceptance-test-id or \"\""
-reference_ids: ["reference-id", "..."]
-forbidden_proxy_id: "forbidden-proxy-id or \"\""
-comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | other]
-comparison_reference_id: "reference-id"
-# If this check is not comparison-backed yet, omit both `comparison_kind` and `comparison_reference_id` instead of leaving blank placeholders.
-expected: "verifiable physics outcome"
-computation: "specific numerical test performed"
-precomputed_result: "AI's independent computation result"
+<!-- Include only the ID keys that actually bind this check.
+Follow the omission rule from current check instead of leaving blank placeholder strings. -->
+
+check_subject_kind: claim
+subject_id: "claim-main"
+claim_id: "claim-main"
+reference_ids: ["reference-main"]
+comparison_kind: benchmark
+comparison_reference_id: "reference-main"
+expected: "The benchmark comparison should land within the 1% tolerance."
+computation: "Evaluated the benchmark at the configured test points."
+precomputed_result: "Independent arithmetic gives a relative error of 0.006."
 suggested_contract_checks:
   # If you cannot bind the gap to a known contract target yet, omit both
   # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.
   - check: "missing decisive check"
-    reason: "why the missing check matters"
-    suggested_subject_kind: [claim | deliverable | acceptance_test | reference]
-    suggested_subject_id: "matching contract id"
-    evidence_path: "artifact path or expected evidence path"
+    reason: "The decisive benchmark comparison still needs an explicit contract target."
+    suggested_subject_kind: acceptance_test
+    suggested_subject_id: "acceptance-test-main"
+    evidence_path: "GPD/phases/01-benchmark/benchmark-comparison.csv"
 result: "pending"
 
-### 2. [Check Name]
+### 2. Benchmark Pass
 
-expected: "verifiable physics outcome"
-computation: "specific numerical test performed"
-precomputed_result: "AI's independent computation result"
+expected: "The benchmark comparison should land within the 1% tolerance."
+computation: "Evaluated the benchmark at the configured test points."
+precomputed_result: "Independent arithmetic gives a relative error of 0.006."
 result: "pending"
 
 ...
 
 ## Summary
 
-total: [N]
+total: 2
 passed: 0
 issues: 0
-pending: [N]
+pending: 2
 skipped: 0
 comparison_verdicts_recorded: 0
 forbidden_proxies_rejected: 0
 
 ## Comparison Verdicts
 
-[none yet]
+[]
 
 ## Suggested Contract Checks
 
-[none yet]
+[]
 
 ## Gaps
 
-[none yet]
+[]
 ```
 
 Write to `${phase_dir}/${phase_number}-VERIFICATION.md`
+
+If the project has an active convention lock, include the machine-readable `ASSERT_CONVENTION` comment immediately after the YAML frontmatter using the canonical lock keys and exact lock values from init / `gpd convention list`. The canonical shape is documented in `@{GPD_INSTALL_DIR}/templates/verification-report.md`, and changed verification files fail `gpd pre-commit-check` when this header is missing or mismatched against the active lock.
 
 Proceed to `present_check`.
 </step>
@@ -558,12 +629,12 @@ Wait for researcher response (plain text).
 Update Checks section:
 
 ```
-### {N}. {name}
-expected: {expected}
-computation: {computation performed}
-precomputed_result: {AI's result}
+### 1. Benchmark Comparison
+expected: The benchmark comparison should land within the 1% tolerance.
+computation: Evaluated the benchmark at the configured test points.
+precomputed_result: Independent arithmetic gives a relative error of 0.006.
 result: pass
-confidence: {independently confirmed | structurally present}
+confidence: independently confirmed
 ```
 
 **If response indicates skip:**
@@ -573,12 +644,12 @@ confidence: {independently confirmed | structurally present}
 Update Checks section:
 
 ```
-### {N}. {name}
-expected: {expected}
-computation: {computation performed}
-precomputed_result: {AI's result}
+### 2. Benchmark Comparison
+expected: The benchmark comparison is not needed for this check.
+computation: The check was not run because it is outside the current scope.
+precomputed_result: No computation performed.
 result: skipped
-reason: [researcher's reason if provided]
+reason: The researcher confirmed this check was outside the current scope.
 ```
 
 **If response is anything else:**
@@ -596,35 +667,33 @@ Infer severity from description:
 Update Checks section:
 
 ```
-### {N}. {name}
-expected: {expected}
-computation: {computation performed}
-precomputed_result: {AI's result}
+### 3. Benchmark Comparison
+expected: The benchmark comparison should land within the 1% tolerance.
+computation: Evaluated the benchmark at the configured test points.
+precomputed_result: Independent arithmetic gives a relative error of 0.006.
 result: issue
-reported: "{verbatim researcher response}"
-severity: {inferred}
+reported: "The benchmark comparison still needs one more reference point."
+severity: major
 ```
 
-Append to Gaps section (structured YAML for plan-phase --gaps):
+Append to Gaps section (structured YAML for plan-phase --gaps).
+Use the same omission rule here: emit only the ID keys that actually bind the gap.
 
 ```yaml
-- gap_subject_kind: "{check_subject_kind}"
-  subject_id: "{subject_id}"
-  expectation: "{expected physics outcome from check}"
-  expected_check: "{expected physics outcome from check}"
-  claim_id: "{claim_id}"
-  deliverable_id: "{deliverable_id}"
-  acceptance_test_id: "{acceptance_test_id}"
-  reference_ids: ["{reference_id}"]
-  forbidden_proxy_id: "{forbidden_proxy_id}"
-  comparison_kind: "{comparison_kind}"
-  comparison_reference_id: "{comparison_reference_id}"
+- gap_subject_kind: "claim"
+  subject_id: "claim-main"
+  expectation: "The benchmark comparison should land within the 1% tolerance."
+  expected_check: "The independent calculation should reproduce the same sign and scale."
+  claim_id: "claim-main"
+  reference_ids: ["reference-main"]
+  comparison_kind: "benchmark"
+  comparison_reference_id: "reference-main"
   status: failed
-  reason: "Researcher reported: {verbatim researcher response}"
-  computation_evidence: "{what AI independently computed and found}"
+  reason: "Researcher reported: the benchmark comparison still needs one more reference point."
+  computation_evidence: "Independent arithmetic gave a relative error of 0.012."
   suggested_contract_checks: []
-  severity: { inferred }
-  check: { N }
+  severity: major
+  check: 1
   artifacts: [] # Filled by diagnosis
   missing: [] # Filled by diagnosis
 ```
@@ -662,7 +731,7 @@ If no more checks -> Go to `complete_session`
 
 Read the full verification file.
 
-Find first check with `result: [pending]`.
+Find first check with `result: pending`.
 
 Announce:
 
@@ -833,8 +902,8 @@ Present summary:
 ```
 All checks passed. Research validated. Ready to continue.
 
-- `/gpd:plan-phase {next}` -- Plan next research phase
-- `/gpd:execute-phase {next}` -- Execute next research phase
+- `gpd:plan-phase {next}` -- Plan next research phase
+- `gpd:execute-phase {next}` -- Execute next research phase
 ```
 
 </step>
@@ -919,7 +988,7 @@ Use ask_user:
   - "Accept as-is" — The issues are minor, results are acceptable
 
 **If "Auto-plan fixes":** Continue to plan_gap_closure step.
-**If "Investigate manually":** Present the detailed diagnosis and pause. Offer `/gpd:debug` for structured investigation.
+**If "Investigate manually":** Present the detailed diagnosis and pause. Offer `gpd:debug` for structured investigation.
 **If "Accept as-is":** Skip gap closure, mark phase verified with noted caveats.
 </step>
 
@@ -939,39 +1008,45 @@ Display:
 Spawn gpd-planner in --gaps mode:
 > **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
+Planner prompt:
+
+@{GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md
+
+```markdown
+Render the template's `## Standard Planning Template` into `gap_closure_prompt` with these bindings:
+
+- `{phase_number}` -> {phase_number}
+- `{standard | gap_closure}` -> `gap_closure`
+- `{full | light}` -> `full`
+- `{research_mode}` -> {research_mode}
+- `{autonomy}` -> {autonomy}
+- `{state_content}` -> Read `GPD/STATE.md` before drafting.
+- `{project_contract}` -> {project_contract}
+- `{project_contract_gate}` -> {project_contract_gate}
+- `{project_contract_load_info}` -> {project_contract_load_info}
+- `{project_contract_validation}` -> {project_contract_validation}
+- `{contract_intake}` -> {contract_intake}
+- `{effective_reference_intake}` -> {effective_reference_intake}
+- `{roadmap_content}` -> Read `GPD/ROADMAP.md` before drafting.
+- `{requirements_content}` -> Use `${phase_dir}/${phase_number}-VERIFICATION.md` as the diagnosed gap list; no separate requirements file is preloaded here.
+- `{protocol_bundle_context}` -> {protocol_bundle_context}
+- `{active_reference_context}` -> {active_reference_context}
+- `{reference_artifacts_content}` -> {reference_artifacts_content}
+- `{context_content}` -> No extra phase context is preloaded here; keep the plan scoped to diagnosed verification gaps and surfaced contract/reference anchors.
+- `{research_content}` -> No separate research artifact is preloaded for gap closure.
+- `{experiment_design_content}` -> No separate experiment-design artifact is preloaded for gap closure.
+- `{verification_content}` -> Read `${phase_dir}/${phase_number}-VERIFICATION.md` before drafting.
+- `{validation_content}` -> Use existing phase validation notes only if they already exist and matter to the diagnosed gaps.
+
+Also read `{GPD_INSTALL_DIR}/templates/phase-prompt.md` before drafting so PLAN output stays canonical.
+The included template already brings in `@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md`; do not restate schema rules here.
+If the downstream fix plan needs specialized tooling or other machine-checkable hard requirements, keep them in PLAN frontmatter `tool_requirements`.
+Keep the prompt scoped to diagnosed verification gaps. Do not restate template-owned contract gates, tangent control, context-budget guidance, downstream-consumer rules, or the quality gate here.
+```
+
 ```
 task(
-  prompt="""First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.
-
-<planning_context>
-
-**Phase:** {phase_number}
-**Mode:** gap_closure
-**Project Contract:** {project_contract}
-**Contract Intake:** {contract_intake}
-**Effective Reference Intake:** {effective_reference_intake}
-**Protocol Bundles:** {protocol_bundle_context}
-**Active References:** {active_reference_context}
-**Reference Artifacts:** {reference_artifacts_content}
-
-## Canonical PLAN Contract Schema
-
-Use `templates/plan-contract-schema.md` as the canonical contract schema reference.
-
-<files_to_read>
-Read these files using the file_read tool:
-- Validation with diagnoses: ${phase_dir}/${phase_number}-VERIFICATION.md
-- State: GPD/STATE.md
-- Roadmap: GPD/ROADMAP.md
-</files_to_read>
-
-</planning_context>
-
-<downstream_consumer>
-Output consumed by /gpd:execute-phase
-Plans must be executable prompts.
-</downstream_consumer>
-""",
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.\n\n" + gap_closure_prompt,
   subagent_type="gpd-planner",
   model="{planner_model}",
   readonly=false,
@@ -1014,6 +1089,16 @@ task(
 
 **Phase:** {phase_number}
 **Phase Goal:** Close diagnosed gaps from research validation
+**Project Contract:** {project_contract}
+**Project Contract Gate:** {project_contract_gate}
+**Project Contract Load Info:** {project_contract_load_info}
+**Project Contract Validation:** {project_contract_validation}
+**Contract Intake:** {contract_intake}
+**Effective Reference Intake:** {effective_reference_intake}
+**Active References:** {active_reference_context}
+**Reference Artifacts:** {reference_artifacts_content}
+
+Treat `effective_reference_intake` as the structured source of carry-forward anchors; `active_reference_context` is the readable projection, not the source of truth.
 
 <files_to_read>
 Read all PLAN.md files in ${phase_dir}/ using the file_read tool.
@@ -1036,7 +1121,7 @@ Return one of:
 
 On return:
 
-**If the plan-checker agent fails to spawn or returns an error:** Proceed without plan verification — the plans will still be executable. Note that plans were not verified and recommend running `/gpd:plan-phase --gaps` to re-verify if needed.
+**If the plan-checker agent fails to spawn or returns an error:** Proceed without plan verification — the plans will still be executable. Note that plans were not verified and recommend running `gpd:plan-phase --gaps` to re-verify if needed.
 
 - **VERIFICATION PASSED:** Proceed to `present_ready`
 - **ISSUES FOUND:** Proceed to `revision_loop`
@@ -1053,39 +1138,38 @@ Spawn gpd-planner with revision context:
 
 > **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
+Revision prompt:
+
+@{GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md
+
+```markdown
+Render the template's `## Revision Template` into `revision_prompt` with these bindings:
+
+- `{phase_number}` -> {phase_number}
+- `{plans_content}` -> Read all PLAN.md files in `${phase_dir}/` before revising.
+- `{structured_issues_from_checker}` -> {structured_issues_from_checker}
+- `{state_content}` -> Read `GPD/STATE.md` before revising.
+- `{project_contract}` -> {project_contract}
+- `{project_contract_gate}` -> {project_contract_gate}
+- `{project_contract_load_info}` -> {project_contract_load_info}
+- `{project_contract_validation}` -> {project_contract_validation}
+- `{contract_intake}` -> {contract_intake}
+- `{effective_reference_intake}` -> {effective_reference_intake}
+- `{protocol_bundle_context}` -> {protocol_bundle_context}
+- `{active_reference_context}` -> {active_reference_context}
+- `{reference_artifacts_content}` -> {reference_artifacts_content}
+- `{context_content}` -> Keep revisions scoped to checker feedback plus the diagnosed verification gaps already surfaced in `${phase_dir}/${phase_number}-VERIFICATION.md`.
+
+Also read `{GPD_INSTALL_DIR}/templates/phase-prompt.md` before rewriting so edited PLAN output stays canonical.
+The included template already brings in `@{GPD_INSTALL_DIR}/templates/plan-contract-schema.md`; do not restate schema rules here.
+If the revised fix plan still needs specialized tooling or other machine-checkable hard requirements, keep them in PLAN frontmatter `tool_requirements`.
+Treat `effective_reference_intake` as the structured source of carry-forward anchors; `active_reference_context` is the readable projection, not the source of truth.
+Keep the revision prompt scoped to targeted checker fixes. Do not restate template-owned revision policy here.
+```
+
 ```
 task(
-  prompt="""First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.
-
-<revision_context>
-
-**Phase:** {phase_number}
-**Mode:** revision
-**Project Contract:** {project_contract}
-**Contract Intake:** {contract_intake}
-**Effective Reference Intake:** {effective_reference_intake}
-**Protocol Bundles:** {protocol_bundle_context}
-**Active References:** {active_reference_context}
-**Reference Artifacts:** {reference_artifacts_content}
-
-## Canonical PLAN Contract Schema
-
-Use `templates/plan-contract-schema.md` as the canonical contract schema reference.
-
-<files_to_read>
-Read all PLAN.md files in ${phase_dir}/ using the file_read tool.
-</files_to_read>
-
-**Checker issues:**
-{structured_issues_from_checker}
-
-</revision_context>
-
-<instructions>
-Read existing PLAN.md files. Make targeted updates to address checker issues.
-Do NOT replan from scratch unless issues are fundamental.
-</instructions>
-""",
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.\n\n" + revision_prompt,
   subagent_type="gpd-planner",
   model="{planner_model}",
   readonly=false,
@@ -1106,7 +1190,7 @@ Offer options:
 
 1. Force proceed (execute despite issues)
 2. Provide guidance (researcher gives direction, retry)
-3. Abandon (exit, researcher runs /gpd:plan-phase manually)
+3. Abandon (exit, researcher runs gpd:plan-phase manually)
 
 Wait for researcher response.
 </step>
@@ -1134,7 +1218,7 @@ Plans verified and ready for execution.
 
 **Execute fixes** -- run fix plans
 
-`/clear` then `/gpd:execute-phase {phase_number} --gaps-only`
+`/clear` then `gpd:execute-phase {phase_number} --gaps-only`
 
 ---------------------------------------------------------------
 ```
@@ -1205,7 +1289,7 @@ Default to **major** if unclear. Researcher can correct if needed.
 - [ ] If issues: gpd-planner creates fix plans (gap_closure mode)
 - [ ] If issues: gpd-plan-checker verifies fix plans
 - [ ] If issues: revision loop until plans pass (max 3 iterations)
-- [ ] Ready for `/gpd:execute-phase --gaps-only` when complete
+- [ ] Ready for `gpd:execute-phase --gaps-only` when complete
 - [ ] REQUIREMENTS.md updated for any passed checks matching REQ-IDs (if REQUIREMENTS.md exists)
 
 </success_criteria>

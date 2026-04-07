@@ -159,13 +159,13 @@ When a phase consumes results from a prior phase, uncertainties must be tracked 
 2. **Propagate uncertainties.** Use standard error propagation (quadrature for independent errors, linear for correlated errors) through every calculation step that uses imported quantities.
 3. **Document propagation.** In the phase SUMMARY, include a section listing: (a) imported quantities with their uncertainties, (b) how uncertainties entered the current calculation, (c) the resulting uncertainty on this phase's outputs.
 4. **Flag amplification.** If uncertainty is amplified (e.g., exponentiation, division by small numbers, chaotic sensitivity), flag this explicitly as a potential validity concern.
-5. **Use `/gpd:error-propagation`** for systematic tracking across multi-phase calculations.
+5. **Use `gpd:error-propagation`** for systematic tracking across multi-phase calculations.
 
 **Why this matters:** Without explicit tracking, error bars on final results are underestimated. A 5% uncertainty in Phase 2 can become 50% by Phase 6 through amplification, but if never tracked, the final result appears precise.
 
 ### Machine-Readable Convention Assertions
 
-Every derivation file, computation script, and notebook must include a parseable assertion line declaring which conventions are in effect. This enables automated verification by the consistency checker and verifier agent.
+Every derivation file must include a parseable assertion line declaring which conventions are in effect. Convention-sensitive computation scripts and notebooks should also include one when they are meant to be reused or audited later. This enables automated verification by the consistency checker, verifier, and pre-commit gate.
 
 **Syntax:**
 
@@ -211,9 +211,9 @@ For LaTeX files, use `%` comment prefix. For Python, use `#`. For Markdown, use 
 **Verification protocol:**
 
 1. The executor writes an `ASSERT_CONVENTION` line at the top of every derivation file it creates or modifies
-2. The verifier scans for `ASSERT_CONVENTION` lines in all phase artifacts and compares each declared value against the project convention lock in `state.json`
+2. `gpd pre-commit-check` blocks changed derivation artifacts and canonical phase verification reports when their `ASSERT_CONVENTION` header is missing or mismatched against the active project convention lock
 3. A mismatch between an assertion and the lock is a **blocker** — it means the file was written under different conventions than the project standard
-4. A missing assertion in a file that contains equations is a **warning** — conventions should be declared explicitly
+4. A missing assertion in a convention-gated artifact is a **blocker**; outside that gated set, any explicit `ASSERT_CONVENTION` line is still checked against the lock and a mismatch remains a **blocker**
 
 ## Source Hierarchy
 
@@ -416,7 +416,7 @@ Both researcher agents follow the same methodology, differing only in scope (pro
 | Aspect | gpd-project-researcher | gpd-phase-researcher |
 |--------|----------------------|---------------------|
 | Scope | Entire project domain | Single phase domain |
-| Trigger | /gpd:new-project | /gpd:plan-phase or /gpd:research-phase |
+| Trigger | gpd:new-project | gpd:plan-phase or gpd:research-phase |
 | Output | GPD/research/ (5 files) | ${phase_dir}/{phase}-RESEARCH.md |
 | Consumer | gpd-roadmapper | gpd-planner |
 | Commits | No (orchestrator commits) | No (orchestrator commits) |

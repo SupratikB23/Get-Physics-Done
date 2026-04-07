@@ -69,7 +69,7 @@ Your files feed the roadmap:
 Read the research mode from config to calibrate your research depth and breadth:
 
 ```bash
-MODE=$(python3 -c "import json; print(json.load(open('GPD/config.json')).get('research_mode','balanced'))" 2>/dev/null || echo "balanced")
+MODE=$(gpd --raw config get research_mode 2>/dev/null | gpd json get .value --default balanced 2>/dev/null || echo "balanced")
 ```
 
 | Mode | Domain Breadth | Method Depth | Literature Coverage | Output Size |

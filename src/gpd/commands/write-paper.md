@@ -7,16 +7,27 @@ review-contract:
   review_mode: publication
   schema_version: 1
   required_outputs:
-    - paper/main.tex
+    - "${PAPER_DIR}/{topic_specific_stem}.tex"
+    - "${PAPER_DIR}/ARTIFACT-MANIFEST.json"
+    - "${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json"
+    - "${PAPER_DIR}/reproducibility-manifest.json"
+    - "GPD/review/CLAIMS{round_suffix}.json"
+    - "GPD/review/STAGE-reader{round_suffix}.json"
+    - "GPD/review/STAGE-literature{round_suffix}.json"
+    - "GPD/review/STAGE-math{round_suffix}.json"
+    - "GPD/review/STAGE-physics{round_suffix}.json"
+    - "GPD/review/STAGE-interestingness{round_suffix}.json"
+    - "GPD/review/REVIEW-LEDGER{round_suffix}.json"
+    - "GPD/review/REFEREE-DECISION{round_suffix}.json"
     - "GPD/REFEREE-REPORT{round_suffix}.md"
     - "GPD/REFEREE-REPORT{round_suffix}.tex"
   required_evidence:
     - manuscript scaffold target (existing draft or bootstrap target)
     - phase summaries or milestone digest
     - verification reports
-    - bibliography audit
-    - artifact manifest
-    - reproducibility manifest
+    - manuscript-root bibliography audit
+    - manuscript-root artifact manifest
+    - manuscript-root reproducibility manifest
   blocking_conditions:
     - missing project state
     - missing roadmap
@@ -24,11 +35,34 @@ review-contract:
     - no research artifacts
     - degraded review integrity
   preflight_checks:
+    - command_context
     - project_state
     - roadmap
     - conventions
     - research_artifacts
+    - verification_reports
     - manuscript
+    - artifact_manifest
+    - bibliography_audit
+    - bibliography_audit_clean
+    - reproducibility_manifest
+    - reproducibility_ready
+    - manuscript_proof_review
+  stage_artifacts:
+    - "GPD/review/CLAIMS{round_suffix}.json"
+    - "GPD/review/STAGE-reader{round_suffix}.json"
+    - "GPD/review/STAGE-literature{round_suffix}.json"
+    - "GPD/review/STAGE-math{round_suffix}.json"
+    - "GPD/review/STAGE-physics{round_suffix}.json"
+    - "GPD/review/STAGE-interestingness{round_suffix}.json"
+    - "GPD/review/REVIEW-LEDGER{round_suffix}.json"
+    - "GPD/review/REFEREE-DECISION{round_suffix}.json"
+  conditional_requirements:
+    - when: theorem-bearing claims are present
+      required_outputs:
+        - "GPD/review/PROOF-REDTEAM{round_suffix}.md"
+      stage_artifacts:
+        - "GPD/review/PROOF-REDTEAM{round_suffix}.md"
 allowed-tools:
   - file_read
   - file_write
@@ -41,35 +75,25 @@ allowed-tools:
   - ask_user
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Structure and write a physics paper from completed research results. Handles the full pipeline from research digest through polished draft: paper-readiness audit, scope and outline, figure generation, wave-parallelized section drafting, notation audit, bibliography verification, staged pre-submission peer review, and revision handling.
+Structure and write a physics paper from completed research results.
 
-**Orchestrator role:** Establish paper scope and structure, spawn gpd-paper-writer agents for section drafting (wave-parallelized), gpd-bibliographer for citation verification, run the staged peer-review panel (`gpd-review-reader`, `gpd-review-literature`, `gpd-review-math`, `gpd-review-physics`, `gpd-review-significance`, then `gpd-referee` as final adjudicator), coordinate revisions, ensure internal consistency.
+Keep the wrapper thin and let the workflow own the full pipeline.
 
-**Why subagent:** Paper writing requires holding the full research context while drafting coherent prose. Each section needs access to derivations, numerical results, and literature context. Fresh 200k context per section ensures quality. Main context coordinates the overall structure.
-
-Writing a physics paper is not writing a report. A paper has a narrative arc: it poses a question, develops the tools to answer it, presents the answer, and explains why the answer matters. Every equation must earn its place. Every figure must make a point. Every paragraph must advance the argument.
-
-Routes to the write-paper workflow which handles all logic including:
-
-1. Research digest loading (from milestone completion) with digest-to-paper section mapping
-2. Paper-readiness audit (SUMMARY completeness, convention consistency, numerical stability, figure readiness, citation readiness) with gate decision
-3. Scope establishment, artifact cataloging, and outline creation
-4. Figure generation before section drafting
-5. Wave-parallelized section drafting (Wave 1: Results+Methods, Wave 2: Introduction, Wave 3: Discussion, Wave 4: Conclusions, Wave 5: Abstract, Wave 6: Appendices)
-6. LaTeX compilation checks after each wave (if pdflatex available; cross-platform detection including Windows MiKTeX/TeX Live)
-7. Consistency check, notation audit, and RESULT PENDING placeholder resolution
-8. Bibliography verification via gpd-bibliographer
-9. Pre-submission staged peer review via specialist panel plus final gpd-referee adjudication
-10. Bounded revision loop (max 3 iterations) for addressing referee issues
+**Why subagent:** Publication drafting and review coordination burn context fast. Separate drafting context keeps the orchestrator lean.
 </objective>
 
 <execution_context>
 @{GPD_INSTALL_DIR}/workflows/write-paper.md
+@{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md
+@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md
+@{GPD_INSTALL_DIR}/references/publication/peer-review-reliability.md
 @{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/artifact-manifest-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/bibliography-audit-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md
+@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md
 @{GPD_INSTALL_DIR}/templates/paper/figure-tracker.md
 @{GPD_INSTALL_DIR}/templates/paper/reproducibility-manifest.md
 </execution_context>
@@ -77,13 +101,11 @@ Routes to the write-paper workflow which handles all logic including:
 <context>
 Paper topic: $ARGUMENTS
 
-Check for existing drafts:
+Read `@{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md` before applying any autonomy or research mode behavior.
 
-```bash
-ls paper/ manuscript/ draft/ 2>/dev/null
-ls GPD/paper/*.md 2>/dev/null
-find . -name "*.tex" -maxdepth 2 2>/dev/null | head -10
-```
+Check for existing drafts with the shared manuscript-root publication preflight block.
+
+Before reading or updating `${PAPER_DIR}/FIGURE_TRACKER.md`, load `@{GPD_INSTALL_DIR}/templates/paper/figure-tracker.md` and `@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md` first.
 
 Load research context:
 
@@ -96,37 +118,11 @@ cat GPD/research-map/FORMALISM.md 2>/dev/null
 </context>
 
 <process>
-**Follow the write-paper workflow** from `@{GPD_INSTALL_DIR}/workflows/write-paper.md`.
+@{GPD_INSTALL_DIR}/references/publication/publication-review-wrapper-guidance.md
+@{GPD_INSTALL_DIR}/templates/paper/publication-manuscript-root-preflight.md
+@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md
 
-When the workflow asks for constrained artifacts such as `${PAPER_DIR}/PAPER-CONFIG.json`, `GPD/paper/FIGURE_TRACKER.md`, or `${PAPER_DIR}/reproducibility-manifest.json`, use the canonical schema/template surfaces it loads there rather than inventing keys from memory.
-
-The workflow handles all logic including:
-
-1. **Init** — Load project context via `gpd init phase-op`, check pdflatex availability (cross-platform, including Windows MiKTeX/TeX Live), verify conventions
-2. **Load research digest** — Check for RESEARCH-DIGEST.md from milestone completion; map digest sections to paper structure; fall back to raw phase data if no digest found. Supports `--from-phases` flag to select specific phases.
-3. **Establish scope** — Target journal, paper type, key result (ONE sentence), audience, available artifacts
-4. **Catalog artifacts** — Gather derivations, numerical results, figures, literature, verification results from phases
-5. **Paper-readiness audit** — 5 checks (SUMMARY completeness, convention consistency, numerical stability, figure readiness, citation readiness) with gate decision (0 critical gaps to proceed, or user approval)
-6. **Create outline** — Detailed per-section outline (purpose, key content, equations, figures, citations, dependencies) adapted to journal format. Present for approval.
-7. **Generate files** — Create `${PAPER_DIR}/PAPER-CONFIG.json` using `@{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md`, then materialize the canonical manuscript scaffold with `gpd paper-build` (emits `${PAPER_DIR}/main.tex`, bibliography artifacts, and `${PAPER_DIR}/ARTIFACT-MANIFEST.json`)
-8. **Generate figures** — Generate matplotlib scripts from phase data, execute to `${PAPER_DIR}/figures/`, update FIGURE_TRACKER.md
-9. **Draft sections** — Wave-parallelized spawning of gpd-paper-writer agents:
-   - Wave 1: Results + Methods (no dependency)
-   - Wave 2: Introduction (depends on Results)
-   - Wave 3: Discussion (depends on Results + Methods)
-   - Wave 4: Conclusions
-   - Wave 5: Abstract (write LAST)
-   - Wave 6: Appendices
-   - LaTeX compilation check after each wave (if pdflatex available; Windows users: install MiKTeX or TeX Live)
-   - Per-wave checkpointing: skip waves whose .tex outputs already exist
-10. **Consistency check** — Notation audit, cross-reference audit, placeholder resolution (RESULT PENDING markers), physics consistency, narrative flow
-11. **Notation audit** — Cross-reference all symbols against NOTATION_GLOSSARY.md (if exists)
-12. **Verify references** — Spawn gpd-bibliographer to verify all citations against INSPIRE/ADS/arXiv, detect orphans, check formatting
-13. **Pre-submission review** — Run the same staged peer-review panel used by `/gpd:peer-review`
-14. **Final review** — Abstract standalone check, equation proofread, figure references, word/page count
-15. **Paper revision** — Bounded revision loop (max 3 iterations) for addressing referee issues; spawns paper-writer agents for targeted section fixes
-
-For a standalone rerun of the referee stage after the manuscript already exists, use `/gpd:peer-review`.
+Follow `@{GPD_INSTALL_DIR}/workflows/write-paper.md` exactly.
 </process>
 
 <success_criteria>
@@ -138,6 +134,7 @@ For a standalone rerun of the referee stage after the manuscript already exists,
 - [ ] Every equation numbered, defined, and contextualized
 - [ ] Every figure captioned and discussed in text
 - [ ] Citations verified via gpd-bibliographer (no hallucinated references)
+- [ ] Manuscript-root review artifacts refreshed (`${PAPER_DIR}/ARTIFACT-MANIFEST.json`, `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json`, `${PAPER_DIR}/reproducibility-manifest.json`)
 - [ ] Pre-submission staged peer review completed with final gpd-referee adjudication
 - [ ] Internal consistency verified (notation, cross-references, conventions)
 - [ ] Paper directory created with buildable LaTeX structure

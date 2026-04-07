@@ -8,7 +8,10 @@
   },
   "files": [
     "bin/",
-    "src/gpd/adapters/runtime_catalog.json"
+    "src/gpd/adapters/runtime_catalog.json",
+    "src/gpd/adapters/runtime_catalog_schema.json",
+    "src/gpd/core/public_surface_contract_schema.json",
+    "src/gpd/core/public_surface_contract.json"
   ],
   "repository": {
     "type": "git",

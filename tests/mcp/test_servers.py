@@ -30,6 +30,10 @@ def _multi_claim_contract_fixture() -> dict[str, object]:
             "question": "Which benchmark and asymptotic regime does each claim recover?",
             "in_scope": ["claim-specific benchmark recovery"],
         },
+        "context_intake": {
+            "must_read_refs": ["ref-a", "ref-b"],
+            "crucial_inputs": ["Use the claim-specific benchmark anchor and regime for each check."],
+        },
         "observables": [
             {
                 "id": "obs-a",
@@ -51,6 +55,7 @@ def _multi_claim_contract_fixture() -> dict[str, object]:
                 "id": "claim-a",
                 "statement": "Recover benchmark A",
                 "observables": ["obs-a"],
+                "deliverables": ["deliv-a"],
                 "acceptance_tests": ["test-a"],
                 "references": ["ref-a"],
             },
@@ -58,11 +63,25 @@ def _multi_claim_contract_fixture() -> dict[str, object]:
                 "id": "claim-b",
                 "statement": "Recover benchmark B",
                 "observables": ["obs-b"],
+                "deliverables": ["deliv-b"],
                 "acceptance_tests": ["test-b"],
                 "references": ["ref-b"],
             },
         ],
-        "deliverables": [],
+        "deliverables": [
+            {
+                "id": "deliv-a",
+                "description": "Benchmark A recovery note",
+                "kind": "report",
+                "must_contain": ["claim-a", "ref-a"],
+            },
+            {
+                "id": "deliv-b",
+                "description": "Benchmark B recovery note",
+                "kind": "report",
+                "must_contain": ["claim-b", "ref-b"],
+            },
+        ],
         "acceptance_tests": [
             {
                 "id": "test-a",
@@ -85,25 +104,155 @@ def _multi_claim_contract_fixture() -> dict[str, object]:
             {
                 "id": "ref-a",
                 "kind": "paper",
-                "locator": "Benchmark A",
+                "locator": "doi:10.1234/benchmark-a",
                 "role": "benchmark",
                 "why_it_matters": "Claim A anchor",
                 "applies_to": ["claim-a"],
+                "must_surface": True,
+                "required_actions": ["compare"],
             },
             {
                 "id": "ref-b",
                 "kind": "paper",
-                "locator": "Benchmark B",
+                "locator": "doi:10.1234/benchmark-b",
                 "role": "benchmark",
                 "why_it_matters": "Claim B anchor",
                 "applies_to": ["claim-b"],
+                "must_surface": True,
+                "required_actions": ["compare"],
             },
         ],
-        "forbidden_proxies": [],
+        "forbidden_proxies": [
+            {
+                "id": "fp-a",
+                "subject": "claim-a",
+                "proxy": "qualitative agreement without benchmark anchoring",
+                "reason": "Claim A requires the explicit benchmark anchor.",
+            },
+            {
+                "id": "fp-b",
+                "subject": "claim-b",
+                "proxy": "qualitative agreement without benchmark anchoring",
+                "reason": "Claim B requires the explicit benchmark anchor.",
+            },
+        ],
         "links": [],
         "uncertainty_markers": {
             "weakest_anchors": ["Benchmark interpretation"],
             "disconfirming_observations": ["Claim-specific benchmark mismatch"],
+        },
+    }
+
+
+def _proof_contract_fixture() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "scope": {
+            "question": "Does the proof establish the theorem for all r_0 > 0?",
+            "in_scope": ["proof-obligation audit"],
+        },
+        "context_intake": {
+            "must_read_refs": ["ref-proof"],
+            "crucial_inputs": ["Track every theorem parameter and conclusion clause through the proof."],
+        },
+        "observables": [
+            {
+                "id": "obs-proof",
+                "name": "main theorem proof obligation",
+                "kind": "proof_obligation",
+                "definition": "Formal proof obligation for the main theorem",
+            }
+        ],
+        "claims": [
+            {
+                "id": "claim-theorem",
+                "statement": "For all r_0 > 0, the full theorem holds.",
+                "claim_kind": "theorem",
+                "observables": ["obs-proof"],
+                "deliverables": ["deliv-summary"],
+                "acceptance_tests": [
+                    "test-proof-param",
+                    "test-proof-align",
+                    "test-proof-counterexample",
+                ],
+                "references": ["ref-proof"],
+                "parameters": [
+                    {"symbol": "r_0", "domain_or_type": "positive real", "aliases": ["r0"], "required_in_proof": True},
+                    {"symbol": "n", "domain_or_type": "integer", "required_in_proof": True},
+                ],
+                "hypotheses": [{"id": "hyp-main", "text": "r_0 > 0", "required_in_proof": True}],
+                "quantifiers": ["for all r_0 > 0"],
+                "conclusion_clauses": [{"id": "conclusion-main", "text": "the theorem holds"}],
+                "proof_deliverables": ["deliv-proof"],
+            }
+        ],
+        "deliverables": [
+            {
+                "id": "deliv-summary",
+                "kind": "report",
+                "description": "Theorem summary note",
+                "must_contain": ["theorem statement"],
+            },
+            {
+                "id": "deliv-proof",
+                "kind": "derivation",
+                "description": "Formal theorem proof",
+                "must_contain": ["proof audit"],
+            },
+        ],
+        "acceptance_tests": [
+            {
+                "id": "test-proof-param",
+                "subject": "claim-theorem",
+                "kind": "proof_parameter_coverage",
+                "procedure": "Audit theorem parameters against the proof body.",
+                "pass_condition": "All theorem parameters remain present in the proof.",
+                "evidence_required": ["deliv-proof"],
+                "automation": "hybrid",
+            },
+            {
+                "id": "test-proof-align",
+                "subject": "claim-theorem",
+                "kind": "claim_to_proof_alignment",
+                "procedure": "Audit the theorem statement against the proof conclusion.",
+                "pass_condition": "The proof establishes the theorem exactly as stated.",
+                "evidence_required": ["deliv-proof"],
+                "automation": "hybrid",
+            },
+            {
+                "id": "test-proof-counterexample",
+                "subject": "claim-theorem",
+                "kind": "counterexample_search",
+                "procedure": "Attempt an adversarial counterexample search.",
+                "pass_condition": "No counterexample or narrowed claim is found.",
+                "evidence_required": ["deliv-proof"],
+                "automation": "hybrid",
+            },
+        ],
+        "references": [
+            {
+                "id": "ref-proof",
+                "kind": "paper",
+                "locator": "doi:10.1000/proof",
+                "role": "definition",
+                "why_it_matters": "Defines the theorem statement and notation.",
+                "applies_to": ["claim-theorem"],
+                "must_surface": True,
+                "required_actions": ["read"],
+            }
+        ],
+        "forbidden_proxies": [
+            {
+                "id": "fp-proof",
+                "subject": "claim-theorem",
+                "proxy": "Algebraic consistency without theorem alignment",
+                "reason": "The theorem still requires statement-to-proof alignment.",
+            }
+        ],
+        "links": [],
+        "uncertainty_markers": {
+            "weakest_anchors": ["A theorem parameter could disappear from the proof body."],
+            "disconfirming_observations": ["The proof only covers the r_0 = 0 special case."],
         },
     }
 
@@ -140,9 +289,64 @@ class TestBuiltinServerDescriptors:
         descriptor = build_public_descriptors()["gpd-state"]
         python_module = descriptor["alternatives"]["python_module"]
 
-        assert str(python_module["command"]) == "python3"
-        assert str(python_module["command"]) != "python"
-        assert python_module["notes"] == "Requires gpd package installed and Python >=3.11"
+        assert python_module["command"] == "${GPD_PYTHON}"
+        assert isinstance(python_module["command"], str)
+        assert (
+            python_module["notes"]
+            == "Replace `${GPD_PYTHON}` with a Python >=3.11 interpreter that has GPD installed."
+        )
+
+    def test_state_public_descriptor_lists_only_live_tools(self):
+        from gpd.mcp.builtin_servers import build_public_descriptors
+
+        descriptor = build_public_descriptors()["gpd-state"]
+
+        assert descriptor["capabilities"] == [
+            "get_state",
+            "get_phase_info",
+            "advance_plan",
+            "get_progress",
+            "validate_state",
+            "run_health_check",
+            "get_config",
+        ]
+        assert "emit_phase_event" not in descriptor["capabilities"]
+
+    def test_state_public_descriptor_health_check_is_executable_without_fake_project_path(self):
+        from gpd.mcp.builtin_servers import build_public_descriptors
+        from gpd.mcp.servers.state_server import mcp
+
+        descriptor = build_public_descriptors()["gpd-state"]
+        health_check = descriptor["health_check"]
+
+        async def _call() -> dict[str, object]:
+            result = await mcp.call_tool(str(health_check["tool"]), dict(health_check["input"]))
+            if isinstance(result, dict):
+                return result
+            if (
+                isinstance(result, tuple)
+                and len(result) == 2
+                and isinstance(result[1], dict)
+            ):
+                return result[1]
+            if (
+                isinstance(result, list)
+                and len(result) == 1
+                and hasattr(result[0], "text")
+                and isinstance(result[0].text, str)
+            ):
+                return json.loads(result[0].text)
+            raise AssertionError(f"Unexpected MCP call result: {result!r}")
+
+        result = anyio.run(_call)
+
+        assert health_check["tool"] == "get_state"
+        assert health_check["input"] == {}
+        assert "missing required project_dir" in str(health_check["expect"])
+        assert "/tmp/test" not in json.dumps(health_check)
+        assert result["schema_version"] == 1
+        assert "error" in result
+        assert "project_dir" in result["error"]
 
     def test_build_mcp_servers_dict_checks_optional_modules_in_target_interpreter(self, monkeypatch):
         from gpd.mcp import builtin_servers
@@ -289,6 +493,18 @@ class TestConventionsServer:
         assert result["valid"] is False
         assert result["assertions_found"] == 0
 
+    def test_assert_convention_validate_missing_required_key(self):
+        from gpd.mcp.servers.conventions_server import assert_convention_validate
+
+        content = "% ASSERT_CONVENTION: metric_signature=(+,-,-,-)"
+        lock = {
+            "metric_signature": "(+,-,-,-)",
+            "fourier_convention": "physics",
+        }
+        result = assert_convention_validate(content, lock)
+        assert result["valid"] is False
+        assert result["missing_required_keys"] == ["fourier_convention"]
+
     def test_subfield_defaults_qft(self):
         from gpd.mcp.servers.conventions_server import subfield_defaults
 
@@ -421,38 +637,94 @@ class TestConventionsServer:
         assert "Custom convention keys" in result["error"]
 
 
-    def test_load_lock_non_dict_state_json(self, tmp_path):
-        """If state.json contains a non-dict (e.g. a list), return empty lock."""
+    def test_load_lock_non_dict_state_json_fails_closed(self, tmp_path):
+        """If state exists but is unrecoverable, the helper should fail closed."""
         from gpd.mcp.servers.conventions_server import _load_lock_from_project
 
         planning = tmp_path / "GPD"
         planning.mkdir()
         (planning / "state.json").write_text(json.dumps([1, 2, 3]))
-        lock = _load_lock_from_project(str(tmp_path))
-        assert lock.metric_signature is None
+        with pytest.raises(ValueError, match="not recoverable"):
+            _load_lock_from_project(str(tmp_path))
 
-    def test_load_lock_string_state_json(self, tmp_path):
-        """If state.json contains a bare string, return empty lock."""
+    def test_load_lock_string_state_json_fails_closed(self, tmp_path):
+        """If state exists but is unrecoverable, the helper should fail closed."""
         from gpd.mcp.servers.conventions_server import _load_lock_from_project
 
         planning = tmp_path / "GPD"
         planning.mkdir()
         (planning / "state.json").write_text(json.dumps("just a string"))
-        lock = _load_lock_from_project(str(tmp_path))
-        assert lock.metric_signature is None
+        with pytest.raises(ValueError, match="not recoverable"):
+            _load_lock_from_project(str(tmp_path))
 
-    def test_update_lock_non_dict_state_json(self, tmp_path):
-        """If state.json contains a non-dict, _update_lock_in_project resets raw to {}."""
+    def test_update_lock_non_dict_state_json_fails_closed(self, tmp_path):
+        """If state exists but is unrecoverable, mutation should not flatten it to defaults."""
         from gpd.mcp.servers.conventions_server import _update_lock_in_project
 
         planning = tmp_path / "GPD"
         planning.mkdir()
         (planning / "state.json").write_text(json.dumps([1, 2, 3]))
-        lock, result = _update_lock_in_project(
-            str(tmp_path), lambda lk: lk.metric_signature
-        )
-        assert lock.metric_signature is None
-        assert result is None
+        with pytest.raises(ValueError, match="not recoverable"):
+            _update_lock_in_project(str(tmp_path), lambda lk: lk.metric_signature)
+
+    def test_load_lock_recovers_backup_only_convention_state(self, tmp_path):
+        from gpd.core.state import default_state_dict
+        from gpd.mcp.servers.conventions_server import _load_lock_from_project
+
+        planning = tmp_path / "GPD"
+        planning.mkdir()
+        state = default_state_dict()
+        state["convention_lock"] = {"metric_signature": "(+,-,-,-)"}
+        (planning / "state.json.bak").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+        lock = _load_lock_from_project(str(tmp_path))
+
+        assert lock.metric_signature == "(+,-,-,-)"
+
+    def test_load_lock_does_not_recover_intent_during_read_only_status_lookup(self, tmp_path):
+        from gpd.core.constants import ProjectLayout
+        from gpd.core.state import default_state_dict, generate_state_markdown, save_state_json
+        from gpd.mcp.servers.conventions_server import _load_lock_from_project
+
+        stale_state = default_state_dict()
+        stale_state["convention_lock"] = {"metric_signature": "(+,-,-,-)"}
+        save_state_json(tmp_path, stale_state)
+
+        layout = ProjectLayout(tmp_path)
+        recovered_state = default_state_dict()
+        recovered_state["convention_lock"] = {"metric_signature": "(-,+,+,+)"}
+        json_tmp = layout.gpd / ".state-json-tmp"
+        md_tmp = layout.gpd / ".state-md-tmp"
+        json_tmp.write_text(json.dumps(recovered_state, indent=2) + "\n", encoding="utf-8")
+        md_tmp.write_text(generate_state_markdown(recovered_state), encoding="utf-8")
+        layout.state_intent.write_text(f"{json_tmp}\n{md_tmp}\n", encoding="utf-8")
+
+        before_state = layout.state_json.read_text(encoding="utf-8")
+
+        lock = _load_lock_from_project(str(tmp_path))
+
+        assert lock.metric_signature == "(+,-,-,-)"
+        assert layout.state_intent.exists()
+        assert layout.state_json.read_text(encoding="utf-8") == before_state
+
+    def test_convention_set_preserves_backup_only_state_when_mutating_lock(self, tmp_path):
+        from gpd.core.state import default_state_dict
+        from gpd.mcp.servers.conventions_server import convention_set
+
+        planning = tmp_path / "GPD"
+        planning.mkdir()
+        state = default_state_dict()
+        state["position"]["current_phase"] = "09"
+        state["convention_lock"] = {"metric_signature": "(+,-,-,-)"}
+        (planning / "state.json.bak").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+        result = convention_set(str(tmp_path), "fourier_convention", "physics")
+
+        assert result["status"] == "set"
+        persisted = json.loads((planning / "state.json").read_text(encoding="utf-8"))
+        assert persisted["position"]["current_phase"] == "09"
+        assert persisted["convention_lock"]["metric_signature"] == "(+,-,-,-)"
+        assert persisted["convention_lock"]["fourier_convention"] == "physics"
 
     def test_convention_set_returns_error_on_malformed_state_json(self, tmp_path):
         """convention_set returns an error dict (not raises) when state.json is malformed."""
@@ -844,6 +1116,8 @@ class TestSkillsServer:
             "---\n"
             "name: gpd:execute-phase\n"
             "description: Execute all plans in a phase.\n"
+            "requires:\n"
+            "  files: [\"GPD/ROADMAP.md\"]\n"
             "---\n"
             "\n"
             "Canonical execute command.\n",
@@ -853,6 +1127,7 @@ class TestSkillsServer:
             "---\n"
             "name: gpd:plan-phase\n"
             "description: Create detailed execution plan.\n"
+            "agent: gpd-planner\n"
             "---\n"
             "\n"
             "Canonical plan command.\n"
@@ -866,7 +1141,10 @@ class TestSkillsServer:
             "---\n"
             "\n"
             "Canonical help command.\n"
-            "Try /gpd:help or /gpd:execute-phase for runtime-installed shells.\n",
+            "Try /gpd:help or /gpd:execute-phase for runtime-installed shells.\n"
+            "## Contextual Help (State-Aware Variant)\n"
+            "\n"
+            "Use the state-aware help block to pick the current-state command set.\n",
             encoding="utf-8",
         )
         (commands_dir / "slides.md").write_text(
@@ -884,9 +1162,22 @@ class TestSkillsServer:
             "name: gpd:peer-review\n"
             "description: Conduct standalone peer review.\n"
             "context_mode: project-required\n"
+            "requires:\n"
+            "  files: [\"paper/*.tex\", \"paper/*.md\", \"manuscript/*.tex\", \"manuscript/*.md\", \"draft/*.tex\", \"draft/*.md\"]\n"
             "review-contract:\n"
             "  review_mode: publication\n"
             "  schema_version: 1\n"
+            "  required_outputs: []\n"
+            "  required_evidence: []\n"
+            "  blocking_conditions: []\n"
+            "  preflight_checks: []\n"
+            "  stage_artifacts: []\n"
+            "  conditional_requirements:\n"
+            "    - when: theorem-bearing claims are present\n"
+            "      required_outputs:\n"
+            "        - GPD/review/PROOF-REDTEAM{round_suffix}.md\n"
+            "      stage_artifacts:\n"
+            "        - GPD/review/PROOF-REDTEAM{round_suffix}.md\n"
             "---\n"
             "\n"
             "Canonical peer review command.\n"
@@ -937,10 +1228,14 @@ class TestSkillsServer:
         assert result["skills"][0]["name"] == "gpd-execute-phase"
 
     def test_list_skills_empty_category(self):
+        from gpd import registry as content_registry
         from gpd.mcp.servers.skills_server import list_skills
 
         result = list_skills(category="nonexistent")
-        assert result["count"] == 0
+        assert result == {
+            "error": f"category must be one of: {', '.join(content_registry.skill_categories())}",
+            "schema_version": 1,
+        }
 
     def test_get_skill_found(self):
         from gpd.mcp.servers.skills_server import get_skill
@@ -948,8 +1243,30 @@ class TestSkillsServer:
         result = get_skill("gpd-execute-phase")
         assert result["name"] == "gpd-execute-phase"
         assert "Canonical execute command" in result["content"]
+        assert result["requires"] == {"files": ["GPD/ROADMAP.md"]}
+        assert result["content_authority"] == "canonical"
+        assert result["structured_metadata_authority"] == {
+            "content": "canonical",
+            "context_mode": "mirrored",
+            "project_reentry_capable": "mirrored",
+            "allowed_tools": "mirrored",
+            "requires": "mirrored",
+            "review_contract": "mirrored",
+        }
+        assert "Treat `content` as the wrapper/context surface." in result["loading_hint"]
+        assert "See `referenced_files` for external markdown dependencies." in result["loading_hint"]
+        assert "It already embeds the model-visible `Command Requirements` section." in result["loading_hint"]
         assert result["file_count"] == 1
         assert result["allowed_tools_surface"] == "command.allowed-tools"
+
+    def test_get_skill_surfaces_command_agent_metadata(self):
+        from gpd.mcp.servers.skills_server import get_skill
+
+        result = get_skill("gpd-plan-phase")
+
+        assert result["agent"] == "gpd-planner"
+        assert result["structured_metadata_authority"]["agent"] == "mirrored"
+        assert "agent: gpd-planner" in result["content"]
 
     def test_get_skill_surfaces_referenced_files(self):
         from gpd.mcp.servers.skills_server import get_skill
@@ -974,21 +1291,119 @@ class TestSkillsServer:
         assert "Review Ledger Schema" in schema_documents["review-ledger-schema.md"]["body"]
         assert "referee-decision-schema.md" in schema_documents
         assert "Referee Decision Schema" in schema_documents["referee-decision-schema.md"]["body"]
-        assert "review-ledger-schema.md" in contract_documents
-        assert "schema_documents and contract_documents already include" in result["loading_hint"]
+        assert "review-ledger-schema.md" not in contract_documents
+        assert "Treat `content` as the wrapper/context surface." in result["loading_hint"]
+        assert "Load `schema_documents` and `contract_documents` too when present" in result["loading_hint"]
+        assert result["content_authority"] == "canonical"
+        assert result["structured_metadata_authority"] == {
+            "content": "canonical",
+            "context_mode": "mirrored",
+            "project_reentry_capable": "mirrored",
+            "allowed_tools": "mirrored",
+            "requires": "mirrored",
+            "review_contract": "mirrored",
+        }
+        assert "It already embeds the model-visible `Command Requirements` section." in result["loading_hint"]
         assert result["context_mode"] == "project-required"
+        assert result["project_reentry_capable"] is False
         assert result["review_contract"] is not None
         assert result["review_contract"]["review_mode"] == "publication"
+        assert "required_state" not in result["review_contract"]
+        assert result["review_contract"]["conditional_requirements"] == [
+            {
+                "when": "theorem-bearing claims are present",
+                "required_outputs": ["GPD/review/PROOF-REDTEAM{round_suffix}.md"],
+                "required_evidence": [],
+                "blocking_conditions": [],
+                "blocking_preflight_checks": [],
+                "stage_artifacts": ["GPD/review/PROOF-REDTEAM{round_suffix}.md"],
+            }
+        ]
+        assert "## Review Contract" in result["content"]
+        assert "review_contract:" in result["content"]
+        assert "review-contract:" not in result["content"]
         assert all(not entry["path"].startswith("/") for entry in result["schema_documents"])
         assert all(not entry["path"].startswith("/") for entry in result["contract_documents"])
 
+    def test_get_skill_resume_work_surfaces_project_reentry_metadata(self):
+        from gpd.mcp.servers.skills_server import get_skill
+        from gpd.registry import CommandDef, SkillDef
+
+        command = CommandDef(
+            name="gpd:resume-work",
+            description="Resume.",
+            argument_hint="",
+            requires={},
+            allowed_tools=["file_read", "shell"],
+            content="Resume body.",
+            path="/tmp/gpd-resume-work.md",
+            source="commands",
+            context_mode="project-required",
+            project_reentry_capable=True,
+        )
+        skill = SkillDef(
+            name="gpd-resume-work",
+            description="Resume.",
+            content="Resume body.",
+            category="session",
+            path="/tmp/gpd-resume-work.md",
+            source_kind="command",
+            registry_name="resume-work",
+        )
+
+        with (
+            patch("gpd.mcp.servers.skills_server._resolve_skill", return_value=skill),
+            patch("gpd.mcp.servers.skills_server.content_registry.get_command", return_value=command),
+        ):
+            result = get_skill("gpd-resume-work")
+
+        assert result["context_mode"] == "project-required"
+        assert result["project_reentry_capable"] is True
+        assert result["argument_hint"] == ""
+
     def test_get_skill_agent_uses_primary_agent_content(self):
+        from gpd import registry
         from gpd.mcp.servers.skills_server import get_skill
 
         result = get_skill("gpd-debugger")
+        agent = registry.get_agent("gpd-debugger")
         # Agent-backed entries remain part of the canonical MCP skill index.
         assert result["name"] == "gpd-debugger"
+        assert result["content"] == agent.system_prompt
         assert "Primary debugger agent" in result["content"]
+        assert "## Agent Requirements" in result["content"]
+        assert result["content"].count("## Agent Requirements") == 1
+        assert "## Agent Policy" not in result["content"]
+        assert result["structured_metadata_authority"] == {
+            "content": "canonical",
+            "allowed_tools": "mirrored",
+            "agent_policy": "mirrored",
+        }
+        assert "commit_authority" in result["content"]
+        assert "artifact_write_authority" in result["content"]
+        assert "shared_state_authority" in result["content"]
+        assert result["agent_policy"] == {
+            "commit_authority": agent.commit_authority,
+            "surface": agent.surface,
+            "role_family": agent.role_family,
+            "artifact_write_authority": agent.artifact_write_authority,
+            "shared_state_authority": agent.shared_state_authority,
+            "tools": agent.tools,
+        }
+
+    def test_get_skill_loading_hint_only_claims_schema_documents_when_loaded(self):
+        from gpd.mcp.servers.skills_server import get_skill
+
+        result = get_skill("gpd-slides")
+
+        assert "error" not in result
+        assert result["reference_count"] > 0
+        assert result["schema_documents"] == []
+        assert result["contract_documents"] == []
+        assert "See `referenced_files` for external markdown dependencies." in result["loading_hint"]
+        assert "schema_documents and contract_documents mirror loaded schema and contract markdown bodies." not in result[
+            "loading_hint"
+        ]
 
     def test_get_skill_canonicalizes_runtime_command_examples(self):
         from gpd.mcp.servers.skills_server import get_skill
@@ -998,6 +1413,9 @@ class TestSkillsServer:
         assert "/gpd:" not in result["content"]
         assert "gpd-help" in result["content"]
         assert "gpd-execute-phase" in result["content"]
+        assert "## Command Requirements" in result["content"]
+        assert "Try gpd-help or gpd-execute-phase for runtime-installed shells." in result["content"]
+        assert "## Contextual Help" in result["content"]
 
     def test_get_skill_resolves_install_and_agents_placeholders(self):
         from gpd.mcp.servers.skills_server import get_skill
@@ -1240,15 +1658,82 @@ class TestStateServer:
         assert result["error"] == "project_dir must be an absolute path"
         assert result["schema_version"] == 1
 
+    def test_load_state_json_omits_legacy_session_mirror(self):
+        from gpd.mcp.servers.state_server import load_state_json
+
+        mock_state = {
+            "position": {"current_phase": "01"},
+            "decisions": [],
+            "blockers": [],
+            "session": {"last_date": "2026-01-01"},
+        }
+
+        with (
+            patch("gpd.mcp.servers.state_server.peek_state_json", return_value=(mock_state, [], "state.json")),
+            patch(
+                "gpd.mcp.servers.state_server._project_contract_runtime_payload_for_state",
+                return_value=(
+                    {"status": "loaded"},
+                    {"valid": True},
+                    {"authoritative": True},
+                ),
+            ),
+        ):
+            result = load_state_json(Path("/fake/project"))
+
+        assert result is not None
+        assert "session" not in result
+        assert result["position"]["current_phase"] == "01"
+        assert result["project_contract_load_info"]["status"] == "loaded"
+        assert result["project_contract_validation"]["valid"] is True
+        assert result["project_contract_gate"]["authoritative"] is True
+
     def test_get_state(self):
         from gpd.mcp.servers.state_server import get_state
 
-        mock_state = {"position": {"current_phase": "01"}, "decisions": [], "blockers": []}
+        mock_state = {
+            "position": {"current_phase": "01"},
+            "decisions": [],
+            "blockers": [],
+            "project_contract_load_info": {"status": "loaded"},
+            "project_contract_validation": {"valid": True},
+            "project_contract_gate": {"authoritative": True},
+        }
 
         with patch("gpd.mcp.servers.state_server.load_state_json", return_value=mock_state):
             result = get_state("/fake/project")
         assert "position" in result
         assert result["position"]["current_phase"] == "01"
+        assert result["project_contract_load_info"]["status"] == "loaded"
+        assert result["project_contract_validation"]["valid"] is True
+        assert result["project_contract_gate"]["authoritative"] is True
+
+    def test_state_server_load_state_json_does_not_recover_intent_during_read_only_lookup(self, tmp_path):
+        from gpd.core.constants import ProjectLayout
+        from gpd.core.state import default_state_dict, generate_state_markdown, save_state_json
+        from gpd.mcp.servers.state_server import load_state_json
+
+        stale_state = default_state_dict()
+        stale_state["position"]["current_phase"] = "01"
+        save_state_json(tmp_path, stale_state)
+
+        layout = ProjectLayout(tmp_path)
+        recovered_state = default_state_dict()
+        recovered_state["position"]["current_phase"] = "05"
+        json_tmp = layout.gpd / ".state-json-tmp"
+        md_tmp = layout.gpd / ".state-md-tmp"
+        json_tmp.write_text(json.dumps(recovered_state, indent=2) + "\n", encoding="utf-8")
+        md_tmp.write_text(generate_state_markdown(recovered_state), encoding="utf-8")
+        layout.state_intent.write_text(f"{json_tmp}\n{md_tmp}\n", encoding="utf-8")
+
+        before_state = layout.state_json.read_text(encoding="utf-8")
+
+        result = load_state_json(tmp_path)
+
+        assert result is not None
+        assert result["position"]["current_phase"] == "01"
+        assert layout.state_intent.exists()
+        assert layout.state_json.read_text(encoding="utf-8") == before_state
 
     def test_get_state_no_state(self):
         from gpd.mcp.servers.state_server import get_state
@@ -1704,13 +2189,77 @@ class TestVerificationServer:
         assert result["check_id"] == "5.16"
         assert result["binding"]["claim_ids"] == ["claim-benchmark"]
 
-    def test_run_contract_check_preserves_scalar_binding_ids(self):
+    def test_run_contract_check_proof_parameter_coverage_flags_missing_theorem_parameter(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        result = run_contract_check(
+            {
+                "check_key": "contract.proof_parameter_coverage",
+                "contract": _proof_contract_fixture(),
+                "observed": {"covered_parameter_symbols": ["n"]},
+            }
+        )
+
+        assert result["status"] == "fail"
+        assert result["check_id"] == "5.21"
+        assert result["metrics"]["missing_parameter_symbols"] == ["r_0"]
+
+    def test_run_contract_check_claim_to_proof_alignment_accepts_claim_statement_path(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        result = run_contract_check(
+            {
+                "check_key": "contract.claim_to_proof_alignment",
+                "contract": _proof_contract_fixture(),
+                "observed": {"scope_status": "matched"},
+            }
+        )
+
+        assert result["status"] == "pass"
+        assert result["missing_inputs"] == []
+
+    def test_run_contract_check_claim_to_proof_alignment_requires_clause_audit_when_clause_ids_are_explicit(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        result = run_contract_check(
+            {
+                "check_key": "contract.claim_to_proof_alignment",
+                "contract": _proof_contract_fixture(),
+                "metadata": {"conclusion_clause_ids": ["conclusion-main"]},
+                "observed": {"scope_status": "matched"},
+            }
+        )
+
+        assert result["status"] == "insufficient_evidence"
+        assert "observed.uncovered_conclusion_clause_ids" in result["missing_inputs"]
+
+    def test_run_contract_check_requires_identifier(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        result = run_contract_check({})
+
+        assert result == {"error": "Missing check_key", "schema_version": 1}
+
+    def test_run_contract_check_rejects_legacy_check_id_alias(self):
+        from gpd.mcp.servers.verification_server import run_contract_check
+
+        result = run_contract_check({"check_id": "contract.limit_recovery "})
+
+        assert result == {
+            "error": (
+                "request contains unsupported keys: check_id; supported keys are "
+                "check_key, contract, binding, metadata, observed, artifact_content"
+            ),
+            "schema_version": 1,
+        }
+
+    def test_run_contract_check_preserves_plural_binding_lists(self):
         from gpd.mcp.servers.verification_server import run_contract_check
 
         result = run_contract_check(
             {
                 "check_key": "contract.limit_recovery",
-                "binding": {"claim_id": "claim-main", "reference_id": "ref-main"},
+                "binding": {"claim_ids": ["claim-main"], "reference_ids": ["ref-main"]},
                 "metadata": {"regime_label": "large-k", "expected_behavior": "approaches the asymptotic limit"},
                 "observed": {"limit_passed": True, "observed_limit": "large-k"},
             }
@@ -1734,9 +2283,7 @@ class TestVerificationServer:
         assert result == {
             "error": (
                 "binding contains unsupported keys: cliam_ids; supported keys are "
-                "binding.claim_id, binding.claim_ids, binding.deliverable_id, binding.deliverable_ids, "
-                "binding.acceptance_test_id, binding.acceptance_test_ids, binding.reference_id, "
-                "binding.reference_ids"
+                "binding.claim_ids, binding.deliverable_ids, binding.acceptance_test_ids, binding.reference_ids"
             ),
             "schema_version": 1,
         }
@@ -1830,8 +2377,7 @@ class TestVerificationServer:
         assert result == {
             "error": (
                 "binding contains unsupported keys: reference_ids; supported keys are "
-                "binding.claim_id, binding.claim_ids, binding.deliverable_id, binding.deliverable_ids, "
-                "binding.acceptance_test_id, binding.acceptance_test_ids, binding.forbidden_proxy_id, "
+                "binding.claim_ids, binding.deliverable_ids, binding.acceptance_test_ids, "
                 "binding.forbidden_proxy_ids"
             ),
             "schema_version": 1,
@@ -2194,6 +2740,7 @@ class TestVerificationServer:
         assert "contract.benchmark_reproduction" in suggested
         assert "contract.direct_proxy_consistency" in suggested
         benchmark = next(entry for entry in result["suggested_checks"] if entry["check_key"] == "contract.benchmark_reproduction")
+        assert benchmark["check"] == benchmark["check_key"]
         assert benchmark["binding_targets"] == ["claim", "deliverable", "acceptance_test", "reference"]
         assert benchmark["required_request_fields"] == [
             "observed.metric_value",
@@ -2203,6 +2750,22 @@ class TestVerificationServer:
         assert benchmark["request_template"]["observed"]["metric_value"] is None
         assert benchmark["request_template"]["observed"]["threshold_value"] is None
         assert benchmark["request_template"]["artifact_content"] is None
+
+    def test_suggest_contract_checks_from_proof_contract(self):
+        from gpd.mcp.servers.verification_server import suggest_contract_checks
+
+        result = suggest_contract_checks(_proof_contract_fixture())
+        suggested = {entry["check_key"] for entry in result["suggested_checks"]}
+
+        assert "contract.proof_parameter_coverage" in suggested
+        assert "contract.claim_to_proof_alignment" in suggested
+        assert "contract.counterexample_search" in suggested
+        parameter = next(entry for entry in result["suggested_checks"] if entry["check_key"] == "contract.proof_parameter_coverage")
+        assert parameter["check"] == parameter["check_key"]
+        assert parameter["binding_targets"] == ["observable", "claim", "deliverable", "acceptance_test"]
+        assert parameter["request_template"]["binding"]["claim_ids"] == ["claim-theorem"]
+        assert parameter["request_template"]["metadata"]["theorem_parameter_symbols"] == ["r_0", "n"]
+        assert parameter["request_template"]["observed"]["covered_parameter_symbols"] is None
 
     def test_suggest_contract_checks_returns_deep_copied_request_templates(self):
         import json
@@ -2252,13 +2815,17 @@ class TestVerificationServer:
         assert result["found"] is True
         assert result["schema_version"] == 1
         assert result["domain_check_count"] > 0
-        assert result["universal_check_count"] == 19
+        assert result["universal_check_count"] == 24
         assert result["universal_checks"][0]["check_id"] == "5.1"
         assert "evidence_kind" in result["universal_checks"][0]
         contract_check = next(entry for entry in result["universal_checks"] if entry["check_key"] == "contract.limit_recovery")
         assert contract_check["required_request_fields"] == ["metadata.regime_label", "metadata.expected_behavior"]
         assert contract_check["request_template"]["metadata"]["regime_label"] is None
         assert contract_check["request_template"]["metadata"]["expected_behavior"] is None
+        proof_check = next(
+            entry for entry in result["universal_checks"] if entry["check_key"] == "contract.proof_parameter_coverage"
+        )
+        assert proof_check["request_template"]["metadata"]["theorem_parameter_symbols"] is None
 
     def test_get_checklist_unknown_domain(self):
         from gpd.mcp.servers.verification_server import get_checklist
@@ -2532,17 +3099,41 @@ Not a checkpoint.
         _steps, checkpoints = _extract_steps_and_checkpoints(body)
         assert len(checkpoints) == 2
 
-    def test_infer_domain(self):
-        from gpd.mcp.servers.protocols_server import _infer_domain
+    def test_protocol_domain_manifest_covers_all_protocol_files(self):
+        from gpd.mcp.servers.protocols_server import PROTOCOLS_DIR, _load_protocol_domain_manifest
 
-        assert _infer_domain("perturbation-theory", []) == "core_derivation"
-        assert _infer_domain("algebraic-qft", []) == "mathematical_methods"
-        assert _infer_domain("string-field-theory", []) == "core_derivation"
-        assert _infer_domain("monte-carlo", []) == "computational_methods"
-        assert _infer_domain("group-theory", []) == "mathematical_methods"
-        assert _infer_domain("numerical-computation", []) == "numerical_translation"
-        assert _infer_domain("general-relativity", []) == "gr_cosmology"
-        assert _infer_domain("unknown-protocol", []) == "general"
+        _load_protocol_domain_manifest.cache_clear()
+        domains = _load_protocol_domain_manifest()
+        protocol_names = {path.stem for path in PROTOCOLS_DIR.glob("*.md")}
+
+        assert set(domains) == protocol_names
+        assert domains["perturbation-theory"] == "core_derivation"
+        assert domains["general-relativity"] == "gr_cosmology"
+        assert domains["reproducibility"] == "general"
+
+    def test_protocol_store_rejects_missing_domain_metadata(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from gpd.mcp.servers.protocols_server import ProtocolStore
+
+        protocols_dir = tmp_path / "protocols"
+        protocols_dir.mkdir()
+        (protocols_dir / "demo.md").write_text("---\n---\n# Demo\nBody\n", encoding="utf-8")
+        (protocols_dir / "protocol-domains.json").write_text(
+            json.dumps({"schema_version": 1, "protocol_domains": {}}),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("gpd.mcp.servers.protocols_server.PROTOCOLS_DIR", protocols_dir)
+        monkeypatch.setattr(
+            "gpd.mcp.servers.protocols_server.PROTOCOL_DOMAINS_MANIFEST",
+            protocols_dir / "protocol-domains.json",
+        )
+        monkeypatch.setattr(
+            "gpd.mcp.servers.protocols_server._load_protocol_domain_manifest",
+            lambda: {},
+        )
+
+        with pytest.raises(ValueError, match="missing domain metadata"):
+            ProtocolStore(protocols_dir)
 
 
 # ---------------------------------------------------------------------------

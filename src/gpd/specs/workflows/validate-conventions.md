@@ -12,14 +12,14 @@ Read all files referenced by the invoking prompt's execution_context before star
 **Load project conventions and state:**
 
 ```bash
-INIT=$(gpd init progress --include state,roadmap,config)
+INIT=$(gpd --raw init progress --include state,roadmap,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
 fi
 ```
 
-Extract: `state_exists`, `roadmap_exists`, `phases`, `current_phase`.
+Extract: `state_exists`, `roadmap_exists`, `phases`, `current_phase`, `derived_convention_lock`.
 
 **Read mode settings:**
 
@@ -45,18 +45,18 @@ fi
 **If `state_exists` is false:**
 
 ```
-No project state found. Run /gpd:new-project first.
+No project state found. Run gpd:new-project first.
 ```
 
 Exit.
 
-**Load convention lock from state.json:**
+**Load convention lock from structured init state:**
 
 ```bash
 CONVENTIONS=$(gpd convention list)
 ```
 
-Parse JSON for all locked convention fields and their values. The convention lock is the project-level source of truth.
+Parse JSON for all locked convention fields and their values. The convention lock surfaced by init as `derived_convention_lock` is the prompt-visible snapshot of the project-level source of truth.
 
 **Load CONVENTIONS.md if it exists:**
 
@@ -64,7 +64,7 @@ Parse JSON for all locked convention fields and their values. The convention loc
 cat GPD/CONVENTIONS.md 2>/dev/null
 ```
 
-CONVENTIONS.md is the human-readable convention reference. Convention lock (in state.json) is the machine-readable enforced version.
+CONVENTIONS.md is the human-readable convention reference. The machine-readable enforced version is the convention lock surfaced in init and by `gpd convention list`.
 </step>
 
 <step name="check_convention_lock_drift">
@@ -88,7 +88,7 @@ For each drift:
 CRITICAL: Convention drift detected
 
 Field: {field}
-Convention lock (state.json): {lock_value}
+Convention lock (`derived_convention_lock` / state.json): {lock_value}
 CONVENTIONS.md: {conventions_value}
 
 The convention lock is authoritative. If CONVENTIONS.md is correct,
@@ -100,7 +100,7 @@ update the lock: gpd convention set {field} "{value}"
 **Scan all completed phases for convention declarations:**
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 ```
 
 For each phase with `disk_status: "complete"` or `disk_status: "partial"`:
@@ -108,7 +108,7 @@ For each phase with `disk_status: "complete"` or `disk_status: "partial"`:
 ```bash
 # Extract conventions from summary-artifact frontmatter
 for SUMMARY in GPD/phases/${PHASE_DIR}/*SUMMARY.md; do
-  gpd summary-extract "$SUMMARY" --field conventions --field affects
+  gpd --raw summary-extract "$SUMMARY" --field conventions --field affects
 done
 ```
 
@@ -179,7 +179,9 @@ If phases disagree, this is a potential error source.
 ```bash
 CONSISTENCY_MODEL=$(gpd resolve-model gpd-consistency-checker)
 ```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(
@@ -192,7 +194,7 @@ task(
     <scope>all-phases</scope>
 
     Validate convention consistency across the entire project.
-    Read conventions from state.json via: gpd convention list
+    Read conventions from the structured init payload and via: gpd convention list
     Read all summary artifacts (`SUMMARY.md` and `*-SUMMARY.md`) from all completed phases.
     file_read: GPD/STATE.md, GPD/state.json, GPD/CONVENTIONS.md
 
@@ -209,7 +211,7 @@ task(
 )
 ```
 
-**If the consistency checker agent fails to spawn or returns an error:** Proceed without automated consistency checking. Note in the validation report that cross-phase consistency verification was skipped. The convention lock fields and CONVENTIONS.md can still be inspected manually. The user should run `/gpd:validate-conventions` again or inspect conventions manually.
+**If the consistency checker agent fails to spawn or returns an error:** Proceed without automated consistency checking. Note in the validation report that cross-phase consistency verification was skipped. The convention lock fields and CONVENTIONS.md can still be inspected manually. The user should run `gpd:validate-conventions` again or inspect conventions manually.
 
 Parse return for `consistency_status`: CONSISTENT, WARNING, or INCONSISTENT.
 </step>
@@ -270,7 +272,9 @@ may be incorrect.
 ```bash
 NOTATION_MODEL=$(gpd resolve-model gpd-notation-coordinator)
 ```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(
@@ -315,8 +319,8 @@ file_read affected phase summary artifacts.
 
 ```
 Recommended actions:
-1. /gpd:regression-check {affected_phases} -- re-scan affected phases
-2. /gpd:debug -- investigate specific discrepancies
+1. gpd:regression-check {affected_phases} -- re-scan affected phases
+2. gpd:debug -- investigate specific discrepancies
 3. Re-execute affected plans with corrected conventions
 ```
 
@@ -340,16 +344,16 @@ All conventions consistent across {count} phases. No issues found.
 
 <failure_handling>
 
-- **No convention lock:** Report that no conventions are locked. Suggest running `/gpd:execute-phase` which locks conventions before parallel execution.
+- **No convention lock:** Report that no conventions are locked. Suggest running `gpd:execute-phase` which locks conventions before parallel execution.
 - **No summary artifacts:** Cannot validate — no phase data to check. Report and exit.
 - **Consistency checker agent fails:** Fall back to the static analysis from steps 2-4 (convention lock drift + phase scan + cross-reference). Report that deep consistency check was skipped.
-- **CONVENTIONS.md missing:** Skip the drift check (step 2). Rely on convention lock in state.json as sole authority.
+- **CONVENTIONS.md missing:** Skip the drift check (step 2). Rely on the convention lock surfaced in init / state.json as sole authority.
 
 </failure_handling>
 
 <success_criteria>
 
-- [ ] Convention lock loaded from state.json
+- [ ] Convention lock loaded from structured init state
 - [ ] CONVENTIONS.md compared against lock (if exists)
 - [ ] All completed phase summary artifacts scanned for convention fields
 - [ ] Cross-reference performed: each phase convention vs project lock

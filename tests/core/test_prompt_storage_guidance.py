@@ -48,7 +48,7 @@ def test_execute_phase_figure_tracker_scans_durable_figure_roots() -> None:
 def test_write_paper_uses_durable_figure_and_literature_roots() -> None:
     workflow_text = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
 
-    assert "find artifacts/phases figures paper/figures -maxdepth 3" in workflow_text
+    assert 'find artifacts/phases figures "${PAPER_DIR}/figures" -maxdepth 3' in workflow_text
     assert "ls GPD/literature/*-REVIEW.md 2>/dev/null" in workflow_text
     assert "GPD/phases/*/figures/" not in workflow_text
     assert "GPD/phases/*/LITERATURE-REVIEW.md" not in workflow_text

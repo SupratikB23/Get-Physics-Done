@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
 import re
-import sys
 from pathlib import Path
 
 import pytest
@@ -16,9 +16,14 @@ from gpd.adapters.gemini import (
     _convert_gemini_tool_name,
     _convert_to_gemini_toml,
     _render_gemini_policy_toml,
+    _rewrite_gemini_shell_workflow_guidance,
     _rewrite_gpd_cli_invocations,
 )
-from gpd.adapters.install_utils import build_runtime_cli_bridge_command
+from gpd.adapters.install_utils import build_runtime_cli_bridge_command, hook_python_interpreter
+from tests.adapters.review_contract_test_utils import (
+    assert_review_contract_prompt_surface,
+    compile_review_contract_fixture_for_runtime,
+)
 
 
 def expected_gemini_bridge(target: Path) -> str:
@@ -29,6 +34,15 @@ def expected_gemini_bridge(target: Path) -> str:
         is_global=False,
         explicit_target=False,
     )
+
+
+def _make_managed_home_python(tmp_path: Path) -> Path:
+    managed_home = tmp_path / "managed-home"
+    python_relpath = Path("Scripts/python.exe") if os.name == "nt" else Path("bin/python")
+    managed_python = managed_home / "venv" / python_relpath
+    managed_python.parent.mkdir(parents=True, exist_ok=True)
+    managed_python.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    return managed_python
 
 
 @pytest.fixture()
@@ -225,6 +239,29 @@ class TestConvertToGeminiToml:
         result = _convert_to_gemini_toml(content)
         assert 'context_mode = "project-aware"' in result
 
+    def test_preserves_project_reentry_capable_as_source_metadata_comment(self) -> None:
+        content = (
+            "---\n"
+            "name: gpd:resume-work\n"
+            "context_mode: project-required\n"
+            "project_reentry_capable: true\n"
+            "---\n"
+            "Prompt body"
+        )
+
+        result = _convert_to_gemini_toml(content)
+
+        assert 'context_mode = "project-required"' in result
+        assert "# project_reentry_capable: true" in result
+        assert "project_reentry_capable =" not in result
+
+    def test_prepends_review_contract_to_prompt(self) -> None:
+        content = compile_review_contract_fixture_for_runtime("gemini")
+
+        result = _convert_to_gemini_toml(content)
+
+        assert_review_contract_prompt_surface(result)
+
     def test_uses_multiline_literal_string(self) -> None:
         content = "---\ndescription: D\n---\nMultiline\nprompt"
         result = _convert_to_gemini_toml(content)
@@ -237,6 +274,30 @@ class TestConvertToGeminiToml:
         assert "prompt" in result
         # The prompt is JSON-encoded, not wrapped in '''
         assert "prompt = '''" not in result
+
+
+class TestRewriteGeminiShellWorkflowGuidance:
+    def test_rewrites_updated_set_profile_block_with_reentry_comment_and_flag(self) -> None:
+        content = (
+            "```bash\n"
+            "gpd config ensure-section\n"
+            "# Compatibility note for installer text checks:\n"
+            "# INIT=$(gpd --raw init progress --include state,config)\n"
+            "INIT=$(gpd --raw init progress --include state,config --no-project-reentry)\n"
+            "if [ $? -ne 0 ]; then\n"
+            '  echo "ERROR: gpd initialization failed: $INIT"\n'
+            "  # STOP — display the error to the user and do not proceed.\n"
+            "fi\n"
+            "```"
+        )
+
+        result = _rewrite_gemini_shell_workflow_guidance(content)
+
+        assert "Run these as separate shell calls in Gemini auto-edit mode." in result
+        assert "gpd config ensure-section" in result
+        assert "gpd --raw init progress --include state,config --no-project-reentry" in result
+        assert "INIT=$(" not in result
+        assert "if [ $? -ne 0 ]" not in result
 
 
 class TestInstall:
@@ -362,7 +423,7 @@ class TestInstall:
         ]
         assert any("check_update" in c for c in persisted_cmds)
 
-    def test_install_preserves_jsonc_settings_and_uses_current_interpreter(
+    def test_install_preserves_jsonc_settings_and_uses_managed_home_interpreter(
         self,
         adapter: GeminiAdapter,
         gpd_root: Path,
@@ -375,8 +436,14 @@ class TestInstall:
             '{\n  // keep user settings\n  "theme": "solarized",\n}\n',
             encoding="utf-8",
         )
+        managed_python = _make_managed_home_python(tmp_path)
+        monkeypatch.delenv("GPD_PYTHON", raising=False)
+        monkeypatch.setenv("GPD_HOME", str(tmp_path / "managed-home"))
         monkeypatch.setattr("gpd.adapters.install_utils.sys.executable", "/custom/venv/bin/python")
+        monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
 
+        selected_python = hook_python_interpreter()
+        assert selected_python == str(managed_python)
         result = adapter.install(gpd_root, target)
         adapter.finish_install(
             result["settingsPath"],
@@ -387,10 +454,10 @@ class TestInstall:
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
         assert settings["theme"] == "solarized"
-        assert settings["statusLine"]["command"] == "/custom/venv/bin/python .gemini/hooks/statusline.py"
+        assert settings["statusLine"]["command"] == f"{selected_python} .gemini/hooks/statusline.py"
         session_start = settings.get("hooks", {}).get("SessionStart", [])
         cmds = [h.get("command", "") for entry in session_start for h in (entry.get("hooks") or [])]
-        assert "/custom/venv/bin/python .gemini/hooks/check_update.py" in cmds
+        assert f"{selected_python} .gemini/hooks/check_update.py" in cmds
 
     def test_install_uses_gpd_python_override_for_hooks_and_mcp(
         self,
@@ -436,15 +503,21 @@ class TestInstall:
             ),
             encoding="utf-8",
         )
+        managed_python = _make_managed_home_python(tmp_path)
+        monkeypatch.delenv("GPD_PYTHON", raising=False)
+        monkeypatch.setenv("GPD_HOME", str(tmp_path / "managed-home"))
         monkeypatch.setattr("gpd.adapters.install_utils.sys.executable", "/custom/venv/bin/python")
+        monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
 
+        selected_python = hook_python_interpreter()
+        assert selected_python == str(managed_python)
         result = adapter.install(gpd_root, target)
         adapter.finalize_install(result)
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
         session_start = settings.get("hooks", {}).get("SessionStart", [])
         cmds = [h.get("command", "") for entry in session_start for h in (entry.get("hooks") or [])]
-        assert cmds.count("/custom/venv/bin/python .gemini/hooks/check_update.py") == 1
+        assert cmds.count(f"{selected_python} .gemini/hooks/check_update.py") == 1
         assert "python3 .gemini/hooks/check_update.py" not in cmds
 
     def test_install_preserves_non_gpd_check_update_hook(
@@ -500,10 +573,11 @@ class TestInstall:
         )
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
-        assert settings["statusLine"]["command"] == f"{sys.executable or 'python3'} {(target / 'hooks' / 'statusline.py')}"
+        hook_python = hook_python_interpreter()
+        assert settings["statusLine"]["command"] == f"{hook_python} {(target / 'hooks' / 'statusline.py')}"
         session_start = settings.get("hooks", {}).get("SessionStart", [])
         cmds = [h.get("command", "") for entry in session_start for h in (entry.get("hooks") or [])]
-        assert f"{sys.executable or 'python3'} {(target / 'hooks' / 'check_update.py')}" in cmds
+        assert f"{hook_python} {(target / 'hooks' / 'check_update.py')}" in cmds
 
     def test_install_preserves_existing_mcp_overrides(
         self,
@@ -539,7 +613,8 @@ class TestInstall:
         adapter.finalize_install(result)
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
-        expected = build_mcp_servers_dict(python_path=sys.executable)["gpd-state"]
+        hook_python = hook_python_interpreter()
+        expected = build_mcp_servers_dict(python_path=hook_python)["gpd-state"]
         server = settings["mcpServers"]["gpd-state"]
         assert server["command"] == expected["command"]
         assert server["args"] == expected["args"]
@@ -549,6 +624,99 @@ class TestInstall:
         assert server["timeout"] == 15000
         assert server["trust"] is True
         assert settings["mcpServers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
+
+    def test_install_projects_managed_wolfram_mcp_without_secrets(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_API_KEY", "super-secret-token")
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_ENDPOINT", "https://example.invalid/api/mcp")
+
+        result = adapter.install(gpd_root, target)
+        adapter.finalize_install(result)
+
+        settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
+        wolfram = settings["mcpServers"]["gpd-wolfram"]
+        assert wolfram["command"] == "gpd-mcp-wolfram"
+        assert wolfram["args"] == []
+        assert wolfram["env"] == {"GPD_WOLFRAM_MCP_ENDPOINT": "https://example.invalid/api/mcp"}
+        assert wolfram["trust"] is True
+        assert "super-secret-token" not in json.dumps(wolfram)
+        assert "GPD_WOLFRAM_MCP_API_KEY" not in json.dumps(wolfram)
+
+    def test_install_preserves_existing_managed_wolfram_overrides(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_API_KEY", "super-secret-token")
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_ENDPOINT", "https://example.invalid/api/mcp")
+        (target / "settings.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "gpd-wolfram": {
+                            "command": "legacy-wolfram-bridge",
+                            "args": ["--legacy"],
+                            "env": {
+                                "GPD_WOLFRAM_MCP_ENDPOINT": "https://custom.invalid/api/mcp",
+                                "EXTRA_FLAG": "1",
+                            },
+                            "cwd": "/tmp/custom-wolfram",
+                            "timeout": 15000,
+                            "trust": False,
+                        },
+                        "custom-server": {"command": "node", "args": ["custom.js"]},
+                    }
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = adapter.install(gpd_root, target)
+        adapter.finalize_install(result)
+
+        settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
+        wolfram = settings["mcpServers"]["gpd-wolfram"]
+        assert wolfram["command"] == "gpd-mcp-wolfram"
+        assert wolfram["args"] == []
+        assert wolfram["env"]["GPD_WOLFRAM_MCP_ENDPOINT"] == "https://custom.invalid/api/mcp"
+        assert wolfram["env"]["EXTRA_FLAG"] == "1"
+        assert wolfram["cwd"] == "/tmp/custom-wolfram"
+        assert wolfram["timeout"] == 15000
+        assert wolfram["trust"] is False
+        assert "super-secret-token" not in json.dumps(wolfram)
+        assert settings["mcpServers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
+
+    def test_install_omits_managed_wolfram_when_project_override_disables_it(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        (tmp_path / "GPD").mkdir()
+        (tmp_path / "GPD" / "integrations.json").write_text('{"wolfram":{"enabled":false}}', encoding="utf-8")
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_API_KEY", "super-secret-token")
+
+        result = adapter.install(gpd_root, target)
+        adapter.finalize_install(result)
+
+        settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
+        assert "gpd-wolfram" not in settings.get("mcpServers", {})
 
     def test_install_adds_policy_path_shell_sentinel_and_policy_file(
         self,
@@ -574,6 +742,27 @@ class TestInstall:
         assert "allow_redirection = true" in policy
         assert expected_gemini_bridge(target) in policy
         assert '"git init"' in policy
+
+    def test_install_surfaces_shell_prefix_allowlist_in_model_facing_content(
+        self,
+        adapter: GeminiAdapter,
+        tmp_path: Path,
+    ) -> None:
+        gpd_root = Path(__file__).resolve().parents[2] / "src" / "gpd"
+        target = tmp_path / ".gemini"
+        target.mkdir()
+
+        result = adapter.install(gpd_root, target)
+        adapter.finalize_install(result)
+
+        command = (target / "commands" / "gpd" / "new-project.toml").read_text(encoding="utf-8")
+        expected_bridge = expected_gemini_bridge(target)
+
+        assert "enforced shell-prefix allowlist" in command
+        assert f"`{expected_bridge}`" in command
+        assert "`git init`" in command
+        assert "`mkdir -p GPD`" in command
+        assert "`printf '%s\\n' \"$PROJECT_CONTRACT_JSON\"`" in command
 
     def test_install_preserves_existing_policy_paths_and_mcp_trust_choice(
         self,
@@ -652,9 +841,9 @@ class TestInstall:
 
         assert f"When shell steps call the GPD CLI, use {expected_bridge}" in command
         assert "Run the init command as its own shell call in Gemini auto-edit mode." in workflow
-        assert "INIT=$(gpd init new-project)" not in workflow
-        assert f'INIT=$({expected_bridge} init new-project)' not in workflow
-        assert f"{expected_bridge} init new-project" in workflow
+        assert "INIT=$(gpd --raw init new-project)" not in workflow
+        assert f'INIT=$({expected_bridge} --raw init new-project)' not in workflow
+        assert f"{expected_bridge} --raw init new-project" in workflow
         assert f"{expected_bridge} commit " in workflow
         assert ' gpd commit "' not in workflow
         assert f"{expected_bridge} --raw validate project-contract {_GEMINI_APPROVED_CONTRACT_PATH}" in command
@@ -685,7 +874,7 @@ class TestInstall:
         assert "INIT=$(" not in content
         assert "if [ $? -ne 0 ]" not in content
         assert expected_gemini_bridge(target) + " config ensure-section" in content
-        assert expected_gemini_bridge(target) + " init progress --include state,config" in content
+        assert expected_gemini_bridge(target) + " --raw init progress --include state,config --no-project-reentry" in content
 
 
     def test_install_agents_replace_runtime_placeholders(
@@ -763,6 +952,79 @@ class TestInstall:
         assert missing == ("settings.json",)
         assert adapter.missing_install_verification_artifacts(target) == ()
 
+    def test_install_fails_closed_for_malformed_settings_json(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        settings_path = target / "settings.json"
+        settings_path.write_text('{"hooks": [\n', encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.install(gpd_root, target)
+
+        assert settings_path.read_text(encoding="utf-8") == before
+
+    def test_install_fails_closed_for_structurally_invalid_settings_json(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        settings_path = target / "settings.json"
+        settings_path.write_text(json.dumps({"mcpServers": []}), encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.install(gpd_root, target)
+
+        assert settings_path.read_text(encoding="utf-8") == before
+
+    def test_install_fails_closed_for_structurally_invalid_mcp_server_entry(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        settings_path = target / "settings.json"
+        settings_path.write_text(json.dumps({"mcpServers": {"custom-server": []}}), encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.install(gpd_root, target)
+
+        assert settings_path.read_text(encoding="utf-8") == before
+
+    def test_reinstall_fails_closed_for_malformed_managed_config_manifest(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        result = adapter.install(gpd_root, target)
+        adapter.finalize_install(result)
+
+        manifest_path = target / "gpd-file-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["managed_config"] = ["broken"]
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        before = manifest_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="managed_config"):
+            adapter.install(gpd_root, target)
+
+        assert manifest_path.read_text(encoding="utf-8") == before
+
     def test_force_statusline_forwarded_through_finalize(
         self, adapter: GeminiAdapter, gpd_root: Path, tmp_path: Path
     ) -> None:
@@ -795,6 +1057,44 @@ class TestInstall:
         adapter.finalize_install(result, force_statusline=True)
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
         assert "statusline.py" in settings["statusLine"]["command"]
+
+    def test_finalize_install_fails_closed_for_malformed_settings_json(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        result = adapter.install(gpd_root, target)
+
+        settings_path = target / "settings.json"
+        settings_path.write_text('{"hooks": [\n', encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.finalize_install(result)
+
+        assert settings_path.read_text(encoding="utf-8") == before
+
+    def test_finalize_install_fails_closed_for_structurally_invalid_settings_json(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        result = adapter.install(gpd_root, target)
+
+        settings_path = target / "settings.json"
+        settings_path.write_text(json.dumps({"policyPaths": {}}), encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.finalize_install(result)
+
+        assert settings_path.read_text(encoding="utf-8") == before
 
     def test_install_agents_at_includes_receive_runtime(
         self, adapter: GeminiAdapter, gpd_root: Path, tmp_path: Path
@@ -852,6 +1152,23 @@ class TestInstall:
 
 
 class TestRuntimePermissions:
+    def test_runtime_permissions_status_marks_yolo_launcher_as_relaunch_required(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        adapter.install(gpd_root, target)
+        adapter.sync_runtime_permissions(target, autonomy="yolo")
+
+        status = adapter.runtime_permissions_status(target, autonomy="yolo")
+
+        assert status["config_aligned"] is True
+        assert status["requires_relaunch"] is True
+        assert "gemini-gpd-yolo" in str(status["next_step"])
+
     def test_sync_runtime_permissions_yolo_creates_launcher_wrapper(
         self,
         adapter: GeminiAdapter,
@@ -957,6 +1274,11 @@ class TestUninstall:
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
         settings["mcpServers"]["custom-server"] = {"command": "node", "args": ["custom.js"]}
+        settings["mcpServers"]["gpd-wolfram"] = {
+            "command": "gpd-mcp-wolfram",
+            "args": [],
+            "env": {"GPD_WOLFRAM_MCP_ENDPOINT": "https://example.invalid/api/mcp"},
+        }
         (target / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
 
         adapter.uninstall(target)
@@ -1094,7 +1416,7 @@ class TestRewriteWindowsPathEscape:
         result = _rewrite_gpd_cli_invocations(content, bridge_command)
 
         assert 'Prose mentions gpd and "gpd status" without changing.' in result
-        assert f"`{bridge_command} status`" in result
+        assert "`gpd status`" in result
         assert 'echo "gpd status"' in result
         assert "echo 'gpd commit'" in result
         assert f"{bridge_command} status" in result
@@ -1108,10 +1430,10 @@ class TestRewriteWindowsPathEscape:
         ],
     )
     def test_rewrite_gpd_cli_invocations_windows_path(self, bridge_command: str) -> None:
-        content = "Run `gpd status` to check progress."
+        content = "```bash\ngpd status\n```\n"
         result = _rewrite_gpd_cli_invocations(content, bridge_command)
         assert bridge_command in result
-        assert "gpd status" not in result
+        assert "```bash\n" in result
 
 
 class TestPolicyTomlWindowsPath:

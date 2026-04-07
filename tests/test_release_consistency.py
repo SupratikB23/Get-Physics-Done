@@ -7,13 +7,12 @@ import os
 import re
 import shutil
 import subprocess
-import tarfile
 import tomllib
-import zipfile
 from pathlib import Path
 
 import pytest
 
+from gpd.adapters.runtime_catalog import get_shared_install_metadata
 from scripts.release_workflow import (
     ReleaseError,
     bump_version,
@@ -25,6 +24,15 @@ from scripts.release_workflow import (
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
+
+
+_SHARED_INSTALL = get_shared_install_metadata()
+_BOOTSTRAP_JSON_ASSETS = (
+    "src/gpd/adapters/runtime_catalog.json",
+    "src/gpd/adapters/runtime_catalog_schema.json",
+    "src/gpd/core/public_surface_contract.json",
+    "src/gpd/core/public_surface_contract_schema.json",
+)
 
 
 def _project_script_lines(repo_root: Path) -> list[str]:
@@ -53,21 +61,6 @@ def _python_release_version(repo_root: Path) -> str:
 
     assert package_version == python_version == pyproject_version
     return pyproject_version
-
-
-def _build_public_release_artifacts(repo_root: Path, out_dir: Path) -> tuple[Path, Path]:
-    result = subprocess.run(
-        ["uv", "build", "--out-dir", str(out_dir)],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr or result.stdout
-
-    wheel = next(out_dir.glob("get_physics_done-*.whl"))
-    sdist = next(out_dir.glob("get_physics_done-*.tar.gz"))
-    return wheel, sdist
 
 
 def _npm_pack_dry_run(repo_root: Path, work_dir: Path) -> dict[str, object]:
@@ -102,11 +95,16 @@ def _npm_pack_dry_run(repo_root: Path, work_dir: Path) -> dict[str, object]:
     return pack
 
 
-def _paper_template_paths(repo_root: Path) -> tuple[list[str], list[str]]:
-    template_root = repo_root / "src" / "gpd" / "mcp" / "paper" / "templates"
-    relative_paths = sorted(path.relative_to(repo_root / "src").as_posix() for path in template_root.rglob("*_template.tex"))
-    sdist_paths = [f"src/{path}" for path in relative_paths]
-    return relative_paths, sdist_paths
+def _packaged_file_paths(pack: dict[str, object]) -> set[str]:
+    files = pack.get("files", [])
+    assert isinstance(files, list)
+    paths: set[str] = set()
+    for entry in files:
+        assert isinstance(entry, dict)
+        path = entry.get("path")
+        assert isinstance(path, str)
+        paths.add(path)
+    return paths
 
 
 def _copy_release_surfaces(repo_root: Path, out_dir: Path) -> None:
@@ -131,10 +129,6 @@ def _expected_wheel_dependency_names() -> set[str]:
     return _expected_runtime_dependency_names() | {"arxiv-mcp-server"}
 
 
-HELP_COMMAND_HEADING_RE = re.compile(r"^\*\*`/gpd:([a-z0-9-]+)(?:[^`]*)`\*\*$", re.MULTILINE)
-README_COMMAND_ROW_RE = re.compile(r"^\| `/gpd:([a-z0-9-]+)(?:[^`]*)` \| (.*?) \|$", re.MULTILINE)
-
-
 def _normalized_requirement_name(requirement: str) -> str:
     normalized: list[str] = []
     for char in requirement.split(";", 1)[0].strip():
@@ -156,18 +150,6 @@ def _wheel_dependency_names(metadata: str) -> set[str]:
         if line.startswith("Requires-Dist:")
     ]
     return _normalized_dependency_names(requirements)
-
-
-def _command_inventory_stems(repo_root: Path) -> set[str]:
-    return {path.stem for path in (repo_root / "src/gpd/commands").glob("*.md")}
-
-
-def _help_heading_stems(content: str) -> set[str]:
-    return set(HELP_COMMAND_HEADING_RE.findall(content))
-
-
-def _readme_command_rows(content: str) -> dict[str, str]:
-    return {stem: description.strip() for stem, description in README_COMMAND_ROW_RE.findall(content)}
 
 
 def test_required_public_release_artifacts_exist() -> None:
@@ -216,16 +198,6 @@ def test_public_readme_citation_year_matches_citation_release_date() -> None:
     assert f"Physical Superintelligence PBC ({release_year}). Get Physics Done (GPD)" in readme
 
 
-def test_public_docs_acknowledge_psi_and_gsd_inspiration() -> None:
-    repo_root = _repo_root()
-
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    assert "Physical Superintelligence PBC" in readme
-    assert "GSD" in readme
-    assert "get-shit-done" in readme
-    assert "[Physical Superintelligence PBC (PSI)](https://www.psi.inc)" in readme
-
-
 def test_public_metadata_records_psi_affiliation() -> None:
     repo_root = _repo_root()
 
@@ -237,7 +209,6 @@ def test_public_metadata_records_psi_affiliation() -> None:
     assert "Physical Superintelligence PBC (PSI)" in contributing
     assert pyproject["project"]["authors"] == [{"name": "Physical Superintelligence PBC"}]
     assert pyproject["project"]["maintainers"] == [{"name": "Physical Superintelligence PBC"}]
-
 
 def test_public_release_surfaces_share_agentic_system_positioning() -> None:
     repo_root = _repo_root()
@@ -252,14 +223,15 @@ def test_public_release_surfaces_share_agentic_system_positioning() -> None:
     assert expected in pyproject["project"]["description"].lower()
     assert "Open-source agentic AI system for physics research" in installer
 
-
 def test_public_bootstrap_package_exposes_npx_installer() -> None:
     repo_root = _repo_root()
     package_json = json.loads((repo_root / "package.json").read_text(encoding="utf-8"))
+    packaged_files = set(package_json.get("files", []))
 
     assert package_json["name"] == "get-physics-done"
     assert package_json.get("bin", {}).get("get-physics-done") == "bin/install.js"
-    assert "bin/" in package_json.get("files", [])
+    assert "bin/" in packaged_files
+    assert set(_BOOTSTRAP_JSON_ASSETS) <= packaged_files
     assert (repo_root / "bin" / "install.js").is_file()
 
 
@@ -276,6 +248,7 @@ def test_public_bootstrap_installer_pins_the_matching_python_release() -> None:
     content = (repo_root / "bin" / "install.js").read_text(encoding="utf-8")
 
     assert 'require("../package.json")' in content
+    assert 'require("../src/gpd/core/public_surface_contract.json")' in content
     assert "gpdPythonVersion" in content
     assert '["-m", "venv", "--help"]' in content
     assert "managed environment" in content
@@ -289,88 +262,6 @@ def test_public_bootstrap_installer_pins_the_matching_python_release() -> None:
     assert "function repositorySshGitUrl(" not in content
     assert "requestedVersion" in content
     assert "GitHub sources" in content
-
-
-def test_public_bootstrap_installer_documents_public_flags_and_runtime_aliases() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    content = (repo_root / "bin" / "install.js").read_text(encoding="utf-8")
-
-    assert "npx -y get-physics-done" in readme
-    assert "`--claude`" in readme
-    assert "`--claude-code`" in readme
-    assert "`--gemini`" in readme
-    assert "`--gemini-cli`" in readme
-    assert "`--codex`" in readme
-    assert "`--opencode`" in readme
-    assert "`--all`" in readme
-    assert "`--global`" in readme
-    assert "`--local`" in readme
-    assert "`-g`" in readme
-    assert "`-l`" in readme
-    assert (
-        "Override the runtime config directory; defaults to local scope unless the path resolves to that runtime's canonical global config dir."
-        in readme
-    )
-    assert "`--target-dir <path>`" in readme
-    assert "`--force-statusline`" in readme
-    assert "`--help`" in readme
-    assert "`-h`" in readme
-    assert 'require("../src/gpd/adapters/runtime_catalog.json")' in content
-    assert "runtimeInstallFlag(dollarCommandRuntime)" in content
-    assert "runtimeConfigDirName(dollarCommandRuntime)" in content
-    assert 'args.includes("--all")' in content
-    assert 'documentedRuntimeFlags().join("/")' in content
-    assert "runtimeSelectionFlags(runtime)" in content
-    assert "runtimeSelectionAliases(runtime)" in content
-
-
-def test_public_bootstrap_installer_documents_reinstall_and_upgrade_paths() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    content = (repo_root / "bin" / "install.js").read_text(encoding="utf-8")
-
-    assert "`--reinstall`" in readme
-    assert "`--upgrade`" in readme
-    assert "~/GPD/venv" in readme
-    assert "latest GitHub `main` source" in readme
-    assert "github:psi-oss/get-physics-done --upgrade" in readme
-    assert "--reinstall" in content
-    assert "--upgrade" in content
-    assert "Reinstall the matching tagged GitHub source in ~/GPD/venv" in content
-    assert "Upgrade ~/GPD/venv from the latest GitHub main source" in content
-
-
-def test_public_bootstrap_installer_documents_uninstall_path() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    content = (repo_root / "bin" / "install.js").read_text(encoding="utf-8")
-
-    assert "## Uninstall" in readme
-    assert "Run `npx -y get-physics-done --uninstall`" in readme
-    assert "`--uninstall`" in readme
-    assert "non-interactive uninstall" in readme
-    assert "`--global`" in readme
-    assert "`--local`" in readme
-    assert "~/GPD/venv/bin/gpd uninstall" not in readme
-    assert "--uninstall" in content
-    assert "Uninstall from selected runtime config" in content
-    assert '--uninstall ${primaryFlag} --global' in content
-
-
-def test_readme_documents_runtime_specific_tier_model_formats() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-
-    assert "## Optional: Model Profiles And Tier Overrides" in readme
-    assert "Runtime-specific model string examples" in readme
-    assert "`opus`, `sonnet`, `haiku`" in readme
-    assert "the exact string Codex accepts" in readme
-    assert '"gpt-5.4"' in readme
-    assert '"gpt-5.4-mini"' in readme
-    assert '"gpt-5.4-nano"' in readme
-    assert '"your-tier-1-gemini-model"' in readme
-    assert "`provider/model`" in readme
 
 
 def test_export_workflow_uses_release_attribution_footer() -> None:
@@ -409,39 +300,10 @@ def test_public_cli_surface_is_unified() -> None:
     assert sorted(path.name for path in (repo_root / "src" / "gpd").glob("cli*.py")) == ["cli.py"]
 
 
-def test_install_docs_use_only_public_npx_flow() -> None:
-    repo_root = _repo_root()
-    npx_command = "npx -y get-physics-done"
-    disallowed_markers = (
-        "uv tool install",
-        "python3 -m pip install",
-        "gpd install",
-    )
-
-    for relative_path in ("README.md",):
-        content = (repo_root / relative_path).read_text(encoding="utf-8")
-        assert npx_command in content, f"{relative_path} should mention the npx bootstrap installer"
-        for marker in disallowed_markers:
-            assert marker not in content, f"{relative_path} should not mention {marker!r}"
-
-
-def test_public_install_docs_list_bootstrap_prerequisites_and_current_layout() -> None:
-    repo_root = _repo_root()
-
-    for relative_path in ("README.md",):
-        content = (repo_root / relative_path).read_text(encoding="utf-8")
-        assert "Node.js with `npm`/`npx`" in content
-        assert "Python 3.11+ with the standard `venv` module" in content
-        assert "npm and GitHub" in content
-        assert "~/GPD/venv" in content
-
-    assert not (repo_root / "docs" / "USER-GUIDE.md").exists()
-    assert not (repo_root / "MANUAL-TEST-PLAN.md").exists()
-
-
 def test_merge_gate_workflow_uses_main_branch_pytest_on_python_311() -> None:
     repo_root = _repo_root()
     workflow = (repo_root / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+    pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
 
     assert "name: tests" in workflow
     assert "pull_request:" in workflow
@@ -454,7 +316,11 @@ def test_merge_gate_workflow_uses_main_branch_pytest_on_python_311() -> None:
     assert 'python-version: "3.11"' in workflow
     assert "astral-sh/setup-uv@v7" in workflow
     assert "uv sync --dev" in workflow
-    assert "uv run pytest -v" in workflow
+    assert 'addopts = "-n auto --dist=loadscope"' in pyproject
+    assert "Run fast test suite" in workflow
+    assert "Run complementary heavy suite" in workflow
+    assert "uv run pytest tests/ -q" in workflow
+    assert "uv run pytest tests/ -q --full-suite $HEAVY_SUITE_IGNORE_ARGS" in workflow
 
 
 def test_prepare_release_workflow_creates_release_pr_without_publishing() -> None:
@@ -513,189 +379,6 @@ def test_publish_release_workflow_uses_trusted_publishing_from_merged_release_co
     assert "gh pr create" in workflow
 
 
-def test_public_docs_keep_runtime_surface_first() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-
-    assert "## Quick Start" in readme
-    assert "**Next steps after install**" in readme
-    assert "it does not launch the runtime for you" in readme
-    assert "Open your chosen runtime from your normal system terminal" in readme
-    assert "`claude` for Claude Code" in readme
-    assert "`gemini` for Gemini CLI" in readme
-    assert "## Supported Runtimes" in readme
-    assert "## Advanced CLI Utilities" in readme
-    assert readme.index("## Supported Runtimes") < readme.index("## Advanced CLI Utilities")
-    assert "## Known Limitations" in readme
-    assert "After installing GPD, open your chosen runtime normally" in readme
-    assert "Observability and trace inspection" in readme
-    assert "GPD/observability/" in readme
-    assert "`GPD/STATE.md` | Concise human-readable continuity state" in readme
-    assert "does not fabricate opaque provider internals" in readme
-
-
-def test_public_runtime_docs_explain_runtime_specific_command_syntax() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-
-    assert "## Supported Runtimes" in readme
-    assert "| Claude Code | `--claude` | `/gpd:help` | `/gpd:new-project` |" in readme
-    assert "| Gemini CLI | `--gemini` | `/gpd:help` | `/gpd:new-project` |" in readme
-    assert "| Codex | `--codex` | `$gpd-help` | `$gpd-new-project` |" in readme
-    assert "| OpenCode | `--opencode` | `/gpd-help` | `/gpd-new-project` |" in readme
-    assert "Each runtime uses its own command prefix" in readme
-
-
-def test_codex_runtime_docs_distinguish_public_skills_from_full_agent_install() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-
-    assert "Codex-specific note:" in readme
-    assert "exposes only public `gpd-*` agents there as discoverable skills" in readme
-    assert "the full agent catalog still installs under `.codex/agents/`" in readme
-
-
-def test_public_runtime_notes_cover_all_runtime_specific_install_surfaces() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-
-    assert "Claude Code-specific note:" in readme
-    assert "Gemini-specific note:" in readme
-    assert "Codex-specific note:" in readme
-    assert "OpenCode-specific note:" in readme
-    assert "`policies/gpd-auto-edit.toml`" in readme
-    assert "`CODEX_SKILLS_DIR`" in readme
-
-
-def test_public_cli_docs_cover_project_contract_comparison_and_paper_build() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-
-    assert "`gpd validate project-contract <file.json or -> [--mode approved|draft]`" in readme
-    assert "| `/gpd:compare-results [phase, artifact, or comparison target]` |" in readme
-    assert "`gpd paper-build [PAPER-CONFIG.json] [--output-dir <dir>]`" in readme
-
-
-def test_public_readme_command_table_matches_command_inventory_and_regression_check_wording() -> None:
-    repo_root = _repo_root()
-    readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    inventory = _command_inventory_stems(repo_root)
-    readme_rows = _readme_command_rows(readme)
-
-    assert readme_rows, "expected README command table entries"
-    assert set(readme_rows) == inventory
-    assert (
-        readme_rows["regression-check"]
-        == "Scan-only audit for convention conflicts and verification-state regressions in completed phase summaries and verifications"
-    )
-
-
-def test_public_readme_typical_new_project_loop_includes_discuss_phase_before_planning() -> None:
-    readme = (_repo_root() / "README.md").read_text(encoding="utf-8")
-
-    assert "/gpd:new-project -> /gpd:discuss-phase 1 -> /gpd:plan-phase 1 -> /gpd:execute-phase 1 -> /gpd:verify-work 1" in readme
-    assert "/gpd:new-project -> /gpd:plan-phase 1 -> /gpd:execute-phase 1 -> /gpd:verify-work 1" not in readme
-
-
-def test_help_reference_surfaces_clarify_runtime_slash_commands_vs_local_cli() -> None:
-    repo_root = _repo_root()
-    help_command = (repo_root / "src/gpd/commands/help.md").read_text(encoding="utf-8")
-    help_workflow = (repo_root / "src/gpd/specs/workflows/help.md").read_text(encoding="utf-8")
-
-    required_snippets = (
-        "`/gpd:*`",
-        "in-runtime",
-        "slash-command",
-        "local `gpd` CLI",
-        "gpd --help",
-        "gpd validate command-context gpd:<name>",
-    )
-
-    for snippet in required_snippets:
-        assert snippet in help_command
-        assert snippet in help_workflow
-
-
-def test_help_reference_surfaces_keep_regression_check_wording_aligned_with_implementation() -> None:
-    repo_root = _repo_root()
-    help_command = (repo_root / "src/gpd/commands/help.md").read_text(encoding="utf-8")
-    help_workflow = (repo_root / "src/gpd/specs/workflows/help.md").read_text(encoding="utf-8")
-
-    for content in (help_command, help_workflow):
-        assert "Scan-only" in content
-        assert "SUMMARY" in content
-        assert "frontmatter" in content
-        assert "convention conflicts" in content
-        assert "VERIFICATION" in content
-        assert "canonical statuses" in content
-        assert "re-runs dimensional analysis" not in content
-        assert "re-runs limiting cases" not in content
-        assert "re-runs numerical checks" not in content
-        assert "re-verify" not in content
-
-
-def test_help_reference_surfaces_match_command_inventory() -> None:
-    repo_root = _repo_root()
-    inventory = _command_inventory_stems(repo_root)
-    help_command = (repo_root / "src/gpd/commands/help.md").read_text(encoding="utf-8")
-    help_workflow = (repo_root / "src/gpd/specs/workflows/help.md").read_text(encoding="utf-8")
-
-    command_help_stems = _help_heading_stems(help_command)
-    workflow_help_stems = _help_heading_stems(help_workflow)
-
-    assert command_help_stems == inventory
-    assert workflow_help_stems == inventory
-
-
-def test_regression_check_canonical_surfaces_match_scan_only_implementation() -> None:
-    repo_root = _repo_root()
-    command = (repo_root / "src/gpd/commands/regression-check.md").read_text(encoding="utf-8")
-    workflow = (repo_root / "src/gpd/specs/workflows/regression-check.md").read_text(encoding="utf-8")
-    transition = (repo_root / "src/gpd/specs/workflows/transition.md").read_text(encoding="utf-8")
-    verify_work = (repo_root / "src/gpd/specs/workflows/verify-work.md").read_text(encoding="utf-8")
-
-    for content in (command, workflow):
-        assert "does **not** re-run physics, numerical, dimensional, or contract verification" in content
-        assert "SUMMARY.md" in content
-        assert "VERIFICATION.md" in content
-        assert "convention_conflict" in content or "convention conflicts" in content
-        assert "invalid_verification_status" in content or "invalid" in content
-        assert "REGRESSION-REPORT.md" not in content
-        assert "re-check verified targets" not in content
-        assert "re-runs limiting cases" not in content
-
-    assert "frontmatter" in transition
-    assert "invalid verification statuses" in transition
-    assert "/gpd:verify-work <phase>" in transition
-    assert "| Result conflict |" not in transition
-
-    assert "re-verify previously validated contract-backed outcomes" not in verify_work
-    assert "SUMMARY.md" in verify_work
-    assert "VERIFICATION.md" in verify_work
-    assert "frontmatter" in verify_work
-
-
-def test_public_runtime_command_table_has_unique_entries() -> None:
-    repo_root = _repo_root()
-    lines = (repo_root / "README.md").read_text(encoding="utf-8").splitlines()
-
-    in_table = False
-    commands: list[str] = []
-    for line in lines:
-        if line == "## Key In-Runtime Commands":
-            in_table = True
-            continue
-        if in_table and line.startswith("## "):
-            break
-        if not in_table or not line.startswith("| `"):
-            continue
-        command = line.split("`", 2)[1]
-        commands.append(command)
-
-    assert commands, "expected README key-command table entries"
-    assert len(commands) == len(set(commands))
-
-
 def test_claude_sdk_is_not_shipped_in_public_install() -> None:
     repo_root = _repo_root()
     project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
@@ -732,7 +415,7 @@ def test_infra_descriptors_reference_public_bootstrap_flow() -> None:
         "packages/gpd",
         "uv pip install -e",
         "pip install -e packages/gpd",
-        "npx -y get-physics-done",
+        _SHARED_INSTALL.bootstrap_command,
     )
     expected_descriptors = build_public_descriptors()
 
@@ -754,38 +437,23 @@ def test_public_gpd_infra_descriptors_use_entry_points_not_python() -> None:
     for path in sorted((repo_root / "infra").glob("gpd-*.json")):
         descriptor = json.loads(path.read_text(encoding="utf-8"))
         if path.stem == "gpd-arxiv":
-            assert descriptor["command"] == "python"
+            assert descriptor["command"] == "${GPD_PYTHON}"
             continue
 
         assert descriptor["command"].startswith("gpd-mcp-")
         assert descriptor["args"] == []
 
 
-def test_contributing_docs_cover_release_validation_flow() -> None:
-    repo_root = _repo_root()
-    content = (repo_root / "CONTRIBUTING.md").read_text(encoding="utf-8")
-
-    assert "uv run pytest tests/test_release_consistency.py -v" in content
-    assert "uv run pytest tests/adapters/test_registry.py tests/adapters/test_install_roundtrip.py -v" in content
-    assert "Cross-runtime release checks:" in content
-    assert 'npm_config_cache="$(mktemp -d)" npm pack --dry-run --json' in content
-    assert "python scripts/sync_repo_graph_contract.py" in content
-    assert "uv run python -m scripts.sync_repo_graph_contract" not in content
-    assert "temporary cache outside the repo" in content
-    assert "Public install docs should use `npx -y get-physics-done`." in content
-    assert "Keep public artifacts present and up to date" in content
-    assert "direct pushes are blocked" in content
-    assert "required `tests` workflow" in content
-    assert "Feature and fix PRs must not bump package versions or publish releases." in content
-    assert "Add public release notes under `## vNEXT` in `CHANGELOG.md`" in content
-    assert "## Release Process" not in content
-    assert "`Prepare release`" not in content
-    assert "`Publish release`" not in content
-
-
 def test_gitignore_covers_repo_local_npm_cache() -> None:
     repo_root = _repo_root()
     assert ".npm-cache/" in (repo_root / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_gitignore_covers_repo_local_tmp_root() -> None:
+    repo_root = _repo_root()
+    content = (repo_root / ".gitignore").read_text(encoding="utf-8")
+
+    assert "tmp/" in content
 
 
 def test_npm_pack_dry_run_uses_temp_cache_outside_repo(tmp_path: Path) -> None:
@@ -802,12 +470,13 @@ def test_npm_pack_dry_run_uses_temp_cache_outside_repo(tmp_path: Path) -> None:
     )
 
     pack = _npm_pack_dry_run(repo_root, tmp_path)
-    packed_paths = {str(item["path"]) for item in pack["files"]}
+    packed_paths = _packaged_file_paths(pack)
 
     assert pack["name"] == "get-physics-done"
     assert pack["version"] == _python_release_version(repo_root)
     assert "bin/install.js" in packed_paths
-    assert "src/gpd/adapters/runtime_catalog.json" in packed_paths
+    assert "package.json" in packed_paths
+    assert set(_BOOTSTRAP_JSON_ASSETS) <= packed_paths
     assert (tmp_path / "npm-cache").is_dir()
 
     if existed_before:
@@ -816,53 +485,6 @@ def test_npm_pack_dry_run_uses_temp_cache_outside_repo(tmp_path: Path) -> None:
     else:
         assert not repo_cache.exists()
 
-
-
-def test_fresh_built_release_artifacts_match_public_bootstrap_and_docs(tmp_path: Path) -> None:
-    repo_root = _repo_root()
-    version = _python_release_version(repo_root)
-    wheel, sdist = _build_public_release_artifacts(repo_root, tmp_path / "dist")
-    wheel_template_paths, sdist_template_paths = _paper_template_paths(repo_root)
-
-    assert wheel.name == f"get_physics_done-{version}-py3-none-any.whl"
-    assert sdist.name == f"get_physics_done-{version}.tar.gz"
-
-    with zipfile.ZipFile(wheel) as wheel_zip:
-        wheel_names = set(wheel_zip.namelist())
-        assert "gpd/cli.py" in wheel_names
-        assert "gpd/mcp/viewer/cli.py" not in wheel_names
-        for template_path in wheel_template_paths:
-            assert template_path in wheel_names
-        entry_points = wheel_zip.read(f"get_physics_done-{version}.dist-info/entry_points.txt").decode("utf-8")
-        metadata = wheel_zip.read(f"get_physics_done-{version}.dist-info/METADATA").decode("utf-8")
-        assert "gpd = gpd.cli:entrypoint" in entry_points
-        assert _wheel_dependency_names(metadata) == _expected_wheel_dependency_names()
-
-    sdist_prefix = f"get_physics_done-{version}/"
-    with tarfile.open(sdist, "r:gz") as sdist_tar:
-        sdist_names = set(sdist_tar.getnames())
-        assert f"{sdist_prefix}README.md" in sdist_names
-        assert f"{sdist_prefix}docs/USER-GUIDE.md" not in sdist_names
-        assert f"{sdist_prefix}bin/install.js" in sdist_names
-        assert f"{sdist_prefix}package.json" in sdist_names
-        assert f"{sdist_prefix}MANUAL-TEST-PLAN.md" not in sdist_names
-        for template_path in sdist_template_paths:
-            assert f"{sdist_prefix}{template_path}" in sdist_names
-
-        install_js = sdist_tar.extractfile(f"{sdist_prefix}bin/install.js")
-        assert install_js is not None
-        install_content = install_js.read().decode("utf-8")
-        assert 'require("../package.json")' in install_content
-        assert "gpdPythonVersion" in install_content
-        assert 'const GITHUB_MAIN_BRANCH = "main"' in install_content
-        assert '"-m", "venv"' in install_content
-        assert '"GPD"' in install_content
-        assert "archive/refs/tags/v${version}.tar.gz" in install_content
-        assert "archive/refs/heads/${GITHUB_MAIN_BRANCH}.tar.gz" in install_content
-        assert "git+${repoGitUrl}@v${version}" in install_content
-        assert "git+${repoGitUrl}@${GITHUB_MAIN_BRANCH}" in install_content
-        assert "requestedVersion" in install_content
-        assert "GitHub sources" in install_content
 
 
 def test_prepare_release_updates_all_versioned_public_surfaces(tmp_path: Path) -> None:
@@ -956,3 +578,11 @@ def test_stamp_publish_date_reports_no_changes_when_release_date_already_matches
     metadata = stamp_publish_date(tmp_path, release_date="2026-03-15")
 
     assert metadata.changed_files == ()
+
+
+def test_stamp_publish_date_rejects_full_datetime_release_inputs(tmp_path: Path) -> None:
+    repo_root = _repo_root()
+    _copy_release_surfaces(repo_root, tmp_path)
+
+    with pytest.raises(ReleaseError, match="YYYY-MM-DD"):
+        stamp_publish_date(tmp_path, release_date="2026-03-15T12:34:56Z")

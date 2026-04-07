@@ -1446,7 +1446,7 @@ If a prior insight matches the current symptoms, use it as a starting hypothesis
 At the start of any debugging session, check the global pattern library for known error patterns that match the current symptoms:
 
 ```bash
-gpd pattern search "$(python3 -c "import json; print(json.load(open('GPD/state.json')).get('physics_domain',''))" 2>/dev/null)" 2>/dev/null || true
+gpd --raw pattern search "$(gpd --raw state snapshot 2>/dev/null | gpd json get .physics_domain --default "")" 2>/dev/null || true
 ```
 
 If cross-project patterns exist for this domain, check whether any match the current symptoms. A matching pattern provides a strong starting hypothesis — but still verify with evidence before concluding it is the same root cause. After confirming a root cause, check if it matches an existing pattern (update `occurrence_count`) or represents a new one (record it via `gpd pattern add`).
@@ -1570,7 +1570,7 @@ Gather symptoms through questioning. Update file after EACH answer.
   - Otherwise -> proceed to correct_and_verify
 - **ELIMINATED:** Append to Eliminated section, form new hypothesis, return to Phase 2
 
-**Context management:** After 5+ evidence entries, ensure Current Focus is updated. Suggest "/clear - run /gpd:debug to resume" if context filling up.
+**Context management:** After 5+ evidence entries, ensure Current Focus is updated. Suggest "/clear - run gpd:debug to resume" if context filling up.
 </step>
 
 <step name="resume_from_file">

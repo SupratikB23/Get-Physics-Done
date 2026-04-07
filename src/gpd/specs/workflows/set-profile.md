@@ -25,7 +25,9 @@ Ensure config exists and load current state:
 
 ```bash
 gpd config ensure-section
-INIT=$(gpd init progress --include state,config)
+# Compatibility note for installer text checks:
+# INIT=$(gpd --raw init progress --include state,config)
+INIT=$(gpd --raw init progress --include state,config --no-project-reentry)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -80,6 +82,7 @@ Focus: Rigorous analytical derivations, formal proofs, exact results
 | gpd-paper-writer         | tier-1 |
 | gpd-literature-reviewer  | tier-1 |
 | gpd-bibliographer        | tier-2 |
+| gpd-check-proof          | tier-1 |
 | gpd-referee              | tier-1 |
 | gpd-experiment-designer  | tier-2 |
 
@@ -132,6 +135,7 @@ Focus: Critical assessment, error checking, literature comparison
 | gpd-verifier             | tier-1 |
 | gpd-plan-checker         | tier-1 |
 | gpd-consistency-checker  | tier-1 |
+| gpd-check-proof          | tier-1 |
 | gpd-referee              | tier-1 |
 
 Best for: Pre-submission review, debugging wrong results, resolving discrepancies, preparing referee responses, validating collaborator work.
@@ -150,6 +154,7 @@ Focus: Clear exposition, LaTeX production, figure generation, narrative flow
 | gpd-paper-writer         | tier-1 |
 | gpd-research-synthesizer | tier-1 |
 | gpd-bibliographer        | tier-1 |
+| gpd-check-proof          | tier-1 |
 | gpd-referee              | tier-1 |
 
 Best for: Writing manuscripts, preparing talks, generating figures, formatting for journal submission, writing supplementary material.
@@ -166,11 +171,11 @@ Behavioral highlights: Plans organized by paper sections with tasks mapped to fi
 - `adaptive` (default): inject first-result and risky-fanout gates while letting clean segments continue
 - `sparse`: fewest bounded review stops beyond the required correctness gates
 
-Change cadence with `/gpd:settings` or by editing `GPD/config.json` (`execution.review_cadence`: `"dense"` / `"adaptive"` / `"sparse"`).
+Change cadence with `gpd:settings` or by editing `GPD/config.json` (`execution.review_cadence`: `"dense"` / `"adaptive"` / `"sparse"`).
 
-If you also want to pin concrete runtime model strings for `tier-1`, `tier-2`, or `tier-3`, use `/gpd:settings`. `set-profile` changes the abstract tier assignments, not the runtime-native model IDs.
+If you also want to pin concrete runtime model strings for `tier-1`, `tier-2`, or `tier-3`, use `gpd:set-tier-models` for the direct path or `gpd:settings` for the broader unattended/configuration flow. `set-profile` changes the abstract tier assignments, not the runtime-native model IDs.
 
-For full agent tier assignments across all 23 agents, see `references/orchestration/model-profiles.md`.
+For full agent tier assignments across all 24 agents, see `references/orchestration/model-profiles.md`.
 For detailed behavioral effect descriptions per agent per profile, see the "Behavioral Effects" section in `references/orchestration/model-profiles.md`.
 
 Next spawned agents will use the new profile.

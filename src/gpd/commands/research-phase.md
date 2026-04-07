@@ -1,6 +1,6 @@
 ---
 name: gpd:research-phase
-description: Research how to tackle a phase (standalone - usually use /gpd:plan-phase instead)
+description: Research how to tackle a phase (standalone - usually use gpd:plan-phase instead)
 argument-hint: "[phase]"
 context_mode: project-required
 allowed-tools:
@@ -8,25 +8,12 @@ allowed-tools:
   - shell
   - task
 ---
-
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
-
 <objective>
-Research how to tackle a phase. Spawns gpd-phase-researcher agent with phase context.
-
-**Note:** This is a standalone research command. For most workflows, use `/gpd:plan-phase` which integrates research automatically.
-
-**Use this command when:**
-
-- You want to research without planning yet
-- You want to re-research after planning is complete
-- You need to investigate before deciding if a phase is feasible
-- You need to survey the literature or mathematical landscape for a physics problem
+Research how to tackle a phase. Use this command when you want phase-specific investigation before planning or when you need to re-research after planning is complete.
 
 **Orchestrator role:** Parse phase, validate against roadmap, check existing research, gather context, spawn researcher agent, present results.
 
-**Why subagent:** Research burns context fast (literature searches, method surveys, source verification). Fresh 200k context for investigation. Main context stays lean for user interaction.
+**Why subagent:** Research burns context fast. Fresh context keeps the main context lean.
 </objective>
 
 <execution_context>
@@ -45,10 +32,10 @@ Normalize phase input in step 1 before any directory lookups.
 ## 0. Initialize Context
 
 ```bash
-INIT=$(gpd init phase-op "$ARGUMENTS")
+INIT=$(gpd --raw init phase-op --include state,config "$ARGUMENTS")
 ```
 
-Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `project_contract`, `active_reference_context`, `reference_artifacts_content`.
+Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `project_contract`, `project_contract_gate`, `project_contract_load_info`, `project_contract_validation`, `active_reference_context`, `reference_artifacts_content`. Treat `project_contract` as authoritative only when `project_contract_gate.authoritative` is true.
 
 Resolve researcher model:
 
@@ -59,7 +46,7 @@ RESEARCHER_MODEL=$(gpd resolve-model gpd-phase-researcher)
 ## 1. Validate Phase
 
 ```bash
-PHASE_INFO=$(gpd roadmap get-phase "${phase_number}")
+PHASE_INFO=$(gpd --raw roadmap get-phase "${phase_number}")
 ```
 
 **If `found` is false:** Error and exit. **If `found` is true:** Extract `phase_number`, `phase_name`, `goal` from JSON.
@@ -67,7 +54,7 @@ PHASE_INFO=$(gpd roadmap get-phase "${phase_number}")
 ## 2. Check Existing Research
 
 ```bash
-ls GPD/phases/${PHASE}-*/RESEARCH.md 2>/dev/null
+ls "${phase_dir}/"*-RESEARCH.md 2>/dev/null
 ```
 
 **If exists:** Offer: 1) Update research, 2) View existing, 3) Skip. Wait for response.
@@ -80,41 +67,24 @@ ls GPD/phases/${PHASE}-*/RESEARCH.md 2>/dev/null
 # Phase section already loaded in PHASE_INFO
 echo "$PHASE_INFO" | gpd json get .section --default ""
 cat GPD/REQUIREMENTS.md 2>/dev/null
-cat GPD/phases/${PHASE}-*/*-CONTEXT.md 2>/dev/null
-grep -A30 "### Decisions" GPD/STATE.md 2>/dev/null
+cat "${phase_dir}/"*-CONTEXT.md 2>/dev/null
+gpd --raw state snapshot | gpd json get .decisions --default "[]"
 ```
 
 Present summary with phase description, requirements, prior decisions.
 
 ## 4. Spawn gpd-phase-researcher Agent
 
-Research modes: literature (default), feasibility, methodology, comparison.
+Research depth follows the workflow-owned `research_mode`. Do not invent separate command-local mode labels here.
 
 ```markdown
 <research_type>
 Phase Research -- investigating HOW to approach a specific physics problem or computation.
 </research_type>
 
-<key_insight>
-The question is NOT "which method should I use?"
-
-The question is: "What do I not know that I don't know?"
-
-For this phase, discover:
-
-- What is the established theoretical framework?
-- What mathematical methods and computational tools form the standard approach?
-- What approximations are standard and what are their regimes of validity?
-- What problems do people commonly hit (divergences, instabilities, sign problems)?
-- What is the current state-of-the-art vs what the model's training data says is SOTA?
-- What should NOT be derived from scratch (use established results instead)?
-- Are there known exact solutions, limiting cases, or benchmark results for validation?
-- What are the key references (textbooks, review articles, seminal papers)?
-  </key_insight>
-
 <objective>
 Research approach for Phase {phase_number}: {phase_name}
-Mode: literature
+Research depth: use the active workflow `research_mode` from init/config
 </objective>
 
 <context>
@@ -127,7 +97,7 @@ Mode: literature
 </context>
 
 <downstream_consumer>
-Your RESEARCH.md will be loaded by `/gpd:plan-phase` which uses specific sections:
+Your RESEARCH.md will be loaded by `gpd:plan-phase` which uses specific sections:
 
 - `## User Constraints` -- Plans must honor locked decisions and scope boundaries
 - `## Active Anchor References` -- Plans must keep mandated references, benchmarks, and prior artifacts visible
@@ -141,19 +111,8 @@ Your RESEARCH.md will be loaded by `/gpd:plan-phase` which uses specific section
 Be prescriptive, not exploratory. "Use X" not "Consider X or Y."
 </downstream_consumer>
 
-<quality_gate>
-Before declaring complete, verify:
-
-- [ ] All relevant subfields investigated (not just some)
-- [ ] Negative claims verified with literature or established results
-- [ ] Multiple sources for critical claims (cross-reference textbooks and papers)
-- [ ] Confidence levels assigned honestly
-- [ ] Approximation regimes clearly stated with validity conditions
-- [ ] Section names match what plan-phase expects
-      </quality_gate>
-
 <output>
-Write to: GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md
+Write to: {phase_dir}/{phase_number}-RESEARCH.md
 </output>
 ```
 
@@ -183,7 +142,7 @@ Continue research for Phase {phase_number}: {phase_name}
 </objective>
 
 <prior_state>
-Research file path: GPD/phases/${PHASE}-{slug}/${PHASE}-RESEARCH.md
+Research file path: {phase_dir}/{phase_number}-RESEARCH.md
 Read that file before continuing so you inherit the prior research state instead of relying on an inline `@...` attachment.
 </prior_state>
 

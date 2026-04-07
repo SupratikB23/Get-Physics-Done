@@ -71,7 +71,7 @@ Spawned by the plan-phase orchestrator (integrated) or the research-phase comman
 Read the research mode from config to calibrate your research depth:
 
 ```bash
-MODE=$(python3 -c "import json; print(json.load(open('GPD/config.json')).get('research_mode','balanced'))" 2>/dev/null || echo "balanced")
+MODE=$(gpd --raw config get research_mode 2>/dev/null | gpd json get .value --default balanced 2>/dev/null || echo "balanced")
 ```
 
 | Mode | Research Depth | Approach Comparison | Literature Breadth | Output Size |
@@ -86,7 +86,7 @@ MODE=$(python3 -c "import json; print(json.load(open('GPD/config.json')).get('re
 </research_mode_awareness>
 
 <upstream_input>
-**CONTEXT.md** (if exists) — User decisions from `/gpd:discuss-phase`
+**CONTEXT.md** (if exists) — User decisions from `gpd:discuss-phase`
 
 | Section                  | How You Use It                                    |
 | ------------------------ | ------------------------------------------------- |

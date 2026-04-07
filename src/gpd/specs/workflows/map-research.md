@@ -19,7 +19,7 @@ Include enough detail to be useful as reference. Prioritize practical examples (
 **Document templates:** Mapper agents load templates from `{GPD_INSTALL_DIR}/references/templates/research-mapper/` (FORMALISM.md, CONVENTIONS.md, CONCERNS.md, etc.). These paths are deterministic across runtimes after install; if they are missing, treat that as a broken install and fall back to the agent's built-in structural guidance rather than searching alternate runtime-specific locations.
 
 **Always include file paths:**
-Documents are reference material for the AI when planning/executing. Always include actual file paths formatted with backticks: `src/hamiltonian.py`, `notebooks/convergence_test.ipynb`, `latex/main.tex`.
+Documents are reference material for the AI when planning/executing. Always include actual file paths formatted with backticks: `src/hamiltonian.py`, `notebooks/convergence_test.ipynb`, `latex/topic_stem.tex`.
 
 **Map all project artifacts:**
 A physics research project typically contains:
@@ -40,14 +40,14 @@ Load research mapping context:
 
 ```bash
 # Research-mapping initialization.
-INIT=$(gpd init map-research)
+INIT=$(gpd --raw init map-research)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
 fi
 ```
 
-Extract from init JSON: `mapper_model`, `commit_docs`, `research_map_dir`, `existing_maps`, `has_maps`, `research_map_dir_exists`, `project_contract`, `project_contract_load_info`, `project_contract_validation`, `contract_intake`, `effective_reference_intake`, `active_reference_context`, `reference_artifacts_content`.
+Extract from init JSON: `mapper_model`, `commit_docs`, `research_map_dir`, `existing_maps`, `has_maps`, `research_map_dir_exists`, `project_contract`, `project_contract_gate`, `project_contract_load_info`, `project_contract_validation`, `contract_intake`, `effective_reference_intake`, `active_reference_context`, `reference_artifacts_content`.
 
 **Read mode settings:**
 
@@ -58,13 +58,14 @@ RESEARCH_MODE=$(gpd --raw config get research_mode 2>/dev/null | gpd json get .v
 **Mode-aware behavior:**
 - `research_mode=explore`: Map broadly — include alternative theoretical frameworks, speculative connections, open questions across related domains.
 - `research_mode=exploit`: Map narrowly — focus on primary formalism, established results, direct computational needs.
+- `research_mode=balanced` (default): Use the standard mapping depth for this workflow and preserve the default anchor and contract coverage unless the research question needs broader or narrower mapping.
 - `research_mode=adaptive`: Start with primary framework, expand mapping if connections to other domains appear.
 - Regardless of mode, do not drop contract-critical anchors, prior baselines, or user-mandated references.
 - Treat `effective_reference_intake` as the machine-readable carry-forward registry for anchors, prior outputs, baselines, and unresolved gaps. Use `active_reference_context` to render and explain it, not to replace it.
 - Use `reference_artifacts_content` when the existing literature/research-map artifacts already contain stable citations, prior-output paths, or benchmark wording that should be preserved verbatim.
 - Preserve stable anchor identity when you rewrite or merge references: every durable anchor in `REFERENCES.md` should carry a reusable `Anchor ID` and a concrete `Source / Locator`.
 - Keep workflow carry-forward scope separate from canonical contract subject linkage. `Carry Forward To` names workflow stages; if exact claim/deliverable IDs are known, record them in a dedicated `Contract Subject IDs` field instead of overloading the stage field.
-- Treat `project_contract` as authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes. If either gate is blocked, keep the contract visible as context but do not treat it as approved mapping truth.
+- Treat `project_contract` as authoritative only when `project_contract_gate.authoritative` is true. If the gate is blocked, keep the contract visible as context but do not treat it as approved mapping truth.
 </step>
 
 <step name="check_existing">
@@ -122,7 +123,9 @@ Continue to spawn_agents.
 Spawn 4 parallel gpd-research-mapper agents.
 
 Use task tool with `subagent_type="gpd-research-mapper"`, `model="{mapper_model}"`, `readonly=false`, and `run_in_background=true` for parallel execution.
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 **CRITICAL:** Use the dedicated `gpd-research-mapper` agent, NOT `Explore`. The mapper agent writes documents directly.
 
@@ -160,7 +163,7 @@ Project contract load info:
 Project contract validation:
 {project_contract_validation}
 
-If `project_contract` is present and `project_contract_load_info` is clean and `project_contract_validation` passes, use its existing IDs as the preferred canonical names for anchors and contract subject references:
+If `project_contract` is present and `project_contract_gate.authoritative` is true, use its existing IDs as the preferred canonical names for anchors and contract subject references:
 {project_contract}
 
 If the contract is blocked or not approved, keep it visible as context only and do not treat its IDs as authoritative mapping truth.
@@ -420,14 +423,14 @@ Created GPD/research-map/:
 
 **Initialize project** -- use research map context for planning
 
-`/gpd:new-project`
+`gpd:new-project`
 
 <sub>`/clear` first -> fresh context window</sub>
 
 ---
 
 **Also available:**
-- Re-run mapping: `/gpd:map-research`
+- Re-run mapping: `gpd:map-research`
 - Review specific file: `cat GPD/research-map/FORMALISM.md`
 - Edit any document before proceeding
 

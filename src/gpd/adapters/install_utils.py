@@ -16,22 +16,29 @@ import sys
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
-from gpd.adapters.runtime_catalog import get_runtime_descriptor, resolve_global_config_dir
+from gpd.adapters.runtime_catalog import (
+    get_runtime_descriptor,
+    get_shared_install_metadata,
+    resolve_global_config_dir,
+)
 from gpd.adapters.tool_names import CONTEXTUAL_TOOL_REFERENCE_NAMES
 from gpd.core.constants import HOME_DATA_DIR_NAME
+from gpd.core.public_surface_contract import local_cli_bridge_commands
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-PATCHES_DIR_NAME = "gpd-local-patches"
-MANIFEST_NAME = "gpd-file-manifest.json"
+_SHARED_INSTALL_METADATA = get_shared_install_metadata()
+
+PATCHES_DIR_NAME = _SHARED_INSTALL_METADATA.patches_dir_name
+MANIFEST_NAME = _SHARED_INSTALL_METADATA.manifest_name
 MAX_INCLUDE_EXPANSION_DEPTH = 10
 COMMANDS_DIR_NAME = "commands"
 FLAT_COMMANDS_DIR_NAME = "command"
 AGENTS_DIR_NAME = "agents"
 HOOKS_DIR_NAME = "hooks"
-GPD_INSTALL_DIR_NAME = "get-physics-done"
+GPD_INSTALL_DIR_NAME = _SHARED_INSTALL_METADATA.install_root_dir_name
 CACHE_DIR_NAME = "cache"
 UPDATE_CACHE_FILENAME = "gpd-update-check.json"
 
@@ -85,7 +92,18 @@ def _paths_equal(left: Path, right: Path) -> bool:
         return left.expanduser() == right.expanduser()
 
 
-def _default_install_target(config_dir: Path, runtime: str, scope_flag: str | None) -> Path | None:
+def _dir_contains_files(path: Path) -> bool:
+    """Return whether *path* contains at least one regular file."""
+    if not path.is_dir():
+        return False
+
+    try:
+        return any(entry.is_file() for entry in path.rglob("*"))
+    except OSError:
+        return True
+
+
+def _default_install_target(runtime: str, scope_flag: str | None) -> Path | None:
     """Return the default install location for *runtime* and *scope_flag* when known."""
     descriptor = get_runtime_descriptor(runtime)
     if scope_flag == "--local":
@@ -225,11 +243,7 @@ def build_runtime_install_repair_command(
     """Return the public reinstall/update command for one runtime install."""
     from gpd.adapters import get_adapter
 
-    base = "npx -y get-physics-done"
-    try:
-        command = get_adapter(runtime).update_command
-    except KeyError:
-        command = base
+    command = get_adapter(runtime).update_command
 
     normalized_scope = _normalize_install_scope_flag(install_scope)
     if normalized_scope:
@@ -239,13 +253,45 @@ def build_runtime_install_repair_command(
     return command
 
 
+def should_preserve_public_local_cli_command(command: str) -> bool:
+    """Return whether *command* is part of the public local-CLI contract.
+
+    Installed model-facing content should keep these canonical `gpd ...`
+    commands visible exactly as documented instead of rewriting them to the
+    runtime bridge.
+    """
+
+    normalized = command.strip()
+    if not normalized.startswith("gpd "):
+        return False
+
+    for public_command in local_cli_bridge_commands():
+        if not normalized.startswith(public_command):
+            continue
+        if len(normalized) == len(public_command):
+            return True
+        next_char = normalized[len(public_command)]
+        if next_char.isspace() or next_char in "|&;()<>":
+            return True
+    return False
+
+
 def _replace_runtime_placeholders(
     content: str,
     path_prefix: str,
     runtime: str | None,
     install_scope: str | None = None,
+    workflow_target_dir: Path | None = None,
 ) -> str:
     """Replace runtime-specific placeholders in installed prompt content."""
+    shared_install = get_shared_install_metadata()
+    content = content.replace("{GPD_BOOTSTRAP_COMMAND}", shared_install.bootstrap_command)
+    content = content.replace("{GPD_RELEASE_LATEST_URL}", shared_install.latest_release_url)
+    content = content.replace("{GPD_RELEASES_API_URL}", shared_install.releases_api_url)
+    content = content.replace("{GPD_RELEASES_PAGE_URL}", shared_install.releases_page_url)
+    content = content.replace("{GPD_INSTALL_ROOT_DIR_NAME}", shared_install.install_root_dir_name)
+    content = content.replace("{GPD_PATCHES_DIR_NAME}", shared_install.patches_dir_name)
+
     scope_flag = _normalize_install_scope_flag(install_scope)
     if scope_flag:
         content = content.replace("{GPD_INSTALL_SCOPE_FLAG}", scope_flag)
@@ -256,6 +302,8 @@ def _replace_runtime_placeholders(
     descriptor = get_runtime_descriptor(runtime)
     config_dir = path_prefix[:-1] if path_prefix.endswith("/") else path_prefix
     global_config_dir = str(Path(get_global_dir(runtime)).expanduser()).replace("\\", "/")
+    if _normalize_install_scope_flag(install_scope) == "--global" and workflow_target_dir is not None:
+        global_config_dir = workflow_target_dir.expanduser().resolve(strict=False).as_posix()
     install_flag = descriptor.install_flag
 
     content = content.replace("{GPD_CONFIG_DIR}", config_dir)
@@ -269,6 +317,7 @@ def replace_placeholders(
     path_prefix: str,
     runtime: str | None = None,
     install_scope: str | None = None,
+    workflow_target_dir: Path | None = None,
 ) -> str:
     """Replace GPD path placeholders in file content.
 
@@ -282,9 +331,15 @@ def replace_placeholders(
 
     Used by all adapters during install to rewrite .md file references.
     """
-    content = content.replace("{GPD_INSTALL_DIR}", path_prefix + "get-physics-done")
-    content = content.replace("{GPD_AGENTS_DIR}", path_prefix + "agents")
-    return _replace_runtime_placeholders(content, path_prefix, runtime, install_scope)
+    content = content.replace("{GPD_INSTALL_DIR}", path_prefix + GPD_INSTALL_DIR_NAME)
+    content = content.replace("{GPD_AGENTS_DIR}", path_prefix + AGENTS_DIR_NAME)
+    return _replace_runtime_placeholders(
+        content,
+        path_prefix,
+        runtime,
+        install_scope,
+        workflow_target_dir=workflow_target_dir,
+    )
 
 
 def _materialize_workflow_paths(
@@ -293,26 +348,43 @@ def _materialize_workflow_paths(
     target_dir: Path,
     runtime: str,
     install_scope: str | None,
+    explicit_target: bool = False,
 ) -> str:
     """Rewrite workflow bootstrap variables to authoritative absolute paths."""
     resolved_target = target_dir.expanduser().resolve(strict=False)
     config_dir = resolved_target.as_posix()
     install_dir = (resolved_target / GPD_INSTALL_DIR_NAME).as_posix()
-    # Keep the canonical runtime-global directory distinct from an explicit
-    # global install target so update/reapply workflows can still detect when
-    # ``--target-dir`` is required.
     descriptor = get_runtime_descriptor(runtime)
-    global_config_dir = resolve_global_config_dir(descriptor, home=Path.home()).as_posix()
+    legacy_global_config_dir = resolve_global_config_dir(descriptor, home=Path.home()).as_posix()
+    if _normalize_install_scope_flag(install_scope) == "--global":
+        global_config_dir = config_dir
+    else:
+        global_config_dir = legacy_global_config_dir
     relative_config_prefix = f"./{descriptor.config_dir_name}/"
+    update_command = build_runtime_install_repair_command(
+        runtime,
+        install_scope=install_scope,
+        target_dir=resolved_target,
+        explicit_target=explicit_target,
+    )
+    patch_meta = f"{config_dir}/{PATCHES_DIR_NAME}/backup-meta.json"
+
+    if _normalize_install_scope_flag(install_scope) == "--global" and legacy_global_config_dir != global_config_dir:
+        content = content.replace(legacy_global_config_dir, global_config_dir)
 
     replacements = {
         "GPD_INSTALL_DIR": install_dir,
         "GPD_CONFIG_DIR": config_dir,
         "GPD_GLOBAL_CONFIG_DIR": global_config_dir,
-        "PATCHES_DIR": f"{config_dir}/gpd-local-patches",
-        "GLOBAL_PATCHES_DIR": f"{global_config_dir}/gpd-local-patches",
+        "GPD_UPDATE_COMMAND": update_command,
+        "GPD_PATCH_META": patch_meta,
+        "GPD_PATCHES_DIR": f"{config_dir}/{PATCHES_DIR_NAME}",
+        "GPD_GLOBAL_PATCHES_DIR": f"{global_config_dir}/{PATCHES_DIR_NAME}",
+        "PATCHES_DIR": f"{config_dir}/{PATCHES_DIR_NAME}",
+        "GLOBAL_PATCHES_DIR": f"{global_config_dir}/{PATCHES_DIR_NAME}",
     }
     for var, value in replacements.items():
+        content = content.replace(f"{{{var}}}", value)
         content = re.sub(
             rf"(?m)^(?P<indent>\s*){re.escape(var)}=\"[^\"]*\"$",
             lambda match, replacement=value, name=var: f'{match.group("indent")}{name}="{replacement}"',
@@ -321,38 +393,6 @@ def _materialize_workflow_paths(
         )
     content = content.replace(f"@{relative_config_prefix}get-physics-done/", f"@{config_dir}/get-physics-done/")
     content = content.replace(f"@{relative_config_prefix}agents/", f"@{config_dir}/agents/")
-    return content
-
-
-def materialize_first_round_review_schema_headings(content: str) -> str:
-    """Render staged-review schema headings with first-round filenames.
-
-    Source prompts stay round-aware via ``{round_suffix}``, but installed agent
-    prompts should show the concrete first-round artifact names in the schema
-    headings models read before producing those files.
-    """
-    replacements = {
-        "Required schema for `CLAIMS{round_suffix}.json` (`ClaimIndex`):": (
-            "Required schema for `CLAIMS.json` (`ClaimIndex`):"
-        ),
-        "Required schema for `STAGE-reader{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-reader.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-        "Required schema for `STAGE-literature{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-literature.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-        "Required schema for `STAGE-math{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-math.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-        "Required schema for `STAGE-physics{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-physics.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-        "Required schema for `STAGE-interestingness{round_suffix}.json` (`StageReviewReport`, mirroring the staged-review contract):": (
-            "Required schema for `STAGE-interestingness.json` (`StageReviewReport`, mirroring the staged-review contract):"
-        ),
-    }
-    for source, rendered in replacements.items():
-        content = content.replace(source, rendered)
     return content
 
 
@@ -433,12 +473,123 @@ def split_markdown_frontmatter(content: str) -> tuple[str, str, str, str]:
     )
 
 
+def _preferred_markdown_eol(*parts: str) -> str:
+    """Return the dominant markdown line ending across the provided content parts."""
+    for part in parts:
+        if "\r\n" in part:
+            return "\r\n"
+    return "\n"
+
+
+def _normalize_markdown_eol(text: str, *, eol: str) -> str:
+    """Normalize embedded line endings to the target markdown EOL style."""
+    return text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", eol)
+
+
 def render_markdown_frontmatter(preamble: str, frontmatter: str, separator: str, body: str) -> str:
     """Reassemble markdown content after frontmatter mutation."""
-    rendered = f"{preamble}---\n{frontmatter}\n---"
+    eol = _preferred_markdown_eol(preamble, frontmatter, separator, body)
+    normalized_preamble = _normalize_markdown_eol(preamble, eol=eol)
+    normalized_frontmatter = _normalize_markdown_eol(frontmatter, eol=eol)
+    rendered = f"{normalized_preamble}---{eol}{normalized_frontmatter}{eol}---"
     if separator:
-        rendered += separator
+        rendered += _normalize_markdown_eol(separator, eol=eol)
     return rendered + body
+
+
+def _strip_top_level_markdown_section(body: str, *, heading: str) -> str:
+    """Remove one top-level markdown section when present."""
+
+    lines = body.splitlines(keepends=True)
+    start_index: int | None = None
+    in_fence = False
+
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith(f"## {heading}"):
+            start_index = index
+            break
+
+    if start_index is None:
+        return body
+
+    end_index = len(lines)
+    for index in range(start_index + 1, len(lines)):
+        stripped = lines[index].lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if lines[index].startswith("## "):
+            end_index = index
+            break
+
+    return "".join([*lines[:start_index], *lines[end_index:]])
+
+
+def _inject_command_visibility_sections_from_frontmatter(content: str) -> str:
+    """Front-load model-visible command constraints into installed markdown once."""
+
+    from gpd.registry import render_command_visibility_sections_from_frontmatter
+
+    preamble, frontmatter, separator, body = split_markdown_frontmatter(content)
+    if not frontmatter:
+        return content
+    command_name_match = re.search(r"(?m)^name:\s*(?P<name>.+?)\s*$", frontmatter)
+    command_name = command_name_match.group("name").strip().strip("\"'") if command_name_match is not None else ""
+    has_agent_only_frontmatter = any(
+        re.search(pattern, frontmatter, flags=re.MULTILINE) is not None
+        for pattern in (
+            r"^tools:\s*(?:.*)$",
+            r"^surface:\s*(?:.*)$",
+            r"^role_family:\s*(?:.*)$",
+            r"^artifact_write_authority:\s*(?:.*)$",
+            r"^shared_state_authority:\s*(?:.*)$",
+            r"^commit_authority:\s*(?:.*)$",
+        )
+    )
+    has_command_only_frontmatter = any(
+        re.search(pattern, frontmatter, flags=re.MULTILINE) is not None
+        for pattern in (
+            r"^review-contract:\s*$",
+            r"^review_contract:\s*$",
+            r"^requires:\s*$",
+            r"^context_mode:\s*.+$",
+            r"^project_reentry_capable:\s*.+$",
+        )
+    )
+    if not command_name.startswith("gpd:") and has_agent_only_frontmatter:
+        return content
+    if not command_name.startswith("gpd:") and not has_command_only_frontmatter:
+        return content
+    eol = _preferred_markdown_eol(preamble, frontmatter, separator, body)
+    section = render_command_visibility_sections_from_frontmatter(frontmatter, command_name=command_name)
+    if not section:
+        return content
+    normalized_section = _normalize_markdown_eol(section, eol=eol)
+    body_without_constraints = _strip_top_level_markdown_section(body, heading="Review Contract")
+    body_without_constraints = _strip_top_level_markdown_section(
+        body_without_constraints,
+        heading="Command Requirements",
+    ).strip("\r\n")
+    trailing_newline = eol if body.endswith(("\r\n", "\n", "\r")) else ""
+    new_body = (
+        f"{normalized_section}{eol}{eol}{body_without_constraints}" if body_without_constraints else normalized_section
+    )
+    if trailing_newline and not new_body.endswith(("\r\n", "\n", "\r")):
+        new_body += trailing_newline
+    return render_markdown_frontmatter(
+        preamble,
+        frontmatter,
+        separator,
+        new_body,
+    )
 
 
 def _default_markdown_transform(runtime: str) -> Callable[[str, str, str | None], str]:
@@ -591,9 +742,48 @@ def parse_jsonc(content: str) -> object:
                 i += 1
 
     stripped = "".join(result)
-    # Remove trailing commas before } or ]
-    stripped = re.sub(r",(\s*[}\]])", r"\1", stripped)
-    return json.loads(stripped)
+    return json.loads(_strip_jsonc_trailing_commas(stripped))
+
+
+def _strip_jsonc_trailing_commas(content: str) -> str:
+    """Remove trailing commas before ``}``/``]`` without mutating string literals."""
+
+    result: list[str] = []
+    in_string = False
+    i = 0
+    length = len(content)
+
+    while i < length:
+        char = content[i]
+
+        if in_string:
+            result.append(char)
+            if char == "\\" and i + 1 < length:
+                result.append(content[i + 1])
+                i += 2
+                continue
+            if char == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if char == '"':
+            in_string = True
+            result.append(char)
+            i += 1
+            continue
+
+        if char in "}]":
+            scan = len(result) - 1
+            while scan >= 0 and result[scan].isspace():
+                scan -= 1
+            if scan >= 0 and result[scan] == ",":
+                del result[scan]
+
+        result.append(char)
+        i += 1
+
+    return "".join(result)
 
 
 def read_settings(settings_path: str | Path) -> dict[str, object]:
@@ -793,6 +983,7 @@ def compile_markdown_for_runtime(
     install_scope: str | None = None,
     src_root: str | Path | None = None,
     workflow_target_dir: Path | None = None,
+    explicit_target: bool = False,
     protect_agent_prompt_body: bool = False,
 ) -> str:
     """Compile canonical markdown into a runtime-specific installed form.
@@ -816,7 +1007,13 @@ def compile_markdown_for_runtime(
             install_scope=install_scope,
         )
 
-    content = replace_placeholders(content, path_prefix, runtime, install_scope)
+    content = replace_placeholders(
+        content,
+        path_prefix,
+        runtime,
+        install_scope,
+        workflow_target_dir=workflow_target_dir,
+    )
 
     if protect_agent_prompt_body:
         content = protect_runtime_agent_prompt(content, runtime)
@@ -827,9 +1024,54 @@ def compile_markdown_for_runtime(
             target_dir=workflow_target_dir,
             runtime=runtime,
             install_scope=install_scope,
+            explicit_target=explicit_target,
         )
 
-    return content
+    return _inject_command_visibility_sections_from_frontmatter(content)
+
+
+def project_markdown_for_runtime(
+    content: str,
+    *,
+    runtime: str,
+    path_prefix: str,
+    surface_kind: str = "command",
+    install_scope: str | None = None,
+    src_root: str | Path | None = None,
+    workflow_target_dir: Path | None = None,
+    explicit_target: bool = False,
+    protect_agent_prompt_body: bool = False,
+    command_name: str | None = None,
+) -> str:
+    """Return the final runtime-visible prompt surface for one markdown source.
+
+    The shared compiler handles common normalization. Adapter-specific
+    projection is delegated to the runtime adapter implementation so shared
+    infrastructure stays agnostic about per-runtime surface formats.
+    """
+
+    compiled = compile_markdown_for_runtime(
+        content,
+        runtime=runtime,
+        path_prefix=path_prefix,
+        install_scope=install_scope,
+        src_root=src_root,
+        workflow_target_dir=workflow_target_dir,
+        explicit_target=explicit_target,
+        protect_agent_prompt_body=protect_agent_prompt_body,
+    )
+
+    if surface_kind not in {"agent", "command"}:
+        raise ValueError("surface_kind must be 'agent' or 'command'")
+
+    from gpd.adapters import get_adapter
+
+    return get_adapter(runtime).project_markdown_surface(
+        compiled,
+        surface_kind=surface_kind,
+        path_prefix=path_prefix,
+        command_name=command_name,
+    )
 
 
 def expand_at_includes(
@@ -1028,6 +1270,7 @@ def copy_with_path_replacement(
     *,
     workflow_paths: bool = False,
     workflow_target_dir: Path | None = None,
+    explicit_target: bool = False,
 ) -> None:
     """Safely copy *src_dir* to *dest_dir* with path replacement in ``.md`` files.
 
@@ -1068,6 +1311,7 @@ def copy_with_path_replacement(
             markdown_transform=markdown_transform,
             workflow_paths=workflow_paths,
             workflow_target_dir=workflow_target_dir,
+            explicit_target=explicit_target,
         )
 
         # Swap into place
@@ -1104,6 +1348,7 @@ def _copy_dir_contents(
     *,
     workflow_paths: bool = False,
     workflow_target_dir: Path | None = None,
+    explicit_target: bool = False,
 ) -> None:
     """Recursively copy directory contents with runtime translation in .md files.
 
@@ -1126,6 +1371,7 @@ def _copy_dir_contents(
                 markdown_transform=markdown_transform,
                 workflow_paths=workflow_paths,
                 workflow_target_dir=workflow_target_dir,
+                explicit_target=explicit_target,
             )
         elif entry.suffix == ".md":
             content = entry.read_text(encoding="utf-8")
@@ -1137,7 +1383,9 @@ def _copy_dir_contents(
                     target_dir=workflow_target_dir or target_dir,
                     runtime=runtime,
                     install_scope=install_scope,
+                    explicit_target=explicit_target,
                 )
+            content = _inject_command_visibility_sections_from_frontmatter(content)
             dest.write_text(content, encoding="utf-8")
         else:
             # Binary copy
@@ -1200,6 +1448,7 @@ def write_manifest(
     *,
     runtime: str | None = None,
     skills_dir: str | Path | None = None,
+    managed_skill_dir_names: tuple[str, ...] | None = None,
     metadata: dict[str, object] | None = None,
     install_scope: str | None = None,
     explicit_target: bool | None = None,
@@ -1209,7 +1458,7 @@ def write_manifest(
     Returns the manifest dict.
     """
     config_dir = Path(config_dir)
-    gpd_dir = config_dir / "get-physics-done"
+    gpd_dir = config_dir / GPD_INSTALL_DIR_NAME
     commands_dir = config_dir / "commands" / "gpd"
     agents_dir = config_dir / "agents"
     hooks_dir = config_dir / "hooks"
@@ -1230,14 +1479,14 @@ def write_manifest(
     if explicit_target is not None:
         manifest["explicit_target"] = bool(explicit_target)
     elif isinstance(runtime, str) and runtime.strip() and normalized_scope in {"--local", "--global"}:
-        default_target = _default_install_target(config_dir, runtime.strip(), normalized_scope)
+        default_target = _default_install_target(runtime.strip(), normalized_scope)
         if default_target is not None:
             manifest["explicit_target"] = not _paths_equal(config_dir, default_target)
     files: dict[str, str] = {}
 
-    # get-physics-done/
+    # Managed install root
     for rel, h in generate_manifest(gpd_dir).items():
-        files["get-physics-done/" + rel] = h
+        files[f"{GPD_INSTALL_DIR_NAME}/" + rel] = h
 
     # commands/gpd/
     if commands_dir.exists():
@@ -1265,11 +1514,15 @@ def write_manifest(
     if skills_dir:
         skills = Path(skills_dir)
         if skills.exists():
+            managed_names = set(managed_skill_dir_names or ())
             for entry in sorted(skills.iterdir()):
-                if entry.is_dir() and entry.name.startswith("gpd-"):
-                    skill_md = entry / "SKILL.md"
-                    if skill_md.exists():
-                        files[f"skills/{entry.name}/SKILL.md"] = file_hash(skill_md)
+                if not entry.is_dir() or not entry.name.startswith("gpd-"):
+                    continue
+                if managed_names and entry.name not in managed_names:
+                    continue
+                skill_md = entry / "SKILL.md"
+                if skill_md.exists():
+                    files[f"skills/{entry.name}/SKILL.md"] = file_hash(skill_md)
 
     manifest["files"] = files
     if metadata:
@@ -1281,8 +1534,6 @@ def write_manifest(
 
 def _tracked_hook_paths_for_cleanup(
     config_dir: Path,
-    *,
-    skills_dir: str | Path | None = None,
 ) -> set[str]:
     """Return managed hook paths that pre-install cleanup may safely remove."""
     return managed_hook_paths(config_dir)
@@ -1310,7 +1561,12 @@ def tracked_hook_paths_from_manifest(config_dir: Path) -> set[str]:
 
 
 def managed_hook_paths(config_dir: Path) -> set[str]:
-    """Return bundled hook paths that are manifest-tracked or hash-matched."""
+    """Return bundled hook paths that are safe to treat as GPD-managed.
+
+    Only manifest-tracked and exact hash-matched bundled hooks are treated as
+    GPD-managed. Unknown hook files must be preserved even if they import
+    ``gpd`` or reuse a reserved bundled hook filename.
+    """
     tracked = tracked_hook_paths_from_manifest(config_dir)
     managed: set[str] = set()
 
@@ -1327,8 +1583,9 @@ def managed_hook_paths(config_dir: Path) -> set[str]:
         try:
             if file_hash(installed_hook) == file_hash(bundled_hook):
                 managed.add(rel_path)
+                continue
         except (FileNotFoundError, OSError):
-            continue
+            pass
 
     return managed
 
@@ -1341,9 +1598,9 @@ def _managed_install_paths(
     """Return the current managed install paths when a manifest cannot be trusted."""
     managed_paths: list[str] = []
 
-    gpd_dir = config_dir / "get-physics-done"
+    gpd_dir = config_dir / GPD_INSTALL_DIR_NAME
     for rel in generate_manifest(gpd_dir).keys():
-        managed_paths.append(f"get-physics-done/{rel}")
+        managed_paths.append(f"{GPD_INSTALL_DIR_NAME}/{rel}")
 
     commands_dir = config_dir / "commands" / "gpd"
     for rel in generate_manifest(commands_dir).keys():
@@ -1390,7 +1647,7 @@ def save_local_patches(
     """Detect user-modified GPD files and back them up before overwriting.
 
     Compares current files against the install manifest.  Modified files are
-    copied to ``gpd-local-patches/`` with backup metadata.
+    copied to the managed patches directory with backup metadata.
 
     Returns a list of relative paths that were backed up.
     """
@@ -1490,7 +1747,7 @@ def save_local_patches(
 # ---------------------------------------------------------------------------
 
 
-def verify_installed(dir_path: str | Path, description: str) -> bool:
+def verify_installed(dir_path: str | Path) -> bool:
     """Verify a directory exists and is non-empty.
 
     Returns ``True`` if valid, ``False`` with a logged message otherwise.
@@ -1517,7 +1774,7 @@ def verify_installed(dir_path: str | Path, description: str) -> bool:
     return True
 
 
-def verify_file_installed(file_path: str | Path, description: str) -> bool:
+def verify_file_installed(file_path: str | Path) -> bool:
     """Verify a file exists.  Returns ``True`` if it does."""
     return Path(file_path).exists()
 
@@ -1537,7 +1794,8 @@ def validate_package_integrity(gpd_root: Path) -> None:
     for required in ("commands", "agents", "hooks", "specs"):
         if not (gpd_root / required).is_dir():
             raise FileNotFoundError(
-                f"Package integrity check failed: missing {required}/. Try reinstalling: npx -y get-physics-done"
+                "Package integrity check failed: "
+                f"missing {required}/. Try reinstalling: {get_shared_install_metadata().bootstrap_command}"
             )
 
 
@@ -1563,11 +1821,11 @@ def pre_install_cleanup(
 
     save_local_patches(target_dir, skills_dir=skills_dir)
 
-    gpd_dir = target_dir / "get-physics-done"
+    gpd_dir = target_dir / GPD_INSTALL_DIR_NAME
     if gpd_dir.exists():
         _shutil.rmtree(gpd_dir)
 
-    for rel_path in sorted(_tracked_hook_paths_for_cleanup(target_dir, skills_dir=skills_dir)):
+    for rel_path in sorted(_tracked_hook_paths_for_cleanup(target_dir)):
         hook_path = target_dir / rel_path
         if hook_path.exists():
             hook_path.unlink()
@@ -1580,13 +1838,15 @@ def install_gpd_content(
     runtime: str,
     install_scope: str | None = None,
     markdown_transform: Callable[[str, str, str | None], str] | None = None,
+    *,
+    explicit_target: bool = False,
 ) -> list[str]:
-    """Install get-physics-done/ content from specs/ subdirectories.
+    """Install the managed GPD content tree from specs/ subdirectories.
 
     Copies references/, templates/, workflows/ with path replacement.
     Returns list of failure descriptions (empty on success).
     """
-    gpd_dest = target_dir / "get-physics-done"
+    gpd_dest = target_dir / GPD_INSTALL_DIR_NAME
     gpd_dest.mkdir(parents=True, exist_ok=True)
 
     for subdir_name in GPD_CONTENT_DIRS:
@@ -1601,9 +1861,10 @@ def install_gpd_content(
                 markdown_transform=markdown_transform,
                 workflow_paths=subdir_name == "workflows",
                 workflow_target_dir=target_dir,
+                explicit_target=explicit_target,
             )
 
-    if verify_installed(gpd_dest, "get-physics-done"):
+    if verify_installed(gpd_dest):
         subdir_info = []
         for subdir in GPD_CONTENT_DIRS:
             subdir_path = gpd_dest / subdir
@@ -1615,10 +1876,10 @@ def install_gpd_content(
             protocol_count = sum(1 for f in protocols_path.rglob("*") if f.is_file())
             if protocol_count:
                 subdir_info.append(f"protocols: {protocol_count}")
-        _install_logger.info("Installed get-physics-done (%s)", ", ".join(subdir_info))
+        _install_logger.info("Installed %s (%s)", GPD_INSTALL_DIR_NAME, ", ".join(subdir_info))
         return []
 
-    return ["get-physics-done"]
+    return [GPD_INSTALL_DIR_NAME]
 
 
 def write_version_file(gpd_dest: Path, version: str) -> list[str]:
@@ -1630,7 +1891,7 @@ def write_version_file(gpd_dest: Path, version: str) -> list[str]:
     version_dest.parent.mkdir(parents=True, exist_ok=True)
     version_dest.write_text(version, encoding="utf-8")
 
-    if verify_file_installed(version_dest, "VERSION"):
+    if verify_file_installed(version_dest):
         _install_logger.info("Wrote VERSION (%s)", version)
         return []
 
@@ -1648,32 +1909,18 @@ def copy_hook_scripts(gpd_root: Path, target_dir: Path) -> list[str]:
     if not hooks_src.is_dir():
         return []
 
-    manifest_path = target_dir / MANIFEST_NAME
-    tracked_hook_paths: set[str] = set()
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
-        manifest = {}
-    if isinstance(manifest, dict):
-        raw_files = manifest.get("files")
-        if isinstance(raw_files, dict):
-            tracked_hook_paths = {str(path) for path in raw_files if str(path).startswith("hooks/")}
-
     hooks_dest = target_dir / "hooks"
     hooks_dest.mkdir(parents=True, exist_ok=True)
+    managed_paths = managed_hook_paths(target_dir)
     for hook_file in hooks_src.iterdir():
         if hook_file.is_file() and not hook_file.name.startswith("__"):
             dest = hooks_dest / hook_file.name
             rel_path = f"hooks/{hook_file.name}"
-            if dest.exists():
-                managed_by_manifest = rel_path in tracked_hook_paths
-                managed_by_hash = file_hash(dest) == file_hash(hook_file)
-                if not (managed_by_manifest or managed_by_hash):
-                    _install_logger.warning("Preserving unmanaged hook file during install: %s", dest)
-                    continue
+            if dest.exists() and rel_path not in managed_paths:
+                continue
             _shutil.copy2(hook_file, dest)
 
-    if verify_installed(hooks_dest, "hooks"):
+    if verify_installed(hooks_dest):
         _install_logger.info("Installed hooks (bundled)")
         return []
 
@@ -1920,31 +2167,33 @@ def _managed_gpd_python() -> str | None:
     return None
 
 
-def _running_from_checkout() -> bool:
-    """Return whether the active install is executing from a source checkout."""
-    try:
-        from gpd.version import checkout_root
-
-        return checkout_root() is not None
-    except Exception:
-        return False
-
-
 def hook_python_interpreter() -> str:
     """Return the interpreter that should run installed GPD hook scripts.
 
     Hook scripts import ``gpd.*`` modules, so they need the same interpreter
-    used for the active install process. Source checkouts keep using the active
-    interpreter so local live-testing stays pinned to the worktree. Managed
-    installs prefer the shared ``~/.gpd/venv`` interpreter when available so
-    hooks and MCP servers do not inherit an unrelated ambient Python.
+    lineage as the active install source. Source checkouts prefer their local
+    virtualenv so copied hooks, runtime bridges, and MCP servers all import the
+    live checkout rather than a stale managed package at the same version.
+    Managed installs prefer the shared ``~/.gpd/venv`` interpreter when
+    available so hooks and MCP servers do not inherit an unrelated ambient
+    Python.
     """
     override = expand_tilde(os.environ.get("GPD_PYTHON", "").strip())
     if override:
         return override
 
-    if _running_from_checkout():
-        return sys.executable or "python3"
+    try:
+        from gpd.version import checkout_root, resolve_checkout_python
+
+        active_checkout_root = checkout_root()
+        if active_checkout_root is not None:
+            checkout_python = resolve_checkout_python(active_checkout_root, fallback=sys.executable or "python3")
+        else:
+            checkout_python = None
+    except Exception:
+        checkout_python = None
+    if checkout_python:
+        return checkout_python
 
     managed_python = _managed_gpd_python()
     if managed_python:

@@ -8,9 +8,7 @@ Entry point: python -m gpd.mcp.servers.errors_mcp
 Console script: gpd-mcp-errors
 """
 
-import logging
 import re
-import sys
 import threading
 from pathlib import Path
 
@@ -18,16 +16,16 @@ from mcp.server.fastmcp import FastMCP
 
 from gpd.core.observability import gpd_span
 from gpd.mcp.servers import (
-    parse_frontmatter_safe,
+    configure_mcp_logging,
+    parse_frontmatter_with_error,
     run_mcp_server,
     stable_mcp_error,
     stable_mcp_response,
+    tighten_registered_tool_contracts,
 )
 from gpd.specs import SPECS_DIR
 
-# MCP stdio uses stdout for JSON-RPC — redirect logging to stderr
-logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-logger = logging.getLogger("gpd-errors")
+logger = configure_mcp_logging("gpd-errors")
 
 REFERENCES_DIR = SPECS_DIR / "references"
 
@@ -101,6 +99,21 @@ def _infer_domain_from_id(error_id: int) -> str:
     return "unknown"
 
 
+def _load_authoritative_markdown_body(path: Path, *, label: str) -> str:
+    """Read an authoritative markdown document or fail closed."""
+    if not path.is_file():
+        raise OSError(f"{label} not found: {path}")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise OSError(f"Failed to read {path}: {exc}") from exc
+
+    _meta, body, parse_error = parse_frontmatter_with_error(text)
+    if parse_error is not None:
+        raise ValueError(f"Malformed frontmatter in {path}: {parse_error}")
+    return body
+
+
 # ---------------------------------------------------------------------------
 # Error Store
 # ---------------------------------------------------------------------------
@@ -123,17 +136,9 @@ class ErrorStore:
     def _do_load_catalogs(self, references_dir: Path) -> None:
         for filename in ERROR_CATALOG_FILES:
             path = references_dir / filename
-            if not path.is_file():
-                logger.warning("Error catalog not found: %s", path)
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError as exc:
-                logger.warning("Failed to read %s: %s", path, exc)
-                continue
-
-            _, body = parse_frontmatter_safe(text)
+            body = _load_authoritative_markdown_body(path, label="Error catalog")
             rows = _parse_table_rows(body)
+            loaded_rows = 0
 
             for row in rows:
                 # Skip header rows (first cell is "#" or "Error Class")
@@ -151,6 +156,13 @@ class ErrorStore:
                 detection_strategy = row[3].strip()
                 example = row[4].strip()
 
+                existing = self._errors.get(error_id)
+                if existing is not None:
+                    raise ValueError(
+                        f"Duplicate error class id {error_id} in {Path(filename).name}; "
+                        f"already defined in {existing['source_file']}"
+                    )
+
                 self._errors[error_id] = {
                     "id": error_id,
                     "name": name,
@@ -161,6 +173,10 @@ class ErrorStore:
                     # Preserve the stable basename in the public response.
                     "source_file": Path(filename).name,
                 }
+                loaded_rows += 1
+
+            if loaded_rows == 0:
+                raise ValueError(f"Error catalog {path} did not contain any error-class rows")
 
         logger.info("Loaded %d error classes from catalogs", len(self._errors))
 
@@ -171,17 +187,9 @@ class ErrorStore:
 
     def _do_load_traceability(self, references_dir: Path) -> None:
         path = references_dir / TRACEABILITY_FILE
-        if not path.is_file():
-            logger.warning("Traceability matrix not found: %s", path)
-            return
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            logger.warning("Failed to read %s: %s", path, exc)
-            return
-
-        _, body = parse_frontmatter_safe(text)
+        body = _load_authoritative_markdown_body(path, label="Traceability matrix")
         rows = _parse_table_rows(body)
+        loaded_rows = 0
 
         for row in rows:
             if len(row) < 2:
@@ -192,6 +200,8 @@ class ErrorStore:
             if not id_match:
                 continue
             error_id = int(id_match.group(1))
+            if error_id in self._traceability:
+                raise ValueError(f"Duplicate traceability row for error class {error_id} in {Path(TRACEABILITY_FILE).name}")
 
             # Map remaining cells to traceability columns
             checks: dict[str, str] = {}
@@ -203,6 +213,10 @@ class ErrorStore:
                         checks[col_name] = value
 
             self._traceability[error_id] = checks
+            loaded_rows += 1
+
+        if loaded_rows == 0:
+            raise ValueError(f"Traceability matrix {path} did not contain any error-class rows")
 
         logger.info("Loaded traceability data for %d error classes", len(self._traceability))
 
@@ -474,6 +488,9 @@ def list_error_classes(domain: str | None = None) -> dict[str, object]:
 def main() -> None:
     """Run the gpd-errors MCP server."""
     run_mcp_server(mcp, "GPD Errors MCP Server")
+
+
+tighten_registered_tool_contracts(mcp)
 
 
 if __name__ == "__main__":

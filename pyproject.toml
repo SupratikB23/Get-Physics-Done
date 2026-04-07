@@ -54,6 +54,7 @@ gpd = "gpd.cli:entrypoint"
 "gpd-mcp-protocols" = "gpd.mcp.servers.protocols_server:main"
 "gpd-mcp-errors" = "gpd.mcp.servers.errors_mcp:main"
 "gpd-mcp-patterns" = "gpd.mcp.servers.patterns_server:main"
+"gpd-mcp-wolfram" = "gpd.mcp.integrations.wolfram_bridge:main"
 "gpd-mcp-state" = "gpd.mcp.servers.state_server:main"
 "gpd-mcp-skills" = "gpd.mcp.servers.skills_server:main"
 
@@ -74,8 +75,11 @@ packages = ["src/gpd"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-n auto"
-markers = []
+# Default to maximal local parallelism while keeping related tests co-located.
+addopts = "-n auto --dist=loadscope"
+markers = [
+    "no_stable_hook_python: opt out of the autouse _stable_hook_python fixture",
+]
 
 [tool.ruff]
 target-version = "py311"

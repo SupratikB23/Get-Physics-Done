@@ -11,8 +11,6 @@ allowed-tools:
   - ask_user
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Start a new research milestone: questioning → literature research (optional) → requirements → roadmap.
@@ -27,7 +25,7 @@ Continuation equivalent of new-project. Research project exists, PROJECT.md has 
 - `GPD/ROADMAP.md` — phase structure (continues numbering)
 - `GPD/STATE.md` — reset for new milestone
 
-**After:** `/gpd:plan-phase [N]` to start execution.
+**After:** `gpd:plan-phase [N]` to start execution.
 </objective>
 
 <execution_context>
@@ -47,7 +45,7 @@ Milestone name: $ARGUMENTS (optional - will prompt if not provided)
 @GPD/MILESTONES.md
 @GPD/config.json
 
-**Load milestone context (if exists, from /gpd:discuss-phase):**
+**Load milestone context (if exists, from gpd:discuss-phase):**
 @GPD/MILESTONE-CONTEXT.md
 </context>
 
@@ -71,7 +69,7 @@ The workflow handles the full milestone initialization flow:
 6. Define research requirements (category scoping, REQ-IDs)
 7. Create research roadmap (gpd-roadmapper agent)
 8. Commit all artifacts
-9. Present next steps (`/gpd:discuss-phase [N]` or `/gpd:plan-phase [N]`)
+9. Present next steps (`gpd:discuss-phase [N]` or `gpd:plan-phase [N]`)
 
 All gates (validation, questioning, research, requirements, roadmap approval, commits) are preserved in the workflow.
 </process>
@@ -89,7 +87,7 @@ All gates (validation, questioning, research, requirements, roadmap approval, co
 - [ ] User feedback incorporated (if any)
 - [ ] ROADMAP.md phases continue from previous milestone
 - [ ] All commits made when `planning.commit_docs` is true
-- [ ] User knows next step: `/gpd:discuss-phase [N]`
+- [ ] User knows next step: `gpd:discuss-phase [N]`
 
 **Atomic commits:** Each phase commits its artifacts immediately.
 </success_criteria>

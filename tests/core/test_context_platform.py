@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -15,7 +14,6 @@ from gpd.adapters import get_adapter, list_runtimes
 from gpd.adapters.install_utils import GPD_INSTALL_DIR_NAME
 from gpd.adapters.runtime_catalog import get_runtime_descriptor
 from gpd.core.constants import ENV_GPD_ACTIVE_RUNTIME
-from tests.runtime_install_helpers import seed_complete_runtime_install
 
 _RUNTIME_NAMES = tuple(list_runtimes())
 _SUPPORTED_RUNTIME_DESCRIPTORS = tuple(get_runtime_descriptor(runtime) for runtime in _RUNTIME_NAMES)
@@ -66,18 +64,16 @@ def test_init_context_uses_active_runtime_signal(
     importlib.reload(context_module)
 
 
-def test_init_context_uses_runtime_detect_directory_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_init_context_uses_runtime_detector_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runtime = _RUNTIME_NAMES[0]
-    adapter = get_adapter(runtime)
 
     with monkeypatch.context() as runtime_env:
         _clear_runtime_env(runtime_env)
-        seed_complete_runtime_install(tmp_path / adapter.local_config_dir_name, runtime=runtime)
 
         with (
             patch("gpd.core.context.Path.home", return_value=tmp_path),
-            patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="unknown"),
-            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="unknown"),
+            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value=runtime),
+            patch("gpd.hooks.runtime_detect.detect_runtime_install_target", side_effect=AssertionError("unexpected direct install lookup")),
         ):
             module = importlib.reload(context_module)
             ctx = module.init_new_project(tmp_path)
@@ -86,86 +82,36 @@ def test_init_context_uses_runtime_detect_directory_fallback(monkeypatch: pytest
     importlib.reload(context_module)
 
 
-def test_detect_platform_fallback_ignores_incomplete_local_runtime_dirs(
+def test_detect_platform_returns_runtime_detector_result_without_install_probe(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    stray_runtime, installed_runtime = _runtime_pair()
-    stray_adapter = get_adapter(stray_runtime)
-    installed_adapter = get_adapter(installed_runtime)
+    runtime = _RUNTIME_NAMES[0]
 
     with monkeypatch.context() as runtime_env:
         _clear_runtime_env(runtime_env)
-        (tmp_path / stray_adapter.local_config_dir_name).mkdir()
-        seed_complete_runtime_install(tmp_path / installed_adapter.local_config_dir_name, runtime=installed_runtime)
-
         with (
-            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="unknown"),
-            patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="unknown"),
+            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value=runtime),
+            patch("gpd.hooks.runtime_detect.detect_runtime_install_target", side_effect=AssertionError("unexpected direct install lookup")),
         ):
-            assert context_module._detect_platform(tmp_path) == installed_runtime
+            assert context_module._detect_platform(tmp_path) == runtime
 
 
-def test_detect_platform_fallback_ignores_incomplete_global_runtime_dirs(
+def test_detect_platform_propagates_runtime_unknown_without_install_probe(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    stray_runtime, installed_runtime = _runtime_pair()
-    stray_adapter = get_adapter(stray_runtime)
-    installed_adapter = get_adapter(installed_runtime)
-
-    with monkeypatch.context() as runtime_env:
-        _clear_runtime_env(runtime_env)
-        stray_global = stray_adapter.resolve_global_config_dir(home=tmp_path)
-        stray_global.mkdir(parents=True, exist_ok=True)
-        installed_global = installed_adapter.resolve_global_config_dir(home=tmp_path)
-        seed_complete_runtime_install(
-            installed_global,
-            runtime=installed_runtime,
-            install_scope="global",
-            home=tmp_path,
-        )
-
-        with (
-            patch("gpd.core.context.Path.home", return_value=tmp_path),
-            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="unknown"),
-            patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="unknown"),
-        ):
-            assert context_module._detect_platform(tmp_path) == installed_runtime
-
-
-def test_detect_platform_delegates_install_fallback_to_runtime_detector(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    stray_runtime, installed_runtime = _runtime_pair()
-    calls: list[tuple[str, Path | None, Path | None]] = []
-
-    def _fake_detect_runtime_install_target(
-        runtime: str,
-        *,
-        cwd: Path | None = None,
-        home: Path | None = None,
-    ) -> object | None:
-        calls.append((runtime, cwd, home))
-        if runtime == installed_runtime:
-            return SimpleNamespace(config_dir=tmp_path / "installed", install_scope="local")
-        return None
+    runtime_unknown = "runtime-unknown"
 
     with monkeypatch.context() as runtime_env:
         _clear_runtime_env(runtime_env)
         with (
             patch("gpd.core.context.Path.home", return_value=tmp_path),
-            patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value="unknown"),
-            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value="unknown"),
-            patch("gpd.hooks.runtime_detect.detect_runtime_install_target", side_effect=_fake_detect_runtime_install_target),
+            patch("gpd.hooks.runtime_detect.RUNTIME_UNKNOWN", runtime_unknown),
+            patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value=runtime_unknown),
+            patch("gpd.hooks.runtime_detect.detect_runtime_install_target", side_effect=AssertionError("unexpected direct install lookup")),
         ):
-            assert context_module._detect_platform(tmp_path) == installed_runtime
-
-    assert calls == [
-        (stray_runtime, tmp_path, tmp_path),
-        (installed_runtime, tmp_path, tmp_path),
-    ]
+            assert context_module._detect_platform(tmp_path) == runtime_unknown
 
 
 def test_init_context_prefers_explicit_gpd_runtime_override(
@@ -260,28 +206,16 @@ def test_detect_platform_uses_runtime_unknown_constant_not_literal(
     tmp_path: Path,
 ) -> None:
     runtime_unknown = "runtime-unknown"
-    installed_runtime = _RUNTIME_NAMES[0]
-
-    def _fake_detect_runtime_install_target(
-        runtime: str,
-        *,
-        cwd: Path | None = None,
-        home: Path | None = None,
-    ) -> object | None:
-        if runtime == installed_runtime:
-            return SimpleNamespace(config_dir=tmp_path / "installed", install_scope="local")
-        return None
 
     with monkeypatch.context() as runtime_env:
         _clear_runtime_env(runtime_env)
         with (
             patch("gpd.hooks.runtime_detect.RUNTIME_UNKNOWN", runtime_unknown),
             patch("gpd.core.context.Path.home", return_value=tmp_path),
-            patch("gpd.hooks.runtime_detect.detect_active_runtime", return_value=runtime_unknown),
             patch("gpd.hooks.runtime_detect.detect_runtime_for_gpd_use", return_value=runtime_unknown),
-            patch("gpd.hooks.runtime_detect.detect_runtime_install_target", side_effect=_fake_detect_runtime_install_target),
+            patch("gpd.hooks.runtime_detect.detect_runtime_install_target", side_effect=AssertionError("unexpected direct install lookup")),
         ):
-            assert context_module._detect_platform(tmp_path) == installed_runtime
+            assert context_module._detect_platform(tmp_path) == runtime_unknown
 
 
 def test_detect_platform_degrades_cleanly_when_runtime_detect_import_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

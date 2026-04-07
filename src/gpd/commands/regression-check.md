@@ -10,8 +10,6 @@ allowed-tools:
   - search_files
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Run the lightweight regression audit implemented by `gpd regression-check`.
@@ -22,7 +20,7 @@ This command does **not** re-run physics, numerical, dimensional, or contract ve
 2. Missing, invalid, or non-canonical `*-VERIFICATION.md` statuses
 3. Completed phases whose `*-VERIFICATION.md` still reports unresolved gaps
 
-Use `/gpd:verify-work <phase>` when a flagged phase needs actual re-verification.
+Use `gpd:verify-work <phase>` when a flagged phase needs actual re-verification.
 
 Output: structured CLI/JSON result with `passed`, `phases_checked`, and `issues`.
 </objective>

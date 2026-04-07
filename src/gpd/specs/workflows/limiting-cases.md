@@ -1,7 +1,7 @@
 <purpose>
 Systematically identify all relevant limiting cases for a physics result and verify that each limit is correctly recovered. This is the single most powerful verification tool in theoretical physics.
 
-Called from /gpd:limiting-cases command. Produces LIMITING-CASES.md report.
+Called from gpd:limiting-cases command. Produces LIMITING-CASES.md report.
 
 Every new result must reduce to known results in appropriate limits. If it doesn't, the new result is wrong (or the known result is wrong, which is rare but possible). There are no exceptions to this principle.
 </purpose>
@@ -15,14 +15,14 @@ Load project state and conventions to identify applicable limits:
 - Run:
 
 ```bash
-INIT=$(gpd init phase-op --include state,config)
+INIT=$(gpd --raw init phase-op --include state,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
 fi
 ```
 
-- **If init succeeds** (non-empty JSON with `state_exists: true`): Extract `convention_lock` for unit system and sign conventions. Extract `intermediate_results` from state for previously verified expressions. Extract active approximations and their validity ranges — these define the limits to check.
+- **If init succeeds** (non-empty JSON with `state_exists: true`): Extract `convention_lock` for unit system and sign conventions. Extract `intermediate_results` from state for previously verified expressions. If you need to find the canonical expression first, use `gpd result search` by identifier, equation, or description; once a canonical `result_id` is known, use `gpd result show "{result_id}"` for the direct stored-result view before checking limits. Keep `gpd query search` for SUMMARY/frontmatter lookup. Extract active approximations and their validity ranges — these define the limits to check.
 - **If init fails or `state_exists` is false** (standalone usage): Proceed with explicit convention declarations required from user via ask_user.
 
 Active approximations from the project state directly inform which limits are most important to verify (e.g., if a perturbative approximation is active, the free-theory limit g→0 is mandatory).
@@ -374,8 +374,8 @@ If failures found:
 {List failures with discrepancy character}
 
 Suggested next steps:
-- `/gpd:debug` -- investigate the failing limit(s)
-- `/gpd:dimensional-analysis` -- check for dimensional errors near the failure
+- `gpd:debug` -- investigate the failing limit(s)
+- `gpd:dimensional-analysis` -- check for dimensional errors near the failure
 - Review derivation at {location} where the limit first diverges from expectation
 ```
 

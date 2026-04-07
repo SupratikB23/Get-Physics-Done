@@ -1,13 +1,13 @@
 <overview>
-Context windows are finite (~200k tokens, ~80% usable before the runtime compresses). Research workflows that ignore context pressure produce degraded results: missed signs, sloppy limits, forgotten conventions. Managing context is part of research discipline, not an engineering detail.
+Context windows are finite (~80% usable before the runtime compresses). Research workflows that ignore context pressure produce degraded results: missed signs, sloppy limits, forgotten conventions. Managing context is part of research discipline, not an engineering detail.
 
 **Core principle:** A fresh context with the right files loaded outperforms a saturated context with everything accumulated. Plan segmentation, strategic `/clear`, and proactive handoffs are research quality tools.
 
-**Key numbers:**
+**Key ratios:**
 
-- Total window: ~200k tokens
-- Usable before compression: ~160k tokens (80%)
-- Statusline shows scaled usage: 100% = 80% real = compression imminent
+- Total window: runtime/model-dependent
+- Usable before compression: ~80% of the total window
+- Statusline shows scaled usage: 100% statusline = compression imminent
 - After compression: prior context is summarized, detail is lost
 
 **Related:** For per-agent pressure thresholds (GREEN/YELLOW/ORANGE/RED), see `references/orchestration/context-pressure-thresholds.md`. For the canonical threshold table, see `references/orchestration/agent-infrastructure.md` §Context Pressure Management.
@@ -84,7 +84,7 @@ Different workflows consume context at different rates. Use these targets to pla
 **Emergency (95%+ / skull icon):**
 
 - Context will compress imminently
-- Save state NOW via `/gpd:pause-work`
+- Save state NOW via `gpd:pause-work`
 - Do NOT start new derivations or calculations
   </pressure_signs>
 
@@ -140,12 +140,12 @@ Plans should be sized to fit within context budget. Segment when a plan would ex
 
 1. Commit all work in progress
 2. Update STATE.md with current position
-3. If mid-plan: create `.continue-here.md` via `/gpd:pause-work`
+3. If mid-plan: create `.continue-here.md` via `gpd:pause-work`
 4. Ensure intermediate results are saved to files (not just in conversation memory)
 
 **After /clear:**
 
-1. `/gpd:resume-work` restores full context from STATE.md and .continue-here.md
+1. `gpd:resume-work` reloads the project's canonical continuation state, then uses any handoff artifact or derivation history only as supporting context
 2. Re-read only the files needed for the next unit of work
 3. Do NOT re-read files from completed work unless needed for reference
 
@@ -156,7 +156,7 @@ Plans should be sized to fit within context budget. Segment when a plan would ex
 
 ## Planning with Context in Mind
 
-When creating plans (via /gpd:plan-phase), consider context budget:
+When creating plans (via gpd:plan-phase), consider context budget:
 
 **Plan-level considerations:**
 
@@ -212,7 +212,7 @@ During plan execution, monitor context usage:
 1. Commit current task's work
 2. Note completed tasks and remaining tasks
 3. Create `.continue-here.md` with derivation state, parameter values, intermediate results
-4. Recommend `/clear` + `/gpd:resume-work`
+4. Recommend `/clear` + `gpd:resume-work`
 
 **Never do when context is heavy:**
 

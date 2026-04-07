@@ -2,7 +2,7 @@
 name: gpd:health
 description: Run project health checks and optionally auto-fix issues
 argument-hint: "[--fix]"
-context_mode: project-required
+context_mode: projectless
 allowed-tools:
   - file_read
   - file_write
@@ -11,8 +11,6 @@ allowed-tools:
   - search_files
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Run comprehensive project health checks and optionally auto-fix detected issues.
@@ -74,7 +72,7 @@ Parse JSON output containing:
 If there are failures and `--fix` was not used:
 
 ```
-Run `/gpd:health --fix` to auto-repair {fixable_count} issue(s).
+Run `gpd:health --fix` to auto-repair {fixable_count} issue(s).
 ```
 
 If all checks pass:

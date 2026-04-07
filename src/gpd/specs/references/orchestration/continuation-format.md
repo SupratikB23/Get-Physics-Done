@@ -1,6 +1,7 @@
 # Continuation Format
 
 Standard format for presenting next steps after completing a research command or workflow.
+This format is a presentation layer only: the displayed next step is derived from canonical continuation and recovery state, and it does not establish project authority by itself.
 
 ## Core Structure
 
@@ -13,7 +14,7 @@ Standard format for presenting next steps after completing a research command or
 
 `{command to copy-paste}`
 
-<sub>`/clear` first -> fresh context window</sub>
+<sub>`/clear` first, then run `{next command}`</sub>
 
 ---
 
@@ -29,9 +30,10 @@ Standard format for presenting next steps after completing a research command or
 1. **Always show what it is** -- name + description, never just a command path
 2. **Pull context from source** -- ROADMAP.md for phases, PLAN.md `<objective>` for plans
 3. **Command in inline code** -- backticks, easy to copy-paste, renders as clickable link
-4. **`/clear` explanation** -- always include, keeps it concise but explains why
+4. **`/clear` explanation** -- always include, and pair it with the next command instead of leaving it as a dead-end. If project rediscovery is still required, say so explicitly and point to `gpd resume` or `gpd resume --recent` before reopening the runtime instead of implying that `/clear` performs recovery.
 5. **"Also available" not "Other options"** -- sounds more app-like
 6. **Visual separators** -- `---` above and below to make it stand out
+7. **Derived, not authoritative** -- the message is a projection of the current recovery decision, not a competing source of truth
 
 ## Variants
 
@@ -44,15 +46,15 @@ Standard format for presenting next steps after completing a research command or
 
 **02-03: Perturbative Corrections** -- Compute one-loop self-energy with RPA screening
 
-`/gpd:execute-phase 2`
+`gpd:execute-phase 2`
 
-<sub>`/clear` first -> fresh context window</sub>
+<sub>`/clear` first, then run `gpd:execute-phase 2`</sub>
 
 ---
 
 **Also available:**
 - Review plan before executing
-- `/gpd:list-phase-assumptions 2` -- check physical assumptions
+- `gpd:list-phase-assumptions 2` -- check physical assumptions
 
 ---
 ```
@@ -69,9 +71,9 @@ Add note that this is the last plan and what comes after:
 **02-03: Perturbative Corrections** -- Compute one-loop self-energy with RPA screening
 <sub>Final plan in Phase 2</sub>
 
-`/gpd:execute-phase 2`
+`gpd:execute-phase 2`
 
-<sub>`/clear` first -> fresh context window</sub>
+<sub>`/clear` first, then run `gpd:execute-phase 2`</sub>
 
 ---
 
@@ -91,15 +93,15 @@ Add note that this is the last plan and what comes after:
 
 **Phase 2: Linear Response** -- Compute susceptibilities and response functions
 
-`/gpd:plan-phase 2`
+`gpd:plan-phase 2`
 
-<sub>`/clear` first -> fresh context window</sub>
+<sub>`/clear` first, then run `gpd:plan-phase 2`</sub>
 
 ---
 
 **Also available:**
-- `/gpd:discuss-phase 2` -- gather context first
-- `/gpd:research-phase 2` -- investigate unknowns
+- `gpd:discuss-phase 2` -- gather context first
+- `gpd:research-phase 2` -- investigate unknowns
 - Review roadmap
 
 ---
@@ -120,15 +122,15 @@ Show completion status before next action:
 
 **Phase 3: Non-perturbative Effects** -- Instanton contributions, resummation, and strong-coupling analysis
 
-`/gpd:plan-phase 3`
+`gpd:plan-phase 3`
 
-<sub>`/clear` first -> fresh context window</sub>
+<sub>`/clear` first, then run `gpd:plan-phase 3`</sub>
 
 ---
 
 **Also available:**
-- `/gpd:discuss-phase 3` -- gather context first
-- `/gpd:research-phase 3` -- investigate unknowns
+- `gpd:discuss-phase 3` -- gather context first
+- `gpd:research-phase 3` -- investigate unknowns
 - Review what Phase 2 established
 
 ---
@@ -145,13 +147,13 @@ When there's no clear primary action:
 
 **Phase 3: Non-perturbative Effects** -- Instanton contributions, resummation, and strong-coupling analysis
 
-**To plan directly:** `/gpd:plan-phase 3`
+**To plan directly:** `gpd:plan-phase 3`
 
-**To discuss context first:** `/gpd:discuss-phase 3`
+**To discuss context first:** `gpd:discuss-phase 3`
 
-**To research unknowns:** `/gpd:research-phase 3`
+**To research unknowns:** `gpd:research-phase 3`
 
-<sub>`/clear` first -> fresh context window</sub>
+<sub>`/clear` first, then run the chosen command below</sub>
 
 ---
 ```
@@ -169,9 +171,9 @@ All 4 phases completed
 
 **Start v1.1** -- questioning -> literature review -> research plan -> roadmap
 
-`/gpd:new-milestone`
+`gpd:new-milestone`
 
-<sub>`/clear` first -> fresh context window</sub>
+<sub>`/clear` first, then run `gpd:new-milestone`</sub>
 
 ---
 ```
@@ -215,8 +217,8 @@ Extract: `**02-03: Perturbative Corrections** -- Compute one-loop self-energy wi
 ```
 ## To Continue
 
-Run `/clear`, then paste:
-/gpd:execute-phase 2
+Run `/clear`, then paste the concrete next command:
+gpd:execute-phase 2
 ```
 
 User has no idea what 02-03 is about.
@@ -224,7 +226,7 @@ User has no idea what 02-03 is about.
 ### Don't: Missing /clear explanation
 
 ```
-`/gpd:plan-phase 3`
+`gpd:plan-phase 3`
 
 Run /clear first.
 ```
@@ -244,7 +246,7 @@ Sounds like an afterthought. Use "Also available:" instead.
 
 ````
 ```
-/gpd:plan-phase 3
+gpd:plan-phase 3
 ```
 ````
 

@@ -61,7 +61,7 @@ Agents may extend this with additional fields specific to their role (e.g., `pha
 
 `next_actions` is for concrete follow-up commands or explicit review actions, not abstract labels.
 
-- Prefer copy-pasteable GPD commands when one exists, e.g. `/gpd:execute-phase 3`, `/gpd:verify-work 3`, `/gpd:plan-phase 4 --gaps`
+- Prefer copy-pasteable GPD commands when one exists, e.g. `gpd:execute-phase 3`, `gpd:verify-work 3`, `gpd:plan-phase 4 --gaps`
 - If no command fits, name the exact action and artifact, e.g. `Review GPD/phases/03-example/03-VERIFICATION.md`
 - Avoid vague entries such as `continue`, `proceed`, `follow up`, or `structural revision needed`
 
@@ -101,12 +101,12 @@ Agents: project-researcher, phase-researcher, literature-reviewer, roadmapper, p
 **Tier 2 — Convention Enforcer (full tracking protocol, equation-working agents)**
 
 Agents that write or verify equations must actively enforce conventions:
-- Write `ASSERT_CONVENTION` headers in derivation and verification files
+- Write `ASSERT_CONVENTION` headers in derivation files and canonical phase verification reports
 - Verify test values from CONVENTIONS.md against equations they produce or check
 - Apply the 5-point convention checklist (metric, Fourier, normalization, coupling, renormalization) when importing formulas from prior phases or references
 - Flag convention violations as DEVIATION Rule 5 (not just "suspected mismatch")
 
-Agents: executor, verifier, consistency-checker, debugger, paper-writer
+Agents: executor, verifier, consistency-checker, debugger, gpd-paper-writer
 
 **Tier 3 — Convention Authority (full protocol + establishment + evolution)**
 
@@ -144,6 +144,7 @@ gpd commit "<type>(<scope>): <description>" --files <file1> <file2> ...
 
 1. **Markdown frontmatter parse validity** — `.md` files must have syntactically valid YAML frontmatter when frontmatter is present
 2. **NaN/Inf detection** — checked files must not contain NaN/Inf-style values
+3. **ASSERT_CONVENTION coverage on changed derivation / phase verification artifacts** — when a convention lock is active, changed derivation artifacts and `VERIFICATION.md` files must carry a matching machine-readable assertion header with the active critical keys
 
 If validation fails, the commit is blocked with `reason: "pre_commit_check_failed"` and a list of errors. Fix the errors and retry.
 
@@ -159,7 +160,9 @@ gpd pre-commit-check --files GPD/phases/03-foo/03-01-PLAN.md
 
 Some workflows also run an explicit `PRE_CHECK=$(gpd pre-commit-check ... 2>&1) || true` before calling `gpd commit`. Treat that explicit shell step as early visibility only: `gpd commit` re-runs the same validation on the requested commit paths and remains the blocking gate.
 
-For stricter semantic checks, use the dedicated commands alongside `pre-commit-check`: `gpd verify plan`, `gpd verify summary`, `gpd verify artifacts`, and `gpd convention check`.
+`gpd pre-commit-check` now hard-blocks missing or mismatched `ASSERT_CONVENTION` headers on convention-gated artifacts (derivation files and canonical phase verification reports) when an active convention lock exists. Outside that gated set, any explicit `ASSERT_CONVENTION` line in checked Markdown / LaTeX / Python artifacts is still validated against the lock and will fail the check if it is wrong.
+
+For stricter semantic checks, use the dedicated commands alongside `pre-commit-check`: `gpd verify plan`, `gpd verify summary`, `gpd verify artifacts`, `gpd convention check`, and `assert_convention_validate` through the conventions MCP surface when you need direct file-content assertion diagnostics.
 
 ---
 
@@ -193,6 +196,7 @@ Canonical ownership matrix:
 | gpd-research-synthesizer | `orchestrator` | Returns `files_written`; orchestrator commits |
 | gpd-review-literature | `orchestrator` | Returns `files_written`; orchestrator commits |
 | gpd-review-math | `orchestrator` | Returns `files_written`; orchestrator commits |
+| gpd-check-proof | `orchestrator` | Returns `files_written`; orchestrator commits |
 | gpd-review-physics | `orchestrator` | Returns `files_written`; orchestrator commits |
 | gpd-review-reader | `orchestrator` | Returns `files_written`; orchestrator commits |
 | gpd-review-significance | `orchestrator` | Returns `files_written`; orchestrator commits |
@@ -245,7 +249,7 @@ Common state management commands used across agents:
 
 ```bash
 # Initialize execution context
-gpd init <command> <phase>
+gpd --raw init <command> <phase>
 
 # Update project state
 gpd state add-decision --phase <N> --summary "<text>" --rationale "<why>"
@@ -387,13 +391,21 @@ For phase dependency graphing, combine `gpd roadmap analyze` with SUMMARY frontm
 # Inspect roadmap structure
 gpd roadmap analyze
 
-# Trace a specific result across phases
+# Trace a specific phase/frontmatter dependency across phases
 gpd query deps <identifier>
 
 # Search SUMMARY frontmatter by provides/requires/affects
 gpd query search --provides <term>
 gpd query search --requires <term>
 gpd query search --affects <term>
+
+# Search the canonical result registry for equations and prior derived quantities
+gpd result search --equation "E = mc^2"
+gpd result search --text "effective mass"
+gpd result search --phase <phase>
+
+# Inspect one canonical result directly
+gpd result show <identifier>
 ```
 
 ---
@@ -435,11 +447,14 @@ gpd query search --requires "Hamiltonian"
 # Find phases that affect a specific area
 gpd query search --affects "phase boundary"
 
-# Search by equation content
-gpd query search --equation "E = mc^2"
+# Search canonical equations and derived results
+gpd result search --equation "E = mc^2"
 
-# Trace dependencies for a specific identifier
-gpd query deps <identifier>
+# Inspect one canonical result directly
+gpd result show <identifier>
+
+# Trace dependencies for a canonical result identifier
+gpd result deps <identifier>
 
 # Query assumptions across phases
 gpd query assumptions "<search term>"
@@ -489,7 +504,7 @@ Not every phase needs every agent. Spawning unnecessary agents wastes tokens and
 | **Derivation** | derive, prove, show that, analytical, closed-form, exact result | executor, verifier | planner, plan-checker | experiment-designer, research-mapper |
 | **Numerical** | simulate, compute, discretize, grid, convergence, benchmark, finite-element, Monte Carlo | executor, verifier, experiment-designer | planner, plan-checker | bibliographer, notation-coordinator |
 | **Literature** | survey, review, compare approaches, what is known, prior work | phase-researcher, research-synthesizer | bibliographer | executor, verifier, experiment-designer |
-| **Paper-writing** | write paper, draft, manuscript, submit, LaTeX | paper-writer, bibliographer, referee | notation-coordinator | executor, phase-researcher, experiment-designer |
+| **Paper-writing** | write paper, draft, manuscript, submit, LaTeX | gpd-paper-writer, bibliographer, referee | notation-coordinator | executor, phase-researcher, experiment-designer |
 | **Formalism** | define, set up framework, establish conventions, Lagrangian, Hamiltonian, action | executor, notation-coordinator, verifier | planner, consistency-checker | experiment-designer, bibliographer |
 | **Analysis** | analyze, compare, interpret, extract, fit, scaling | executor, verifier | consistency-checker | experiment-designer, bibliographer |
 | **Validation** | verify, cross-check, reproduce, validate, test against | verifier, executor | consistency-checker, debugger | phase-researcher, experiment-designer |
@@ -500,7 +515,7 @@ Not every phase needs every agent. Spawning unnecessary agents wastes tokens and
 2. "Optional" agents are spawned if the relevant config toggle is enabled (e.g., `plan_checker: true` in config.json).
 3. "Skip" agents are not spawned even if their toggle is on -- the phase class makes them irrelevant.
 4. The orchestrator logs which agents it selected and why: `"Agent selection for derivation phase: executor + verifier + planner (plan-checker: enabled in config)"`.
-5. User can always override by requesting a specific agent: `/gpd:execute-phase 3 --with-bibliographer`.
+5. User can always override by requesting a specific agent: `gpd:execute-phase 3 --with-bibliographer`.
 
 ### Parallel vs Sequential Agent Intelligence
 
@@ -514,9 +529,9 @@ planner → plan-checker               (checker validates the plan)
 experiment-designer → planner        (experiment design constrains plan)
 executor → verifier                  (verifier checks executor results)
 verifier → debugger                  (debugger investigates verification failures)
-paper-writer → bibliographer         (bibliographer verifies paper's citations)
-bibliographer → paper-writer         (paper-writer incorporates verified refs)
-paper-writer → referee               (referee reviews draft)
+gpd-paper-writer → bibliographer     (bibliographer verifies paper's citations)
+bibliographer → gpd-paper-writer     (gpd-paper-writer incorporates verified refs)
+gpd-paper-writer → referee           (referee reviews draft)
 notation-coordinator → executor      (coordinator resolves conventions before execution)
 ```
 
@@ -526,7 +541,7 @@ notation-coordinator → executor      (coordinator resolves conventions before 
 phase-researcher ‖ experiment-designer     (both read phase goal independently)
 multiple executors in same wave             (if files_modified don't overlap)
 4x project-researcher in new-project       (foundations ‖ methods ‖ landscape ‖ pitfalls)
-paper-writer (section A) ‖ paper-writer (section B)   (independent sections)
+gpd-paper-writer (section A) ‖ gpd-paper-writer (section B)   (independent sections)
 verifier ‖ consistency-checker              (both read results, different checks)
 ```
 
@@ -556,7 +571,7 @@ When verification fails, the orchestrator must decide how to recover. The curren
 |---|---|---|
 | Single contract target failed, rest passed | **Localized error** in one derivation step | Re-execute the specific plan that produced the failed result. Do NOT re-plan. |
 | Multiple contract targets failed, same error class | **Systematic error** (e.g., wrong convention propagated) | Re-plan the affected tasks with explicit convention enforcement. Spawn notation-coordinator first. |
-| Multiple contract targets failed, different error classes | **Approach problem** -- the methodology has fundamental issues | Escalate to user. Suggest `/gpd:discuss-phase` to reconsider the approach. |
+| Multiple contract targets failed, different error classes | **Approach problem** -- the methodology has fundamental issues | Escalate to user. Suggest `gpd:discuss-phase` to reconsider the approach. |
 | Verification passed but consistency checker found drift | **Convention drift** between waves | Spawn notation-coordinator to resolve. Re-verify only the affected quantities. |
 | Verification timed out (context pressure) | **Incomplete verification**, not failure | Spawn a fresh verifier with targeted checks (only the unverified contract targets). |
 | Same gap persists after 1 gap-closure cycle | **Root cause not addressed** by gap closure | Spawn debugger before second gap-closure attempt. Debugger identifies root cause. |
@@ -594,7 +609,7 @@ Different phase types have different context consumption patterns. The orchestra
 **Budget anomaly detection:**
 
 If the orchestrator detects it is consuming more than its allocated budget (e.g., >25% for a derivation phase), it should:
-1. Stop reading full SUMMARY files -- use `gpd summary-extract <path> --field one_liner` instead.
+1. Stop reading full SUMMARY files -- use `gpd --raw summary-extract <path> --field one_liner` instead.
 2. Stop re-reading STATE.md between waves (use cached version).
 3. Delegate any remaining analysis to a subagent.
 

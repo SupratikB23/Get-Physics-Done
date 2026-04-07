@@ -6,7 +6,9 @@ template_version: 1
 
 # Referee Response Template
 
-Template for `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` — tracks referee comments, responses, and manuscript changes for peer review.
+Template for `GPD/review/REFEREE_RESPONSE{round_suffix}.md` — tracks referee comments, responses, and manuscript changes for peer review.
+
+This journal-facing template mirrors the canonical internal author-response contract at `templates/paper/author-response.md`. Keep the same issue IDs, classifications, status labels, and new-calculation tracking aligned between the two files.
 
 ---
 
@@ -41,7 +43,7 @@ Template for `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` — tracks referee co
 
 ### REF-001 (Referee 1, Comment 1.1): [Brief summary of the comment]
 
-**Category:** [Physics concern / Clarity / Missing reference / Technical error / Presentation / Additional calculation requested]
+**Classification:** [fixed / rebutted / acknowledged / needs-calculation]
 **Priority:** [Must address / Should address / Optional]
 **Blocking issue:** [Yes / No / Unknown]
 **Decision-artifact context:** [What REVIEW-LEDGER{round_suffix} / REFEREE-DECISION{round_suffix} says about this issue, or "N/A"]
@@ -68,12 +70,14 @@ Template for `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` — tracks referee co
 
 ### REF-002 (Referee 1, Comment 1.2): [Brief summary]
 
-**Category:** [category]
-**Priority:** [priority]
+**Classification:** [fixed / rebutted / acknowledged / needs-calculation]
+**Priority:** [Must address / Should address / Optional]
+**Blocking issue:** [Yes / No / Unknown]
+**Decision-artifact context:** [What REVIEW-LEDGER{round_suffix} / REFEREE-DECISION{round_suffix} says about this issue, or "N/A"]
 
 > [Full quote]
 
-**Assessment:** [assessment]
+**Assessment:** [Is the referee correct? Partially correct? Based on misunderstanding?]
 
 **Response:**
 
@@ -83,8 +87,9 @@ Template for `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` — tracks referee co
 
 - [changes]
 
-**New calculations required:** [Yes/No]
-**Status:** [status]
+**New calculations required:** [Yes — describe / No]
+**Source phase for new work:** [Phase X or "N/A"]
+**Status:** [Not started / In progress / Response drafted / Final]
 
 ---
 
@@ -98,12 +103,14 @@ Template for `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` — tracks referee co
 
 ### REF-101 (Referee 2, Comment 2.1): [Brief summary]
 
-**Category:** [category]
-**Priority:** [priority]
+**Classification:** [fixed / rebutted / acknowledged / needs-calculation]
+**Priority:** [Must address / Should address / Optional]
+**Blocking issue:** [Yes / No / Unknown]
+**Decision-artifact context:** [What REVIEW-LEDGER{round_suffix} / REFEREE-DECISION{round_suffix} says about this issue, or "N/A"]
 
 > [Full quote]
 
-**Assessment:** [assessment]
+**Assessment:** [Is the referee correct? Partially correct? Based on misunderstanding?]
 
 **Response:**
 
@@ -113,9 +120,9 @@ Template for `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` — tracks referee co
 
 - [changes]
 
-**New calculations required:** [Yes/No]
+**New calculations required:** [Yes — describe / No]
 **Source phase for new work:** [Phase X or "N/A"]
-**Status:** [status]
+**Status:** [Not started / In progress / Response drafted / Final]
 
 ---
 
@@ -194,7 +201,7 @@ Sincerely,
 **When to create this file:**
 
 - Immediately upon receiving referee reports
-- One file per round of review (create `GPD/paper/REFEREE_RESPONSE-R2.md` for second round)
+- One file per round of review (create `GPD/review/REFEREE_RESPONSE-R2.md` for second round)
 - Keep every `REF-*` issue ID exactly aligned with `REFEREE-REPORT{round_suffix}.md`
 
 **Comment categories:**
@@ -224,7 +231,7 @@ Sincerely,
 **Integration with GPD workflow:**
 
 - New calculations requested by referees become new phases in ROADMAP.md
-- Use /gpd:add-phase or /gpd:insert-phase to add referee-requested work
+- Use gpd:add-phase or gpd:insert-phase to add referee-requested work
 - Verification of new calculations follows standard GPD verification workflow
 - Track new calculations in the "New Calculations Summary" table
 - Use `GPD/review/REVIEW-LEDGER{round_suffix}.json` and `GPD/review/REFEREE-DECISION{round_suffix}.json` to identify recommendation floors and blocking items, but do not invent new `REF-*` IDs from those JSON files

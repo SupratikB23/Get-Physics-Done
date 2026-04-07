@@ -195,6 +195,42 @@ class TestSummaryExtract:
         with pytest.raises(ValidationError, match="File not found"):
             cmd_summary_extract(tmp_path, "nonexistent.md")
 
+    @pytest.mark.parametrize(
+        ("frontmatter_fragment", "match"),
+        [
+            ("key-files: src/main.py\n", r"Invalid key-files in test-SUMMARY\.md"),
+            ("key-files:\n  created: src/main.py\n", r"Invalid key-files\.created in test-SUMMARY\.md"),
+            ("key-files:\n  createdd:\n    - src/main.py\n", r"Invalid key-files in test-SUMMARY\.md: unexpected key\(s\) createdd"),
+            ("methods: finite-difference\n", r"Invalid methods in test-SUMMARY\.md"),
+            ("methods:\n  added: finite-difference\n", r"Invalid methods\.added in test-SUMMARY\.md"),
+            ("patterns-established: test-first\n", r"Invalid patterns-established in test-SUMMARY\.md"),
+            ("affects:\n  - \"\"\n", r"Invalid affects in test-SUMMARY\.md: entry 0 must be a non-empty string"),
+            ("key-decisions:\n  - {summary: Use numpy, rationale: Fast, extra: nope}\n", r"Invalid key-decisions in test-SUMMARY\.md"),
+        ],
+    )
+    def test_rejects_malformed_summary_evidence_shapes(
+        self,
+        tmp_path: Path,
+        frontmatter_fragment: str,
+        match: str,
+    ):
+        path = self._write_summary(
+            tmp_path,
+            (
+                "---\n"
+                'phase: "01"\n'
+                'plan: "01"\n'
+                "depth: standard\n"
+                "provides: []\n"
+                'completed: "2026-03-22"\n'
+                f"{frontmatter_fragment}"
+                "---\n\n# Summary\n"
+            ),
+        )
+
+        with pytest.raises(ValidationError, match=match):
+            cmd_summary_extract(tmp_path, path)
+
 
 # ─── cmd_history_digest ───────────────────────────────────────────────────
 
@@ -247,6 +283,46 @@ class TestHistoryDigest:
         (tmp_path / "GPD").mkdir()
         result = cmd_history_digest(tmp_path)
         assert result.phases == {}
+
+    def test_history_digest_rejects_malformed_summary_field_members(self, tmp_path: Path):
+        phases_dir = tmp_path / "GPD" / "phases" / "01-setup"
+        phases_dir.mkdir(parents=True)
+        (phases_dir / "01-SUMMARY.md").write_text(
+            "---\n"
+            "name: Setup\n"
+            "phase: 1\n"
+            "provides:\n"
+            "  - base-framework\n"
+            "patterns-established:\n"
+            "  - pattern-a\n"
+            "key-decisions:\n"
+            "  - Use numpy: fast\n"
+            "methods:\n"
+            "  added:\n"
+            "    - spectral-method\n"
+            "dependency-graph:\n"
+            "  affects:\n"
+            "    - 12\n"
+            "---\n\n# Setup Summary\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValidationError, match="Invalid affects in GPD/phases/01-setup/01-SUMMARY\\.md"):
+            cmd_history_digest(tmp_path)
+
+    def test_history_digest_rejects_malformed_summary_frontmatter(self, tmp_path: Path):
+        phases_dir = tmp_path / "GPD" / "phases" / "01-setup"
+        phases_dir.mkdir(parents=True)
+        (phases_dir / "01-SUMMARY.md").write_text(
+            "---\n"
+            "phase: 1\n"
+            "provides: [unterminated\n"
+            "---\n\n# Setup Summary\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValidationError, match="Malformed frontmatter in GPD/phases/01-setup/01-SUMMARY\\.md"):
+            cmd_history_digest(tmp_path)
 
 
 # ─── cmd_regression_check ─────────────────────────────────────────────────

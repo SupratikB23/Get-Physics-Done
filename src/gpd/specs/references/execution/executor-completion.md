@@ -40,7 +40,7 @@ contract_results:
   deliverables:
     deliv-main:
       status: passed
-      path: "paper/figures/main.pdf"
+      path: "paper/figures/benchmark.pdf"
       summary: "[artifact produced and why it matters]"
       linked_ids: [claim-main, test-main]
   acceptance_tests:
@@ -229,7 +229,7 @@ gpd state advance  # might silently fail
 | `No phase/plan found` | STATE.md has unexpected structure | Check Current Phase/Plan fields in STATE.md |
 | Non-zero exit with no output | Python crash or missing dependency | Check `python --version`, verify gpd CLI path |
 
-**Recovery protocol:** If a gpd CLI command fails twice, do not patch `STATE.md` or `state.json` manually. Capture the failing command and stderr in the return envelope or plan SUMMARY, run `gpd state validate` if the failure looks state-related, and escalate to `/gpd:sync-state` or the orchestrator instead of editing shared state files directly.
+**Recovery protocol:** If a gpd CLI command fails twice, do not patch `STATE.md` or `state.json` manually. Capture the failing command and stderr in the return envelope or plan SUMMARY, run `gpd state validate` if the failure looks state-related, and escalate to `gpd:sync-state` or the orchestrator instead of editing shared state files directly.
 
 **Extract decisions from SUMMARY.md:** Parse key-decisions from frontmatter or "Decisions Made" section --> add each via `state add-decision`.
 
@@ -295,8 +295,8 @@ gpd_return:
   issues:
     - "Lanczos solver required increased basis size (auto-fixed: Rule 2)"
   next_actions:
-    - "/gpd:execute-phase {phase}"
-    - "/gpd:show-phase {phase}"
+    - "gpd:execute-phase {phase}"
+    - "gpd:show-phase {phase}"
   phase: "{phase}"
   plan: "{plan}"
   tasks_completed: N
@@ -312,6 +312,17 @@ gpd_return:
 ```
 
 Append this YAML block after the markdown completion format. It enables machine-readable parsing by the orchestrator.
+```
+
+If the workflow expects a spawned-agent handoff, the same `gpd_return` object may also carry these top-level keys:
+
+```yaml
+gpd_return:
+  state_updates: [...]
+  contract_updates: [...]
+  decisions: [...]
+  blockers: [...]
+  continuation_update: {...}
 ```
 
 Include ALL checkpoints (previous + new if continuation agent).

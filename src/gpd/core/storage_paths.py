@@ -358,15 +358,13 @@ class ProjectStorageLayout:
                 if violation is not None:
                     warnings.append(violation)
 
-        for dirname in _PROJECT_SCRATCH_SEGMENTS:
-            project_scratch_root = self.root / dirname
-            if not project_scratch_root.is_dir():
+        for path in self.root.rglob("*"):
+            if not path.is_file() or _is_relative_to(path, self.gpd):
                 continue
-            for path in project_scratch_root.rglob("*"):
-                if not path.is_file():
-                    continue
-                if path.suffix.lower() in _SCRATCH_TEMP_SUFFIXES:
-                    continue
-                warnings.append(f"Project scratch directory should not hold final outputs: {path.relative_to(self.root)}")
+            if not self._is_project_local_scratch_path(path):
+                continue
+            if path.suffix.lower() in _SCRATCH_TEMP_SUFFIXES:
+                continue
+            warnings.append(f"Project scratch directory should not hold final outputs: {path.relative_to(self.root)}")
 
         return tuple(dict.fromkeys(warnings))

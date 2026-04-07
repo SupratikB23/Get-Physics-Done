@@ -10,11 +10,11 @@ Usage:
     gpd-mcp-state
 """
 
-import logging
-import sys
 from pathlib import Path
+from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import WithJsonSchema
 
 from gpd.core.config import load_config
 from gpd.core.errors import GPDError
@@ -22,29 +22,58 @@ from gpd.core.health import run_health
 from gpd.core.observability import gpd_span
 from gpd.core.phases import progress_render
 from gpd.core.state import (
-    load_state_json,
+    _project_contract_runtime_payload_for_state,
+    peek_state_json,
     state_advance_plan,
     state_validate,
 )
 from gpd.core.utils import is_phase_complete
-from gpd.mcp.servers import stable_mcp_error, stable_mcp_response
+from gpd.mcp.servers import (
+    ABSOLUTE_PROJECT_DIR_SCHEMA,
+    configure_mcp_logging,
+    resolve_absolute_project_dir,
+    stable_mcp_error,
+    stable_mcp_response,
+    tighten_registered_tool_contracts,
+)
 
-logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-logger = logging.getLogger("gpd-state")
+logger = configure_mcp_logging("gpd-state")
 
 mcp = FastMCP("gpd-state")
 
+AbsoluteProjectDirInput = Annotated[str, WithJsonSchema(ABSOLUTE_PROJECT_DIR_SCHEMA)]
 
-def _resolve_project_dir(project_dir: str) -> Path | None:
-    """Return an absolute project root path or ``None`` when the contract is violated."""
-    cwd = Path(project_dir)
-    if not cwd.is_absolute():
+
+def load_state_json(cwd: Path) -> dict | None:
+    """Return visible project state for MCP consumers.
+
+    Keep a module-local loader so tool behavior and test patch points stay
+    stable even when the underlying state read path evolves.
+    """
+
+    state_obj, _issues, state_source = peek_state_json(
+        cwd,
+        recover_intent=False,
+        surface_blocked_project_contract=True,
+    )
+    if state_obj is None:
         return None
-    return cwd
+
+    project_contract_load_info, project_contract_validation, project_contract_gate = _project_contract_runtime_payload_for_state(
+        cwd,
+        state_obj=state_obj,
+        state_source=state_source,
+    )
+    merged_state = dict(state_obj)
+    merged_state.pop("session", None)
+    merged_state["project_contract_load_info"] = project_contract_load_info
+    merged_state["project_contract_validation"] = project_contract_validation
+    merged_state["project_contract_gate"] = project_contract_gate
+    return merged_state
 
 
 @mcp.tool()
-def get_state(project_dir: str) -> dict:
+def get_state(project_dir: AbsoluteProjectDirInput) -> dict:
     """Get the current project state.
 
     Returns the structured project state from `state.json`.
@@ -52,14 +81,16 @@ def get_state(project_dir: str) -> dict:
     Args:
         project_dir: Absolute path to the project root directory.
     """
-    cwd = _resolve_project_dir(project_dir)
+    cwd = resolve_absolute_project_dir(project_dir)
     if cwd is None:
         return stable_mcp_error("project_dir must be an absolute path")
     with gpd_span("mcp.state.get", phase=""):
         try:
             state_obj = load_state_json(cwd)
             if state_obj is None:
-                return stable_mcp_error("No project state found. Run 'gpd init' to create STATE.md.")
+                return stable_mcp_error(
+                    "No project state found. Run 'gpd init new-project' to initialize a GPD project state."
+                )
             return stable_mcp_response(state_obj)
         except (GPDError, OSError, ValueError, TimeoutError) as exc:
             return stable_mcp_error(exc)
@@ -68,7 +99,7 @@ def get_state(project_dir: str) -> dict:
 
 
 @mcp.tool()
-def get_phase_info(project_dir: str, phase: str) -> dict:
+def get_phase_info(project_dir: AbsoluteProjectDirInput, phase: str) -> dict:
     """Get detailed information about a specific phase.
 
     Args:
@@ -77,7 +108,7 @@ def get_phase_info(project_dir: str, phase: str) -> dict:
     """
     from gpd.core.phases import find_phase
 
-    cwd = _resolve_project_dir(project_dir)
+    cwd = resolve_absolute_project_dir(project_dir)
     if cwd is None:
         return stable_mcp_error("project_dir must be an absolute path")
     with gpd_span("mcp.state.phase_info", phase=phase):
@@ -105,7 +136,7 @@ def get_phase_info(project_dir: str, phase: str) -> dict:
 
 
 @mcp.tool()
-def advance_plan(project_dir: str) -> dict:
+def advance_plan(project_dir: AbsoluteProjectDirInput) -> dict:
     """Advance the project state to the next plan.
 
     Updates the current plan counter and related state fields.
@@ -113,7 +144,7 @@ def advance_plan(project_dir: str) -> dict:
     Args:
         project_dir: Absolute path to the project root directory.
     """
-    cwd = _resolve_project_dir(project_dir)
+    cwd = resolve_absolute_project_dir(project_dir)
     if cwd is None:
         return stable_mcp_error("project_dir must be an absolute path")
     with gpd_span("mcp.state.advance_plan"):
@@ -126,7 +157,7 @@ def advance_plan(project_dir: str) -> dict:
 
 
 @mcp.tool()
-def get_progress(project_dir: str) -> dict:
+def get_progress(project_dir: AbsoluteProjectDirInput) -> dict:
     """Get overall project progress summary.
 
     Returns the computed progress summary without surfacing checkpoint shelf
@@ -135,7 +166,7 @@ def get_progress(project_dir: str) -> dict:
     Args:
         project_dir: Absolute path to the project root directory.
     """
-    cwd = _resolve_project_dir(project_dir)
+    cwd = resolve_absolute_project_dir(project_dir)
     if cwd is None:
         return stable_mcp_error("project_dir must be an absolute path")
     with gpd_span("mcp.state.progress"):
@@ -148,7 +179,7 @@ def get_progress(project_dir: str) -> dict:
 
 
 @mcp.tool()
-def validate_state(project_dir: str) -> dict:
+def validate_state(project_dir: AbsoluteProjectDirInput) -> dict:
     """Run comprehensive state validation checks.
 
     Validates state.json against STATE.md, checks schema completeness,
@@ -157,7 +188,7 @@ def validate_state(project_dir: str) -> dict:
     Args:
         project_dir: Absolute path to the project root directory.
     """
-    cwd = _resolve_project_dir(project_dir)
+    cwd = resolve_absolute_project_dir(project_dir)
     if cwd is None:
         return stable_mcp_error("project_dir must be an absolute path")
     with gpd_span("mcp.state.validate"):
@@ -171,7 +202,7 @@ def validate_state(project_dir: str) -> dict:
 
 
 @mcp.tool()
-def run_health_check(project_dir: str, fix: bool = False) -> dict:
+def run_health_check(project_dir: AbsoluteProjectDirInput, fix: bool = False) -> dict:
     """Run the full project health dashboard.
 
     Checks environment, project structure, storage-path policy, state validity,
@@ -182,7 +213,7 @@ def run_health_check(project_dir: str, fix: bool = False) -> dict:
         project_dir: Absolute path to the project root directory.
         fix: If True, attempt auto-fixes for common issues.
     """
-    cwd = _resolve_project_dir(project_dir)
+    cwd = resolve_absolute_project_dir(project_dir)
     if cwd is None:
         return stable_mcp_error("project_dir must be an absolute path")
     with gpd_span("mcp.state.health", fix=str(fix)):
@@ -196,7 +227,7 @@ def run_health_check(project_dir: str, fix: bool = False) -> dict:
 
 
 @mcp.tool()
-def get_config(project_dir: str) -> dict:
+def get_config(project_dir: AbsoluteProjectDirInput) -> dict:
     """Get the project GPD configuration.
 
     Returns the resolved config including model profile, autonomy mode,
@@ -205,7 +236,7 @@ def get_config(project_dir: str) -> dict:
     Args:
         project_dir: Absolute path to the project root directory.
     """
-    cwd = _resolve_project_dir(project_dir)
+    cwd = resolve_absolute_project_dir(project_dir)
     if cwd is None:
         return stable_mcp_error("project_dir must be an absolute path")
     with gpd_span("mcp.state.config"):
@@ -228,6 +259,9 @@ def main() -> None:
     from gpd.mcp.servers import run_mcp_server
 
     run_mcp_server(mcp, "GPD State MCP Server")
+
+
+tighten_registered_tool_contracts(mcp)
 
 
 if __name__ == "__main__":

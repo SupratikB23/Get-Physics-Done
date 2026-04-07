@@ -1,5 +1,5 @@
 <purpose>
-Execute small, ad-hoc physics tasks with GPD guarantees (atomic commits and durable state updates) while skipping optional agents (literature search, plan-checker, verifier). Quick mode spawns gpd-planner (quick mode) + gpd-executor(s), tracks artifacts in `GPD/quick/`, and records completion through the structured state commands plus the quick-task summary files. Typical quick tasks include: quick derivation, dimensional check, order-of-magnitude estimate, limiting case verification, and bibliography lookup.
+Execute small, ad-hoc physics tasks with GPD guarantees (atomic commits and durable state updates) while skipping optional agents (literature search, plan-checker, verifier). Quick mode spawns gpd-planner (quick mode) + gpd-executor(s), tracks artifacts in `GPD/quick/`, and records completion through the structured state commands plus the quick-task summary files. Typical quick tasks include: quick derivation, dimensional check, order-of-magnitude estimate, limiting case verification, and bibliography lookup. Quick mode is NOT authorized to close theorem-style or `proof_obligation` work.
 </purpose>
 
 <required_reading>
@@ -35,25 +35,32 @@ If empty, re-prompt: "Please provide a task description."
 **Step 2: Initialize**
 
 ```bash
-INIT=$(gpd init quick "$DESCRIPTION")
+INIT=$(gpd --raw init quick "$DESCRIPTION")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
 fi
 ```
 
-Parse JSON for: `planner_model`, `executor_model`, `commit_docs`, `autonomy`, `next_num`, `slug`, `date`, `timestamp`, `quick_dir`, `task_dir`, `roadmap_exists`, `planning_exists`, `project_contract`, `project_contract_validation`, `project_contract_load_info`, `contract_intake`, `effective_reference_intake`, `active_reference_context`, `reference_artifacts_content`.
+Parse JSON for: `planner_model`, `executor_model`, `commit_docs`, `autonomy`, `next_num`, `slug`, `date`, `timestamp`, `quick_dir`, `task_dir`, `roadmap_exists`, `project_exists`, `planning_exists`, `project_contract`, `project_contract_gate`, `project_contract_validation`, `project_contract_load_info`, `contract_intake`, `effective_reference_intake`, `active_reference_context`, `reference_artifacts_content`.
 
 **Mode-aware behavior:**
 - `autonomy=supervised`: Pause after the plan for user approval before execution.
 - `autonomy=balanced` (default): Execute without pausing unless the quick task reveals a real decision point.
 - `autonomy=yolo`: Execute and commit without pausing.
 
-**If `planning_exists` is false:** Error -- Quick mode requires an initialized project with `GPD/`. Run `/gpd:new-project` first.
+**If `project_exists` is false:** Error -- Quick mode requires an initialized project with `GPD/PROJECT.md`. Run `gpd:new-project` first.
 
-Quick tasks can run mid-phase and do NOT require ROADMAP.md. They only need `GPD/` to exist for directory structure.
-Quick mode still inherits the approved `project_contract` only when `project_contract_load_info` is clean and `project_contract_validation` passes, and it still inherits the active reference ledger. Do not bypass required anchors, baselines, or forbidden-proxy constraints just because the task is small.
-Before planning, also load `{GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md`, `{GPD_INSTALL_DIR}/templates/phase-prompt.md`, and `{GPD_INSTALL_DIR}/templates/plan-contract-schema.md` so the canonical PLAN structure and contract rules are visible to the planner before it writes anything.
+**If `planning_exists` is false:** Error -- Quick mode requires the `GPD/` workspace directory. Run `gpd:new-project` first.
+
+Quick tasks can run mid-phase and do NOT require ROADMAP.md. They still require an initialized project workspace with `GPD/PROJECT.md` and the `GPD/` directory.
+Quick mode still inherits the approved `project_contract` only when `project_contract_gate.authoritative` is true, and it still inherits the active reference ledger. Do not bypass required anchors, baselines, or forbidden-proxy constraints just because the task is small.
+
+**Proof-obligation command block:** If the description or inherited contract indicates theorem-style work (`proof_obligation`, `theorem`, `lemma`, `corollary`, `proposition`, `claim`, `proof`, `prove`, `show that`, `existence`, `uniqueness`), STOP instead of using quick mode. Do not bypass this by asking for a "quick sketch", "light proof", or "just the main idea". Route explicitly to:
+
+- `gpd:plan-phase <phase>` when this belongs in planned phase work
+- `gpd:derive-equation "<goal>"` when you need a derivation/proof draft
+- `gpd:verify-work <phase>` only after a canonical proof-redteam artifact exists
 
 ---
 
@@ -79,13 +86,15 @@ Directory: ${QUICK_DIR}
 
 Spawn gpd-planner with quick mode context:
 
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(
   prompt="First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.
 
-Then read {GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md, {GPD_INSTALL_DIR}/templates/phase-prompt.md, and {GPD_INSTALL_DIR}/templates/plan-contract-schema.md before drafting the plan. Those files are the canonical sources for PLAN frontmatter and contract completeness.
+Then read {GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md, {GPD_INSTALL_DIR}/templates/phase-prompt.md, and {GPD_INSTALL_DIR}/templates/plan-contract-schema.md before drafting the plan.
 
 <planning_context>
 
@@ -96,9 +105,13 @@ Then read {GPD_INSTALL_DIR}/templates/planner-subagent-prompt.md, {GPD_INSTALL_D
 **Project State:**
 Read the file at GPD/STATE.md
 
+**Project Exists:** {project_exists}
+
 **Project Contract:** {project_contract}
+**Project Contract Gate:** {project_contract_gate}
 **Project Contract Load Info:** {project_contract_load_info}
 **Project Contract Validation:** {project_contract_validation}
+**Contract Intake:** {contract_intake}
 **Effective Reference Intake:** {effective_reference_intake}
 **Active References:** {active_reference_context}
 **Reference Artifacts:** {reference_artifacts_content}
@@ -110,6 +123,7 @@ Read the file at GPD/STATE.md
 - Quick tasks should be atomic and self-contained
 - No literature review phase, no checker phase
 - If `project_contract_load_info.status` starts with `blocked` or `project_contract_validation.valid` is false, return `## CHECKPOINT REACHED` instead of drafting a plan from guessed scope.
+- If the task is theorem-style or proof-bearing, return `## CHECKPOINT REACHED` and tell the user quick mode is blocked pending the full proof-redteam workflow.
 - Target ~30% context usage (simple, focused)
 </constraints>
 
@@ -140,7 +154,9 @@ If plan not found, error: "Planner failed to create ${next_num}-PLAN.md"
 **Step 5: Spawn executor**
 
 Spawn gpd-executor with plan reference:
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(
@@ -151,8 +167,10 @@ Execute quick task ${next_num}.
 Plan: Read the file at ${QUICK_DIR}/${next_num}-PLAN.md
 Project state: Read the file at GPD/STATE.md
 Project contract: {project_contract}
+Project contract gate: {project_contract_gate}
 Project contract load info: {project_contract_load_info}
 Project contract validation: {project_contract_validation}
+Contract intake: {contract_intake}
 Effective reference intake: {effective_reference_intake}
 Active references: {active_reference_context}
 Reference artifacts: {reference_artifacts_content}
@@ -162,6 +180,7 @@ Reference artifacts: {reference_artifacts_content}
 - Commit each task atomically
 - Create summary at: ${QUICK_DIR}/${next_num}-SUMMARY.md
 - Do NOT update ROADMAP.md (quick tasks are separate from planned phases)
+- If proof-bearing work slipped through planning, STOP and return the reroute instead of executing. Quick mode must not produce a proof result without the mandatory proof-redteam gate.
 </constraints>
 ",
   subagent_type="gpd-executor",
@@ -203,15 +222,13 @@ gpd state add-decision --phase "quick-${next_num}" --summary "Quick task ${next_
 gpd state update "Last Activity" "${date}"
 ```
 
-**6c. Do not add a custom "Quick Tasks Completed" section to STATE.md.**
-
-The current state schema does not round-trip arbitrary markdown-only sections when JSON-driven state commands regenerate `STATE.md`. Treat the durable record for a quick task as:
+Treat the durable record for a quick task as:
 
 - the decision entry written above via `gpd state add-decision`
-- the updated `Last Activity` field
+- the updated `Last Activity` field via `gpd state update`
 - the artifacts in `${QUICK_DIR}` (`${next_num}-PLAN.md`, `${next_num}-SUMMARY.md`, and any committed outputs)
 
-If you want a human-facing index, put it in `GPD/quick/README.md` or in the quick-task summary, not in `STATE.md`.
+If you want a human-facing index, put it in `GPD/quick/README.md` or in the quick-task summary.
 
 ---
 
@@ -246,7 +263,7 @@ Commit: ${commit_hash}
 
 ---
 
-Ready for next task: /gpd:quick
+Ready for next task: gpd:quick
 ```
 
 </process>

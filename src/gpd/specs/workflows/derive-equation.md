@@ -62,7 +62,7 @@ Load project state and conventions before beginning any derivation:
 - Run:
 
 ```bash
-INIT=$(gpd init phase-op --include state,config)
+INIT=$(gpd --raw init phase-op --include state,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -70,6 +70,8 @@ fi
 ```
 
 - **If init succeeds** (non-empty JSON with `state_exists: true`): Extract `convention_lock` for metric signature, Fourier transform convention, and index ranges. Extract active approximations and their validity ranges. Load any previously established notation from STATE.md.
+- If project state exists, inspect `intermediate_results` before re-deriving. Capture any existing canonical equation/result entries related to the target, including `id`, `equation`, `description`, `phase`, `depends_on`, and `verified`, so you can reuse the authoritative result instead of restating it.
+- Use `gpd result search` to locate the canonical result first when the target equation or derived quantity may already exist in the registry. Prefer `--equation` for exact formula lookup and `--text` for descriptive or shorthand matching. Once a canonical `result_id` is known, use `gpd result show "{result_id}"` for the direct stored-result view before deciding whether a fresh derivation is still warranted.
 - **If init fails or `state_exists` is false** (standalone usage): Proceed with explicit convention declarations required from user in Step 1. All conventions must be stated explicitly before any derivation begins.
 
 **This is the most critical workflow to have convention context.** Derivations without locked conventions risk sign errors, missing factors of 2pi, and metric signature inconsistencies that propagate silently through all subsequent steps.
@@ -105,6 +107,40 @@ Before any calculation, write:
 ```
 
 This forces clarity about what is being assumed and what is being derived.
+</step>
+
+<step name="proof_obligation_screen">
+**Step 0.5: Classify proof-bearing work before deriving**
+
+If the objective is theorem-style or contract-backed `proof_obligation` work, proof review is mandatory and fail-closed.
+
+Treat the derivation as proof-bearing when any of the following are true:
+
+- the goal or linked contract says `proof_obligation`
+- the requested result is phrased as `theorem`, `lemma`, `corollary`, `proposition`, `claim`, `proof`, `prove`, `show that`, `existence`, or `uniqueness`
+- the derivation is intended to establish a universal statement rather than only compute an expression in a special case
+
+If ambiguous, default to proof-bearing.
+
+For proof-bearing derivations, create a theorem inventory before Step 1 and carry it through the document:
+
+```markdown
+## Proof Inventory
+
+- **Claim / theorem target:** [exact statement being proved]
+- **Named parameters:** [symbol -> role / domain]
+- **Hypotheses:** [H1, H2, ...]
+- **Quantifier / domain obligations:** [for all x in ..., exists y such that ...]
+- **Conclusion clauses:** [what the proof must establish]
+```
+
+Proof-bearing derivations must also reserve a sibling audit artifact:
+
+- **Phase-scoped:** `${phase_dir}/DERIVATION-{slug}-PROOF-REDTEAM.md`
+- **Standalone:** `GPD/analysis/derivation-{slug}-proof-redteam.md`
+
+That audit must inventory coverage of every parameter, hypothesis, quantifier, and conclusion clause, and it must probe at least one adversarial special case. Do not treat a derivation as complete or established without it.
+When runtime delegation is available, spawn `gpd-check-proof` to produce that artifact instead of relying on the derivation writer to audit their own proof. If the runtime cannot spawn `gpd-check-proof`, stop at a checkpoint rather than self-certifying theorem-proof alignment in the same context that wrote the proof.
 </step>
 
 <step name="establish_framework">
@@ -365,6 +401,7 @@ status: completed | draft
 assumptions: [A1, A2, ...]
 method: [variational, perturbative, etc.]
 result: [brief form of final expression]
+result_id: [stable registry ID, if persisted]
 verified_limits: [list of limits checked]
 ---
 
@@ -431,6 +468,98 @@ mkdir -p GPD/analysis
 ```
 
 Write to `GPD/analysis/derivation-{slug}.md`.
+
+If the derivation is proof-bearing, reserve the sibling proof-redteam artifact path for the independent proof critic:
+
+- **Phase-scoped:** `${phase_dir}/DERIVATION-{slug}-PROOF-REDTEAM.md`
+- **Standalone:** `GPD/analysis/derivation-{slug}-proof-redteam.md`
+
+Required contents of the proof-redteam artifact that `gpd-check-proof` owns:
+
+1. exact theorem / claim text
+2. named-parameter coverage table
+3. hypothesis coverage table
+4. quantifier / domain coverage table
+5. conclusion-clause coverage table
+6. adversarial special-case or counterexample probe
+7. canonical `status: passed | gaps_found | human_needed`
+
+Do not have the derivation writer self-author this artifact as its own independent critique. If any named parameter, hypothesis, quantifier, or conclusion clause is uncovered, `gpd-check-proof` must set `status: gaps_found` and the derivation must not describe the theorem as established.
+
+When the runtime supports delegation, resolve the proof-critic model and spawn `gpd-check-proof` as the canonical owner of the audit:
+
+```bash
+CHECK_PROOF_MODEL=$(gpd resolve-model gpd-check-proof)
+```
+
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, STOP at a checkpoint instead of self-certifying the proof audit in the derivation writer context.
+
+```
+task(
+  subagent_type="gpd-check-proof",
+  model="{check_proof_model}",
+  readonly=false,
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-check-proof.md for your role and instructions.
+
+Operate in proof-redteam mode with a fresh context.
+
+Write to:
+- `${phase_dir}/DERIVATION-{slug}-PROOF-REDTEAM.md` when phase-scoped
+- `GPD/analysis/derivation-{slug}-proof-redteam.md` when standalone
+
+Files to read:
+- The newly written derivation artifact
+- Any theorem inventory carried in the derivation
+- Relevant PLAN / contract context if available
+- Supporting summary or verification artifacts if available
+
+Audit the exact theorem text, not a paraphrase. Fail closed on missing parameter coverage, hidden assumptions, or narrower special-case proofs sold as general claims.",
+  description="Proof redteam for derivation {slug}"
+)
+```
+</step>
+
+<step name="persist_result">
+**Step 6: Persist Canonical Result**
+
+Persist the final derived equation through the executable `gpd result persist-derived` bridge when project state is available.
+
+- If `state_exists` is true:
+  1. Resolve a stable `result_id` request. On reruns, prefer the `result_id` already associated with the derivation record or invocation context if one is available. Otherwise derive a deterministic ID from the derivation slug and phase.
+  2. Re-check `state.json.intermediate_results` for the same preferred `result_id` or an existing canonical equation for the same target. If a matching entry already exists, reuse its actual canonical `result_id` instead of creating a duplicate.
+  3. Persist the final result with the bridge:
+
+```bash
+gpd result persist-derived --id "{result_id}" --derivation-slug "{derivation_slug}" --equation "{final_equation}" --description "{short description}" --phase "{phase}" --validity "{validity}" [--depends-on "{comma-separated ids}"]
+```
+
+If no stable `result_id` is available yet, use the derivation-slug form instead:
+
+```bash
+gpd result persist-derived --derivation-slug "{derivation_slug}" --equation "{final_equation}" --description "{short description}" --phase "{phase}" --validity "{validity}" [--depends-on "{comma-separated ids}"]
+```
+
+This bridge reuses an explicit `result_id` request when one is already known. Otherwise it derives a stable `requested_result_id` from the derivation slug and phase before delegating to the canonical upsert path, which reuses a unique exact equation match in the same phase when the existing canonical entry already exists, falls back to a unique exact description match when the equation is not yet stable, and only adds a new registry entry when no safe match exists.
+
+If `gpd result persist-derived` reports multiple matches for the same equation or description, STOP and disambiguate with an explicit `result_id` or narrower `phase`. Do not guess which registry entry should be canonical.
+
+  4. Read the bridge output carefully:
+     - `requested_result_id` is the stable derivation-oriented ID the workflow asked for.
+     - `result_id` is the actual canonical registry entry that was persisted or reused.
+     - `requested_result_redirected=true` means the requested derivation-oriented ID was redirected to an existing canonical entry; in that case `result_id` is the canonical anchor.
+     If the bridge reused an existing canonical entry, `result_id` may differ from `requested_result_id`; carry the actual `result_id` forward for later reruns and canonical continuity.
+  5. If an active continuation context exists, the canonical path seeds continuity automatically from the actual `result_id` so later reruns can target the same registry entry without rediscovering it from prose.
+  6. Keep `verified=false` unless the derivation also produced verification evidence that should be recorded separately. For proof-bearing derivations, a passed proof-redteam artifact is part of that evidence; without it, the result may be recorded as derived but not as established.
+  7. For proof-bearing derivations, `gpd-check-proof` is the canonical owner of the proof audit whenever subagent spawning is available. If it cannot run, keep the derivation recorded as derived but not established and checkpoint for follow-up instead of self-certifying the proof.
+- If `state_exists` is false:
+  - Skip registry write-back entirely.
+  - Keep the derivation document self-contained under `GPD/analysis/` and do not invent a project result entry.
+
+If the bridge returns `status=skipped` with `reason=no_recoverable_project_state`, treat that as the standalone branch above. Do not reconstruct project registry state from the derivation text alone.
+
+This keeps standalone derivations safe while making project-mode derivations reusable as canonical structured memory.
 </step>
 
 </process>
@@ -458,6 +587,7 @@ Write to `GPD/analysis/derivation-{slug}.md`.
 - [ ] ASSERT_CONVENTION comment included in derivation document header AND per derivation step
 - [ ] No convention drift: every step's ASSERT_CONVENTION matches Step 1 declaration and project lock
 - [ ] Cross-phase convention consistency verified (if combining with prior results)
+- [ ] Existing `intermediate_results` inspected before re-deriving, and matching canonical results reused when present
 - [ ] Derivation objective clearly stated
 - [ ] All assumptions numbered and explicit
 - [ ] All notation defined before use
@@ -472,6 +602,12 @@ Write to `GPD/analysis/derivation-{slug}.md`.
 - [ ] Regime of validity stated
 - [ ] All relevant limiting cases verified
 - [ ] Connection to known results documented
+- [ ] Proof-bearing derivations include a theorem inventory before the algebra starts
+- [ ] Proof-bearing derivations reserve the sibling `DERIVATION-{slug}-PROOF-REDTEAM.md` artifact and hand it to `gpd-check-proof`
+- [ ] The theorem is not treated as established unless `gpd-check-proof` writes that sibling artifact with `status: passed`
+- [ ] Proof-bearing derivations fail closed when a named parameter, hypothesis, quantifier, or conclusion clause is uncovered
+- [ ] Final derived equation persisted through the executable `gpd result persist-derived` bridge in project mode, with the actual persisted canonical `result_id` retained for later reruns and carried into canonical continuation for later pause/resume continuity
+- [ ] Standalone mode skipped registry write-back and stayed self-contained
 - [ ] Complete derivation document written
 
 </success_criteria>

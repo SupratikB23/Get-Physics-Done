@@ -15,14 +15,14 @@ Read all files referenced by the invoking prompt's execution_context before star
 ## 1. Initialize and Load Context
 
 ```bash
-INIT=$(gpd init new-milestone)
+INIT=$(gpd --raw init new-milestone)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   exit 1
 fi
 ```
 
-Parse JSON for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `commit_docs`, `autonomy`, `research_mode`, `research_enabled`, `current_milestone`, `current_milestone_name`, `project_exists`, `roadmap_exists`, `state_exists`, `project_contract`, `project_contract_validation`, `project_contract_load_info`, `contract_intake`, `effective_reference_intake`, `active_reference_context`, `reference_artifact_files`, `reference_artifacts_content`.
+Parse JSON for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `commit_docs`, `autonomy`, `research_mode`, `research_enabled`, `current_milestone`, `current_milestone_name`, `project_exists`, `roadmap_exists`, `state_exists`, `project_contract`, `project_contract_gate`, `project_contract_validation`, `project_contract_load_info`, `contract_intake`, `effective_reference_intake`, `active_reference_context`, `reference_artifact_files`, `reference_artifacts_content`.
 
 **Mode-aware behavior:**
 - `autonomy=supervised`: Pause for user confirmation after requirements gathering and before roadmap generation.
@@ -30,6 +30,7 @@ Parse JSON for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `co
 - `autonomy=yolo`: Execute full pipeline, skip optional research step, auto-approve roadmap, but do NOT skip phase-level contract coverage and anchor visibility.
 - `research_mode=explore`: Broader research survey for new milestone, consider alternative approaches, include speculative phases.
 - `research_mode=exploit`: Focused research on direct extensions of prior milestone, lean phase structure.
+- `research_mode=balanced` (default): Use the standard research depth for the milestone and keep the default anchor and contract coverage unless the milestone needs broader or narrower review.
 - `research_mode=adaptive`: Reuse a focused path only when prior milestones already provide decisive evidence or an explicit approach lock. Otherwise refresh broader gap analysis before narrowing the new milestone.
 
 Run centralized context preflight before continuing:
@@ -42,7 +43,7 @@ if [ $? -ne 0 ]; then
 fi
 ```
 
-Treat `project_contract` as the authoritative machine-readable project contract only when `project_contract_load_info` is clean and `project_contract_validation.valid` is true. Treat `active_reference_context` and `effective_reference_intake` as binding carry-forward context even when `project_contract` is empty or blocked.
+Treat `project_contract` as the authoritative machine-readable project contract only when `project_contract_gate.authoritative` is true. Keep `project_contract_load_info` and `project_contract_validation` visible as gate inputs, and treat `project_contract` as visible-but-non-authoritative when the gate is blocked. Treat `active_reference_context` and `effective_reference_intake` as binding carry-forward context even when `project_contract` is empty or blocked.
 
 Before defining scope, inspect these carry-forward inputs and keep them visible through milestone planning:
 - `effective_reference_intake.must_read_refs`
@@ -61,10 +62,9 @@ Load project files:
 - Read STATE.md (if `state_exists` — pending items, blockers)
 - Check for MILESTONE-CONTEXT.md (from milestone discussion)
 - If `reference_artifact_files` is non-empty, read the listed reference artifacts or use `reference_artifacts_content` as a compact fallback
-- Keep `project_contract_load_info` and `project_contract_validation` visible while gathering goals, determining milestone version, and reviewing roadmap coverage; do not assume `project_contract` is authoritative unless those gates are clean.
+- Keep `project_contract_load_info` and `project_contract_validation` visible while gathering goals, determining milestone version, and reviewing roadmap coverage; do not assume `project_contract` is authoritative unless `project_contract_gate.authoritative` is true.
 - Keep `active_reference_context` available while gathering goals, defining objectives, and reviewing roadmap coverage
-- If `project_contract_load_info.status` starts with `blocked`, checkpoint with the user and repair the stored contract before using it for milestone scope.
-- If `project_contract_validation.valid` is false, checkpoint with the user and repair the stored contract before using it for milestone scope.
+- If `project_contract_gate.authoritative` is false, checkpoint with the user and repair the stored contract before using it for milestone scope.
 
 ## 2. Gather Milestone Goals
 
@@ -149,7 +149,7 @@ ask_user: "Survey the research landscape for new investigations before defining 
 - "Survey first (Recommended)" — Discover new results, methods, and open problems for NEW directions
 - "Skip survey" — Go straight to objectives
 
-**Persist choice to config** (so future `/gpd:plan-phase` honors it):
+**Persist choice to config** (so future `gpd:plan-phase` honors it):
 
 ```bash
 # If "Survey first": persist true
@@ -175,7 +175,7 @@ mkdir -p GPD/research
 ```
 
 Spawn 4 parallel gpd-project-researcher agents. Each uses this template with dimension-specific fields:
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
 
 **Common structure for all 4 scouts:**
 
@@ -411,6 +411,9 @@ Read these files using the file_read tool before proceeding:
 
 <contract_context>
 Project contract: {project_contract}
+Project contract gate: {project_contract_gate}
+Project contract validation: {project_contract_validation}
+Project contract load info: {project_contract_load_info}
 Contract intake: {contract_intake}
 Active references: {active_reference_context}
 Effective reference intake: {effective_reference_intake}
@@ -420,7 +423,7 @@ Reference artifacts: {reference_artifacts_content}
 <instructions>
 Create research roadmap for milestone v[X.Y]:
 1. Start phase numbering from [N]
-2. Derive phases from THIS MILESTONE's objectives, the approved project contract, and the effective reference intake
+2. Derive phases from THIS MILESTONE's objectives, the approved project contract only when `project_contract_gate.authoritative` is true, and the effective reference intake
 3. Map every objective to exactly one phase
 4. For each phase, include explicit contract coverage in ROADMAP.md showing decisive contract items, anchor coverage, required prior outputs, and forbidden proxies advanced by that phase
 5. Treat `must_read_refs`, `must_include_prior_outputs`, `user_asserted_anchors`, `known_good_baselines`, and `crucial_inputs` as binding milestone context, and surface unresolved `context_gaps`
@@ -521,11 +524,11 @@ gpd commit "docs: create milestone v[X.Y] roadmap ([N] phases)" --files GPD/ROAD
 
 **Phase [N]: [Phase Name]** — [Goal]
 
-`/gpd:discuss-phase [N]` — gather context and clarify approach
+`gpd:discuss-phase [N]` — gather context and clarify approach
 
 <sub>`/clear` first -> fresh context window</sub>
 
-Also: `/gpd:plan-phase [N]` — skip discussion, plan directly
+Also: `gpd:plan-phase [N]` — skip discussion, plan directly
 ```
 
 </process>
@@ -543,7 +546,7 @@ Also: `/gpd:plan-phase [N]` — skip discussion, plan directly
 - [ ] User feedback incorporated (if any)
 - [ ] ROADMAP.md phases continue from previous milestone
 - [ ] All commits made (if planning docs committed)
-- [ ] User knows next step: `/gpd:discuss-phase [N]`
+- [ ] User knows next step: `gpd:discuss-phase [N]`
 
 **Atomic commits:** Each phase commits its artifacts immediately.
 </success_criteria>

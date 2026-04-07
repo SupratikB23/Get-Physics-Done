@@ -42,7 +42,7 @@ You are NOT the executor or verifier -- you verify plans WILL work before execut
 </role>
 
 <upstream_input>
-**CONTEXT.md** (if exists) -- Researcher decisions from `/gpd:discuss-phase`
+**CONTEXT.md** (if exists) -- Researcher decisions from `gpd:discuss-phase`
 
 | Section                  | How You Use It                                                      |
 | ------------------------ | ------------------------------------------------------------------- |
@@ -142,7 +142,7 @@ Read autonomy mode from config. Higher autonomy = plan checker is more critical 
 
 **Question:** Do these plans carry the approved contract into execution without allowing false progress?
 
-**Authority order:** `plan frontmatter contract` -> `verification_context project_contract` -> `active_reference_context`.
+**Authority order:** `plan frontmatter contract` -> `verification_context project_contract`. Treat `effective_reference_intake` and `active_reference_context` only as readable projections of those anchors, never as substitute authority.
 
 Reject with `blocker` if any of the following is true:
 
@@ -695,7 +695,7 @@ issue:
 
 ## Dimension 15: Context Compliance (if CONTEXT.md exists)
 
-**Question:** Do plans honor researcher decisions from /gpd:discuss-phase?
+**Question:** Do plans honor researcher decisions from gpd:discuss-phase?
 
 **Only check if CONTEXT.md was provided in the verification context.**
 
@@ -772,7 +772,7 @@ issue:
 - Plan assumes internet access for downloading data or packages during execution
 - Code requires specific OS features (Linux-only system calls, Windows COM objects)
 
-**Key principle:** The executor agent runs in a computational environment with Python, standard scientific packages, and file I/O. Plans should not assume anything beyond this without explicit justification. When specialized tools are genuinely needed, the plan must either (a) confirm availability, (b) provide installation instructions as a permission-gated prerequisite task, or (c) offer a fallback using standard tools.
+**Key principle:** The executor agent runs in a computational environment with Python, standard scientific packages, and file I/O. Plans should not assume anything beyond this without explicit justification. When specialized tools are genuinely needed, the plan must declare them in `tool_requirements`, keep `researcher_setup` for human-only credentials/setup, and then either (a) confirm availability, (b) provide installation instructions as a permission-gated prerequisite task, or (c) offer a fallback using standard tools.
 
 **Example — licensed software:**
 
@@ -783,7 +783,7 @@ issue:
   description: "Task 3 requires Mathematica for symbolic Groebner basis computation but availability is not confirmed"
   plan: "04-02"
   task: 3
-  fix_hint: "Use sympy.polys.groebnertools as alternative, or add prerequisite confirming Mathematica access via Wolfram Engine"
+  fix_hint: "Declare `tool_requirements: [{id: wolfram-cas, tool: wolfram, purpose: ..., fallback: ...}]`, use sympy.polys.groebnertools as alternative, or add prerequisite confirming Mathematica access via Wolfram Engine"
 ```
 
 **Example — hardware assumption:**
@@ -833,7 +833,7 @@ This feedback loop ensures the plan checker improves over time within a project.
 Load phase operation context:
 
 ```bash
-INIT=$(gpd init phase-op "${PHASE_ARG}")
+INIT=$(gpd --raw init phase-op "${PHASE_ARG}")
 ```
 
 Extract from init JSON: `phase_dir`, `phase_number`, `has_plans`, `plan_count`.
@@ -885,24 +885,48 @@ If present, treat it as the canonical planning surface.
 
 ```yaml
 contract:
+  schema_version: 1
   scope:
     question: "What decisive question does this plan advance?"
+    in_scope: ["Recover the benchmark value within tolerance"]
   context_intake:
     must_read_refs: [ref-main]
-    must_include_prior_outputs: ["Phase 00 baseline table"]
-    user_asserted_anchors: ["Use the approved gauge, unit, and notation conventions"]
+    must_include_prior_outputs: ["GPD/phases/00-baseline/00-01-SUMMARY.md"]
+    user_asserted_anchors: ["GPD/phases/00-baseline/00-01-SUMMARY.md#gauge-unit-and-notation-conventions"]
   claims:
     - id: claim-main
       statement: "Recover the benchmark value within tolerance"
-      deliverables: [deliv-main]
-      acceptance_tests: [test-main]
+      claim_kind: theorem
+      deliverables: [deliv-main, deliv-proof-main]
+      acceptance_tests: [test-main, test-proof-main]
       references: [ref-main]
+      parameters:
+        - symbol: k
+          domain_or_type: "dimensionless"
+          aliases: [kappa]
+          required_in_proof: true
+          notes: "Benchmark parameter that must remain visible in the proof"
+      hypotheses:
+        - id: hyp-normalization
+          text: "Reference normalization and tolerance convention match Ref-01"
+          symbols: [k]
+          category: assumption
+          required_in_proof: true
+      conclusion_clauses:
+        - id: concl-benchmark
+          text: "Benchmark agreement stays within tolerance at every approved sample"
+      proof_deliverables: [deliv-proof-main]
   deliverables:
     - id: deliv-main
       kind: figure
       path: "figures/benchmark.png"
       description: "Benchmark comparison figure"
       must_contain: ["benchmark value", "tolerance"]
+    - id: deliv-proof-main
+      kind: derivation
+      path: "derivations/benchmark-proof.md"
+      description: "Proof inventory for the benchmark theorem claim"
+      must_contain: ["named hypotheses", "parameter coverage", "conclusion mapping"]
   references:
     - id: ref-main
       kind: paper
@@ -919,6 +943,12 @@ contract:
       procedure: "Compare the computed value against the benchmark anchor within tolerance."
       pass_condition: "Matches benchmark within tolerance"
       evidence_required: [deliv-main, ref-main]
+    - id: test-proof-main
+      subject: claim-main
+      kind: claim_to_proof_alignment
+      procedure: "Verify the proof inventory covers the named hypothesis, parameter, and conclusion."
+      pass_condition: "Every theorem field is covered explicitly."
+      evidence_required: [deliv-proof-main]
   forbidden_proxies:
     - id: fp-main
       subject: claim-main
@@ -1376,7 +1406,7 @@ Return all issues as a structured `issues:` YAML list (see dimension examples fo
 | 01   | 3     | moderate   | 1    | Valid  |
 | 02   | 2     | moderate   | 2    | Valid  |
 
-Plans verified. Run `/gpd:execute-phase {phase}` to proceed.
+Plans verified. Run `gpd:execute-phase {phase}` to proceed.
 ```
 
 ## ISSUES FOUND

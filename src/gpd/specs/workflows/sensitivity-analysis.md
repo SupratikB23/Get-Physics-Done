@@ -1,7 +1,7 @@
 <purpose>
 Determine which input parameters most strongly affect output quantities. Compute partial derivatives, condition numbers, and rank parameters by sensitivity. Identifies which measurements or calculations would most improve final results.
 
-Called from /gpd:sensitivity-analysis command. Used to prioritize effort: if parameter A contributes 90% of the uncertainty while parameter B contributes 1%, improving the precision of A has 90x the impact of improving B.
+Called from gpd:sensitivity-analysis command. Used to prioritize effort: if parameter A contributes 90% of the uncertainty while parameter B contributes 1%, improving the precision of A has 90x the impact of improving B.
 </purpose>
 
 <core_principle>
@@ -23,7 +23,7 @@ A result quoted as "E = 3.7 +/- 0.2 eV" is incomplete without knowing what drive
 Load project context:
 
 ```bash
-INIT=$(gpd init phase-op --include state,config "${PHASE_ARG:-}")
+INIT=$(gpd --raw init phase-op --include state,config "${PHASE_ARG:-}")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -67,7 +67,7 @@ Identify the target quantity and the parameters to analyze.
 
 Determine what output quantity f we are analyzing the sensitivity of:
 
-- Load project state via `gpd CLI init progress --include state,config` and check `intermediate_results` for computed quantities
+- Load project state via `gpd --raw init progress --include state,config` and check `intermediate_results` for computed quantities. If you need to locate the canonical target or one of its upstream results first, use `gpd result search`; once a canonical `result_id` is known, use `gpd result show "{result_id}"` for the direct stored-result view before `gpd result deps "{result_id}"` for the recorded upstream dependency chain. Keep `gpd query search` for SUMMARY/frontmatter lookup.
 - Read from phase SUMMARY.md files for key results
 - If `--target` is specified, use that quantity directly
 
@@ -89,7 +89,7 @@ Identify all input parameters that f depends on:
 3. **Approximation controls:** expansion orders, truncation levels, regime boundaries
 4. **Measured inputs:** experimental values used in the calculation
 
-Read from `GPD/STATE.md` to identify active approximations and their controlling parameters. Where structured data is needed, load via `gpd CLI init progress --include state,config`.
+Read from `GPD/STATE.md` to identify active approximations and their controlling parameters. Where structured data is needed, load via `gpd --raw init progress --include state,config`.
 
 ```markdown
 ## Parameters
@@ -357,7 +357,7 @@ for i in range(len(ranked)):
 <step name="approximation_sensitivity">
 **Step 5: Analyze Approximation Sensitivity**
 
-For each active approximation in the project (read from `GPD/STATE.md`; load structured data via `gpd CLI init progress --include state,config` if needed):
+For each active approximation in the project (read from `GPD/STATE.md`; load structured data via `gpd --raw init progress --include state,config` if needed):
 
 ### 5a. Identify controlling parameters
 
@@ -590,9 +590,9 @@ Top 3 parameters account for {cumul_pct}% of total uncertainty
 ## Next Steps
 
 - **Reduce uncertainty:** Improve precision of {dominant parameter} for greatest impact
-- **Error propagation:** `/gpd:error-propagation` -- trace full error budget through derivation chain
-- **Parameter sweep:** `/gpd:parameter-sweep` -- map out behavior across parameter range
-- **Convergence:** `/gpd:numerical-convergence` -- verify numerical error bars at key points
+- **Error propagation:** `gpd:error-propagation` -- trace full error budget through derivation chain
+- **Parameter sweep:** `gpd:parameter-sweep` -- map out behavior across parameter range
+- **Convergence:** `gpd:numerical-convergence` -- verify numerical error bars at key points
 
 ---
 ```
@@ -612,7 +612,7 @@ Top 3 parameters account for {cumul_pct}% of total uncertainty
 
 <success_criteria>
 
-- [ ] Project context loaded via `gpd CLI init phase-op`
+- [ ] Project context loaded via `gpd --raw init phase-op`
 - [ ] Target quantity identified with nominal value and current uncertainty
 - [ ] All relevant input parameters cataloged with nominal values and uncertainties
 - [ ] Sensitivity method chosen (analytical, numerical, or combined) and justified
@@ -625,8 +625,8 @@ Top 3 parameters account for {cumul_pct}% of total uncertainty
 - [ ] Active approximations analyzed for systematic error contribution
 - [ ] Complete uncertainty budget constructed with dominant source identified
 - [ ] SENSITIVITY-REPORT.md generated with ranked parameter table and recommendations
-- [ ] propagated_uncertainties updated via `gpd CLI uncertainty add`
-- [ ] Artifacts committed via `gpd CLI commit`
+- [ ] propagated_uncertainties updated via `gpd uncertainty add`
+- [ ] Artifacts committed via `gpd commit`
 - [ ] User presented with key findings and next steps
 
 </success_criteria>

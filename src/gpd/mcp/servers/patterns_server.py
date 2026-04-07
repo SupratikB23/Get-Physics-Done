@@ -9,8 +9,6 @@ Usage:
     gpd-mcp-patterns
 """
 
-import logging
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -30,10 +28,14 @@ from gpd.core.patterns import (
     pattern_seed,
     patterns_root,
 )
-from gpd.mcp.servers import stable_mcp_error, stable_mcp_response
+from gpd.mcp.servers import (
+    configure_mcp_logging,
+    stable_mcp_error,
+    stable_mcp_response,
+    tighten_registered_tool_contracts,
+)
 
-logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-logger = logging.getLogger("gpd-patterns")
+logger = configure_mcp_logging("gpd-patterns")
 
 mcp = FastMCP("gpd-patterns")
 
@@ -240,6 +242,9 @@ def main() -> None:
     from gpd.mcp.servers import run_mcp_server
 
     run_mcp_server(mcp, "GPD Patterns MCP Server")
+
+
+tighten_registered_tool_contracts(mcp)
 
 
 if __name__ == "__main__":

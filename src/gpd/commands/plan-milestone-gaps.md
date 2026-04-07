@@ -13,15 +13,13 @@ allowed-tools:
   - ask_user
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Create all phases necessary to close gaps identified by `/gpd:audit-milestone`.
+Create all phases necessary to close gaps identified by `gpd:audit-milestone`.
 
 Reads MILESTONE-AUDIT.md, groups gaps into logical phases, creates phase entries in ROADMAP.md, and offers to plan each phase.
 
-One command creates all fix phases — no manual `/gpd:add-phase` per gap.
+One command creates all fix phases — no manual `gpd:add-phase` per gap.
 
 Physics research gaps fall into distinct categories that map naturally to phase types:
 

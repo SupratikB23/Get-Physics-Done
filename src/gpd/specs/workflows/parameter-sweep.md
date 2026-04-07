@@ -1,7 +1,7 @@
 <purpose>
 Execute a systematic parameter sweep over one or two parameters, computing a specified quantity at each point (or grid point) in the parameter space. Leverages wave-based parallel execution from execute-phase.md to evaluate independent parameter values concurrently, then aggregates results into structured data and a summary report.
 
-Called from /gpd:parameter-sweep command. References wave-based execution patterns from execute-phase.md.
+Called from gpd:parameter-sweep command. References wave-based execution patterns from execute-phase.md.
 </purpose>
 
 <core_principle>
@@ -16,7 +16,7 @@ A parameter sweep is the physicist's workhorse for mapping out how a system resp
 Load project context:
 
 ```bash
-INIT=$(gpd init phase-op "${PHASE_ARG:-}")
+INIT=$(gpd --raw init phase-op "${PHASE_ARG:-}")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
@@ -171,6 +171,7 @@ files_modified:
   - ${SWEEP_PHASE_DIR}/sweep-{PADDED_INDEX}-SUMMARY.md
   - ${SWEEP_ARTIFACT_DIR}/results/point-{PADDED_INDEX}.json
 contract:
+  schema_version: 1
   scope:
     question: "What does {observable} evaluate to at {param_name}={p_i}?"
   context_intake:
@@ -290,7 +291,7 @@ Execute the sweep plans using wave-based parallel execution following the execut
 2. **Spawn executor agents for all plans in the wave:**
 
    Follow the same task() spawning pattern as execute-phase.md step `execute_waves`.
-   > **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+   @{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
 
    ```
    task(
@@ -655,9 +656,9 @@ Completed: {M}/{N}
 ## Next Steps
 
 - **Visualize:** Plot the sweep data to inspect features
-- **Refine:** `/gpd:parameter-sweep {phase} --adaptive` -- add points near interesting features
-- **Converge:** `/gpd:numerical-convergence {phase}` -- verify convergence at key points
-- **Branch:** `/gpd:branch-hypothesis` -- investigate features with different methods
+- **Refine:** `gpd:parameter-sweep {phase} --adaptive` -- add points near interesting features
+- **Converge:** `gpd:numerical-convergence {phase}` -- verify convergence at key points
+- **Branch:** `gpd:branch-hypothesis` -- investigate features with different methods
 
 ---
 ```

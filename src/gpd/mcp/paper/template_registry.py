@@ -77,12 +77,18 @@ def _clean_section(section: Section) -> Section:
         update={
             "title": clean_latex_fences(section.title),
             "content": clean_latex_fences(section.content),
+            "label": clean_latex_fences(section.label),
         }
     )
 
 
 def _clean_figure(figure: FigureRef) -> FigureRef:
-    return figure.model_copy(update={"caption": clean_latex_fences(figure.caption)})
+    return figure.model_copy(
+        update={
+            "caption": clean_latex_fences(figure.caption),
+            "label": clean_latex_fences(figure.label),
+        }
+    )
 
 
 def render_paper(config: PaperConfig) -> str:

@@ -18,7 +18,7 @@ file_read:
 - `GPD/STATE.md` -- current position
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd roadmap analyze failed: $ROADMAP"
   # STOP — display the error to the user and do not proceed.
@@ -37,7 +37,7 @@ Extract: `project_title`, `milestone`, completed phases list, total phase count.
 No completed phases found. Nothing to export.
 
 Complete at least one phase before exporting:
-  /gpd:execute-phase <phase-number>
+  gpd:execute-phase <phase-number>
 ```
 
 Exit.
@@ -51,7 +51,7 @@ For each completed phase:
 1. Read all SUMMARY.md files:
 
 ```bash
-gpd summary-extract {path} --field one_liner --field key_results --field equations --field key_files
+gpd --raw summary-extract {path} --field one_liner --field key_results --field equations --field key_files
 ```
 
 2. Collect:
@@ -366,8 +366,8 @@ cd exports && tar -czf results.tar.gz README.md scripts/ data/ summaries/ PROJEC
 ───────────────────────────────────────────────────────────────
 
 **Also available:**
-- `/gpd:write-paper` -- draft a full paper from research results
-- `/gpd:progress` -- check research progress
+- `gpd:write-paper` -- draft a full paper from research results
+- `gpd:progress` -- check research progress
 
 ───────────────────────────────────────────────────────────────
 ```

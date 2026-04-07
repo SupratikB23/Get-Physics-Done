@@ -1,7 +1,7 @@
 <purpose>
 Structure a point-by-point response to referee reports and revise the manuscript accordingly. Handles the full revision pipeline: parsing referee comments, drafting responses, spawning revision agents for manuscript changes, tracking new calculations, and producing a response letter. Integrates with the GPD research workflow for any new calculations requested by referees.
 
-Called from /gpd:respond-to-referees command. Section revisions are performed by gpd-paper-writer agents.
+Called from gpd:respond-to-referees command. Section revisions are performed by gpd-paper-writer agents.
 </purpose>
 
 <core_principle>
@@ -22,19 +22,19 @@ Responding to referees is not adversarial -- it is collaborative improvement. Ev
 **Initialize context and locate paper:**
 
 ```bash
-INIT=$(gpd init phase-op)
+INIT=$(gpd --raw init phase-op --include config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
   # STOP — display the error to the user and do not proceed.
 fi
 ```
 
-Parse JSON for: `commit_docs`, `state_exists`, `project_exists`, `project_contract`, `project_contract_load_info`, `project_contract_validation`, `selected_protocol_bundle_ids`, `protocol_bundle_context`, `active_reference_context`.
+Parse JSON for: `commit_docs`, `state_exists`, `project_exists`, `autonomy`, `project_contract`, `project_contract_gate`, `project_contract_load_info`, `project_contract_validation`, `selected_protocol_bundle_ids`, `protocol_bundle_context`, `active_reference_context`, `derived_manuscript_reference_status`, `derived_manuscript_reference_status_count`, `derived_manuscript_proof_review_status`.
 
 **Read mode settings:**
 
 ```bash
-AUTONOMY=$(gpd --raw config get autonomy 2>/dev/null | gpd json get .value --default balanced 2>/dev/null || echo "balanced")
+AUTONOMY=$(echo "$INIT" | gpd json get .autonomy --default balanced)
 ```
 
 **Mode-aware behavior:**
@@ -68,28 +68,25 @@ fi
 
 Use the literal `paste` sentinel when collecting inline report text. Do not pass the raw pasted referee report body as `$ARGUMENTS` to the strict preflight command.
 
-If review preflight exits nonzero because of missing project state, missing manuscript, missing referee report source when provided as a path, degraded review integrity, or missing required conventions, STOP and show the blocking issues before drafting responses. Treat `project_contract` as authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes; otherwise the contract is visible but blocked, and the response should surface the blocker instead of relying on it.
+If review preflight exits nonzero because of missing project state, missing manuscript, missing referee report source when provided as a path, degraded review integrity, or missing required conventions, STOP and show the blocking issues before drafting responses. Treat `project_contract` as authoritative only when `project_contract_gate.authoritative` is true; otherwise the contract is visible but blocked, and the response should surface the blocker instead of relying on it. If `derived_manuscript_reference_status` is present, use it as a quick manuscript-local summary of what is already cited, what is still pending, and what probably needs a bibliography refresh; keep `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` and the other manuscript-root publication artifacts authoritative for strict response and packaging decisions.
+If `derived_manuscript_proof_review_status` is present, use it as the first-pass manuscript-local summary of proof-review freshness for theorem-bearing revisions; keep passed proof-redteam artifacts and the manuscript-root publication artifacts authoritative for strict response and packaging decisions.
 
 **Locate paper directory:**
 
-```bash
-for DIR in paper manuscript draft; do
-  if [ -f "${DIR}/main.tex" ]; then
-    PAPER_DIR="$DIR"
-    break
-  fi
-done
-```
+Use the strict preflight resolution as the manuscript-root authority. Prefer the explicit user target when provided, otherwise the canonical manuscript roots `paper/`, `manuscript/`, and `draft/` via `ARTIFACT-MANIFEST.json`, then `PAPER-CONFIG.json`, then the canonical entrypoint resolver. Do not pick `PAPER_DIR` by first-match `*.tex` or `*.md` globbing.
 
 **If no paper found:**
 
 ```
-No paper directory found. Searched: paper/, manuscript/, draft/
+No paper directory found. Searched the canonical manuscript roots `paper/`, `manuscript/`, and `draft/` via the manuscript resolver
 
-Run /gpd:write-paper first to generate a manuscript from research results.
+Run gpd:write-paper first to generate a manuscript from research results.
 ```
 
 Exit.
+
+Use `MANUSCRIPT_BASENAME` for the basename of the resolved manuscript entrypoint in `${PAPER_DIR}`. If `${PAPER_DIR}/ARTIFACT-MANIFEST.json` exists, prefer the `.tex` artifact recorded there rather than assuming any legacy default stem.
+Treat every resolved manuscript file path as rooted under `${PAPER_DIR}`, including nested section files such as `${PAPER_DIR}/{section}.tex` and the response-letter companion `${PAPER_DIR}/response-letter.tex` when the revision round keeps a manuscript-local response artifact.
 
 **Convention verification** — referee responses must use the same conventions as the paper:
 
@@ -106,7 +103,7 @@ If the check fails, resolve convention mismatches before proceeding. New calcula
 **Check for existing referee response file:**
 
 ```bash
-ls GPD/paper/REFEREE_RESPONSE*.md 2>/dev/null
+ls GPD/review/REFEREE_RESPONSE*.md 2>/dev/null
 ls GPD/AUTHOR-RESPONSE*.md 2>/dev/null
 ```
 
@@ -119,7 +116,7 @@ ls GPD/review/REVIEW-LEDGER*.json 2>/dev/null
 ls GPD/review/REFEREE-DECISION*.json 2>/dev/null
 ```
 
-If matching round-specific files exist, load them as structured context. Use `GPD/REFEREE-REPORT{round_suffix}.md` as the canonical issue-ID source, and use `REVIEW-LEDGER*.json` / `REFEREE-DECISION*.json` to identify blocking issues, unsupported-claim findings, recommendation floors, and the referee's stated rationale. Keep `project_contract`, `project_contract_load_info`, `project_contract_validation`, and `active_reference_context` visible together when drafting the response letter.
+If matching round-specific files exist, load them as structured context. Use `GPD/REFEREE-REPORT{round_suffix}.md` as the canonical issue-ID source, and use `REVIEW-LEDGER*.json` / `REFEREE-DECISION*.json` to identify blocking issues, unsupported-claim findings, recommendation floors, and the referee's stated rationale. Keep `project_contract`, `project_contract_gate`, `project_contract_load_info`, `project_contract_validation`, and `active_reference_context` visible together when drafting the response letter; treat the contract as approved scope only when `project_contract_gate.authoritative` is true.
 
 Set `round_suffix` to match the peer-review artifact convention:
 
@@ -127,7 +124,7 @@ Set `round_suffix` to match the peer-review artifact convention:
 - `"-R2"` for the second round
 - `"-R3"` for the third round
 
-Use that exact suffix for both `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/paper/REFEREE_RESPONSE{round_suffix}.md`.
+Use that exact suffix for both `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/review/REFEREE_RESPONSE{round_suffix}.md`.
 </step>
 
 <step name="load_specialized_revision_context">
@@ -135,8 +132,9 @@ Use `protocol_bundle_context` from init JSON as additive revision guidance.
 
 - If `selected_protocol_bundle_ids` is non-empty, keep the bundle's decisive artifact expectations, benchmark anchors, estimator caveats, and reference prompts visible while triaging referee requests.
 - Use bundle guidance to distinguish "missing decisive evidence we already owed" from "new side quest the referee is asking for."
-- Do **not** let bundle guidance justify broader claims, waive review-ledger blockers, or replace the manuscript's actual evidence trail in `GPD/comparisons/*-COMPARISON.md`, `GPD/paper/FIGURE_TRACKER.md`, phase summary artifacts, or `VERIFICATION.md`.
+- Do **not** let bundle guidance justify broader claims, waive review-ledger blockers, or replace the manuscript's actual evidence trail in `GPD/comparisons/*-COMPARISON.md`, `${PAPER_DIR}/FIGURE_TRACKER.md`, phase summary artifacts, or `VERIFICATION.md`.
 - Keep revisions tied to claims the manuscript still intends to make. Review ledgers and bundle hints help prioritize, but they do not force new side analyses once honest claim narrowing resolves the concern.
+- Use `derived_manuscript_reference_status` as the first-pass triage signal for citation and bibliography changes, but do not let it override the manuscript-root audit or publication-manifest checks.
 </step>
 
 <step name="parse_referee_reports">
@@ -206,77 +204,50 @@ Confirm parsing is correct, or paste corrections.
 Read the template:
 
 ```bash
+cat {GPD_INSTALL_DIR}/templates/paper/author-response.md
 cat {GPD_INSTALL_DIR}/templates/paper/referee-response.md
 ```
 
 Create both response artifacts for the current round:
 
-- `GPD/AUTHOR-RESPONSE{round_suffix}.md` — structured internal tracker keyed by `REF-*` issues, change locations, and staged review outcomes
-- `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` — journal-facing response letter built from the template
+- `GPD/AUTHOR-RESPONSE{round_suffix}.md` — structured internal tracker keyed by `REF-*` issues, change locations, staged review outcomes, and new-calculation status
+- `GPD/review/REFEREE_RESPONSE{round_suffix}.md` — journal-facing response letter built from the template
 
-Populate `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` with:
+Populate `GPD/review/REFEREE_RESPONSE{round_suffix}.md` with:
 
 - Paper metadata (journal, manuscript ID, dates)
 - Decision summary from editor
 - Decision summary from `REFEREE-DECISION*.json` when available
-- Each referee comment with full quote, category, priority
+- Each referee comment with full quote, category, priority, and the mirrored classification/status fields from the canonical author-response contract
 - Explicit list of blocking items from `REVIEW-LEDGER*.json` when available
 - Empty response and changes-made fields (to be filled in subsequent steps)
 - Progress tracking table
 
-Before writing `GPD/AUTHOR-RESPONSE{round_suffix}.md`, use this exact scaffold so the file matches the canonical author-response schema expected by later review rounds:
-
-```markdown
----
-response_to: REFEREE-REPORT{round_suffix}.md
-round: {N}
-date: YYYY-MM-DDTHH:MM:SSZ
-issues_fixed: {count}
-issues_rebutted: {count}
-issues_acknowledged: {count}
----
-
-# Author Response — Round {N}
-
-## Summary
-
-{1-2 paragraph overview: what changed, what was rebutted, what remains.}
-
-## Point-by-Point Responses
-
-### REF-001: {brief description from referee report}
-
-**Classification:** fixed
-**Response:** {issue-by-issue narrative response}
-**Changes:** {exact manuscript locations changed}
-```
+Before writing `GPD/AUTHOR-RESPONSE{round_suffix}.md`, load the canonical template at `@{GPD_INSTALL_DIR}/templates/paper/author-response.md` and keep the internal tracker aligned with it.
 
 Populate `GPD/AUTHOR-RESPONSE{round_suffix}.md` with:
 
 - One section per `REF-*` issue
 - Classification (`fixed`, `rebutted`, `acknowledged`, `needs-calculation`)
-- Exact manuscript change locations or planned follow-up work
+- Assessment plus exact manuscript change locations or planned follow-up work
+- `New calculations required` and `Source phase for new work` whenever the comment needs additional research
 - Any blocking / recommendation-floor context imported from `REVIEW-LEDGER*.json` or `REFEREE-DECISION*.json`
 - Use `**Evidence:**` blocks for rebuttals and `**Plan:**` blocks for acknowledged or `needs-calculation` responses when those sections are needed
 
 For later rounds, use the round-specific variants (for example `REFEREE_RESPONSE-R2.md` and `AUTHOR-RESPONSE-R2.md`).
 
-```bash
-mkdir -p GPD/paper
-```
-
 Commit the initial response file:
 
 ```bash
-PRE_CHECK=$(gpd pre-commit-check --files GPD/paper/REFEREE_RESPONSE{round_suffix}.md GPD/AUTHOR-RESPONSE{round_suffix}.md 2>&1) || true
+PRE_CHECK=$(gpd pre-commit-check --files GPD/review/REFEREE_RESPONSE{round_suffix}.md GPD/AUTHOR-RESPONSE{round_suffix}.md 2>&1) || true
 echo "$PRE_CHECK"
 
 gpd commit \
   "docs: create referee response structure" \
-  --files GPD/paper/REFEREE_RESPONSE{round_suffix}.md GPD/AUTHOR-RESPONSE{round_suffix}.md
+  --files GPD/review/REFEREE_RESPONSE{round_suffix}.md GPD/AUTHOR-RESPONSE{round_suffix}.md
 ```
 
-Keep the two files synchronized for the rest of the workflow: draft issue-by-issue substance in `GPD/AUTHOR-RESPONSE{round_suffix}.md`, and mirror the journal-facing prose into `GPD/paper/REFEREE_RESPONSE{round_suffix}.md`.
+Keep the two files synchronized for the rest of the workflow: draft issue-by-issue substance in `GPD/AUTHOR-RESPONSE{round_suffix}.md`, and mirror the journal-facing prose into `GPD/review/REFEREE_RESPONSE{round_suffix}.md`.
 
 </step>
 
@@ -316,7 +287,7 @@ Present triage:
 |-------|-------|--------|
 | A: Response-only | {N} | Draft responses (no manuscript change) |
 | B: Manuscript revision | {N} | Spawn paper-writer agents for section edits |
-| C: New calculations | {N} | Create research phases via /gpd:add-phase |
+| C: New calculations | {N} | Create research phases via gpd:add-phase |
 
 Group C items require research work before the response can be completed.
 Address these first? (Y/n)
@@ -331,7 +302,7 @@ If no Group C items: skip to draft_responses.
 
 For each new calculation:
 
-1. Create matching entries in the "New Calculations Summary" sections of `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` and `GPD/AUTHOR-RESPONSE{round_suffix}.md`
+1. Create matching entries in the "New Calculations Summary" sections of `GPD/review/REFEREE_RESPONSE{round_suffix}.md` and `GPD/AUTHOR-RESPONSE{round_suffix}.md`
 2. Suggest a research phase to execute the calculation:
 
 ```
@@ -339,8 +310,8 @@ For each new calculation:
 
 | ID | Requested By | Description | Suggested Phase |
 |----|-------------|-------------|-----------------|
-| NC-1 | Referee 1, Comment 3 | Extend to next-to-leading order | /gpd:insert-phase {N}.1 |
-| NC-2 | Referee 2, Comment 5 | Compare with Monte Carlo results | /gpd:add-phase |
+| NC-1 | Referee 1, Comment 3 | Extend to next-to-leading order | gpd:insert-phase {N}.1 |
+| NC-2 | Referee 2, Comment 5 | Compare with Monte Carlo results | gpd:add-phase |
 
 Create these phases now? The referee response will be incomplete until
 new calculations are done.
@@ -358,7 +329,7 @@ If user chooses option 1:
 gpd phase add "Referee revision: {description}"
 ```
 
-The user should run `/gpd:plan-phase` and `/gpd:execute-phase` for each new phase, then return to `/gpd:respond-to-referees` to continue.
+The user should run `gpd:plan-phase` and `gpd:execute-phase` for each new phase, then return to `gpd:respond-to-referees` to continue.
 
 If the staged decision artifacts indicate that the main problem is overclaiming rather than missing computation, prefer narrowing the claim set or venue framing before creating new research phases.
 If selected protocol bundles already identify a decisive comparison, benchmark anchor, or estimator caveat that the manuscript failed to surface, prefer fulfilling that existing obligation or narrowing the claim before creating broader new-computation work.
@@ -377,7 +348,7 @@ WRITER_MODEL=$(gpd resolve-model gpd-paper-writer)
 
 **For Group A (response-only) items:**
 
-Draft each response in `GPD/AUTHOR-RESPONSE{round_suffix}.md`, then mirror the polished journal-facing wording into `GPD/paper/REFEREE_RESPONSE{round_suffix}.md`. For each comment:
+Draft each response in `GPD/AUTHOR-RESPONSE{round_suffix}.md`, then mirror the polished journal-facing wording into `GPD/review/REFEREE_RESPONSE{round_suffix}.md`. For each comment:
 
 - Quote the referee's exact words
 - Write the assessment (is the referee correct, partially correct, or mistaken?)
@@ -388,7 +359,9 @@ Draft each response in `GPD/AUTHOR-RESPONSE{round_suffix}.md`, then mirror the p
 **For Group B (manuscript revision) items:**
 
 Group revision items by affected section to minimize agent spawns. For each affected section, spawn a paper-writer agent:
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(
@@ -403,7 +376,7 @@ task(
 Each revision agent receives:
 
 - The specific referee comments affecting this section (with full quotes)
-- The current section text (read from `${PAPER_DIR}/{section}.tex`)
+- The current section text (read from the resolved section file within the manuscript tree rooted at `${PAPER_DIR}`, allowing nested subdirectories)
 - The planned response strategy for each comment
 - Relevant `GPD/comparisons/*-COMPARISON.md` files and `FIGURE_TRACKER.md` entries for decisive claims mentioned in the section
 - `protocol_bundle_context` and `selected_protocol_bundle_ids` as additive specialized guidance only; they help preserve benchmark anchors, decisive artifacts, and estimator caveats during revision, but do not create new claims or replace the review ledger
@@ -413,11 +386,11 @@ Each revision agent receives:
 **If a revision agent fails to spawn or returns an error:** Note the failure for that section. Continue with other sections. After all agents complete, report which sections failed and offer: 1) Retry failed sections, 2) Apply revisions manually in the main context, 3) Skip failed sections and proceed. Do not block the entire referee response on a single section failure.
 
 After each agent returns, verify the promised artifacts before trusting the handoff text:
-- Re-read the targeted `${PAPER_DIR}/{section}.tex` file and confirm the expected revision markers or substantive edits landed.
-- Re-open `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` and confirm the affected comment block now contains the updated assessment / changes-made text.
+- Re-read the targeted resolved section file under `${PAPER_DIR}` and confirm the expected revision markers or substantive edits landed.
+- Re-open `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/review/REFEREE_RESPONSE{round_suffix}.md` and confirm the affected comment block now contains the updated assessment / changes-made text.
 - If the agent claimed success but the files did not change, treat that section as failed and route it through the retry/manual options above instead of silently proceeding.
 
-Only after those checks pass, update both `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/paper/REFEREE_RESPONSE{round_suffix}.md`:
+Only after those checks pass, update both `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/review/REFEREE_RESPONSE{round_suffix}.md`:
 - Fill in "Changes made" with specific locations (section, page, equation)
 - Set status to "Response drafted"
 
@@ -430,9 +403,9 @@ After all Group B revisions are applied, verify the revised manuscript compiles 
 
 ```bash
 cd "${PAPER_DIR}"
-pdflatex -interaction=nonstopmode main.tex 2>&1 | tail -20
-bibtex main 2>&1 | tail -10
-pdflatex -interaction=nonstopmode main.tex 2>&1 | tail -5
+pdflatex -interaction=nonstopmode "${MANUSCRIPT_BASENAME}" 2>&1 | tail -20
+bibtex "${MANUSCRIPT_BASENAME%.*}" 2>&1 | tail -10
+pdflatex -interaction=nonstopmode "${MANUSCRIPT_BASENAME}" 2>&1 | tail -5
 ```
 
 **If compilation errors:** Fix and retry (does not count as iteration).
@@ -445,7 +418,7 @@ pdflatex -interaction=nonstopmode main.tex 2>&1 | tail -5
 4. Check cross-references to new or renumbered equations/figures
 5. Resolve any `MISSING:` citation markers left by the paper-writer (see write-paper workflow for the resolution protocol)
 6. Re-check any decisive `comparison_verdicts` or benchmark anchors touched by the revision. If protocol bundles are selected, use them only as an additive reminder of which decisive comparisons or estimator caveats must remain visible after revision.
-7. If the revision touched bibliography files or citation commands, refresh `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` before generating the response letter or proceeding to final review. Stale bibliography audits are not acceptable in a referee-response round.
+7. If the revision touched bibliography files or citation commands, refresh `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` before generating the response letter or proceeding to final review. Use `derived_manuscript_reference_status` as the quick read on what likely changed, but the manuscript-root bibliography audit remains authoritative for the round. Stale bibliography audits are not acceptable in a referee-response round.
 
 **If inconsistencies found and iteration < 3:**
 
@@ -469,13 +442,13 @@ Options:
 <step name="generate_response_letter">
 **Generate the response letter to the editor:**
 
-Read the completed `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` (all comments should have status "Response drafted" or "Final").
+Read the completed `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/review/REFEREE_RESPONSE{round_suffix}.md` (all comments should have status "Response drafted" or "Final").
 
 **If any Group C items are still pending:** Warn the user before generating:
 
 ```
 {N} new calculations are still pending. The response letter will note these as
-"work in progress." Complete them with /gpd:execute-phase before resubmission.
+"work in progress." Complete them with gpd:execute-phase before resubmission.
 ```
 
 Write `${PAPER_DIR}/response-letter.tex` (or `.md` depending on journal requirements):
@@ -541,12 +514,14 @@ raised. Below we provide point-by-point responses.
 **Commit all revision artifacts:**
 
 ```bash
-PRE_CHECK=$(gpd pre-commit-check --files GPD/paper/REFEREE_RESPONSE{round_suffix}.md GPD/AUTHOR-RESPONSE{round_suffix}.md ${PAPER_DIR}/response-letter.tex ${PAPER_DIR}/*.tex ${PAPER_DIR}/references.bib 2>&1) || true
+MANUSCRIPT_TEX_FILES=$(find "${PAPER_DIR}" -type f -name '*.tex' -print)
+MANUSCRIPT_BIB_FILES=$(find "${PAPER_DIR}" -type f -name '*.bib' -print)
+PRE_CHECK=$(gpd pre-commit-check --files GPD/review/REFEREE_RESPONSE{round_suffix}.md GPD/AUTHOR-RESPONSE{round_suffix}.md ${PAPER_DIR}/response-letter.tex ${MANUSCRIPT_TEX_FILES} ${MANUSCRIPT_BIB_FILES} 2>&1) || true
 echo "$PRE_CHECK"
 
 gpd commit \
   "docs: referee response and manuscript revisions" \
-  --files GPD/paper/REFEREE_RESPONSE{round_suffix}.md GPD/AUTHOR-RESPONSE{round_suffix}.md ${PAPER_DIR}/response-letter.tex ${PAPER_DIR}/*.tex ${PAPER_DIR}/references.bib
+  --files GPD/review/REFEREE_RESPONSE{round_suffix}.md GPD/AUTHOR-RESPONSE{round_suffix}.md ${PAPER_DIR}/response-letter.tex ${MANUSCRIPT_TEX_FILES} ${MANUSCRIPT_BIB_FILES}
 ```
 
 **Present completion summary:**
@@ -570,7 +545,7 @@ gpd commit \
 ### Files
 
 - Structured response tracking: GPD/AUTHOR-RESPONSE{round_suffix}.md
-- Journal-facing response letter source: GPD/paper/REFEREE_RESPONSE{round_suffix}.md
+- Journal-facing response letter source: GPD/review/REFEREE_RESPONSE{round_suffix}.md
 - Response letter: ${PAPER_DIR}/response-letter.tex
 - Revised manuscript: {paper_dir}/*.tex
 
@@ -581,18 +556,18 @@ gpd commit \
 {If all complete:}
 1. Review response letter: `cat ${PAPER_DIR}/response-letter.tex`
 2. Build revised manuscript: `cd ${PAPER_DIR} && make`
-3. `/gpd:arxiv-submission` — repackage for resubmission
-4. `/gpd:peer-review` — optional re-review before final packaging if the revision was substantial
+3. `gpd:arxiv-submission` — repackage for resubmission
+4. `gpd:peer-review` — optional re-review before final packaging if the revision was substantial
 5. Submit revised manuscript + response letter to journal
 
 {If new calculations pending:}
 1. Execute pending calculations:
-   /gpd:plan-phase {N}
-   /gpd:execute-phase {N}
+   gpd:plan-phase {N}
+   gpd:execute-phase {N}
 2. Return here to incorporate results:
-   /gpd:respond-to-referees (will detect existing `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` / `GPD/AUTHOR-RESPONSE{round_suffix}.md`)
+   gpd:respond-to-referees (will detect existing `GPD/review/REFEREE_RESPONSE{round_suffix}.md` / `GPD/AUTHOR-RESPONSE{round_suffix}.md`)
 
-Recommend `/gpd:peer-review` as the standalone re-review command once the revised manuscript compiles cleanly. This keeps revision rounds aligned with the referee agent's `REFEREE-REPORT-R{N}.md` protocol.
+Recommend `gpd:peer-review` as the standalone re-review command once the revised manuscript compiles cleanly. This keeps revision rounds aligned with the referee agent's `REFEREE-REPORT-R{N}.md` protocol.
 
 ---
 ```
@@ -616,7 +591,7 @@ Recommend `/gpd:peer-review` as the standalone re-review command once the revise
 
 - [ ] Referee reports parsed and structured
 - [ ] All comments categorized (physics concern, clarity, etc.) and prioritized
-- [ ] `GPD/paper/REFEREE_RESPONSE{round_suffix}.md` and `GPD/AUTHOR-RESPONSE{round_suffix}.md` created with complete point-by-point structure
+- [ ] `GPD/review/REFEREE_RESPONSE{round_suffix}.md` and `GPD/AUTHOR-RESPONSE{round_suffix}.md` created with complete point-by-point structure
 - [ ] Comments triaged into Groups A (response-only), B (revision), C (new calculation)
 - [ ] Group C items routed to research phases (if any)
 - [ ] All Group A responses drafted

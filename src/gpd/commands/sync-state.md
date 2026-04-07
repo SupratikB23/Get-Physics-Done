@@ -11,8 +11,6 @@ allowed-tools:
   - search_files
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Reconcile STATE.md and state.json when they have diverged due to manual edits, partial updates, or corruption.
@@ -42,8 +40,8 @@ Routes to the sync-state workflow which handles conflict detection and resolutio
 
 Use the included `state.json` schema in that workflow as the reconciliation contract. Do not infer authoritative fields from whichever file happens to look newer.
 
-If `--prefer md` is passed, resolve all conflicts by treating STATE.md as the source of truth.
-If `--prefer json` is passed, resolve all conflicts by treating state.json as the source of truth.
+If `--prefer md` is passed, resolve mirrored-field conflicts in favor of STATE.md while preserving JSON-only authority from state.json.
+If `--prefer json` is passed, resolve mirrored-field conflicts in favor of state.json while preserving JSON-only authority from state.json.
 If no preference is given, present conflicts interactively for user resolution.
 
 The workflow handles all logic including:

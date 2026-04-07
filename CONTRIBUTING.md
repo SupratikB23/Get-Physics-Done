@@ -27,6 +27,19 @@ uv tool install pre-commit
 pre-commit install
 ```
 
+## Local CLI From This Checkout
+
+Prefer `uv run` from the repo root when you want the local CLI without relying
+on a separately installed `gpd` executable.
+
+```bash
+uv run gpd --help
+uv run gpd install <runtime> --local
+```
+
+Use `codex`, `claude`, `gemini`, or `opencode` for `<runtime>`. After
+`uv sync --dev`, an activated `.venv` can also run `gpd ...` directly.
+
 The tracked pre-commit hook runs `uv run ruff check --fix --unsafe-fixes` on staged Python files.
 
 ## Contributor License Agreements
@@ -49,7 +62,12 @@ uv run pytest tests/test_metadata_consistency.py -v
 uv run pytest tests/test_release_consistency.py -v
 uv run pytest tests/adapters/test_registry.py tests/adapters/test_install_roundtrip.py -v
 uv run pytest tests/core/test_cli.py -v
-uv run pytest tests/ -v
+uv run pytest tests/ -v --dist=loadscope
+HEAVY_SUITE_IGNORE_ARGS="$(uv run python - <<'PY'
+from tests.conftest import complementary_heavy_suite_ignore_args
+print(' '.join(complementary_heavy_suite_ignore_args()))
+PY
+)" uv run pytest tests/ -v --full-suite --dist=loadscope $HEAVY_SUITE_IGNORE_ARGS
 ```
 
 Cross-runtime release checks:
