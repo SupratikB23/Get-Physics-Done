@@ -2769,6 +2769,16 @@ def result_deps(
     _output(result_deps(_load_state_dict(), result_id))
 
 
+@result_app.command("downstream")
+def result_downstream(
+    result_id: str = typer.Argument(..., help="Canonical result ID"),
+) -> None:
+    """Find all results that depend on the given result, transitively."""
+    from gpd.core.results import result_downstream
+
+    _output(result_downstream(_load_state_dict(), result_id))
+
+
 def _print_result_show_dependencies(
     title: str,
     dependencies: list[object],

@@ -27,6 +27,7 @@ __all__ = [
     "ResultSearchResult",
     "ResultUpsertResult",
     "ResultDeps",
+    "ResultDownstream",
     "MissingDep",
     "result_add",
     "result_list",
@@ -34,6 +35,7 @@ __all__ = [
     "result_upsert",
     "result_upsert_derived",
     "result_deps",
+    "result_downstream",
     "result_verify",
     "result_update",
 ]
@@ -68,6 +70,16 @@ class ResultDeps(BaseModel):
     depends_on: list[str]
     direct_deps: list[IntermediateResult | MissingDep]
     transitive_deps: list[IntermediateResult | MissingDep]
+
+
+class ResultDownstream(BaseModel):
+    """Reverse dependency trace for a result — all results that depend on it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    result: IntermediateResult
+    direct_dependents: list[IntermediateResult]
+    transitive_dependents: list[IntermediateResult]
 
 
 class ResultSearchResult(BaseModel):
@@ -718,6 +730,69 @@ def result_deps(state: dict, result_id: str) -> ResultDeps:
         depends_on=list(direct_dep_ids),
         direct_deps=direct_deps,
         transitive_deps=transitive_deps,
+    )
+
+
+@instrument_gpd_function("results.downstream")
+def result_downstream(state: dict, result_id: str) -> ResultDownstream:
+    """Find all results that depend on the given result, transitively.
+
+    Returns the result, its direct dependents (results whose ``depends_on``
+    includes *result_id*), and transitive dependents (results that depend on
+    those, and so on).
+
+    Raises ResultNotFoundError if result_id is not found.
+    """
+    results = state.get("intermediate_results", [])
+    idx = _find_result_index(results, result_id)
+    if idx == -1:
+        raise ResultNotFoundError(result_id)
+
+    result = results[idx]
+
+    # Build a mapping from result ID to its parsed dict for all structured entries.
+    by_id: dict[str, dict] = {}
+    for r in results:
+        if isinstance(r, dict) and r.get("id"):
+            by_id[r["id"]] = r
+
+    # Build a reverse adjacency map: for each result, which results list it
+    # in their depends_on?
+    reverse_deps: dict[str, list[str]] = {}
+    for r in results:
+        if not isinstance(r, dict) or not r.get("id"):
+            continue
+        for dep_id in r.get("depends_on", []):
+            reverse_deps.setdefault(dep_id, []).append(r["id"])
+
+    # Direct dependents — results whose depends_on contains result_id.
+    direct_dependent_ids = list(dict.fromkeys(reverse_deps.get(result_id, [])))
+    direct_dependents = [IntermediateResult(**by_id[did]) for did in direct_dependent_ids if did in by_id]
+
+    # Transitive dependents via BFS, excluding direct dependents and the
+    # result itself.
+    visited: set[str] = {result_id}
+    queue: deque[str] = deque(direct_dependent_ids)
+    transitive_dependents: list[IntermediateResult] = []
+    direct_dep_set = set(direct_dependent_ids)
+
+    while queue:
+        dep_id = queue.popleft()
+        if dep_id in visited:
+            continue
+        visited.add(dep_id)
+
+        if dep_id not in direct_dep_set and dep_id in by_id:
+            transitive_dependents.append(IntermediateResult(**by_id[dep_id]))
+
+        for downstream_id in reverse_deps.get(dep_id, []):
+            if downstream_id not in visited:
+                queue.append(downstream_id)
+
+    return ResultDownstream(
+        result=IntermediateResult(**result),
+        direct_dependents=direct_dependents,
+        transitive_dependents=transitive_dependents,
     )
 
 
