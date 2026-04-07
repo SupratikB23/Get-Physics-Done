@@ -74,6 +74,7 @@ from gpd.mcp.verification_contract_policy import (
     VERIFICATION_BINDING_FIELD_NAMES,
     VERIFICATION_BINDING_TARGETS,
     verification_contract_policy_text,
+    verification_contract_surface_summary_text,
 )
 
 logger = configure_mcp_logging("gpd-verification")
@@ -974,6 +975,11 @@ _CONTRACT_REFERENCE_INPUT_SCHEMA: dict[str, object] = _object_schema(
     required=("id", "locator", "why_it_matters"),
     additional_properties=False,
 )
+_CONTRACT_REFERENCE_INPUT_SCHEMA["description"] = (
+    "Closed reference-anchor object. `must_surface` must stay boolean; when it is `true`, "
+    "`applies_to` and `required_actions` must both be non-empty lists. "
+    "`carry_forward_to` names workflow scope labels, never contract ids."
+)
 _CONTRACT_FORBIDDEN_PROXY_INPUT_SCHEMA: dict[str, object] = _object_schema(
     {
         "id": _non_empty_string_schema(),
@@ -1211,6 +1217,17 @@ _RUN_CONTRACT_CHECK_REQUEST_SCHEMA: dict[str, object] = {
         "artifact_content": _non_empty_string_or_null_schema(),
     },
 }
+_RUN_CONTRACT_CHECK_REQUEST_SCHEMA["description"] = (
+    "Closed `run_contract_check` request object. `check_key` is required and accepts the "
+    "canonical check key or a stable numeric id. `contract`, `binding`, `metadata`, "
+    "`observed`, and `artifact_content` are optional sections, but each check still enforces "
+    "its own `schema_required_request_fields` and `schema_required_request_anyof_fields`. "
+    "When `binding` is present, use only the canonical plural `*_ids` arrays surfaced in "
+    "`supported_binding_fields`. Use `suggest_contract_checks(contract, active_checks=...)` "
+    "first to inspect `required_request_fields`, `schema_required_request_fields`, "
+    "`schema_required_request_anyof_fields`, `optional_request_fields`, "
+    "`supported_binding_fields`, and a safe `request_template`."
+)
 all_of_conditions: list[dict[str, object]] = []
 if _RUN_CONTRACT_CHECK_BINDING_CONDITIONS:
     all_of_conditions.extend(_RUN_CONTRACT_CHECK_BINDING_CONDITIONS)
@@ -1702,25 +1719,12 @@ def _serialize_verification_check_entry(check_entry: dict[str, object]) -> dict[
 def _run_contract_check_description() -> str:
     return (
         "Run a contract-aware verification check from a single structured ``request`` object. "
-        "``request.check_key`` is required and must be a non-empty string without leading or trailing "
-        "whitespace. It must name a contract-aware verification check such as "
-        "``contract.limit_recovery`` or ``contract.benchmark_reproduction``. "
+        "The full request contract lives on the ``request`` input schema itself. "
         "``request.contract`` is optional, but proof-oriented checks still require an authoritative "
-        "contract payload. ``request.binding``, ``request.metadata``, and ``request.observed`` are each "
-        "optional objects, but decisive pass/fail verdicts still require the check-specific fields "
-        "inside those objects. When ``request.binding`` is present, its keys must come from the per-check "
-        "``supported_binding_fields`` surfaced by ``suggest_contract_checks(...)``; unsupported or "
-        "irrelevant binding fields are request errors, not soft verification issues. Canonical binding "
-        "fields are plural ``*_ids`` arrays. ``request.check_key`` may be the canonical key or the "
-        "stable numeric id that resolves to the same check. ``request.artifact_content`` is optional "
-        "and must be a string when present. ``project_dir`` is optional, but when the contract uses "
-        "project-local anchors or prior-output paths it should be the absolute project root so those "
-        "references are validated against the correct filesystem context. "
-        f"{verification_contract_policy_text()} "
-        "Use ``suggest_contract_checks(contract, active_checks=...)`` first when you need the exact "
-        "``required_request_fields``, ``schema_required_request_fields``, "
-        "``schema_required_request_anyof_fields``, ``optional_request_fields``, "
-        "``supported_binding_fields``, and ``request_template`` for a given contract-aware check."
+        "contract payload. ``project_dir`` is optional, but when the contract uses project-local anchors "
+        "or prior-output paths it should be the absolute project root so those references are validated "
+        "against the correct filesystem context. "
+        f"{verification_contract_surface_summary_text()}"
     )
 
 
@@ -1731,7 +1735,7 @@ def _suggest_contract_checks_description() -> str:
         "``project_dir`` is optional, but supply the absolute project root whenever the contract uses "
         "project-local anchors or prior-output paths so grounding-sensitive checks see the same root "
         "the model is reasoning about. "
-        f"{verification_contract_policy_text()} "
+        f"{verification_contract_surface_summary_text()} "
         "Use the canonical plan-contract schema for plan-style payloads; this tool returns the exact "
         "request-shape metadata, including ``schema_required_request_fields``, "
         "``schema_required_request_anyof_fields``, ``supported_binding_fields``, and a ``request_template`` safe "

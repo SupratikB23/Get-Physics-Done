@@ -1884,17 +1884,20 @@ def test_format_active_runtime_command_logs_runtime_resolution_failures(caplog: 
     assert "Active runtime resolution failed: detector broke" in caplog.text
 
 
-def test_format_active_runtime_command_propagates_runtime_formatting_failures() -> None:
-    runtime = _RUNTIME_NAMES[0]
+def test_format_active_runtime_command_uses_descriptor_public_surface_without_adapter_lookup() -> None:
+    descriptor = SimpleNamespace(
+        public_command_surface_prefix="/public:",
+        command_prefix="/adapter-only:",
+    )
 
     with patch(
+        "gpd.core.runtime_command_surfaces.resolve_active_runtime_descriptor",
+        return_value=descriptor,
+    ), patch(
         "gpd.adapters.get_adapter",
-        return_value=SimpleNamespace(
-            format_command=lambda action: (_ for _ in ()).throw(RuntimeError(f"format failed: {action}"))
-        ),
+        side_effect=AssertionError("adapter lookup should not be used"),
     ):
-        with pytest.raises(RuntimeError, match=r"format failed: resume-work"):
-            format_active_runtime_command("resume-work", detect_runtime=lambda **kwargs: runtime)
+        assert format_active_runtime_command("resume-work") == "/public:resume-work"
 
 
 def test_build_runtime_hint_payload_uses_generic_runtime_commands_when_no_install_authoritative_runtime(

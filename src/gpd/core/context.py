@@ -1248,34 +1248,12 @@ def _resolve_resume_projection(
     )
 
 
-def _resume_projection_source_name(resume_projection: object) -> str | None:
-    source = getattr(resume_projection, "source", None)
-    if hasattr(source, "value"):
-        source = source.value
-    if not isinstance(source, str):
-        return None
-    stripped = source.strip()
-    return stripped or None
-
-
 def _bounded_segment_resume_origin(resume_projection: object) -> str:
-    continuation = getattr(resume_projection, "continuation", None)
-    segment = getattr(continuation, "bounded_segment", None)
-    recorded_by = getattr(segment, "recorded_by", None)
-    return resume_origin_for_bounded_segment(
-        recorded_by=recorded_by if isinstance(recorded_by, str) else None,
-        source=_resume_projection_source_name(resume_projection),
-    )
+    return resume_origin_for_bounded_segment()
 
 
 def _handoff_resume_origin(resume_projection: object) -> str:
-    continuation = getattr(resume_projection, "continuation", None)
-    handoff = getattr(continuation, "handoff", None)
-    recorded_by = getattr(handoff, "recorded_by", None)
-    return resume_origin_for_handoff(
-        recorded_by=recorded_by if isinstance(recorded_by, str) else None,
-        source=_resume_projection_source_name(resume_projection),
-    )
+    return resume_origin_for_handoff()
 
 
 def _handoff_last_result_id(resume_projection: object) -> str | None:
@@ -1630,7 +1608,6 @@ def _promote_auto_selected_recent_bounded_segment(
     }:
         return continuation_state, False
 
-    recorded_by = _mapping_text(selected_candidate, "source_kind")
     bounded_segment = {
         "segment_status": "paused",
         "resume_file": resume_file,
@@ -1655,7 +1632,7 @@ def _promote_auto_selected_recent_bounded_segment(
     canonical_candidate = build_resume_candidate(
         raw_candidate,
         kind="bounded_segment",
-        origin=resume_origin_for_bounded_segment(recorded_by=recorded_by),
+        origin=resume_origin_for_bounded_segment(),
         resume_pointer=resume_file,
     )
 
@@ -1693,7 +1670,7 @@ def _promote_auto_selected_recent_bounded_segment(
     promoted = dict(continuation_state)
     promoted["active_bounded_segment"] = bounded_segment
     promoted["active_resume_kind"] = "bounded_segment"
-    promoted["active_resume_origin"] = resume_origin_for_bounded_segment(recorded_by=recorded_by)
+    promoted["active_resume_origin"] = resume_origin_for_bounded_segment()
     promoted["active_resume_pointer"] = resume_file
     promoted["resume_candidates"] = _replace_matching_candidate(
         promoted.get("resume_candidates"),

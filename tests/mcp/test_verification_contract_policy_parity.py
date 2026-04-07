@@ -17,6 +17,7 @@ def test_verification_contract_policy_text_stays_aligned_across_public_surfaces(
         VERIFICATION_BINDING_FIELD_NAMES,
         VERIFICATION_BINDING_TARGETS,
         VERIFICATION_CONTRACT_POLICY_TEXT,
+        verification_contract_surface_summary_text,
         verification_server_description,
     )
 
@@ -46,13 +47,16 @@ def test_verification_contract_policy_text_stays_aligned_across_public_surfaces(
         "binding.forbidden_proxy_ids",
     )
     assert verification_descriptor["description"] == verification_server_description()
-    assert infra_descriptor["description"].startswith("GPD physics verification checks.")
+    assert infra_descriptor["description"] == verification_server_description()
     assert tools["run_contract_check"].description is not None
     assert tools["suggest_contract_checks"].description is not None
-    assert tools["run_contract_check"].description.count(VERIFICATION_CONTRACT_POLICY_TEXT) == 1
-    assert tools["suggest_contract_checks"].description.count(VERIFICATION_CONTRACT_POLICY_TEXT) == 1
-    assert "request.check_key" in tools["run_contract_check"].description
-    assert "supported_binding_fields" in tools["run_contract_check"].description
+    assert verification_contract_surface_summary_text() in verification_descriptor["description"]
+    assert verification_descriptor["description"].count(VERIFICATION_CONTRACT_POLICY_TEXT) == 0
+    assert tools["run_contract_check"].description.count(VERIFICATION_CONTRACT_POLICY_TEXT) == 0
+    assert tools["suggest_contract_checks"].description.count(VERIFICATION_CONTRACT_POLICY_TEXT) == 0
+    assert verification_contract_surface_summary_text() in tools["run_contract_check"].description
+    assert verification_contract_surface_summary_text() in tools["suggest_contract_checks"].description
+    assert "``request`` input schema itself" in tools["run_contract_check"].description
     assert "project_dir" in tools["run_contract_check"].description
     assert "request_template" in tools["suggest_contract_checks"].description
     assert "active_checks" in tools["suggest_contract_checks"].description

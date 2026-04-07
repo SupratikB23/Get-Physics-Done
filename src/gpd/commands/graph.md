@@ -1,7 +1,6 @@
 ---
 name: gpd:graph
 description: Visualize dependency graph across phases and identify gaps
-argument-hint: ""
 context_mode: project-required
 allowed-tools:
   - file_read

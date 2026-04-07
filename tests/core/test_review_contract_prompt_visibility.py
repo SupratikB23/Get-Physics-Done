@@ -165,9 +165,9 @@ def test_model_visible_section_renderers_share_one_canonical_wrapper_structure()
     command_section = registry.render_command_requires_section(
         context_mode="project-required",
         project_reentry_capable=False,
-        agent="execute-phase",
+        agent="gpd-planner",
         allowed_tools=["git", "python"],
-        requires={"artifact_manifest": "required"},
+        requires={"files": ["PROJECT.md"]},
     )
     review_contract_payload_data = normalize_review_contract_payload(
         {
@@ -196,9 +196,9 @@ def test_model_visible_section_renderers_share_one_canonical_wrapper_structure()
         payload={
             "context_mode": "project-required",
             "project_reentry_capable": False,
-            "agent": "execute-phase",
+            "agent": "gpd-planner",
             "allowed_tools": ["git", "python"],
-            "requires": {"artifact_manifest": "required"},
+            "requires": {"files": ["PROJECT.md"]},
         },
     )
     assert review_section == _manual_model_visible_yaml_section(
@@ -803,6 +803,87 @@ def test_review_contract_renderer_accepts_publication_artifact_preflight_checks(
     assert "publication_blockers" in section
     assert "reproducibility_manifest" in section
     assert "reproducibility_ready" in section
+
+
+def test_render_agent_requirements_section_normalizes_public_inputs() -> None:
+    section = registry.render_agent_requirements_section(
+        tools=["file_read", "file_read", "file_write"],
+        commit_authority="orchestrator",
+        surface="internal",
+        role_family="analysis",
+        artifact_write_authority="scoped_write",
+        shared_state_authority="return_only",
+    )
+
+    assert "tools:\n- file_read\n- file_write" in section
+
+
+def test_render_command_requires_section_normalizes_public_inputs() -> None:
+    section = registry.render_command_requires_section(
+        context_mode="project-required",
+        project_reentry_capable=False,
+        agent="gpd-planner",
+        allowed_tools=["git", "git", "python"],
+        requires={"files": ["PROJECT.md", "PROJECT.md"]},
+    )
+
+    assert "allowed_tools:\n- git\n- python" in section
+    assert "files:\n  - PROJECT.md" in section
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error_fragment"),
+    [
+        (
+            {
+                "context_mode": "project-aware",
+                "project_reentry_capable": True,
+                "agent": None,
+                "allowed_tools": [],
+                "requires": {},
+            },
+            "requires context_mode 'project-required'",
+        ),
+        (
+            {
+                "context_mode": "project-required",
+                "project_reentry_capable": False,
+                "agent": "execute-phase",
+                "allowed_tools": [],
+                "requires": {},
+            },
+            "Unknown agent",
+        ),
+        (
+            {
+                "context_mode": "project-required",
+                "project_reentry_capable": False,
+                "agent": None,
+                "allowed_tools": [],
+                "requires": {"artifact_manifest": "required"},
+            },
+            "only supports files",
+        ),
+    ],
+)
+def test_render_command_requires_section_rejects_invalid_public_inputs(
+    kwargs: dict[str, object],
+    error_fragment: str,
+) -> None:
+    with pytest.raises(ValueError, match=re.escape(error_fragment)):
+        registry.render_command_requires_section(**kwargs)
+
+
+def test_render_agent_requirements_section_rejects_invalid_public_inputs() -> None:
+    with pytest.raises(ValueError, match="Invalid role_family"):
+        registry.render_agent_requirements_section(
+            tools=["file_read"],
+            commit_authority="orchestrator",
+            surface="internal",
+            role_family="planner",
+            artifact_write_authority="scoped_write",
+            shared_state_authority="return_only",
+        )
 
 
 def test_review_contract_renderer_rejects_invalid_required_state_field() -> None:

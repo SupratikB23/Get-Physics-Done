@@ -1130,6 +1130,17 @@ def _continuation_payload_has_values(payload: object) -> bool:
         return False
 
 
+def _session_payload_has_legacy_recovery_values(payload: object) -> bool:
+    """Return whether a legacy session mirror carries a real recovery target."""
+
+    if not isinstance(payload, dict):
+        return False
+    return any(
+        payload.get(field) is not None
+        for field in ("stopped_at", "resume_file", "last_result_id")
+    )
+
+
 def _session_from_continuation_payload(continuation: object) -> dict[str, str | None]:
     session = _blank_session_payload()
     normalized = _normalize_continuation_payload(continuation)
@@ -1156,13 +1167,18 @@ def _session_from_continuation_payload(continuation: object) -> dict[str, str | 
 
 def _continuation_from_session_payload(
     session: object,
-    *,
-    base_continuation: object = None,
-    only_missing: bool = False,
 ) -> dict[str, object]:
-    """Copy legacy session fields into canonical continuation payloads."""
-    continuation = _normalize_continuation_payload(base_continuation)
+    """Migrate a legacy session mirror into canonical continuation state.
+
+    Only resume-relevant legacy handoff data is migrated. Identity-only session
+    mirrors should stay advisory metadata rather than minting canonical
+    continuation authority on their own.
+    """
+
+    continuation = _normalize_continuation_payload(None)
     if not isinstance(session, dict):
+        return continuation
+    if not _session_payload_has_legacy_recovery_values(session):
         return continuation
 
     recorded_at = _optional_state_text(session.get("last_date"))
@@ -1178,8 +1194,6 @@ def _continuation_from_session_payload(
         for key, value in updates.items():
             if value is None:
                 continue
-            if only_missing and handoff.get(key) is not None:
-                continue
             handoff[key] = value
     if isinstance(machine, dict):
         updates = {
@@ -1189,8 +1203,6 @@ def _continuation_from_session_payload(
         }
         for key, value in updates.items():
             if value is None:
-                continue
-            if only_missing and machine.get(key) is not None:
                 continue
             machine[key] = value
     return continuation

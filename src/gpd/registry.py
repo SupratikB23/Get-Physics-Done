@@ -532,16 +532,16 @@ def _validate_raw_agent_frontmatter(frontmatter: str | None, *, agent_name: str)
 
 
 @lru_cache(maxsize=1)
-def _canonical_agent_names() -> frozenset[str]:
+def _canonical_agent_names(agents_dir: Path) -> frozenset[str]:
     """Return validated built-in agent names from the canonical package tree."""
 
-    return frozenset(load_agents_from_dir(_PKG_ROOT / "agents"))
+    return frozenset(load_agents_from_dir(agents_dir))
 
 
 def canonical_agent_names() -> tuple[str, ...]:
     """Return the sorted built-in agent labels accepted by command frontmatter."""
 
-    return tuple(sorted(_canonical_agent_names()))
+    return tuple(sorted(_canonical_agent_names(AGENTS_DIR)))
 
 
 def _parse_project_reentry_capable(raw: object, *, command_name: str, context_mode: str) -> bool:
@@ -669,6 +669,52 @@ def _agent_requirements_payload(
     }
 
 
+def _normalize_agent_requirements_inputs(
+    *,
+    tools: list[str],
+    commit_authority: str,
+    surface: str,
+    role_family: str,
+    artifact_write_authority: str,
+    shared_state_authority: str,
+) -> dict[str, object]:
+    """Validate and canonicalize public agent-requirements render inputs."""
+
+    owner_name = "rendered agent requirements"
+    return _agent_requirements_payload(
+        tools=_parse_tools(list(tools), owner_name=owner_name),
+        commit_authority=_parse_commit_authority(commit_authority, agent_name=owner_name),
+        surface=_parse_agent_metadata_enum(
+            surface,
+            field_name="surface",
+            agent_name=owner_name,
+            valid_values=AGENT_SURFACES,
+            default="internal",
+        ),
+        role_family=_parse_agent_metadata_enum(
+            role_family,
+            field_name="role_family",
+            agent_name=owner_name,
+            valid_values=AGENT_ROLE_FAMILIES,
+            default="analysis",
+        ),
+        artifact_write_authority=_parse_agent_metadata_enum(
+            artifact_write_authority,
+            field_name="artifact_write_authority",
+            agent_name=owner_name,
+            valid_values=AGENT_ARTIFACT_WRITE_AUTHORITIES,
+            default="scoped_write",
+        ),
+        shared_state_authority=_parse_agent_metadata_enum(
+            shared_state_authority,
+            field_name="shared_state_authority",
+            agent_name=owner_name,
+            valid_values=AGENT_SHARED_STATE_AUTHORITIES,
+            default="return_only",
+        ),
+    )
+
+
 def render_agent_requirements_section(
     *,
     tools: list[str],
@@ -680,17 +726,18 @@ def render_agent_requirements_section(
 ) -> str:
     """Render a model-visible agent-contract block for agent prompt bodies."""
 
+    normalized_payload = _normalize_agent_requirements_inputs(
+        tools=tools,
+        commit_authority=commit_authority,
+        surface=surface,
+        role_family=role_family,
+        artifact_write_authority=artifact_write_authority,
+        shared_state_authority=shared_state_authority,
+    )
     return render_model_visible_yaml_section(
         heading="Agent Requirements",
         note=agent_visibility_note(),
-        payload=_agent_requirements_payload(
-            tools=tools,
-            commit_authority=commit_authority,
-            surface=surface,
-            role_family=role_family,
-            artifact_write_authority=artifact_write_authority,
-            shared_state_authority=shared_state_authority,
-        ),
+        payload=normalized_payload,
     )
 
 
@@ -715,6 +762,31 @@ def _command_visibility_payload(
     return payload
 
 
+def _normalize_command_visibility_inputs(
+    *,
+    context_mode: str,
+    project_reentry_capable: bool,
+    agent: str | None = None,
+    allowed_tools: list[str],
+    requires: dict[str, object],
+) -> dict[str, object]:
+    """Validate and canonicalize public command-requirements render inputs."""
+
+    command_name = "rendered command requirements"
+    normalized_context_mode = _parse_context_mode(context_mode, command_name=command_name)
+    return _command_visibility_payload(
+        context_mode=normalized_context_mode,
+        project_reentry_capable=_parse_project_reentry_capable(
+            project_reentry_capable,
+            command_name=command_name,
+            context_mode=normalized_context_mode,
+        ),
+        agent=_parse_command_agent(agent, command_name=command_name),
+        allowed_tools=_parse_allowed_tools(allowed_tools, command_name=command_name),
+        requires=_parse_requires(requires, command_name=command_name),
+    )
+
+
 def render_command_requires_section(
     *,
     context_mode: str,
@@ -725,16 +797,17 @@ def render_command_requires_section(
 ) -> str:
     """Render model-visible execution constraints from command frontmatter."""
 
+    normalized_payload = _normalize_command_visibility_inputs(
+        context_mode=context_mode,
+        project_reentry_capable=project_reentry_capable,
+        agent=agent,
+        allowed_tools=allowed_tools,
+        requires=requires,
+    )
     return render_model_visible_yaml_section(
         heading="Command Requirements",
         note=command_visibility_note(),
-        payload=_command_visibility_payload(
-            context_mode=context_mode,
-            project_reentry_capable=project_reentry_capable,
-            agent=agent,
-            allowed_tools=allowed_tools,
-            requires=requires,
-        ),
+        payload=normalized_payload,
     )
 
 

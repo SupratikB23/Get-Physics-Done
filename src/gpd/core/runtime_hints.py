@@ -239,7 +239,14 @@ def _project_reentry_summary(
     return None
 
 
-def _runtime_command(action: str, *, cwd: Path) -> str | None:
+def _runtime_command(action: str, *, cwd: Path, runtime_name: str | None = None) -> str | None:
+    if runtime_name is not None:
+        return format_active_runtime_command(
+            action,
+            cwd=cwd,
+            detect_runtime=lambda **kwargs: runtime_name,
+            fallback=None,
+        )
     return format_active_runtime_command(action, cwd=cwd, fallback=None)
 
 
@@ -503,6 +510,7 @@ def build_runtime_hint_payload(
         if include_recovery and reentry is not None and reentry.resolved_project_root is not None
         else workspace_project_root
     )
+    surface_runtime = _installed_runtime_for_surface(project_root)
 
     execution_visibility = derive_execution_visibility(project_root)
     execution = _model_dump(execution_visibility)
@@ -536,6 +544,14 @@ def build_runtime_hint_payload(
             else:
                 resume_context.pop("project_reentry_candidates", None)
                 resume_context.pop("project_reentry_selected_candidate", None)
+    cost_summary = build_cost_summary(project_root, data_root=data_root, last_sessions=cost_last_sessions) if include_cost else None
+    cost = _cost_payload(cost_summary) if cost_summary is not None else {}
+    cost_advisory = _cost_advisory(cost_summary) if cost_summary is not None else None
+    if cost_advisory is not None:
+        cost["advisory"] = cost_advisory
+
+    resolved_runtime = surface_runtime if surface_runtime is not None else cost_summary.active_runtime if cost_summary is not None else None
+
     recovery_advice = None
     if include_recovery and reentry is not None:
         recovery_advice = build_recovery_advice(
@@ -543,8 +559,8 @@ def build_runtime_hint_payload(
             data_root=data_root,
             recent_rows=recent_rows,
             resume_payload=resume_context,
-            continue_command=_runtime_command("resume-work", cwd=project_root),
-            fast_next_command=_runtime_command("suggest-next", cwd=project_root),
+            continue_command=_runtime_command("resume-work", cwd=project_root, runtime_name=resolved_runtime),
+            fast_next_command=_runtime_command("suggest-next", cwd=project_root, runtime_name=resolved_runtime),
         )
     recovery = (
         {
@@ -572,13 +588,6 @@ def build_runtime_hint_payload(
         orientation["project_root_source"] = _suggestion_text(reentry, "source")
         orientation["project_root_auto_selected"] = _strict_bool_value(getattr(reentry, "auto_selected", None)) is True
         orientation["project_reentry_mode"] = _suggestion_text(reentry, "mode")
-    cost_summary = build_cost_summary(project_root, data_root=data_root, last_sessions=cost_last_sessions) if include_cost else None
-    cost = _cost_payload(cost_summary) if cost_summary is not None else {}
-    cost_advisory = _cost_advisory(cost_summary) if cost_summary is not None else None
-    if cost_advisory is not None:
-        cost["advisory"] = cost_advisory
-
-    surface_runtime = _installed_runtime_for_surface(project_root)
     surface_session_id = _current_session_id_for_surface(project_root)
 
     normalized_latex_capability = _normalize_latex_capability(latex_capability)
@@ -597,7 +606,7 @@ def build_runtime_hint_payload(
         "current_session_id": (
             surface_session_id if surface_session_id is not None else cost_summary.current_session_id if cost_summary is not None else None
         ),
-        "active_runtime": surface_runtime if surface_runtime is not None else cost_summary.active_runtime if cost_summary is not None else None,
+        "active_runtime": resolved_runtime,
         "model_profile": cost_summary.model_profile if cost_summary is not None else None,
         "base_ready": base_ready,
         "latex_capability": normalized_latex_capability,

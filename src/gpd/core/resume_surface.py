@@ -9,7 +9,6 @@ output, and other public surfaces do not each reinvent resume normalization.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from copy import deepcopy
 
 __all__ = [
     "RESUME_COMPATIBILITY_ALIAS_FIELDS",
@@ -258,24 +257,13 @@ def resume_candidate_kind(candidate: Mapping[str, object]) -> str | None:
 
 
 def resume_origin_for_bounded_segment(
-    *,
-    recorded_by: str | None = None,
-    source: str | None = None,
 ) -> str:
     """Return the canonical origin for a bounded execution candidate."""
-    _ = recorded_by
-    _ = source
     return RESUME_CANDIDATE_ORIGIN_CONTINUATION_BOUNDED_SEGMENT
 
 
-def resume_origin_for_handoff(
-    *,
-    recorded_by: str | None = None,
-    source: str | None = None,
-) -> str:
+def resume_origin_for_handoff() -> str:
     """Return the canonical origin for a recorded handoff candidate."""
-    _ = recorded_by
-    _ = source
     return RESUME_CANDIDATE_ORIGIN_CONTINUATION_HANDOFF
 
 
@@ -286,12 +274,9 @@ def resume_origin_for_interrupted_agent() -> str:
 
 def resume_candidate_origin_from_source(
     source: str | None,
-    *,
-    recorded_by: str | None = None,
 ) -> str | None:
     """Map a raw candidate source label to a canonical origin string."""
     normalized = (source or "").strip()
-    _ = recorded_by
     if normalized == "current_execution":
         return RESUME_CANDIDATE_ORIGIN_CONTINUATION_BOUNDED_SEGMENT
     if normalized == "session_resume_file":
@@ -307,10 +292,7 @@ def resume_candidate_origin(candidate: Mapping[str, object]) -> str | None:
     if isinstance(origin, str) and origin.strip():
         return _canonical_resume_origin(origin)
     source = candidate.get("source")
-    return resume_candidate_origin_from_source(
-        str(source).strip() if isinstance(source, str) else None,
-        recorded_by=candidate.get("recorded_by") if isinstance(candidate.get("recorded_by"), str) else None,
-    )
+    return resume_candidate_origin_from_source(str(source).strip() if isinstance(source, str) else None)
 
 
 def _resume_candidate_exposes_local_target(candidate: Mapping[str, object]) -> bool:
@@ -366,23 +348,19 @@ def resume_payload_has_local_recovery_target(payload: Mapping[str, object] | Non
         for candidate in candidates
     )
 
-def _strip_resume_surface_compatibility_keys(
-    value: object,
+def _strip_top_level_resume_surface_compatibility_keys(
+    payload: Mapping[str, object],
     *,
     compat_fields: frozenset[str],
-) -> object:
-    if isinstance(value, Mapping):
-        cleaned: dict[object, object] = {}
-        for key, item in value.items():
-            if isinstance(key, str) and (key in compat_fields or key in _RESUME_LEGACY_WRAPPER_KEYS):
-                continue
-            cleaned[key] = _strip_resume_surface_compatibility_keys(item, compat_fields=compat_fields)
-        return cleaned
-    if isinstance(value, list):
-        return [_strip_resume_surface_compatibility_keys(item, compat_fields=compat_fields) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_strip_resume_surface_compatibility_keys(item, compat_fields=compat_fields) for item in value)
-    return value
+) -> dict[str, object]:
+    """Drop only top-level legacy aliases from one public resume payload."""
+
+    cleaned: dict[str, object] = {}
+    for key, value in payload.items():
+        if key in compat_fields or key in _RESUME_LEGACY_WRAPPER_KEYS:
+            continue
+        cleaned[key] = value
+    return cleaned
 
 
 def canonicalize_resume_public_payload(
@@ -391,8 +369,7 @@ def canonicalize_resume_public_payload(
     compat_fields: Sequence[str] = RESUME_COMPATIBILITY_ALIAS_FIELDS,
 ) -> dict[str, object]:
     """Strip legacy resume aliases from one public payload."""
-    canonical = deepcopy(payload)
-    return _strip_resume_surface_compatibility_keys(
-        canonical,
+    return _strip_top_level_resume_surface_compatibility_keys(
+        dict(payload),
         compat_fields=frozenset(compat_fields),
     )

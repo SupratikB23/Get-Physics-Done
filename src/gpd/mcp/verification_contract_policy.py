@@ -7,6 +7,12 @@ VERIFICATION_SERVER_DESCRIPTION_INTRO = (
     "dimensional analysis, domain and bundle-specific checklists, limiting case checks, "
     "symmetry verification, and coverage gap analysis."
 )
+VERIFICATION_CONTRACT_SURFACE_SUMMARY_TEXT = (
+    "Contract-aware request surfaces are closed and schema-driven. The full contract payload "
+    "rules live on the `contract` input schema. Proof-oriented checks still require an "
+    "authoritative contract payload. Use `suggest_contract_checks(...)` to surface the exact "
+    "per-check request metadata before calling `run_contract_check(...)`."
+)
 
 VERIFICATION_BINDING_TARGETS = (
     "observable",
@@ -67,7 +73,13 @@ def verification_contract_policy_text() -> str:
     return VERIFICATION_CONTRACT_POLICY_TEXT
 
 
+def verification_contract_surface_summary_text() -> str:
+    """Return the concise shared summary for public tool and server descriptions."""
+
+    return VERIFICATION_CONTRACT_SURFACE_SUMMARY_TEXT
+
+
 def verification_server_description() -> str:
     """Return the public verification server description."""
 
-    return f"{VERIFICATION_SERVER_DESCRIPTION_INTRO} {VERIFICATION_CONTRACT_POLICY_TEXT}"
+    return f"{VERIFICATION_SERVER_DESCRIPTION_INTRO} {VERIFICATION_CONTRACT_SURFACE_SUMMARY_TEXT}"

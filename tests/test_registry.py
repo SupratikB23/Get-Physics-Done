@@ -11,7 +11,6 @@ from gpd.core.model_visible_text import agent_visibility_note, command_visibilit
 from gpd.registry import (
     AgentDef,
     CommandDef,
-    ReviewContractConditionalRequirement,
     SkillDef,
     _parse_agent_file,
     _parse_command_file,
@@ -1639,6 +1638,17 @@ class TestPublicAPI:
         registry.invalidate_cache()
 
         assert registry.list_agents() == ["alpha", "bravo", "charlie"]
+
+    def test_canonical_agent_names_follows_monkeypatched_agent_root(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        agents_dir = tmp_path / "patched-agents"
+        agents_dir.mkdir()
+        (agents_dir / "zeta.md").write_text("---\nname: zeta\n---\nPrompt.", encoding="utf-8")
+        (agents_dir / "alpha.md").write_text("---\nname: alpha\n---\nPrompt.", encoding="utf-8")
+
+        monkeypatch.setattr(registry, "AGENTS_DIR", agents_dir)
+        registry.invalidate_cache()
+
+        assert registry.canonical_agent_names() == ("alpha", "zeta")
 
     def test_load_agents_from_dir_parses_arbitrary_agent_directory(self, tmp_path: Path) -> None:
         agents_dir = tmp_path / "agents"

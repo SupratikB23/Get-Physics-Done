@@ -47,8 +47,8 @@ from gpd.core.publication_review_paths import (
     manuscript_matches_review_artifact_path,
     review_artifact_round,
 )
-from gpd.core.runtime_command_surfaces import format_active_runtime_command
 from gpd.core.reproducibility import compute_sha256
+from gpd.core.runtime_command_surfaces import format_active_runtime_command
 from gpd.core.utils import (
     is_phase_complete as _is_phase_complete,
 )

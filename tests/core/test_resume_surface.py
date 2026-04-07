@@ -12,6 +12,8 @@ from gpd.core.resume_surface import (
     resume_candidate_kind,
     resume_candidate_origin,
     resume_candidate_origin_from_source,
+    resume_origin_for_bounded_segment,
+    resume_origin_for_handoff,
     resume_payload_has_local_recovery_target,
 )
 
@@ -48,6 +50,11 @@ def test_resume_candidate_helpers_normalize_raw_and_canonical_shapes_to_canonica
     assert resume_candidate_origin_from_source("interrupted_agent") == "interrupted_agent_marker"
     assert resume_candidate_kind(canonical_candidate) == "continuity_handoff"
     assert resume_candidate_origin(canonical_candidate) == "continuation.handoff"
+
+
+def test_resume_origin_helpers_return_canonical_origins_without_provenance_inputs() -> None:
+    assert resume_origin_for_bounded_segment() == "continuation.bounded_segment"
+    assert resume_origin_for_handoff() == "continuation.handoff"
 
 
 def test_resume_payload_has_local_recovery_target_recognizes_supported_resume_families() -> None:
@@ -244,3 +251,28 @@ def test_canonicalize_resume_public_payload_keeps_canonical_fields_and_strips_le
     assert "resume_surface" not in canonical
     assert payload["compat_resume_surface"]["resume_candidates"][0]["kind"] == "bounded_segment"
     assert payload["resume_surface"]["active_resume_result"]["id"] == "legacy-result"
+
+
+def test_canonicalize_resume_public_payload_preserves_nested_business_data_with_legacy_like_keys() -> None:
+    payload = {
+        "active_resume_result": {
+            "id": "result-canonical",
+            "resume_surface": {"note": "nested result metadata must survive"},
+            "current_execution": {"phase": "04"},
+        },
+        "recovery": {
+            "resume_mode": "keep-this-nested-value",
+            "session_resume_file": "not-a-top-level-alias",
+        },
+        "resume_mode": "continuity_handoff",
+        "session_resume_file": "GPD/phases/04/.continue-here.md",
+    }
+
+    canonical = canonicalize_resume_public_payload(payload)
+
+    assert "resume_mode" not in canonical
+    assert "session_resume_file" not in canonical
+    assert canonical["active_resume_result"]["resume_surface"] == {"note": "nested result metadata must survive"}
+    assert canonical["active_resume_result"]["current_execution"] == {"phase": "04"}
+    assert canonical["recovery"]["resume_mode"] == "keep-this-nested-value"
+    assert canonical["recovery"]["session_resume_file"] == "not-a-top-level-alias"

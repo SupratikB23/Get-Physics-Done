@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from gpd.adapters import iter_adapters
 from gpd.adapters.runtime_catalog import get_shared_install_metadata, iter_runtime_descriptors
@@ -367,6 +368,30 @@ def test_runtime_pattern_includes_capability_surface_literals() -> None:
 
     for literal in capability_literals:
         assert re.search(_RUNTIME_PATTERN, literal) is not None
+
+
+def test_loaded_runtime_descriptors_keep_public_command_surfaces_descriptor_owned() -> None:
+    public_prefixes = {descriptor.public_command_surface_prefix for descriptor in _RUNTIME_DESCRIPTORS}
+
+    assert all(public_prefixes)
+    assert public_prefixes == {descriptor.command_prefix for descriptor in _RUNTIME_DESCRIPTORS}
+
+
+def test_runtime_public_command_prefixes_use_descriptor_public_surface(monkeypatch) -> None:
+    descriptors = (
+        SimpleNamespace(public_command_surface_prefix="/public:", command_prefix="/adapter-only:"),
+        SimpleNamespace(public_command_surface_prefix="$public-", command_prefix="$adapter-only-"),
+    )
+    monkeypatch.setattr("gpd.adapters.runtime_catalog.iter_runtime_descriptors", lambda: descriptors)
+    runtime_public_command_prefixes.cache_clear()
+    try:
+        prefixes = runtime_public_command_prefixes()
+    finally:
+        runtime_public_command_prefixes.cache_clear()
+
+    assert set(prefixes) == {"/public:", "$public-"}
+    assert "/adapter-only:" not in prefixes
+    assert "$adapter-only-" not in prefixes
 
 
 def _readme_optional_terminal_reference() -> str:

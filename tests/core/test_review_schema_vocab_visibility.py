@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Literal, get_args, get_origin
 
 from gpd.contracts import (
-    ComparisonVerdict,
-    ContractProofAudit,
     PROOF_AUDIT_COUNTEREXAMPLE_STATUS_VALUES,
     PROOF_AUDIT_QUANTIFIER_STATUS_VALUES,
     PROOF_AUDIT_SCOPE_STATUS_VALUES,
+    ComparisonVerdict,
+    ContractProofAudit,
     VerificationEvidence,
 )
 from gpd.mcp.paper.models import (

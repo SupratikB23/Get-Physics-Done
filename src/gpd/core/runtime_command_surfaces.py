@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from gpd.adapters.runtime_catalog import get_runtime_descriptor, normalize_runtime_name
+from gpd.adapters.runtime_catalog import RuntimeDescriptor, get_runtime_descriptor, normalize_runtime_name
 
 __all__ = ["format_active_runtime_command", "resolve_active_runtime_descriptor"]
 
@@ -17,7 +17,7 @@ def resolve_active_runtime_descriptor(
     *,
     cwd: Path | None = None,
     detect_runtime: Callable[..., str | None] | None = None,
-) -> object | None:
+) -> RuntimeDescriptor | None:
     """Return the active runtime descriptor, or ``None`` when resolution fails."""
     from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, detect_runtime_for_gpd_use
 
@@ -47,9 +47,8 @@ def format_active_runtime_command(
     fallback: str | None = None,
 ) -> str | None:
     """Return the active runtime's formatted public command, or *fallback* when no runtime is detected."""
-    from gpd.adapters import get_adapter
-
     descriptor = resolve_active_runtime_descriptor(cwd=cwd, detect_runtime=detect_runtime)
     if descriptor is None:
         return fallback
-    return get_adapter(descriptor.runtime_name).format_command(action)
+    prefix = descriptor.public_command_surface_prefix or descriptor.command_prefix
+    return f"{prefix}{action}"

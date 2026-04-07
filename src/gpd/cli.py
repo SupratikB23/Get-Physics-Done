@@ -6002,7 +6002,7 @@ def _active_runtime_command_prefix(*, cwd: Path | None = None) -> str | None:
     )
     if descriptor is None:
         return None
-    return descriptor.public_command_surface_prefix
+    return descriptor.public_command_surface_prefix or descriptor.command_prefix
 
 
 def _active_runtime_validated_surface(*, cwd: Path | None = None) -> str | None:

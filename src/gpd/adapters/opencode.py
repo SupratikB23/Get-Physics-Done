@@ -1059,10 +1059,7 @@ class OpenCodeAdapter(RuntimeAdapter):
         return convert_claude_to_opencode_frontmatter(content, path_prefix)
 
     def translate_shared_command_references(self, content: str) -> str:
-        return content.replace("/gpd:", self.command_prefix)
-
-    def format_command(self, action: str) -> str:
-        return f"/gpd-{action}"
+        return content.replace("/gpd:", self.public_command_surface_prefix)
 
     def get_commit_attribution(self, *, explicit_config_dir: str | None = None) -> str | None:
         """OpenCode opts out when `disable_ai_attribution` is enabled."""

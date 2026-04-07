@@ -203,6 +203,11 @@ class RuntimeAdapter(abc.ABC):
         return self.runtime_descriptor.command_prefix
 
     @property
+    def public_command_surface_prefix(self) -> str:
+        """Public runtime command prefix used on shared surfaces."""
+        return self.runtime_descriptor.public_command_surface_prefix or self.command_prefix
+
+    @property
     def tool_alias_map(self) -> Mapping[str, str]:
         """Runtime-native tool aliases back to canonical GPD names."""
         return build_runtime_alias_map(self.tool_name_map)
@@ -308,8 +313,8 @@ class RuntimeAdapter(abc.ABC):
         return Path(cwd or os.getcwd()) / self.local_config_dir_name
 
     def format_command(self, action: str) -> str:
-        """Format a runtime-native GPD command."""
-        return f"{self.command_prefix}{action}"
+        """Format a public runtime GPD command."""
+        return f"{self.public_command_surface_prefix}{action}"
 
     @property
     def update_command(self) -> str:

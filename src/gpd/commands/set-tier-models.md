@@ -1,7 +1,6 @@
 ---
 name: gpd:set-tier-models
 description: Configure concrete tier-1/tier-2/tier-3 model IDs for the active runtime
-argument-hint: ""
 context_mode: projectless
 allowed-tools:
   - file_read

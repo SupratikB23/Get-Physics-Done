@@ -21,6 +21,7 @@ from gpd.core.state import (
     ensure_state_schema,
     generate_state_markdown,
     load_state_json,
+    parse_state_to_json,
     peek_state_json,
     save_state_json,
     save_state_markdown,
@@ -130,6 +131,91 @@ def test_default_state_dict_position_defaults():
     assert pos["progress_percent"] == 0
     assert s["continuation"]["handoff"]["resume_file"] is None
     assert s["project_contract"] is None
+
+
+def test_parse_state_to_json_import_legacy_session_requires_resume_relevant_fields() -> None:
+    markdown = (
+        "# STATE\n\n"
+        "## Project\n\n"
+        "**Core Research Question:** What is the benchmark?\n"
+        "**Current Focus:** Recovery\n"
+        "**PROJECT.md Updated:** No\n\n"
+        "## Position\n\n"
+        "**Current Phase:** 03\n"
+        "**Current Phase Name:** Analysis\n"
+        "**Total Phases:** 4\n"
+        "**Current Plan:** 02\n"
+        "**Total Plans in Phase:** 3\n"
+        "**Status:** Executing\n"
+        "**Progress:** 40%\n\n"
+        "## Session Continuity\n\n"
+        "**Last session:** 2026-04-01T12:00:00+00:00\n"
+        "**Hostname:** legacy-host\n"
+        "**Platform:** legacy-platform\n"
+        "**Stopped at:** —\n"
+        "**Resume file:** —\n"
+        "**Last result ID:** —\n\n"
+        "## Decisions\n\nNone.\n\n"
+        "## Blockers\n\nNone.\n\n"
+        "## Performance Metrics\n\nNone.\n\n"
+        "## Active Calculations\n\nNone.\n\n"
+        "## Intermediate Results\n\nNone.\n\n"
+        "## Open Questions\n\nNone.\n\n"
+        "## Active Approximations\n\nNone.\n\n"
+        "## Convention Lock\n\nNone.\n\n"
+        "## Propagated Uncertainties\n\nNone.\n\n"
+        "## Pending Todos\n\nNone.\n"
+    )
+
+    parsed = parse_state_to_json(markdown, import_legacy_session=True)
+
+    assert parsed["continuation"]["handoff"]["resume_file"] is None
+    assert parsed["continuation"]["handoff"]["stopped_at"] is None
+    assert parsed["continuation"]["machine"]["hostname"] is None
+    assert parsed["continuation"]["machine"]["platform"] is None
+
+
+def test_parse_state_to_json_import_legacy_session_keeps_real_handoff_and_machine_context() -> None:
+    markdown = (
+        "# STATE\n\n"
+        "## Project\n\n"
+        "**Core Research Question:** What is the benchmark?\n"
+        "**Current Focus:** Recovery\n"
+        "**PROJECT.md Updated:** No\n\n"
+        "## Position\n\n"
+        "**Current Phase:** 03\n"
+        "**Current Phase Name:** Analysis\n"
+        "**Total Phases:** 4\n"
+        "**Current Plan:** 02\n"
+        "**Total Plans in Phase:** 3\n"
+        "**Status:** Paused\n"
+        "**Progress:** 40%\n\n"
+        "## Session Continuity\n\n"
+        "**Last session:** 2026-04-01T12:00:00+00:00\n"
+        "**Hostname:** legacy-host\n"
+        "**Platform:** legacy-platform\n"
+        "**Stopped at:** Phase 03 Plan 02\n"
+        "**Resume file:** GPD/phases/03-analysis/.continue-here.md\n"
+        "**Last result ID:** result-7\n\n"
+        "## Decisions\n\nNone.\n\n"
+        "## Blockers\n\nNone.\n\n"
+        "## Performance Metrics\n\nNone.\n\n"
+        "## Active Calculations\n\nNone.\n\n"
+        "## Intermediate Results\n\nNone.\n\n"
+        "## Open Questions\n\nNone.\n\n"
+        "## Active Approximations\n\nNone.\n\n"
+        "## Convention Lock\n\nNone.\n\n"
+        "## Propagated Uncertainties\n\nNone.\n\n"
+        "## Pending Todos\n\nNone.\n"
+    )
+
+    parsed = parse_state_to_json(markdown, import_legacy_session=True)
+
+    assert parsed["continuation"]["handoff"]["resume_file"] == "GPD/phases/03-analysis/.continue-here.md"
+    assert parsed["continuation"]["handoff"]["stopped_at"] == "Phase 03 Plan 02"
+    assert parsed["continuation"]["handoff"]["last_result_id"] == "result-7"
+    assert parsed["continuation"]["machine"]["hostname"] == "legacy-host"
+    assert parsed["continuation"]["machine"]["platform"] == "legacy-platform"
 
 
 # ─── ensure_state_schema ─────────────────────────────────────────────────────
