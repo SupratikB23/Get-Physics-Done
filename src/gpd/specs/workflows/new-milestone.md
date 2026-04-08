@@ -430,7 +430,7 @@ Create research roadmap for milestone v[X.Y]:
 6. Derive 2-5 success criteria per phase (concrete, verifiable results)
 7. Validate 100% objective coverage and surface all contract-critical items touched by this milestone
 8. Write files immediately (ROADMAP.md, STATE.md, update REQUIREMENTS.md traceability) while preserving existing `GPD/state.json` fields, especially `project_contract`
-9. Return ROADMAP CREATED with summary
+9. Return `gpd_return.status: completed` with summary
 
 Write files first, then return.
 </instructions>
@@ -458,11 +458,11 @@ shared_state_policy: return_only
 
 **If the roadmapper agent fails to spawn or returns an error:** Check if ROADMAP.md was partially written. If it exists and has phases, offer to proceed with it. If no ROADMAP.md, offer: 1) Retry the roadmapper, 2) Create ROADMAP.md in the main context using PROJECT.md and REQUIREMENTS.md.
 
-**Artifact gate:** If the roadmapper reports `## ROADMAP CREATED` but `GPD/ROADMAP.md` or `GPD/STATE.md` is missing, treat the handoff as incomplete. Do not trust the runtime handoff status by itself. Offer: 1) Retry the roadmapper, 2) Create the missing artifacts in the main context, 3) Abort and inspect the partial write.
+**Artifact gate:** If the roadmapper reports `gpd_return.status: completed` but `GPD/ROADMAP.md` or `GPD/STATE.md` is missing, treat the handoff as incomplete. Do not trust the runtime handoff status by itself. Offer: 1) Retry the roadmapper, 2) Create the missing artifacts in the main context, 3) Abort and inspect the partial write.
 
-**If `## ROADMAP BLOCKED`:** Present blocker, work with user, re-spawn.
+**If `gpd_return.status: blocked`:** Present blocker, work with user, re-spawn.
 
-**If `## ROADMAP CREATED`:** Read ROADMAP.md, present inline:
+**If `gpd_return.status: completed`:** Read ROADMAP.md, present inline:
 
 ```
 ## Proposed Research Roadmap

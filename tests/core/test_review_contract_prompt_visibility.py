@@ -1084,6 +1084,8 @@ def test_author_response_template_is_canonical_and_mentions_new_calculation_trac
     assert "templates/paper/author-response.md" in referee_response
     assert "needs-calculation" in referee_response
     assert "templates/paper/author-response.md" in writer
+    assert "{GPD_INSTALL_DIR}/templates/paper/author-response.md" in writer
+    assert "@{GPD_INSTALL_DIR}/templates/paper/author-response.md" not in writer
     assert "needs-calculation" in writer
 
 
@@ -1163,17 +1165,24 @@ def test_research_verification_template_surfaces_non_empty_uncertainty_markers()
 
 
 def test_write_paper_prompt_discovers_plan_scoped_phase_summaries() -> None:
-    source = _read_command("write-paper")
+    source = _read_workflow("write-paper")
 
-    assert "ls GPD/phases/*/*SUMMARY.md 2>/dev/null" in source
+    assert "cat GPD/phases/*/*SUMMARY.md" in source
+    assert "Read summary artifacts (`SUMMARY.md` and `*-SUMMARY.md`)" in source
 
 
 def test_write_paper_prompt_loads_figure_tracker_schema_before_updating_tracker() -> None:
-    source = _read_command("write-paper")
+    source = _read_workflow("write-paper")
+    staging = registry.get_command("write-paper").staged_loading
+
+    assert staging is not None
 
     assert "@{GPD_INSTALL_DIR}/templates/paper/figure-tracker.md" in source
     assert "${PAPER_DIR}/FIGURE_TRACKER.md" in source
-    assert "@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md" in source
+    assert (
+        "references/shared/canonical-schema-discipline.md"
+        in staging.stage("figure_and_section_authoring").loaded_authorities
+    )
 
 
 def test_comparison_templates_match_full_comparison_verdict_subject_kind_enum() -> None:
@@ -1253,7 +1262,7 @@ def test_prompt_visible_contracts_surface_literal_boolean_requirements() -> None
 
     assert "`required_in_proof` must be a literal JSON boolean (`true` or `false`)" in plan_schema
     assert "not a quoted string or synonym such as `\"yes\"` / `\"no\"`" in plan_schema
-    assert "@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md" in review_reader
+    assert "{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md" in review_reader
     assert "shared source of truth for the full `ClaimIndex` and `StageReviewReport` contracts" in review_reader
     assert "`blocking` in each finding must be a literal JSON boolean (`true` or `false`)" in panel
     assert "not a quoted string or synonym such as `\"yes\"` / `\"no\"`" in panel

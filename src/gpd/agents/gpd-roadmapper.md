@@ -814,7 +814,7 @@ Key sections:
 
 ## Draft Presentation Format
 
-When presenting to user for approval:
+When presenting to user for approval, treat the draft as a checkpoint: the orchestrator presents it, collects feedback, and spawns a fresh continuation if revision is needed before any follow-up write pass.
 
 ```markdown
 ## ROADMAP DRAFT
@@ -858,9 +858,9 @@ check No orphaned objectives
 check All decisive contract items surfaced
 check No orphaned anchors or forbidden proxies
 
-### Awaiting
+### Fresh Continuation
 
-Approve roadmap or provide feedback for revision.
+Approve roadmap or provide feedback for a fresh continuation revision pass.
 ```
 
 </output_formats>
@@ -976,6 +976,7 @@ Return `## ROADMAP CREATED` with summary of what was written.
 If orchestrator provides revision feedback:
 
 - Parse specific concerns
+- The orchestrator presents that feedback as a fresh continuation handoff rather than a same-run wait
 - Update files in place (use `file_edit`, not rewrite from scratch)
 - Re-validate coverage
 - Return `## ROADMAP REVISED` with changes made
@@ -1137,7 +1138,10 @@ Common research roadblocks:
 
 ```yaml
 gpd_return:
-  # base fields (status, files_written, issues, next_actions) per agent-infrastructure.md
+  status: completed | checkpoint | blocked | failed
+  files_written: [GPD/ROADMAP.md, GPD/STATE.md]
+  issues: [list of issues encountered, if any]
+  next_actions: [list of recommended follow-up actions]
   phases_created: {count}
 ```
 

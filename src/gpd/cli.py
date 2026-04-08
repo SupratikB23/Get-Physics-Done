@@ -5016,7 +5016,48 @@ def _annotate_permissions_payload(payload: dict[str, object]) -> dict[str, objec
     """Attach structured capability and evidence metadata to a permissions payload."""
     from gpd.core.health import annotate_permissions_payload
 
-    return annotate_permissions_payload(payload, requested_runtime=None)
+    annotated = annotate_permissions_payload(payload, requested_runtime=None)
+    capability_payload = annotated.get("capabilities")
+    if not isinstance(capability_payload, dict):
+        capability_payload = {}
+        annotated["capabilities"] = capability_payload
+
+    capability_payload.update(
+        {
+            "child_artifact_persistence_reliability": "unknown",
+            "supports_structured_child_results": False,
+            "continuation_surface": "unknown",
+            "checkpoint_stop_semantics": "unknown",
+            "supports_runtime_session_payload_attribution": False,
+            "supports_agent_payload_attribution": False,
+        }
+    )
+
+    runtime_name = annotated.get("runtime")
+    if not isinstance(runtime_name, str) or not runtime_name.strip():
+        return annotated
+
+    try:
+        from gpd.adapters.runtime_catalog import get_runtime_capabilities
+    except Exception:
+        return annotated
+
+    try:
+        capabilities = get_runtime_capabilities(runtime_name)
+    except KeyError:
+        return annotated
+
+    capability_payload.update(
+        {
+            "child_artifact_persistence_reliability": capabilities.child_artifact_persistence_reliability,
+            "supports_structured_child_results": capabilities.supports_structured_child_results,
+            "continuation_surface": capabilities.continuation_surface,
+            "checkpoint_stop_semantics": capabilities.checkpoint_stop_semantics,
+            "supports_runtime_session_payload_attribution": capabilities.supports_runtime_session_payload_attribution,
+            "supports_agent_payload_attribution": capabilities.supports_agent_payload_attribution,
+        }
+    )
+    return annotated
 
 
 def _runtime_permissions_payload(
@@ -8002,6 +8043,20 @@ def validate_return(
 
     resolved = _get_cwd() / file_path
     result = cmd_validate_return(resolved)
+    _output(result)
+    if not result.passed:
+        raise typer.Exit(code=1)
+
+
+@app.command("apply-return-updates")
+def apply_return_updates(
+    file_path: str = typer.Argument(..., help="Path to file containing gpd_return YAML block"),
+) -> None:
+    """Validate one gpd_return envelope and apply its durable child-return updates."""
+    from gpd.core.commands import cmd_apply_return_updates
+
+    resolved = _get_cwd() / file_path
+    result = cmd_apply_return_updates(_get_cwd(), resolved)
     _output(result)
     if not result.passed:
         raise typer.Exit(code=1)

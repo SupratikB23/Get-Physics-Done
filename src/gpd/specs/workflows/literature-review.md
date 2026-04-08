@@ -435,13 +435,13 @@ For every reference listed in the Full Reference List and cited in the body:
 
 Write results to GPD/literature/{slug}-CITATION-AUDIT.md
 
-Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
+Return a typed `gpd_return` envelope. Use `status: completed` when the bibliography task finished, even if the human-readable heading is `## CITATION ISSUES FOUND`; use `status: checkpoint` only when researcher input is required to continue."
 )
 ```
 
 **If the bibliographer agent fails to spawn or returns an error:** Proceed without citation audit. Note in the review summary that citations are unverified. The user should manually check key references against INSPIRE-HEP/ADS.
 
-**If CITATION ISSUES FOUND:**
+**If the bibliographer completed with issues recorded in the audit report:**
 
 - Read the audit report
 - Fix or remove hallucinated citations from the review document
@@ -455,55 +455,25 @@ Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
   </step>
 
 <step name="return_results">
-Return to orchestrator with:
-- Summary of findings (5-10 lines)
-- Paper count and coverage assessment
-- Key takeaways
-- Identified gaps
-- Report path
-- Citation verification status
+Return to orchestrator through the typed child-return contract. Route on `gpd_return.status` and the artifact gate; the `## REVIEW COMPLETE` and `## CHECKPOINT REACHED` headings are presentation only.
 
-Format:
+On completion:
 
-```markdown
-## REVIEW COMPLETE
+- Verify `GPD/literature/{slug}-REVIEW.md` exists on disk
+- If emitted, verify `GPD/literature/{slug}-CITATION-SOURCES.json` exists on disk
+- Return `gpd_return.status: completed` with:
+  - `files_written: [GPD/literature/{slug}-REVIEW.md]`
+  - `issues: []`
+  - `next_actions: [recommended follow-up actions or reading path]`
+  - `papers_reviewed`, `field_assessment`, and citation verification details as needed
 
-**Topic:** {topic}
-**Papers reviewed:** {N}
-**Report:** GPD/literature/{slug}-REVIEW.md
+On checkpoint:
 
-**Key takeaways:**
+- Return `gpd_return.status: checkpoint`
+- Include the decision question, context, options, and partial progress
+- Stop and let the orchestrator present the checkpoint to the user, then spawn a fresh continuation run after the response
 
-1. {takeaway}
-2. {takeaway}
-3. {takeaway}
-
-**Open questions identified:** {N}
-**Active controversies:** {N}
-**Recommended starting point:** {key reference}
-**Citation verification:** {all verified | N issues found -- see GPD/literature/{slug}-CITATION-AUDIT.md}
-```
-
-If the review also emitted `GPD/literature/{slug}-CITATION-SOURCES.json`, note that path in the return summary so downstream manuscript drafting can reuse it directly.
-
-If the review is incomplete (too broad, need user guidance):
-
-```markdown
-## CHECKPOINT REACHED
-
-**Type:** decision
-**Progress:** Reviewed {N} papers, identified {M} subtopics
-
-### Checkpoint Details
-
-**Decision needed:** The topic branches into {N} distinct subtopics. Which should I focus on?
-
-**Options:**
-
-- **A:** {subtopic A} -- {why relevant}
-- **B:** {subtopic B} -- {why relevant}
-- **C:** All of them (comprehensive, will take longer)
-```
+If the review is incomplete or blocked, use `gpd_return.status: blocked` or `failed` and list the missing artifact or unresolved scope issue explicitly.
 
 </step>
 

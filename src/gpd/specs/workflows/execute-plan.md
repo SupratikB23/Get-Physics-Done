@@ -260,10 +260,10 @@ Pattern B/D only (authored or virtual checkpoints). Skip for A/C.
 
 1. Parse segment map: checkpoint locations and types, then merge in virtual boundaries from `FIRST_RESULT_GATE_REQUIRED`, `SEGMENT_TASK_CAP`, `MAX_UNATTENDED_MINUTES_PER_PLAN`, and context pressure
 2. Per segment:
-   - Subagent route: spawn gpd-executor for assigned tasks only. Prompt: task range, plan path, read full plan for context, execute assigned tasks, track deviations, `<autonomy_mode>{AUTONOMY}</autonomy_mode>`, `<review_cadence>{REVIEW_CADENCE}</review_cadence>`, `<segment_task_cap>{SEGMENT_TASK_CAP}</segment_task_cap>`, `<max_unattended_minutes_per_plan>{MAX_UNATTENDED_MINUTES_PER_PLAN}</max_unattended_minutes_per_plan>`, `<first_result_gate>{FIRST_RESULT_GATE_REQUIRED}</first_result_gate>`, NO SUMMARY/commit, but RETURN `contract_updates` keyed by claim/deliverable/acceptance-test/reference/forbidden-proxy IDs and any `execution_segment` fields needed to keep bounded gates live across continuation. Track via agent protocol.
+   - Subagent route: spawn gpd-executor for assigned tasks only. Prompt: task range, plan path, read full plan for context, execute assigned tasks, track deviations, `<autonomy_mode>{AUTONOMY}</autonomy_mode>`, `<review_cadence>{REVIEW_CADENCE}</review_cadence>`, `<segment_task_cap>{SEGMENT_TASK_CAP}</segment_task_cap>`, `<max_unattended_minutes_per_plan>{MAX_UNATTENDED_MINUTES_PER_PLAN}</max_unattended_minutes_per_plan>`, `<first_result_gate>{FIRST_RESULT_GATE_REQUIRED}</first_result_gate>`, NO SUMMARY/commit, but RETURN `contract_updates` keyed by claim/deliverable/acceptance-test/reference/forbidden-proxy IDs and any durable `continuation_update` fields needed to keep bounded gates live across continuation. Track via agent protocol. The runtime transport payload may still carry `execution_segment` for the fresh handoff, but do not put that transport-only shape inside the durable child-return example. When the segment summary is written, the orchestrator applies it through the canonical `gpd apply-return-updates` path rather than interpreting ad hoc validation text.
    - Treat `execution_segment` as the runtime transport payload for the pause/continue handoff. When the segment is durably recorded, the runtime may mirror that same payload into `continuation.bounded_segment` and append the matching execution-lineage event so later resume logic can resolve the bounded stop without parsing prose. The markdown handoff file and session pointer remain surfaces only, and the derived execution head stays a compatibility projection.
    - Main route: execute tasks using standard flow (step name="execute")
-3. After ALL segments: aggregate files/deviations/decisions/`contract_updates` -> create SUMMARY.md -> apply returned state updates in main context -> final metadata commit -> self-check:
+3. After ALL segments: aggregate files/deviations/decisions/`contract_updates` -> create SUMMARY.md -> apply returned state updates in main context via `gpd apply-return-updates` -> final metadata commit -> self-check:
 
    - Verify key-files.created exist on disk with `[ -f ]`
    - Check `git log --oneline --grep="{phase}-{plan}"` returns >=1 commit
@@ -394,9 +394,9 @@ Deviations are normal -- handle via deviation rules in `execute-plan-validation.
 
      If the same stop also carried a tangent proposal, keep the optional `tangent_summary` / `tangent_decision` fields on the existing `execution` payload until that review stop is explicitly resolved. Do not auto-branch or create side work from telemetry alone.
 
-     **Supervised mode post-task checkpoint:** If `AUTONOMY="supervised"`, insert a `checkpoint:human-verify` after EVERY completed task. Present the task result with all intermediate values and wait for user approval before proceeding to the next task.
+     **Supervised mode post-task checkpoint:** If `AUTONOMY="supervised"`, insert a `checkpoint:human-verify` after EVERY completed task. Emit the checkpoint return with the task result and all intermediate values; the orchestrator owns presenting it and collecting approval in a fresh continuation before any next task is accepted.
    - `type="checkpoint:*"`: Route by autonomy mode:
-     - **supervised:** STOP -> checkpoint protocol (see `execute-plan-checkpoints.md`) -> wait for user -> continue only after confirmation.
+     - **supervised:** STOP -> checkpoint protocol (see `execute-plan-checkpoints.md`) -> return structured checkpoint state to the orchestrator. The orchestrator presents the checkpoint and resumes only through a fresh continuation.
      - **balanced:** Stop for `checkpoint:decision`, `checkpoint:human-verify`, required first-result gates, any checkpoint tied to deviation rules 5-6 or unresolved convergence failure, and any case where decisive evidence is still missing but the next tasks would assume it. Log routine checkpoint markers and continue when no judgment is needed.
      - **yolo:** Do NOT skip required first-result, bounded-segment, skeptical, or pre-fanout checkpoints. Auto-continue only after the gate is explicitly cleared and the remaining work is genuinely independent of the unresolved decisive comparison. STOP on failed sanity, unresolved skeptical review, anchor-gate failure, or unrecoverable computation error.
 3. Run `<verification>` checks including physics validation (see `execute-plan-validation.md`)
@@ -619,7 +619,7 @@ Autonomy mode (`supervised` / `balanced` / `yolo`) and profile may change cadenc
 </step>
 
 <step name="update_current_position">
-**Do NOT write STATE.md directly.** Return state updates in the `gpd_return` envelope so the orchestrator (execute-phase.md) can apply them sequentially after each executor finishes. This prevents parallel write conflicts.
+**Do NOT write STATE.md directly.** Return state updates in the `gpd_return` envelope so the orchestrator (execute-phase.md) can apply them sequentially after each executor finishes via `gpd apply-return-updates`. This prevents parallel write conflicts.
 
 Include these fields in your return envelope:
 
@@ -641,20 +641,16 @@ gpd_return:
     contract_completion_status: complete | partial | blocked
 ```
 
-**Exception:** If executing in Pattern C (main context, no subagent), you ARE the orchestrator — apply state updates directly:
+**Exception:** If executing in Pattern C (main context, no subagent), you ARE the orchestrator — apply state updates directly by invoking the same canonical applicator on the summary file:
 
 ```bash
-gpd state advance
-gpd state update-progress
-gpd state record-metric \
-  --phase "${phase}" --plan "${plan}" --duration "${DURATION}" \
-  --tasks "${TASK_COUNT}" --files "${FILE_COUNT}"
+gpd apply-return-updates "${SUMMARY_FILE}"
 ```
 
 </step>
 
 <step name="extract_decisions_and_issues">
-From SUMMARY: Extract decisions and blockers. Include them in the `gpd_return` envelope:
+From SUMMARY: Extract decisions and blockers. Include them in the `gpd_return` envelope; the orchestrator applies them through `gpd apply-return-updates`:
 
 ```yaml
 gpd_return:
@@ -666,18 +662,16 @@ gpd_return:
     - text: "Blocker description"
 ```
 
-**Exception:** If executing in Pattern C (main context, no subagent), apply directly:
+**Exception:** If executing in Pattern C (main context, no subagent), apply directly through the same applicator:
 
 ```bash
-gpd state add-decision \
-  --phase "${phase}" --summary "${DECISION_TEXT}" --rationale "${RATIONALE}"
-gpd state add-blocker --text "Blocker description"
+gpd apply-return-updates "${SUMMARY_FILE}"
 ```
 
 </step>
 
 <step name="update_continuation">
-Include continuation update in the `gpd_return` envelope:
+Include continuation update in the `gpd_return` envelope so `gpd apply-return-updates` can retire the completed bounded segment and persist the canonical session handoff:
 
 ```yaml
 gpd_return:
@@ -690,13 +684,10 @@ gpd_return:
     bounded_segment: null
 ```
 
-**Exception:** If executing in Pattern C (main context, no subagent), apply directly:
+**Exception:** If executing in Pattern C (main context, no subagent), apply directly through the same applicator:
 
 ```bash
-gpd state record-session \
-  --stopped-at "Completed ${phase}-${plan}-PLAN.md" \
-  --resume-file "—"
-gpd observe event session continuity-updated --phase "${phase}" --plan "${plan}" --data "{\"stopped_at\":\"Completed ${phase}-${plan}-PLAN.md\",\"resume_file\":\"—\"}" 2>/dev/null || true
+gpd apply-return-updates "${SUMMARY_FILE}"
 ```
 
 This continuation update is the authoritative completion cleanup boundary. It retires any stale `continuation.bounded_segment` that still points at the completed work and clears the canonical handoff pointer for this plan. The matching execution-lineage record remains as history even after the bounded stop is retired. `session` and STATE.md are projection surfaces that should reflect this update after persistence, not independent authorities.

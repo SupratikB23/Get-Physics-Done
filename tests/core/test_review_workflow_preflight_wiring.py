@@ -64,8 +64,9 @@ def test_peer_review_workflow_runs_centralized_review_preflight_with_explicit_ar
 def test_publication_review_wrappers_reference_shared_wrapper_guidance() -> None:
     shared_include = "@{GPD_INSTALL_DIR}/references/publication/publication-review-wrapper-guidance.md"
 
-    for command_name in ("write-paper.md", "peer-review.md", "respond-to-referees.md"):
-        assert shared_include in _command_text(command_name)
+    for command_name in ("write-paper.md", "peer-review.md"):
+        assert shared_include not in _command_text(command_name)
+    assert shared_include in _command_text("respond-to-referees.md")
 
 
 def test_verify_work_workflow_runs_centralized_review_preflight() -> None:

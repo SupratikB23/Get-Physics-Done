@@ -5,11 +5,13 @@ Tests the pure logic functions without filesystem mocking (uses tmp_path).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from gpd.core.commands import (
+    cmd_apply_return_updates,
     cmd_current_timestamp,
     cmd_generate_slug,
     cmd_history_digest,
@@ -19,6 +21,7 @@ from gpd.core.commands import (
     cmd_verify_path_exists,
 )
 from gpd.core.errors import ValidationError
+from gpd.core.state import default_state_dict, generate_state_markdown
 
 # ─── cmd_current_timestamp ─────────────────────────────────────────────────
 
@@ -521,6 +524,79 @@ class TestValidateReturn:
         with pytest.raises(ValidationError, match="File not found"):
             cmd_validate_return(tmp_path / "nonexistent.md")
 
+
+class TestApplyReturnUpdates:
+    def _write_state_project(self, tmp_path: Path) -> tuple[Path, Path]:
+        planning = tmp_path / "GPD"
+        planning.mkdir()
+        state = default_state_dict()
+        (planning / "state.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+        (planning / "STATE.md").write_text(generate_state_markdown(state), encoding="utf-8")
+        return planning, planning / "STATE.md"
+
+    def _write_return(self, tmp_path: Path, yaml_body: str) -> Path:
+        f = tmp_path / "output.md"
+        f.write_text(f"# Result\n\n```yaml\n{yaml_body}```\n", encoding="utf-8")
+        return f
+
+    def test_applies_explicit_state_changes_and_preserves_contract_updates(self, tmp_path: Path):
+        _, state_path = self._write_state_project(tmp_path)
+        before = state_path.read_text(encoding="utf-8")
+        f = self._write_return(
+            tmp_path,
+            (
+                "gpd_return:\n"
+                "  status: checkpoint\n"
+                "  files_written: [GPD/STATE.md]\n"
+                "  issues: []\n"
+                "  next_actions: [/gpd:resume-work]\n"
+                "  decisions:\n"
+                "    - summary: Prefer canonical child-return application\n"
+                '      phase: "10"\n'
+                "  blockers:\n"
+                "    - waiting on approval\n"
+                "  contract_updates:\n"
+                "    project_contract: retained\n"
+            ),
+        )
+
+        result = cmd_apply_return_updates(tmp_path, f)
+
+        assert result.passed is True
+        assert result.status == "checkpoint"
+        assert result.applied_decisions == 1
+        assert result.applied_blockers == 1
+        assert result.applied_state_operations == []
+        assert result.applied_continuation_operations == []
+        assert result.contract_updates == {"project_contract": "retained"}
+        assert state_path.read_text(encoding="utf-8") != before
+        updated_state = state_path.read_text(encoding="utf-8")
+        assert "Prefer canonical child-return application" in updated_state
+        assert "waiting on approval" in updated_state
+
+    def test_rejects_unsupported_state_update_keys_before_mutation(self, tmp_path: Path):
+        _, state_path = self._write_state_project(tmp_path)
+        before = state_path.read_text(encoding="utf-8")
+        f = self._write_return(
+            tmp_path,
+            (
+                "gpd_return:\n"
+                "  status: checkpoint\n"
+                "  files_written: [GPD/STATE.md]\n"
+                "  issues: []\n"
+                "  next_actions: [/gpd:resume-work]\n"
+                "  state_updates:\n"
+                "    unexpected_operation: true\n"
+            ),
+        )
+
+        result = cmd_apply_return_updates(tmp_path, f)
+
+        assert result.passed is False
+        assert result.status == "failed"
+        assert any("state_updates" in error and "unexpected_operation" in error for error in result.errors)
+        assert state_path.read_text(encoding="utf-8") == before
+
     def test_quoted_values_stripped(self, tmp_path: Path):
         f = self._write_return(
             tmp_path,
@@ -561,3 +637,91 @@ class TestValidateReturn:
         assert result.fields["files_written"] == ["src/main.py", "tests/test_main.py"]
         assert result.fields["issues"] == ["waiting on benchmark rerun"]
         assert result.fields["next_actions"] == ["/gpd:verify-work 01"]
+
+    def test_nested_continuation_payload_is_preserved(self, tmp_path: Path):
+        f = self._write_return(
+            tmp_path,
+            (
+                "gpd_return:\n"
+                "  status: checkpoint\n"
+                "  files_written: [src/main.py]\n"
+                "  issues: []\n"
+                "  next_actions: [/gpd:resume-work]\n"
+                "  state_updates:\n"
+                "    advance_plan: true\n"
+                "    update_progress: true\n"
+                "  continuation_update:\n"
+                "    handoff:\n"
+                "      recorded_at: 2026-04-08T12:00:00Z\n"
+                "      recorded_by: execute-plan\n"
+                "      stopped_at: Completed phase 01\n"
+                "      resume_file: GPD/phases/01-test-phase/.continue-here.md\n"
+                "    bounded_segment:\n"
+                "      resume_file: GPD/phases/01-test-phase/.continue-here.md\n"
+                "      phase: 01\n"
+                "      plan: 01\n"
+                "      segment_id: seg-01\n"
+                "      segment_status: paused\n"
+                "      checkpoint_reason: segment_boundary\n"
+            ),
+        )
+
+        result = cmd_validate_return(f)
+
+        assert result.passed is True
+        assert result.fields["state_updates"]["advance_plan"] is True
+        assert result.fields["state_updates"]["update_progress"] is True
+        assert result.fields["continuation_update"]["handoff"]["recorded_by"] == "execute-plan"
+        assert result.fields["continuation_update"]["bounded_segment"]["segment_id"] == "seg-01"
+
+    def test_rejects_transport_only_execution_segment_inside_continuation_update(self, tmp_path: Path):
+        f = self._write_return(
+            tmp_path,
+            (
+                "gpd_return:\n"
+                "  status: checkpoint\n"
+                "  files_written: [src/main.py]\n"
+                "  issues: []\n"
+                "  next_actions: [/gpd:resume-work]\n"
+                "  continuation_update:\n"
+                "    execution_segment:\n"
+                "      current_cursor: 3\n"
+            ),
+        )
+
+        result = cmd_validate_return(f)
+
+        assert result.passed is False
+        assert any("continuation_update" in error and "execution_segment" in error for error in result.errors)
+
+    def test_rejects_scalar_and_nested_map_shape_errors(self, tmp_path: Path):
+        scalar_file = self._write_return(
+            tmp_path,
+            (
+                "gpd_return:\n"
+                "  status: completed\n"
+                "  files_written: src/main.py\n"
+                "  issues: []\n"
+                "  next_actions: [/gpd:verify-work 01]\n"
+            ),
+        )
+        scalar_result = cmd_validate_return(scalar_file)
+        assert scalar_result.passed is False
+        assert any("files_written" in error and "list" in error for error in scalar_result.errors)
+
+        nested_map_file = self._write_return(
+            tmp_path,
+            (
+                "gpd_return:\n"
+                "  status: blocked\n"
+                "  files_written: []\n"
+                "  issues: []\n"
+                "  next_actions: []\n"
+                "  blockers:\n"
+                "    - waiting on approval\n"
+                "  continuation_update: checkpoint\n"
+            ),
+        )
+        nested_result = cmd_validate_return(nested_map_file)
+        assert nested_result.passed is False
+        assert any("continuation_update" in error for error in nested_result.errors)

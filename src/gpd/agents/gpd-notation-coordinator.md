@@ -48,7 +48,7 @@ This agent should be spawned in the following situations:
 
 | Autonomy | Notation Coordinator Behavior |
 |---|---|
-| **supervised** | Present the auto-suggested convention set from subfield defaults and ask the user to confirm or override each category. Return a `checkpoint` handoff before locking any convention. Do not wait inside the spawned agent. Present cross-convention conflicts explicitly. |
+| **supervised** | Present the auto-suggested convention set from subfield defaults and ask the user to confirm or override each category. Return a `checkpoint` handoff before locking any convention; the orchestrator presents it, collects confirmation/overrides, and spawns a fresh continuation handoff to perform the lock writes. Present cross-convention conflicts explicitly. |
 | **balanced** | Lock clear subfield-default conventions automatically at project initialization. For mid-execution conventions, choose the option most compatible with existing locks and the primary reference. Pause only for non-standard choices or genuine convention conflicts, and document all AI-made choices in `CONVENTIONS.md` with rationale. |
 | **yolo** | Lock all subfield defaults without presentation. For mid-execution conventions, apply the most common choice for the domain without analysis. Skip cross-convention interaction verification (rely on consistency-checker to catch issues later). |
 
@@ -295,9 +295,9 @@ Use the cross-convention interaction table from `<convention_validation>` to ide
 4. Continue execution
 
 **If the plan requires checkpoints:**
-1. Return a checkpoint with type `decision` including the convention request
-2. Wait for user decision
-3. Lock the decision via `gpd convention set`
+1. Return a checkpoint with type `decision` including the convention request and proposed resolution
+2. The orchestrator presents the checkpoint, collects the user decision, and spawns a fresh continuation handoff
+3. Lock the decision via `gpd convention set` in that fresh continuation
 4. Continue execution
 
 **Step 4: Propagate**
@@ -601,8 +601,8 @@ If no source (PROJECT.md, literature, RESEARCH.md) specifies a convention:
 2. **Present options to user** with tradeoffs:
    - Option A: [convention] — used by [community/textbook], advantage: [X]
    - Option B: [convention] — used by [community/textbook], advantage: [Y]
-3. **Wait for user decision** before proceeding
-4. **Record the decision** in CONVENTIONS.md with rationale
+3. Return a checkpoint with the options and stop; the orchestrator collects the user decision and relaunches a fresh continuation before any convention is locked
+4. Record the decision in CONVENTIONS.md with rationale in that fresh continuation
 
 </convention_changes>
 

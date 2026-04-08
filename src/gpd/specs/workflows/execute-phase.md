@@ -628,8 +628,10 @@ Parse JSON for: `selected_protocol_bundle_ids`, `protocol_bundle_context`, `curr
      model="{check_proof_model}",
      readonly=false,
      prompt="First, read {GPD_AGENTS_DIR}/gpd-check-proof.md for your role and instructions.
+Then read {GPD_INSTALL_DIR}/templates/proof-redteam-schema.md and {GPD_INSTALL_DIR}/references/verification/core/proof-redteam-protocol.md before writing any proof audit artifact.
 
        Operate in proof-redteam mode with a fresh context.
+       If the runtime needs user input, return `status: checkpoint` instead of waiting inside this run.
 
        Write to: {phase_dir}/{plan_id}-PROOF-REDTEAM.md
 
@@ -665,29 +667,27 @@ Parse JSON for: `selected_protocol_bundle_ids`, `protocol_bundle_context`, `curr
    For each SUMMARY.md:
 
    - Verify first 2 files from `key-files.created` exist on disk
+   - If the SUMMARY marks any `key-files.created` / `key-files.modified` paths as required or final-deliverable, verify those paths on disk before accepting success
 	   - Check `git log --oneline --grep="{phase}-{plan}"` returns >=1 commit
 	   - Check for `## Self-Check: FAILED` marker
 	   - Check for `## Validation: FAILED` marker (physics-specific)
 	   - For proof-bearing plans, verify the sibling `{plan_id}-PROOF-REDTEAM.md` artifact exists and has `status: passed`
-	   - Validate the gpd_return envelope:
+	   - Validate and apply the gpd_return envelope through the canonical child-return path:
 
      ```bash
-     RETURN_CHECK=$(gpd --raw validate-return "${SUMMARY_FILE}")
-     if [ "$RETURN_CHECK" != "passed" ]; then
-       echo "WARNING: validate-return failed for $(basename "$SUMMARY_FILE")"
-       # Mark plan as NEEDS_REVIEW but continue — missing envelope is not fatal
+     RETURN_APPLY=$(gpd --raw apply-return-updates "${SUMMARY_FILE}")
+     RETURN_PASSED=$(python -c 'import json, sys; print(str(bool(json.loads(sys.argv[1]).get("passed", False))).lower())' "$RETURN_APPLY")
+     if [ "$RETURN_PASSED" != "true" ]; then
+       echo "ERROR: apply-return-updates failed for $(basename "$SUMMARY_FILE")"
+       exit 1
      fi
      ```
 
-	   If ANY spot-check fails, including a missing or non-passing proof-redteam artifact for proof-bearing work: report which plan failed, route to `wave_failure_handling` -- do NOT silently continue.
+	   If ANY spot-check fails, including a missing or non-passing proof-redteam artifact for proof-bearing work, or if `apply-return-updates` does not report `passed: true`: report which plan failed, route to `wave_failure_handling` -- do NOT silently continue.
 
-   **IMPORTANT: Executor subagents MUST NOT write STATE.md directly.** Return state updates (position, decisions, metrics) in the structured return envelope. The orchestrator applies them sequentially after each agent completes. This prevents parallel write conflicts where multiple agents overwrite each other's STATE.md changes.
+   **IMPORTANT: Executor subagents MUST NOT write STATE.md directly.** Return state updates (position, decisions, metrics) in the structured return envelope. The orchestrator applies them through `gpd apply-return-updates` after each agent completes. This prevents parallel write conflicts where multiple agents overwrite each other's STATE.md changes and keeps durable child-return ownership in one place.
 
-   After each plan completes successfully (not just after each wave), the **orchestrator** runs:
-   1. `gpd state advance` immediately
-   2. `gpd state record-metric` for the completed plan
-   3. This ensures crash recovery loses at most ONE plan's state, not an entire wave
-   4. By the time the wave-complete report is emitted, `GPD/STATE.md` already reflects every successful plan from that wave
+   By the time the wave-complete report is emitted, the canonical applicator has already persisted every successful plan from that wave. Do not duplicate that state mutation here.
 
    If pass:
 
@@ -1595,7 +1595,7 @@ Re-verify Phase {PHASE_NUMBER} after gap closure.
 )
 ```
 
-**If the verifier agent fails to spawn or returns an error:** Proceed without automated re-verification. Note in the phase status that post-gap-closure verification was skipped. The user should run `gpd:verify-work` separately to confirm gaps are closed. If the phase is proof-bearing, do NOT mark it complete on this path; proof-obligation work remains blocked until re-verification and proof-redteam audits actually clear.
+**If the verifier agent fails to spawn or returns an error:** Stop in a blocked state. Do not mark the phase complete or clear gap-closure state on this path. The user should run `gpd:verify-work` separately to confirm gaps are closed. If the phase is proof-bearing, do NOT mark it complete on this path; proof-obligation work remains blocked until re-verification and proof-redteam audits actually clear.
 
 | Re-verification Result | Action |
 | ---------------------- | ------ |
@@ -1693,7 +1693,7 @@ Load conventions: gpd convention list
 **If the notation coordinator agent fails to spawn or returns an error:** The consistency issues remain unresolved. Offer: 1) Retry notation coordinator, 2) Resolve conflicts manually by editing CONVENTIONS.md and using `gpd convention set`, 3) Force continue with known inconsistencies (log to DECISIONS.md). Do not silently proceed — convention errors compound across phases.
 
 Handle notation-coordinator return:
-- **`CONVENTION UPDATE`:** Conventions fixed. Commit CONVENTIONS.md. If any phase artifacts were flagged for re-execution, present them to user. Continue to phase completion.
+- **`CONVENTION UPDATE`:** Conventions fixed. Commit CONVENTIONS.md. Then verify `gpd convention check` reports `locked` or `complete`, and re-check any phase artifacts flagged for re-execution are still present on disk before continuing. If the lock is still open or a flagged artifact is missing, treat the update as incomplete and keep the phase blocked.
 - **`CONVENTION CONFLICT`:** Unresolvable conflict requiring user decision. Present options and wait.
 
 **If "Force continue":** Log the forced override to DECISIONS.md:

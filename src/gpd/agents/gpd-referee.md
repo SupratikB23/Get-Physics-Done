@@ -40,11 +40,11 @@ If a polished PDF companion is requested and TeX is available, compile the lates
 </role>
 
 <references>
-- @{GPD_INSTALL_DIR}/references/shared/shared-protocols.md
-- @{GPD_INSTALL_DIR}/references/physics-subfields.md
-- @{GPD_INSTALL_DIR}/references/verification/core/verification-core.md
-- @{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md
-- @{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md
+- `{GPD_INSTALL_DIR}/references/shared/shared-protocols.md`
+- `{GPD_INSTALL_DIR}/references/physics-subfields.md`
+- `{GPD_INSTALL_DIR}/references/verification/core/verification-core.md`
+- `{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md`
+- `{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md`
 
 Reference notes:
 - Shared protocols: forbidden files, source hierarchy, convention tracking, physics verification
@@ -55,16 +55,13 @@ Reference notes:
 
 **On-demand references:**
 - `{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md` -- Mode adaptation for referee strictness, scope of critique, and recommendation thresholds by autonomy and research_mode (load when reviewing for paper submission)
-- @{GPD_INSTALL_DIR}/templates/paper/referee-report.tex
+- `{GPD_INSTALL_DIR}/templates/paper/referee-report.tex`
 - Canonical polished LaTeX companion template for the default referee-report `.tex` artifact
 </references>
 
 Convention loading: see agent-infrastructure.md Convention Loading Protocol.
 
-Before writing `REVIEW-LEDGER{round_suffix}.json` or `REFEREE-DECISION{round_suffix}.json`, re-open `@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md`, `@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md`, and `@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md`. Treat those files as the artifact and schema sources of truth; do not infer the JSON shape from memory or from earlier round artifacts.
-@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md
-@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md
+Before writing `REVIEW-LEDGER{round_suffix}.json` or `REFEREE-DECISION{round_suffix}.json`, re-open `{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md`, `{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md`, and `{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md`. Treat those files as the artifact and schema sources of truth; do not infer the JSON shape from memory or from earlier round artifacts.
 
 <panel_adjudication>
 
@@ -1239,12 +1236,9 @@ Organize findings:
 ## Referee Report Structure
 
 Create `GPD/REFEREE-REPORT{round_suffix}.md` as the canonical machine-readable artifact.
-Also create `GPD/REFEREE-REPORT{round_suffix}.tex` as the default polished presentation artifact using `@{GPD_INSTALL_DIR}/templates/paper/referee-report.tex`.
+Also create `GPD/REFEREE-REPORT{round_suffix}.tex` as the default polished presentation artifact using `{GPD_INSTALL_DIR}/templates/paper/referee-report.tex`.
 When operating as the final panel adjudicator, also write `GPD/review/REVIEW-LEDGER{round_suffix}.json` and `GPD/review/REFEREE-DECISION{round_suffix}.json`.
-Use `@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md` and `@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md` as the schema sources of truth for those JSON artifacts. Do not invent fields, collapse arrays into prose, or leave issue IDs inconsistent across the markdown report, ledger, and decision JSON.
-@{GPD_INSTALL_DIR}/templates/paper/referee-report.tex
-@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md
+Use `{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md` and `{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md` as the schema sources of truth for those JSON artifacts. Do not invent fields, collapse arrays into prose, or leave issue IDs inconsistent across the markdown report, ledger, and decision JSON.
 If the invoking workflow supplies a round-specific suffix, preserve that suffix consistently across the ledger, decision JSON, and referee report artifacts.
 
 Keep the two files semantically aligned:
@@ -1806,6 +1800,8 @@ Return a checkpoint when:
 - Need clarification on the target journal to calibrate expectations
 - Discovered that the research contradicts itself across phases and need researcher input
 
+Checkpoint ownership is orchestrator-side: when you stop, the orchestrator presents the issue and owns the fresh continuation handoff.
+
 ## Checkpoint Format
 
 ```markdown
@@ -1826,6 +1822,13 @@ Return a checkpoint when:
 </checkpoint_behavior>
 
 <structured_returns>
+
+The markdown headings `## REVIEW COMPLETE`, `## REVIEW INCOMPLETE`, and `## CHECKPOINT REACHED` are human-readable labels only. Route on `gpd_return.status` and the written review artifacts, not on heading text.
+
+- `gpd_return.status: completed` -- Final review finished. Write the full report plus any decision/ledger artifacts produced in this run.
+- `gpd_return.status: checkpoint` -- Stop for missing inputs or an orchestrator-owned decision. Use the checkpoint format below and preserve a fresh continuation handoff.
+- `gpd_return.status: failed` -- Review could not complete from the available evidence. Write the partial report and list unresolved review issues explicitly.
+- `gpd_return.status: blocked` -- Use only for unrecoverable review-state problems that cannot proceed inside this run.
 
 ## REVIEW COMPLETE
 
@@ -1871,8 +1874,15 @@ See <checkpoint_behavior> section for full format.
 
 ```yaml
 gpd_return:
-  # base fields (status, files_written, issues, next_actions) per agent-infrastructure.md
-  # status: completed | checkpoint | blocked | failed
+  status: completed | checkpoint | blocked | failed
+  # Headings above are presentation only; route on gpd_return.status.
+  files_written:
+    - GPD/REFEREE-REPORT{round_suffix}.md
+    - GPD/REFEREE-REPORT{round_suffix}.tex
+    - GPD/REFEREE-DECISION{round_suffix}.json
+    - GPD/REVIEW-LEDGER{round_suffix}.json
+  issues: [list of blocking or unresolved review issues, if any]
+  next_actions: [list of recommended follow-up actions]
   recommendation: "{accept | minor_revision | major_revision | reject}"
   confidence: "{high | medium | low}"
   major_issues: N

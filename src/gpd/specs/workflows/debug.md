@@ -190,58 +190,14 @@ Each agent should consider these common root causes:
   </step>
 
 <step name="collect_results">
-**Collect root causes from agents:**
+**Collect root causes from the debug file and typed return envelope:**
 
-Each agent returns with:
+Each agent returns a typed `gpd_return` envelope and writes `GPD/debug/{slug}.md`.
 
-```
-## ROOT CAUSE FOUND
-
-**Debug Session:** ${DEBUG_DIR}/{slug}.md
-
-**Root Cause:** {specific cause with evidence}
-
-**Evidence Summary:**
-- {key finding 1}
-- {key finding 2}
-- {key finding 3}
-
-**Files Involved:**
-- {file1}: {what is wrong}
-- {file2}: {related issue}
-
-**Physics Impact:** {how this error propagates through the calculation}
-
-**Suggested Fix Direction:** {brief hint for plan-phase --gaps}
-```
-
-Parse each return to extract:
-
-- root_cause: The diagnosed cause
-- files: Files involved
-- debug_path: Path to debug session file
-- physics_impact: How the error affects results
-- suggested_fix: Hint for gap closure plan
-
-**If agent return matches `## ROOT CAUSE FOUND` with expected fields:** Parse structured fields directly as above.
-
-**If agent return does NOT match the expected format** (missing fields, different heading structure, or unstructured text):
-
-1. Search the return text for a `## ROOT CAUSE` heading (any variation: `ROOT CAUSE FOUND`, `ROOT CAUSE`, `Root Cause`)
-2. If found, extract the paragraph(s) following the heading as `root_cause`
-3. Search for file paths (patterns like `src/...`, `*.py`, `*.tex`) anywhere in the return as `files`
-4. Search for keywords "impact", "effect", "propagat" to extract `physics_impact`; default to "Unknown — review debug session" if not found
-5. Search for keywords "fix", "suggest", "recommend", "should" to extract `suggested_fix`; default to "See debug session for investigation details" if not found
-6. If NO root cause heading exists at all, treat the entire agent return as an unstructured investigation report:
-   - Set `root_cause` to the first substantive paragraph (skip blank lines and banners)
-   - Set `debug_path` to `${DEBUG_DIR}/DEBUG-{slug}.md` (check if the agent wrote it)
-   - Log: "Agent returned unstructured response — extracted what was available"
-
-If agent returns `## INVESTIGATION INCONCLUSIVE`:
-
-- root_cause: "Investigation inconclusive - expert review needed"
-- Note which issue needs expert attention
-- Include remaining possibilities from agent return
+- If `gpd_return.status: completed`, verify `GPD/debug/{slug}.md` exists, read the file, and use the file-backed diagnosis as the authoritative root-cause record.
+- If `gpd_return.status: checkpoint`, present the checkpoint details to the user and spawn a fresh continuation run.
+- If `gpd_return.status: blocked` or `failed`, report what was checked and keep the investigation incomplete.
+- Do not route on heading markers in the returned text; use the typed `gpd_return` envelope and the file-backed diagnosis instead.
   </step>
 
 <step name="update_validation">

@@ -308,12 +308,18 @@ file_read affected phase summary artifacts.
 )
 ```
 
+> Runtime delegation rule: this is a one-shot handoff. If the notation coordinator needs user input, it checkpoints and returns. Do not keep the original run open across user interaction; resume with a fresh continuation.
+
 **If the notation coordinator agent fails to spawn or returns an error:** Report the failure. The CRITICAL convention conflicts still need resolution. Offer: 1) Retry notation coordinator, 2) Resolve conflicts manually by editing CONVENTIONS.md and running `gpd convention set` for each field, 3) Abort and leave conflicts unresolved (not recommended — downstream phases will inherit inconsistencies).
 
 **Handle notation-coordinator return:**
 
-- **`CONVENTION UPDATE`:** Display resolved conventions and affected phases. Commit updated CONVENTIONS.md.
-- **`CONVENTION CONFLICT`:** Conflicts require user decision. Present options and wait.
+- **`CONVENTION UPDATE`:** Display resolved conventions and affected phases. Verify that `GPD/CONVENTIONS.md` exists and that `gpd convention list` reflects the resolved fields before accepting the update. Commit updated CONVENTIONS.md only after the artifact and lock both check out.
+- **`CONVENTION CONFLICT`:** Conflicts require user decision. Present options, checkpoint, and return.
+
+**Artifact/lock verification gate:**
+
+Before accepting any success result from convention resolution, re-read `GPD/CONVENTIONS.md` and `gpd convention list`. Require the convention artifact and the lock to be present and in agreement. If the artifact is missing, unreadable, or mismatched against the lock, do not accept success; stop and request a fresh continuation.
 
 **After resolution, recommend follow-up actions:**
 
@@ -361,6 +367,7 @@ All conventions consistent across {count} phases. No issues found.
 - [ ] gpd-consistency-checker spawned for deep validation
 - [ ] Issues classified by severity (CRITICAL / WARNING / INFO)
 - [ ] gpd-notation-coordinator spawned for CRITICAL issues (convention conflict resolution)
+- [ ] Convention artifact and lock re-verified after notation resolution before success is accepted
 - [ ] Report presented with actionable next steps
 - [ ] Critical issues flagged for immediate attention
 </success_criteria>

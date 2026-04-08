@@ -81,48 +81,19 @@ Structure and write a physics paper from completed research results.
 
 Keep the wrapper thin and let the workflow own the full pipeline.
 
-**Why subagent:** Publication drafting and review coordination burn context fast. Separate drafting context keeps the orchestrator lean.
+**Why subagent:** Publication drafting and review coordination burn context fast.
 </objective>
 
 <execution_context>
 @{GPD_INSTALL_DIR}/workflows/write-paper.md
-@{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md
-@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md
-@{GPD_INSTALL_DIR}/references/publication/peer-review-reliability.md
-@{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/artifact-manifest-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/bibliography-audit-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/figure-tracker.md
-@{GPD_INSTALL_DIR}/templates/paper/reproducibility-manifest.md
 </execution_context>
 
 <context>
 Paper topic: $ARGUMENTS
-
-Read `@{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md` before applying any autonomy or research mode behavior.
-
-Check for existing drafts with the shared manuscript-root publication preflight block.
-
-Before reading or updating `${PAPER_DIR}/FIGURE_TRACKER.md`, load `@{GPD_INSTALL_DIR}/templates/paper/figure-tracker.md` and `@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md` first.
-
-Load research context:
-
-```bash
-cat GPD/ROADMAP.md 2>/dev/null
-ls GPD/phases/*/*SUMMARY.md 2>/dev/null
-cat GPD/research-map/FORMALISM.md 2>/dev/null
-```
-
 </context>
 
 <process>
-@{GPD_INSTALL_DIR}/references/publication/publication-review-wrapper-guidance.md
-@{GPD_INSTALL_DIR}/templates/paper/publication-manuscript-root-preflight.md
-@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md
-
-Follow `@{GPD_INSTALL_DIR}/workflows/write-paper.md` exactly.
+Follow the included workflow file exactly.
 </process>
 
 <success_criteria>

@@ -1498,7 +1498,7 @@ Use `find_files("GPD/debug/*.md")` and filter out files containing "resolved" in
 **If active sessions exist AND no $ARGUMENTS:**
 
 - Display sessions with status, hypothesis, next action
-- Wait for user to select (number) or describe new discrepancy (text)
+- Return a checkpoint that lists the active sessions; the orchestrator presents the choices and spawns a fresh continuation once the user selects a session or describes a new discrepancy
 
 **If active sessions exist AND $ARGUMENTS:**
 
@@ -1730,9 +1730,9 @@ Return a checkpoint when:
 
 [Type-specific content - see below]
 
-### Awaiting
+### Fresh Continuation
 
-[What you need from user]
+[What the orchestrator must pass into the next run]
 ```
 
 ## Checkpoint Types

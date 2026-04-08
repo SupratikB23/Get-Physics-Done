@@ -105,6 +105,7 @@ AGENT_REFERENCE_TOKENS = {
         "references/orchestration/agent-infrastructure.md",
         "references/physics-subfields.md",
         "references/publication/publication-pipeline-modes.md",
+        "references/publication/bibliography-advanced-search.md",
         "templates/notation-glossary.md",
         "references/publication/bibtex-standards.md",
     ],
@@ -195,6 +196,8 @@ AGENT_REFERENCE_TOKENS = {
         "references/orchestration/agent-infrastructure.md",
         "references/physics-subfields.md",
         "references/verification/core/verification-core.md",
+        "templates/proof-redteam-schema.md",
+        "references/verification/core/proof-redteam-protocol.md",
         "references/publication/peer-review-panel.md",
     ],
     "gpd-review-physics.md": [
@@ -333,7 +336,8 @@ def test_shared_protocols_require_permission_before_dependency_installs() -> Non
     assert "install silently" not in checkpoints
     assert "## Data Boundary" not in verifier_raw
     assert "## GPD CLI Commit Protocol" not in verifier_raw
-    assert "@{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md" in verifier_raw
+    assert "@{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md" not in verifier_raw
+    assert "Ask the user before any install attempt; keep dependency changes permission-gated." in verifier_raw
     assert "ask the user before any install attempt" in verifier
     assert "permission-gated" in planner
 
@@ -344,6 +348,39 @@ def test_agent_infrastructure_requires_concrete_next_actions_and_continuation_bl
     assert "Prefer copy-pasteable GPD commands" in infra
     assert "references/orchestration/continuation-format.md" in infra
     assert "## > Next Up" in infra
+
+
+def test_paper_writer_uses_lightweight_path_mentions_for_metadata_only_reference_packs() -> None:
+    writer_text = (AGENTS_DIR / "gpd-paper-writer.md").read_text(encoding="utf-8")
+
+    for path in (
+        "references/shared/shared-protocols.md",
+        "references/orchestration/agent-infrastructure.md",
+        "templates/notation-glossary.md",
+        "templates/latex-preamble.md",
+    ):
+        lightweight = f"{{GPD_INSTALL_DIR}}/{path}"
+        eager = f"@{{GPD_INSTALL_DIR}}/{path}"
+        assert lightweight in writer_text
+        assert eager not in writer_text
+
+
+def test_bibliographer_uses_lightweight_path_mentions_for_metadata_only_reference_packs() -> None:
+    bibliographer_text = (AGENTS_DIR / "gpd-bibliographer.md").read_text(encoding="utf-8")
+
+    for path in (
+        "references/shared/shared-protocols.md",
+        "references/physics-subfields.md",
+        "templates/notation-glossary.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/publication/bibtex-standards.md",
+        "references/publication/publication-pipeline-modes.md",
+        "references/publication/bibliography-advanced-search.md",
+    ):
+        lightweight = f"{{GPD_INSTALL_DIR}}/{path}"
+        eager = f"@{{GPD_INSTALL_DIR}}/{path}"
+        assert lightweight in bibliographer_text
+        assert eager not in bibliographer_text
 
 
 def test_continuation_format_scopes_clear_to_resolved_runtime_followups() -> None:
@@ -823,6 +860,10 @@ def test_publication_commands_accept_documented_manuscript_layouts() -> None:
 
 def test_proof_contract_prompts_surface_explicit_theorem_fields_and_review_bindings() -> None:
     plan_schema = (TEMPLATES_DIR / "plan-contract-schema.md").read_text(encoding="utf-8")
+    proof_schema = (TEMPLATES_DIR / "proof-redteam-schema.md").read_text(encoding="utf-8")
+    proof_protocol = (
+        REFERENCES_DIR / "verification" / "core" / "proof-redteam-protocol.md"
+    ).read_text(encoding="utf-8")
     peer_review = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
     check_proof = (AGENTS_DIR / "gpd-check-proof.md").read_text(encoding="utf-8")
 
@@ -852,9 +893,15 @@ def test_proof_contract_prompts_surface_explicit_theorem_fields_and_review_bindi
     )
     assert "every `proof_audits[].claim_id` must also appear in `claims_reviewed`" in peer_review
 
-    assert "must exactly match the active theorem-bearing Stage 1 claim IDs under review" in check_proof
-    assert "must be non-empty, every entry must resolve to a readable proof artifact" in check_proof
-    assert "must exactly bind to the active review context supplied by the orchestrator" in check_proof
+    assert "{GPD_INSTALL_DIR}/templates/proof-redteam-schema.md" in check_proof
+    assert "{GPD_INSTALL_DIR}/references/verification/core/proof-redteam-protocol.md" in check_proof
+    assert "@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md" not in check_proof
+    assert "proof_artifact_paths: [path, ...]" in proof_schema
+    assert "manuscript_path" in proof_schema
+    assert "manuscript_sha256" in proof_schema
+    assert "round" in proof_schema
+    assert "Treat each proof audit as a one-shot run." in proof_protocol
+    assert "`peer-review` owns manuscript binding" in proof_protocol
 
 
 def test_write_paper_and_arxiv_submission_keep_the_build_boundary_explicit() -> None:
@@ -1222,6 +1269,10 @@ def test_planning_prompts_keep_contract_gate_in_light_mode_and_all_modes() -> No
         "All modes still require contract completeness, decisive outputs, required anchors, forbidden-proxy handling, and disconfirming paths before execution starts."
         in workflow_text
     )
+    assert "gpd_return.status: completed" in planner_prompt
+    assert "The markdown headings `## PLANNING COMPLETE`, `## CHECKPOINT REACHED`, and `## PLANNING INCONCLUSIVE` are human-readable labels only." in planner_prompt
+    assert "gpd_return.status: completed" in workflow_text
+    assert "Human-readable headings such as `## VERIFICATION PASSED`, `## ISSUES FOUND`, and `## PARTIAL APPROVAL` are presentation only." in workflow_text
     assert "Human review does not replace those requirements." in checker_agent
 
 
@@ -1400,6 +1451,10 @@ def test_reference_workflows_require_anchor_registry_propagation() -> None:
     assert "include `bibtex_key` as an optional preferred key" in literature_agent
     assert "Keep `bibtex_key` stable across reruns when present" in literature_agent
     assert "preferred `bibtex_key`, treat it as the manuscript bridge candidate" in bibliographer_agent
+    assert (
+        "For the full mode specification matrix, see `{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md`."
+        in bibliographer_agent
+    )
     assert "project_contract_load_info" in compare_workflow
     assert "project_contract_validation" in compare_workflow
     assert "active_reference_context" in compare_workflow
@@ -1650,7 +1705,7 @@ def test_phase_research_and_verification_surfaces_keep_anchor_checks_mandatory()
     )
     assert "suggest_contract_checks(contract)" in verify_workflow
     assert verify_workflow.count("**Project Contract Gate:** {project_contract_gate}") == 1
-    assert verify_workflow_expanded.count("**Project Contract Gate:** {project_contract_gate}") >= 3
+    assert verify_workflow_expanded.count("**Project Contract Gate:** {project_contract_gate}") >= 1
     assert (
         verify_workflow.count(
             "Treat `effective_reference_intake` as the structured source of carry-forward anchors; "
@@ -1855,44 +1910,12 @@ def test_plan_tool_preflight_surfaces_across_planning_and_execution_prompts() ->
     assert "uncertainty_markers:" in research_verification
     assert "claim_id" in research_verification
     assert "acceptance_test_id" in research_verification
-    assert (
-        "frontmatter contract compatible with `@{GPD_INSTALL_DIR}/templates/verification-report.md`" in verify_workflow
-    )
-    assert "status: gaps_found" in verify_workflow
-    assert "# Allowed status values: passed|gaps_found|expert_needed|human_needed" in verify_workflow
-    assert "status: passed | gaps_found | expert_needed | human_needed" not in verify_workflow
-    assert "uncertainty_markers:" in verify_workflow
-    assert "Mirror decisive verdicts into frontmatter `comparison_verdicts`." in verify_workflow
-    assert "structured `suggested_contract_checks` entry before final validation" in verify_workflow
-    assert "copy the returned `check_key` into the frontmatter `check` field" in verify_workflow
-    assert "request_template" in verify_workflow
-    assert "required_request_fields" in verify_workflow
-    assert "schema_required_request_fields" in verify_workflow
-    assert "schema_required_request_anyof_fields" in verify_workflow
-    assert "project_dir" in verify_workflow
-    assert "supported_binding_fields" in verify_workflow
-    assert "run_contract_check(request=..., project_dir=...)" in verify_workflow
-    assert "deliverables: {}" not in verify_workflow
-    assert "acceptance_tests: {}" not in verify_workflow
-    assert "references: {}" not in verify_workflow
-    assert "forbidden_proxies: {}" not in verify_workflow
-    assert "deliverable-main" in verify_workflow
-    assert "acceptance-test-main" in verify_workflow
-    assert "reference-main" in verify_workflow
-    assert "forbidden-proxy-main" in verify_workflow
-    assert "comparison_verdicts:" in verify_workflow
-    assert "subject_role: decisive" in verify_workflow
-    assert "comparison_kind: benchmark" in verify_workflow
-    assert "Allowed body enum values:" in verify_workflow
-    assert "`comparison_kind`: benchmark|prior_work|experiment|cross_method|baseline|other" in verify_workflow
-    assert (
-        "comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | other]"
-        not in verify_workflow
-    )
-    assert (
-        'comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | ""]' not in verify_workflow
-    )
-    assert "suggested_contract_checks:" in verify_workflow
+    assert "Load the staged researcher-session scaffold and canonical schema pack at this stage." in verify_workflow
+    assert "Keep the session overlay frontmatter compatible with the authoritative verification report." in verify_workflow
+    assert "status: gaps_found" not in verify_workflow
+    assert "uncertainty_markers:" not in verify_workflow
+    assert "Allowed body enum values:" not in verify_workflow
+    assert "suggested_contract_checks:" not in verify_workflow
     assert "`suggested_contract_check`" not in verify_workflow
     assert "independently_confirmed" not in verify_workflow
     assert "Return status (`passed` | `gaps_found` | `expert_needed` | `human_needed`)" in verify_phase
@@ -2042,8 +2065,8 @@ def test_verification_prompts_keep_suggested_contract_check_bindings_schema_tigh
     assert 'suggested_subject_id: [contract id or ""]' not in verify_workflow
     assert "suggested_subject_id: acceptance-test-main" in research_verification
     assert "suggested_subject_id: reference-main" in research_verification
-    assert "suggested_subject_id: acceptance-test-main" in verify_workflow
-    assert "suggested_subject_id: reference-main" in verify_workflow
+    assert "suggested_subject_id: acceptance-test-main" not in verify_workflow
+    assert "suggested_subject_id: reference-main" not in verify_workflow
     assert "acceptance-test-main" in research_verification
     assert "acceptance-test-main" in verifier_agent
     assert "suggested_contract_checks" in verification_template
@@ -2086,8 +2109,8 @@ def test_lane5_prompt_examples_keep_schema_valid_contract_fields_visible() -> No
     assert "started:" in research_verification
     assert "updated:" in research_verification
     assert "test-benchmark" not in research_verification
-    assert "reference-main" in verify_work
-    assert "acceptance-test-main" in verify_work
+    assert "reference-main" not in verify_work
+    assert "acceptance-test-main" not in verify_work
     assert "test-benchmark" not in verify_work
     assert "reference-main" in verifier
     assert "acceptance-test-main" in verifier
@@ -2364,9 +2387,11 @@ def test_publication_workflows_describe_recursive_manuscript_tree_inputs() -> No
 
 def test_review_and_verification_prompts_explicitly_surface_schema_sources_and_contract_context() -> None:
     peer_review = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
+    peer_review_command = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
     verify_command = (COMMANDS_DIR / "verify-work.md").read_text(encoding="utf-8")
     verify_workflow = (WORKFLOWS_DIR / "verify-work.md").read_text(encoding="utf-8")
     write_paper = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
+    write_paper_command = (COMMANDS_DIR / "write-paper.md").read_text(encoding="utf-8")
     respond_to_referees = (WORKFLOWS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
     sync_state = (WORKFLOWS_DIR / "sync-state.md").read_text(encoding="utf-8")
     review_reader = (AGENTS_DIR / "gpd-review-reader.md").read_text(encoding="utf-8")
@@ -2403,16 +2428,19 @@ def test_review_and_verification_prompts_explicitly_surface_schema_sources_and_c
     assert "project_contract_load_info" in respond_to_referees
     assert "project_contract_validation" in respond_to_referees
     assert "authoritative only when `project_contract_gate.authoritative` is true" in respond_to_referees
-    assert "templates/paper/review-ledger-schema.md" in peer_review
-    assert "templates/paper/referee-decision-schema.md" in peer_review
-    assert "references/publication/peer-review-panel.md" in peer_review
+    assert "templates/paper/review-ledger-schema.md" not in peer_review_command
+    assert "templates/paper/referee-decision-schema.md" not in peer_review_command
+    assert "references/publication/peer-review-panel.md" not in peer_review_command
     assert "templates/verification-report.md" not in verify_command
     assert "templates/contract-results-schema.md" not in verify_command
-    assert "Load the researcher-session body scaffold from `research-verification.md` here" in verify_workflow
-    assert "load `verification-report.md`, `contract-results-schema.md`, and `canonical-schema-discipline.md` at this stage" in verify_workflow
+    assert "Load the staged researcher-session scaffold and canonical schema pack at this stage." in verify_workflow
+    assert "Keep the session overlay frontmatter compatible with the authoritative verification report." in verify_workflow
     assert "templates/verification-report.md" in interactive_validation.loaded_authorities
     assert "templates/contract-results-schema.md" in interactive_validation.loaded_authorities
     assert "references/verification/meta/verification-independence.md" in inventory_build.loaded_authorities
+    assert "templates/paper/review-ledger-schema.md" not in write_paper_command
+    assert "templates/paper/referee-decision-schema.md" not in write_paper_command
+    assert "references/publication/peer-review-panel.md" not in write_paper_command
     assert "Canonical schema for `${PAPER_DIR}/reproducibility-manifest.json`:" in write_paper
     assert "Canonical reconciliation contract:" in sync_state
     assert "state-json-schema.md` itself" in sync_state
@@ -2424,6 +2452,63 @@ def test_review_and_verification_prompts_explicitly_surface_schema_sources_and_c
     )
     assert peer_review.count(contract_gate_note) >= 1
     assert "repair the blocked contract before retrying" in peer_review
+    write_paper_staging = registry.get_command("write-paper").staged_loading
+    peer_review_staging = registry.get_command("peer-review").staged_loading
+
+    assert write_paper_staging is not None
+    assert peer_review_staging is not None
+    assert write_paper_staging.stage_ids() == (
+        "paper_bootstrap",
+        "outline_and_scaffold",
+        "figure_and_section_authoring",
+        "consistency_and_references",
+        "publication_review",
+    )
+    assert peer_review_staging.stage_ids() == (
+        "bootstrap",
+        "preflight",
+        "artifact_discovery",
+        "panel_stages",
+        "final_adjudication",
+        "finalize",
+    )
+
+    write_paper_bootstrap = write_paper_staging.stage("paper_bootstrap")
+    write_paper_outline = write_paper_staging.stage("outline_and_scaffold")
+    write_paper_figures = write_paper_staging.stage("figure_and_section_authoring")
+    write_paper_consistency = write_paper_staging.stage("consistency_and_references")
+    write_paper_review = write_paper_staging.stage("publication_review")
+    peer_review_bootstrap = peer_review_staging.stage("bootstrap")
+    peer_review_preflight = peer_review_staging.stage("preflight")
+    peer_review_artifacts = peer_review_staging.stage("artifact_discovery")
+    peer_review_panel = peer_review_staging.stage("panel_stages")
+    peer_review_final = peer_review_staging.stage("final_adjudication")
+    peer_review_finalize = peer_review_staging.stage("finalize")
+
+    assert write_paper_bootstrap.loaded_authorities == ("workflows/write-paper.md",)
+    assert "references/publication/publication-pipeline-modes.md" in write_paper_outline.loaded_authorities
+    assert "templates/paper/paper-config-schema.md" in write_paper_outline.loaded_authorities
+    assert "templates/paper/artifact-manifest-schema.md" in write_paper_outline.loaded_authorities
+    assert "templates/paper/figure-tracker.md" in write_paper_figures.loaded_authorities
+    assert "templates/paper/bibliography-audit-schema.md" in write_paper_consistency.loaded_authorities
+    assert "templates/paper/reproducibility-manifest.md" in write_paper_consistency.loaded_authorities
+    assert "references/publication/peer-review-panel.md" in write_paper_review.loaded_authorities
+    assert "references/publication/peer-review-reliability.md" in write_paper_review.loaded_authorities
+    assert "templates/paper/review-ledger-schema.md" in write_paper_review.loaded_authorities
+    assert "templates/paper/referee-decision-schema.md" in write_paper_review.loaded_authorities
+
+    assert peer_review_bootstrap.loaded_authorities == ("workflows/peer-review.md",)
+    assert "references/publication/peer-review-reliability.md" in peer_review_preflight.loaded_authorities
+    assert "templates/paper/paper-config-schema.md" in peer_review_preflight.loaded_authorities
+    assert "templates/paper/artifact-manifest-schema.md" in peer_review_preflight.loaded_authorities
+    assert "templates/paper/bibliography-audit-schema.md" in peer_review_preflight.loaded_authorities
+    assert "templates/paper/reproducibility-manifest.md" in peer_review_preflight.loaded_authorities
+    assert peer_review_artifacts.loaded_authorities == ("workflows/peer-review.md",)
+    assert "references/publication/peer-review-panel.md" in peer_review_panel.loaded_authorities
+    assert "references/publication/peer-review-panel.md" in peer_review_final.loaded_authorities
+    assert "templates/paper/review-ledger-schema.md" in peer_review_final.loaded_authorities
+    assert "templates/paper/referee-decision-schema.md" in peer_review_final.loaded_authorities
+    assert peer_review_finalize.loaded_authorities == ("workflows/peer-review.md",)
     assert "GPD/review/CLAIMS{round_suffix}.json" in review_reader
     assert "GPD/review/STAGE-reader{round_suffix}.json" in review_reader
     assert "shared source of truth for the full `ClaimIndex` and `StageReviewReport` contracts" in review_reader
@@ -2504,7 +2589,7 @@ def test_review_and_verification_prompts_explicitly_surface_schema_sources_and_c
     for text in (review_reader, review_literature, review_math, review_physics, review_significance):
         assert "Required schema for" not in text
         assert "closed schema; do not invent extra keys" not in text
-    assert "re-open `@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md`" in referee
+    assert "re-open `{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md`" in referee
 
 
 def test_peer_review_prompt_includes_concise_stage_map_for_users() -> None:
@@ -2558,8 +2643,6 @@ def test_peer_review_referee_surface_fail_closed_stage6_contract() -> None:
 
 
 def test_publication_prompts_surface_strict_semantic_manuscript_gates() -> None:
-    write_paper = (COMMANDS_DIR / "write-paper.md").read_text(encoding="utf-8")
-    peer_review = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
     arxiv = (COMMANDS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
     respond = (COMMANDS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
     shared_discipline = (REFERENCES_DIR / "shared" / "canonical-schema-discipline.md").read_text(encoding="utf-8")
@@ -2567,11 +2650,11 @@ def test_publication_prompts_surface_strict_semantic_manuscript_gates() -> None:
     write_paper_workflow = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
     arxiv_workflow = (WORKFLOWS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
 
-    for content in (write_paper, peer_review, peer_review_workflow, write_paper_workflow):
+    for content in (peer_review_workflow, write_paper_workflow):
         assert "reproducibility_ready" in content
-    for content in (write_paper, peer_review, arxiv, peer_review_workflow, write_paper_workflow, arxiv_workflow):
+    for content in (write_paper_workflow, peer_review_workflow, arxiv_workflow):
         assert "bibliography_audit_clean" in content
-    for content in (peer_review, write_paper, arxiv, respond):
+    for content in (arxiv, respond):
         assert "templates/paper/review-ledger-schema.md" in content
         assert "templates/paper/referee-decision-schema.md" in content
         assert "references/publication/peer-review-reliability.md" in content
@@ -2581,8 +2664,6 @@ def test_publication_prompts_surface_strict_semantic_manuscript_gates() -> None:
             "Use the explicitly loaded schema, template, and contract/reference files that define an output shape or "
             "validation gate as the authority."
         ) in expanded_content
-    assert "references/publication/peer-review-panel.md" in peer_review
-    assert "references/publication/peer-review-panel.md" in write_paper
     assert (
         "Use the explicitly loaded schema, template, and contract/reference files that define an output shape or "
         "validation gate as the authority."
@@ -2599,19 +2680,32 @@ def test_publication_command_contexts_surface_schema_docs_before_generation() ->
     peer_review = (COMMANDS_DIR / "peer-review.md").read_text(encoding="utf-8")
     arxiv = (COMMANDS_DIR / "arxiv-submission.md").read_text(encoding="utf-8")
     respond = (COMMANDS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
+    write_paper_workflow = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
     shared_include = "@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md"
+    write_paper_staging = registry.get_command("write-paper").staged_loading
 
-    for content in (write_paper, peer_review, arxiv):
+    assert write_paper_staging is not None
+
+    for content in (write_paper, peer_review):
+        assert "templates/paper/paper-config-schema.md" not in content
+        assert "templates/paper/artifact-manifest-schema.md" not in content
+        assert "templates/paper/bibliography-audit-schema.md" not in content
+        assert "templates/paper/reproducibility-manifest.md" not in content
+        assert "templates/paper/review-ledger-schema.md" not in content
+        assert "templates/paper/referee-decision-schema.md" not in content
+        assert "references/publication/peer-review-panel.md" not in content
+        assert "references/publication/peer-review-reliability.md" not in content
+    for content in (write_paper_workflow, arxiv):
         assert "templates/paper/paper-config-schema.md" in content
         assert "templates/paper/artifact-manifest-schema.md" in content
         assert "templates/paper/bibliography-audit-schema.md" in content
-    assert "templates/paper/reproducibility-manifest.md" in peer_review
-    assert "templates/paper/review-ledger-schema.md" in write_paper
-    assert "templates/paper/referee-decision-schema.md" in write_paper
-    assert "templates/paper/review-ledger-schema.md" in peer_review
-    assert "templates/paper/referee-decision-schema.md" in peer_review
+    assert "templates/paper/reproducibility-manifest.md" in write_paper_workflow
     assert "templates/paper/bibliography-audit-schema.md" in respond
-    for content in (write_paper, peer_review, respond, arxiv):
+    assert (
+        "references/shared/canonical-schema-discipline.md"
+        in write_paper_staging.stage("figure_and_section_authoring").loaded_authorities
+    )
+    for content in (respond, arxiv):
         assert shared_include in content
 
 
@@ -2652,11 +2746,13 @@ def test_research_verification_body_scaffold_keeps_body_only_subject_labels_dist
 def test_verify_work_workflow_uses_body_only_subject_kind_fields() -> None:
     verify_work = (WORKFLOWS_DIR / "verify-work.md").read_text(encoding="utf-8")
 
-    assert "check_subject_kind: `claim|deliverable|acceptance_test|reference`" in verify_work
-    assert "Allowed body enum values:" in verify_work
-    assert "check_subject_kind: claim" in verify_work
-    assert "`check_subject_kind`: claim|deliverable|acceptance_test|reference" in verify_work
-    assert 'gap_subject_kind: "claim"' in verify_work
+    assert "Load the staged researcher-session scaffold and canonical schema pack at this stage." in verify_work
+    assert "Keep body-only session-overlay fields aligned with the staged researcher-session scaffold." in verify_work
+    assert "check_subject_kind: `claim|deliverable|acceptance_test|reference`" not in verify_work
+    assert "Allowed body enum values:" not in verify_work
+    assert "check_subject_kind: claim" not in verify_work
+    assert "`check_subject_kind`: claim|deliverable|acceptance_test|reference" not in verify_work
+    assert 'gap_subject_kind: "claim"' not in verify_work
     assert "Use `forbidden_proxy_id` for explicit proxy-rejection checks" in verify_work
     assert "instead of inventing extra body subject kinds" in verify_work
     assert "# Allowed check_subject_kind values: claim|deliverable|acceptance_test|reference" not in verify_work
@@ -2691,14 +2787,8 @@ def test_verify_work_workflow_uses_body_only_subject_kind_fields() -> None:
 def test_verify_work_active_sessions_use_canonical_verification_path_and_keep_status_separate() -> None:
     verify_work = (WORKFLOWS_DIR / "verify-work.md").read_text(encoding="utf-8")
 
-    assert (
-        "rg -l '^session_status: (validating|diagnosed)$' GPD/phases/*/*-VERIFICATION.md 2>/dev/null | sort | head -5"
-        in verify_work
-    )
-    assert (
-        "Only treat files with `session_status: validating` or `session_status: diagnosed` as active researcher sessions."
-        in verify_work
-    )
+    assert "gpd frontmatter get \"$file\" --field session_status" in verify_work
+    assert "Only treat files whose frontmatter `session_status` is `validating` or `diagnosed` as active researcher sessions." in verify_work
     assert (
         "extract canonical verification `status`, `session_status`, `phase`, and the Current Check section"
         in verify_work
@@ -2720,28 +2810,35 @@ def test_skill_surface_exposes_contract_references_for_paper_and_review_workflow
     respond_contract_documents = {
         Path(entry["path"]).name: entry for entry in respond_to_referees["contract_documents"]
     }
+    write_paper_stage_authorities = {
+        authority
+        for stage in write_paper.get("staged_loading", {}).get("stages", [])
+        for authority in stage.get("loaded_authorities", [])
+    }
+    peer_review_stage_authorities = {
+        authority
+        for stage in peer_review.get("staged_loading", {}).get("stages", [])
+        for authority in stage.get("loaded_authorities", [])
+    }
 
     assert "error" not in write_paper
     assert "error" not in peer_review
     assert "error" not in arxiv_submission
     assert "error" not in respond_to_referees
     assert any(path.endswith("paper-config-schema.md") for path in write_paper["schema_references"])
-    assert any(path.endswith("artifact-manifest-schema.md") for path in write_paper["schema_references"])
-    assert any(path.endswith("bibliography-audit-schema.md") for path in write_paper["schema_references"])
-    assert any(path.endswith("review-ledger-schema.md") for path in write_paper["schema_references"])
-    assert any(path.endswith("referee-decision-schema.md") for path in write_paper["schema_references"])
-    assert any(path.endswith("review-ledger-schema.md") for path in peer_review["schema_references"])
-    assert any(path.endswith("referee-decision-schema.md") for path in peer_review["schema_references"])
-    assert any(path.endswith("paper-quality-input-schema.md") for path in arxiv_submission["schema_references"])
+    assert any(path.endswith("artifact-manifest-schema.md") for path in write_paper_stage_authorities)
+    assert any(path.endswith("bibliography-audit-schema.md") for path in write_paper_stage_authorities)
+    assert any(path.endswith("review-ledger-schema.md") for path in write_paper_stage_authorities)
+    assert any(path.endswith("referee-decision-schema.md") for path in write_paper_stage_authorities)
+    assert any(path.endswith("review-ledger-schema.md") for path in peer_review_stage_authorities)
+    assert any(path.endswith("referee-decision-schema.md") for path in peer_review_stage_authorities)
+    assert any(entry["path"].endswith("paper-quality-scoring.md") for entry in arxiv_submission["referenced_files"])
     assert any(path.endswith("author-response.md") for path in respond_to_referees["schema_references"])
-    assert any(path.endswith("reproducibility-manifest.md") for path in write_paper["schema_references"])
-    assert any(path.endswith("peer-review-panel.md") for path in write_paper["contract_references"])
-    assert any(path.endswith("peer-review-reliability.md") for path in write_paper["contract_references"])
+    assert any(path.endswith("reproducibility-manifest.md") for path in write_paper_stage_authorities)
+    assert any(path.endswith("peer-review-panel.md") for path in write_paper_stage_authorities)
     assert any(path.endswith("peer-review-panel.md") for path in peer_review["contract_references"])
     assert any(path.endswith("peer-review-reliability.md") for path in peer_review["contract_references"])
     assert "Paper Config Schema" in write_paper_schema_documents["paper-config-schema.md"]["body"]
-    assert "Artifact Manifest Schema" in write_paper_schema_documents["artifact-manifest-schema.md"]["body"]
-    assert "Bibliography Audit Schema" in write_paper_schema_documents["bibliography-audit-schema.md"]["body"]
     assert "Reproducibility Manifest Template" in write_paper_schema_documents["reproducibility-manifest.md"]["body"]
     assert "Peer Review Panel Protocol" in peer_review_contract_documents["peer-review-panel.md"]["body"]
     assert "Peer Review Phase Reliability" in peer_review_contract_documents["peer-review-reliability.md"]["body"]
@@ -2751,9 +2848,32 @@ def test_skill_surface_exposes_contract_references_for_paper_and_review_workflow
     assert "Load `schema_documents` and `contract_documents` too when present" in write_paper["loading_hint"]
 
 
+def test_bibliographer_skill_surface_stays_direct_only() -> None:
+    from gpd.mcp.servers.skills_server import get_skill
+
+    bibliographer = get_skill("gpd-bibliographer")
+    direct_reference_suffixes = {
+        "references/shared/shared-protocols.md",
+        "references/physics-subfields.md",
+        "references/orchestration/agent-infrastructure.md",
+        "templates/notation-glossary.md",
+        "references/publication/bibtex-standards.md",
+        "references/publication/publication-pipeline-modes.md",
+        "references/publication/bibliography-advanced-search.md",
+    }
+
+    assert "error" not in bibliographer
+    assert bibliographer["reference_count"] == len(direct_reference_suffixes)
+    assert {
+        entry["path"].split("}/", 1)[1] for entry in bibliographer["referenced_files"]
+    } == direct_reference_suffixes
+
+
 def test_review_and_execution_prompts_expand_required_schema_sources() -> None:
     src_root = REPO_ROOT / "src/gpd/specs"
 
+    review_reader_raw = (AGENTS_DIR / "gpd-review-reader.md").read_text(encoding="utf-8")
+    referee_raw = (AGENTS_DIR / "gpd-referee.md").read_text(encoding="utf-8")
     review_reader = expand_at_includes(
         (AGENTS_DIR / "gpd-review-reader.md").read_text(encoding="utf-8"),
         src_root,
@@ -2770,10 +2890,14 @@ def test_review_and_execution_prompts_expand_required_schema_sources() -> None:
         "/runtime/",
     )
 
-    assert "Peer Review Panel Protocol" in review_reader
+    assert "{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md" in review_reader_raw
+    assert "{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md" in referee_raw
+    assert "{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md" in referee_raw
+    assert "{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md" in referee_raw
+    assert "Peer Review Panel Protocol" not in review_reader
     assert "Peer Review Panel Protocol" in review_literature
-    assert "Review Ledger Schema" in referee
-    assert "Referee Decision Schema" in referee
+    assert "Review Ledger Schema" not in referee
+    assert "Referee Decision Schema" not in referee
 
 
 def test_verification_and_agent_reference_prompts_expand_or_stage_required_reference_bodies() -> None:

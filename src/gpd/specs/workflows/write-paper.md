@@ -64,7 +64,7 @@ Mode effects on the write-paper pipeline:
 - **Explore mode**: Paper structured as a comparison/survey; broader literature review; more figures; comprehensive related-work section
 - **Exploit mode**: Paper structured as a focused result; streamlined introduction; minimal related-work; optimized for tight prose
 - **Supervised autonomy**: Checkpoints after the outline, after each section draft, and before referee review.
-- **Balanced autonomy**: Auto-generate the outline from the research digest, draft all sections, and pause only for claim-level decisions, major structural changes, or referee conflicts.
+- **Balanced autonomy**: Auto-generate the outline from the research digest, draft all sections, and continue automatically unless the outline, a draft section, or referee feedback exposes a genuine ambiguity, missing evidence path, claim-level decision, or major structural change. Do not force a routine outline-approval pause in balanced mode.
 - **YOLO autonomy**: Draft all sections, run referee, and present the final result with only hard-stop interruptions.
 
 For detailed mode adaptation specifications (bibliographer search breadth, referee strictness, paper-writer style by mode), see `{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md`.
@@ -501,7 +501,7 @@ The outline must satisfy:
 3. A reader of Abstract + Conclusions gets the full story in miniature
 4. The Discussion adds value beyond repeating Results (interpretation, implications, connections)
 
-Present outline for approval before proceeding.
+If `autonomy=supervised`, present the outline for approval before proceeding. If `autonomy=balanced`, treat the outline as a working draft and continue automatically unless it exposes a genuine ambiguity, missing evidence path, or scope-changing decision that needs user judgment. If `autonomy=yolo`, continue automatically after the artifact checks.
 </step>
 
 <step name="generate_files">
@@ -656,7 +656,7 @@ Apply this pattern to each wave: check for the expected .tex output files before
 
 ```
 task(
-  prompt="First, read {GPD_AGENTS_DIR}/gpd-paper-writer.md for your role and instructions.\n\n" + section_prompt,
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-paper-writer.md for your role and instructions.\n\n<autonomy_mode>{AUTONOMY}</autonomy_mode>\n<research_mode>{RESEARCH_MODE}</research_mode>\n" + section_prompt,
   subagent_type="gpd-paper-writer",
   model="{writer_model}",
   readonly=false,
@@ -665,6 +665,8 @@ task(
 ```
 
 **If a writer agent fails to spawn or returns an error:** Check if the expected .tex file was written to `${PAPER_DIR}/` (agents write files first). If the file exists, proceed to the next section. If not, offer: 1) Retry the failed section, 2) Draft the section in the main context using the section brief, 3) Skip the section and continue with remaining waves. Do not block the entire paper on a single section failure — other sections can still be drafted in parallel.
+
+Treat the emitted `.tex` file as the success artifact gate for each section. A writer response that does not leave the expected file on disk is not a completed section, even if the agent returned success text.
 
 **Each writer agent receives:**
 
@@ -851,7 +853,7 @@ task(
   subagent_type="gpd-bibliographer",
   model="{biblio_model}",
   readonly=false,
-  prompt="First, read {GPD_AGENTS_DIR}/gpd-bibliographer.md for your role and instructions.
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-bibliographer.md for your role and instructions.\n\n<autonomy_mode>{AUTONOMY}</autonomy_mode>\n<research_mode>{RESEARCH_MODE}</research_mode>
 
 Verify all references in the paper and audit citation completeness.
 
@@ -874,13 +876,15 @@ Tasks:
 
 Write audit report to ${PAPER_DIR}/CITATION-AUDIT.md
 
-Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
+Return a typed `gpd_return` envelope. Use `status: completed` when the bibliography task finished, even if the human-readable heading is `## CITATION ISSUES FOUND`; use `status: checkpoint` only when researcher input is required to continue."
 )
 ```
 
-**If the bibliographer agent fails to spawn or returns an error:** Proceed without bibliography verification — note in the paper status that citations are unverified. The user should run `gpd:literature-review` to verify citations after the paper is written.
+**If the bibliographer agent fails to spawn or returns an error:** Do not mark bibliography verification complete. Offer: 1) Retry the bibliographer, 2) Run the audit in the main context, 3) Stop and leave citation status unverified. Do not proceed to strict review, reproducibility-manifest generation, or final review until `${PAPER_DIR}/CITATION-AUDIT.md` and the refreshed `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` exist.
 
-**If CITATION ISSUES FOUND:**
+Treat `${PAPER_DIR}/CITATION-AUDIT.md` and the refreshed `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` as the bibliography success gate. If the audit refresh did not regenerate the JSON artifact, do not count the bibliography pass as complete.
+
+**If the bibliographer completed with issues recorded in the audit report or `GPD/references-status.json`:**
 
 - Read the audit report and `GPD/references-status.json`
 - If `derived_manuscript_reference_status` is present, use it as the first-pass manuscript-local citation-status summary instead of reconstructing citation state manually from `.tex` or `.bib` files.
@@ -892,8 +896,9 @@ Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
 - Add missing citations identified by the bibliographer
 - Re-run the audit if substantial changes were made
 - Re-run `gpd paper-build` after bibliography changes so `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` and the derived reference bridge are regenerated before entering strict review or `pre_submission_review`.
+- Confirm `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` exists after the refresh before proceeding to reproducibility or strict review.
 
-**If BIBLIOGRAPHY UPDATED:**
+**If the bibliographer completed cleanly with no remaining citation issues:**
 
 - Corrections already applied to .bib by bibliographer
 - Re-run `gpd paper-build` so `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` reflects the current bibliography state and the derived reference bridge stays current for downstream strict review.
@@ -1013,7 +1018,15 @@ When revising a paper in response to referee reports:
    - Category: major concern, minor concern, question, suggestion
    - Affected section(s) of the manuscript
 
-2. **Produce `GPD/AUTHOR-RESPONSE{round_suffix}.md`:** Spawn a paper-writer agent to produce the structured author response that the gpd-referee expects for multi-round review:
+2. **Spawn section revision agents first:** For each major concern requiring manuscript changes, spawn a paper-writer agent with:
+   - The specific referee point
+   - The current section text
+   - The planned response
+   - Any new calculations or results needed
+
+   Treat the manuscript edit as the source of truth for any `fixed` classification. A point is not `fixed` until the corresponding section file changes have landed on disk.
+
+3. **Produce paired response artifacts after the edits land:** Spawn a paper-writer agent to produce the structured author response and response letter that the gpd-referee expects for multi-round review:
 
    @{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
 
@@ -1024,30 +1037,24 @@ When revising a paper in response to referee reports:
      subagent_type="gpd-paper-writer",
      model="{writer_model}",
      readonly=false,
-     prompt="First, read {GPD_AGENTS_DIR}/gpd-paper-writer.md for your role and instructions.\n\nRead the canonical <author_response> protocol at {GPD_INSTALL_DIR}/templates/paper/author-response.md. Produce an AUTHOR-RESPONSE file.\n\n" +
+     prompt="First, read {GPD_AGENTS_DIR}/gpd-paper-writer.md for your role and instructions.\n\nRead the canonical <author_response> protocol at {GPD_INSTALL_DIR}/templates/paper/author-response.md and the canonical referee response template at {GPD_INSTALL_DIR}/templates/paper/referee-response.md. Produce both `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/review/REFEREE_RESPONSE{round_suffix}.md`.\n\n<autonomy_mode>{AUTONOMY}</autonomy_mode>\n<research_mode>{RESEARCH_MODE}</research_mode>\n" +
        "Referee report: GPD/REFEREE-REPORT{round_suffix}.md\n" +
        "Review ledger (if present): GPD/review/REVIEW-LEDGER{round_suffix}.json\n" +
        "Decision artifact (if present): GPD/review/REFEREE-DECISION{round_suffix}.json\n" +
-       "Manuscript tree: all .tex files under ${PAPER_DIR} recursively, rooted at the manifest-resolved manuscript directory\n" +
+       "Manuscript tree: all .tex files under ${PAPER_DIR} recursively, rooted at the manifest-resolved manuscript directory, after the section revision agents have landed their edits\n" +
        "Round: {N}\n\n" +
-       "For each REF-xxx issue, classify as fixed/rebutted/acknowledged/needs-calculation. Use the JSON artifacts to identify blocking issues and decision-floor reasons, but keep REF-xxx IDs from the report.\n" +
+       "For each REF-xxx issue, classify as fixed/rebutted/acknowledged/needs-calculation only after the corresponding manuscript edits exist on disk. Use fixed only for issues whose section changes are already present; otherwise use acknowledged or needs-calculation.\n" +
        "If an issue needs new work, keep `New calculations required` and `Source phase for new work` explicit in the author-response tracker.\n" +
-       "Write to GPD/AUTHOR-RESPONSE{round_suffix}.md",
+       "Write to GPD/AUTHOR-RESPONSE{round_suffix}.md and GPD/review/REFEREE_RESPONSE{round_suffix}.md",
      description="Author response: round {N}"
    )
    ```
 
-   **If the author-response agent fails to spawn or returns an error:** Check if `GPD/AUTHOR-RESPONSE{round_suffix}.md` was written (agents write files first). If it exists, proceed to section revision. If not, offer: 1) Retry the agent, 2) Draft the author response in the main context using the referee report and manuscript, 3) Skip structured response and proceed directly to section revisions.
+   **If the response-artifact agent fails to spawn or returns an error:** Check if both `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/review/REFEREE_RESPONSE{round_suffix}.md` were written (agents write files first). If both exist, proceed to calculation tracking and consistency checks. If not, offer: 1) Retry the agent, 2) Draft the response artifacts in the main context using the referee report and revised manuscript, 3) Skip structured response and proceed directly to calculation tracking.
 
    The `GPD/AUTHOR-RESPONSE{round_suffix}.md` tracker uses REF-xxx issue IDs matching the referee report, with classifications (fixed/rebutted/acknowledged/needs-calculation), specific change locations, and source-phase tracking for any new work. When present, `REVIEW-LEDGER{round_suffix}.json` and `REFEREE-DECISION{round_suffix}.json` provide the blocking-issue and recommendation-floor context that the response must resolve. See the canonical `templates/paper/author-response.md` contract and the gpd-paper-writer's `<author_response>` section for the full format.
 
-   Also create `GPD/review/REFEREE_RESPONSE{round_suffix}.md` (the human-readable response letter source) using the `templates/paper/referee-response.md` template for the actual journal submission cover letter.
-
-3. **Spawn section revision agents:** For each major concern requiring manuscript changes, spawn a paper-writer agent with:
-   - The specific referee point
-   - The current section text
-   - The planned response
-   - Any new calculations or results needed
+   Treat `GPD/AUTHOR-RESPONSE{round_suffix}.md` and `GPD/review/REFEREE_RESPONSE{round_suffix}.md` as the response success gate. If either artifact is missing after the writer returns, the response is not complete.
 
 4. **Track new calculations:** If referee requests require new derivations or simulations, create tasks in `${PAPER_DIR}/REVISION_TASKS.md` and route to appropriate phases.
 
@@ -1088,7 +1095,7 @@ Options:
 - [ ] Paper scope established (journal, type, key result, audience)
 - [ ] Research artifacts cataloged and mapped to sections
 - [ ] Paper-readiness audit passed (0 critical gaps, or user approved proceeding with gaps)
-- [ ] Detailed outline created and approved
+- [ ] Detailed outline created; approval captured only when autonomy requires it
 - [ ] All sections drafted in correct order (Results first, Abstract last)
 - [ ] Every equation numbered, labeled, defined, and contextualized
 - [ ] Every figure captioned, labeled, and discussed in text

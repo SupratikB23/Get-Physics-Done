@@ -292,7 +292,7 @@ def test_research_phase_verifies_research_artifact_before_accepting_handoff() ->
     assert "Accept the researcher handoff automatically only once `expected_artifacts` exist and pass the artifact check." in content
     assert "Do not trust the runtime handoff status by itself." in content
     assert "Artifact gate:" in content
-    assert "If the researcher reports `## RESEARCH COMPLETE` but the `expected_artifacts` entry (`RESEARCH.md`) is missing" in content
+    assert "If `gpd_return.status: completed` but the `expected_artifacts` entry (`RESEARCH.md`) is missing" in content
     assert "<spawn_contract>" in content
     assert "expected_artifacts:" in content
     assert "shared_state_policy: return_only" in content
@@ -343,7 +343,7 @@ def test_new_project_roadmapper_uses_spawn_contract_and_artifact_gate() -> None:
     assert "GPD/REQUIREMENTS.md" in roadmapper.text
     assert "GPD/literature/SUMMARY.md" in roadmapper.text
     assert "allowed_paths:" in roadmapper.text
-    assert "If the roadmapper reports `## ROADMAP CREATED`" in content
+    assert "If the roadmapper reports `gpd_return.status: completed`" in content
     assert "`GPD/ROADMAP.md` or `GPD/STATE.md` is missing" in content
     assert "Do not trust the runtime handoff status by itself." in content
     assert "Do not create a second main-context roadmap implementation path" in content
@@ -369,7 +369,7 @@ def test_new_milestone_research_and_roadmapper_gate_success_path_artifacts() -> 
     assert "Do not trust the runtime handoff status by itself." in content
     assert "If a scout reports success but its `expected_artifacts` entry (`GPD/literature/{FILE}`) is missing" in content
     assert "If the synthesizer reports success but `GPD/literature/SUMMARY.md` is missing" in content
-    assert "If the roadmapper reports `## ROADMAP CREATED` but `GPD/ROADMAP.md` or `GPD/STATE.md` is missing" in content
+    assert "If the roadmapper reports `gpd_return.status: completed` but `GPD/ROADMAP.md` or `GPD/STATE.md` is missing" in content
     assert "shared_state_policy: return_only" in content
 
     assert 'subagent_type="gpd-project-researcher"' in content

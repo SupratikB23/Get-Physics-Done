@@ -500,6 +500,28 @@ class TestSkillsServerIntegration:
         assert "Load `schema_documents` and `contract_documents` too when present" in result["loading_hint"]
         assert "It already embeds the model-visible `Command Requirements` section." in result["loading_hint"]
 
+    def test_get_skill_check_proof_surfaces_dedicated_proof_redteam_schema_and_contract_docs(self):
+        from gpd.mcp.servers.skills_server import get_skill
+
+        result = get_skill("gpd-check-proof")
+        direct_paths = {entry["path"] for entry in result["referenced_files"]}
+        schema_documents = {Path(entry["path"]).name: entry for entry in result["schema_documents"]}
+        contract_documents = {Path(entry["path"]).name: entry for entry in result["contract_documents"]}
+
+        assert "error" not in result
+        assert result["reference_count"] == len(direct_paths)
+        assert any(path.endswith("proof-redteam-schema.md") for path in direct_paths)
+        assert any(path.endswith("proof-redteam-protocol.md") for path in direct_paths)
+        assert any(path.endswith("proof-redteam-schema.md") for path in result["schema_references"])
+        assert any(path.endswith("proof-redteam-protocol.md") for path in result["contract_references"])
+        assert "proof-redteam-schema.md" in schema_documents
+        assert "Proof Redteam" in schema_documents["proof-redteam-schema.md"]["body"]
+        assert "proof-redteam-protocol.md" in contract_documents
+        assert "Proof Redteam Protocol" in contract_documents["proof-redteam-protocol.md"]["body"]
+        assert any(path.endswith("peer-review-panel.md") for path in result["contract_references"])
+        assert "Treat `content` as the wrapper/context surface." in result["loading_hint"]
+        assert "Load `schema_documents` and `contract_documents` too when present" in result["loading_hint"]
+
     def test_get_skill_surfaces_template_backed_schema_documents_for_writing_and_resume(self):
         from gpd.mcp.servers.skills_server import get_skill
 
@@ -521,6 +543,64 @@ class TestSkillsServerIntegration:
         assert any(path.endswith("continue-here.md") for path in pause_work["schema_references"])
         assert "continue-here.md" in pause_schema_documents
         assert "<persistent_state>" in pause_schema_documents["continue-here.md"]["body"]
+
+    def test_get_skill_surfaces_lightweight_paper_writer_reference_paths_and_transitive_metadata(self):
+        from gpd.mcp.servers.skills_server import get_skill
+
+        paper_writer = get_skill("gpd-paper-writer")
+        paper_writer_referenced_paths = {entry["path"] for entry in paper_writer["referenced_files"]}
+        paper_writer_transitive_paths = {entry["path"] for entry in paper_writer["transitive_referenced_files"]}
+        paper_writer_template_references = set(paper_writer["template_references"])
+
+        assert "error" not in paper_writer
+        assert paper_writer["reference_count"] == len(paper_writer_referenced_paths)
+        assert paper_writer["transitive_reference_count"] > paper_writer["reference_count"]
+        assert paper_writer_referenced_paths.issuperset(
+            {
+                "@{GPD_INSTALL_DIR}/references/shared/shared-protocols.md",
+                "@{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md",
+                "@{GPD_INSTALL_DIR}/templates/notation-glossary.md",
+                "@{GPD_INSTALL_DIR}/templates/latex-preamble.md",
+                "@{GPD_INSTALL_DIR}/references/publication/figure-generation-templates.md",
+                "@{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md",
+                "@{GPD_INSTALL_DIR}/templates/paper/author-response.md",
+            }
+        )
+        assert paper_writer_template_references == {
+            "@{GPD_INSTALL_DIR}/templates/notation-glossary.md",
+            "@{GPD_INSTALL_DIR}/templates/latex-preamble.md",
+            "@{GPD_INSTALL_DIR}/templates/paper/author-response.md",
+        }
+        assert paper_writer["schema_references"] == ["@{GPD_INSTALL_DIR}/templates/paper/author-response.md"]
+        assert paper_writer["schema_documents"]
+        assert any(path.endswith("verification-core.md") for path in paper_writer_transitive_paths)
+
+    def test_get_skill_surfaces_lightweight_bibliographer_reference_paths_and_transitive_metadata(self):
+        from gpd.mcp.servers.skills_server import get_skill
+
+        bibliographer = get_skill("gpd-bibliographer")
+        bibliographer_referenced_paths = {entry["path"] for entry in bibliographer["referenced_files"]}
+        bibliographer_template_references = set(bibliographer["template_references"])
+        bibliographer_transitive_paths = {entry["path"] for entry in bibliographer["transitive_referenced_files"]}
+
+        assert "error" not in bibliographer
+        assert bibliographer["reference_count"] == len(bibliographer_referenced_paths)
+        assert bibliographer["transitive_reference_count"] > bibliographer["reference_count"]
+        assert bibliographer_referenced_paths == {
+            "@{GPD_INSTALL_DIR}/references/shared/shared-protocols.md",
+            "@{GPD_INSTALL_DIR}/references/physics-subfields.md",
+            "@{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md",
+            "@{GPD_INSTALL_DIR}/templates/notation-glossary.md",
+            "@{GPD_INSTALL_DIR}/references/publication/bibtex-standards.md",
+            "@{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md",
+            "@{GPD_INSTALL_DIR}/references/publication/bibliography-advanced-search.md",
+        }
+        assert bibliographer_template_references == {
+            "@{GPD_INSTALL_DIR}/templates/notation-glossary.md",
+        }
+        assert bibliographer["schema_references"] == []
+        assert bibliographer["schema_documents"] == []
+        assert any(path.endswith("verification-core.md") for path in bibliographer_transitive_paths)
 
     def test_get_skill_index_complete(self):
         from gpd.mcp.servers.skills_server import get_skill_index

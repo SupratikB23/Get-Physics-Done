@@ -140,7 +140,7 @@ Physics debugging follows a hierarchy of checks, ordered from cheapest to most e
   </common_physics_errors>
 
 <debug_file>
-Create: GPD/debug/{slug}.md
+Write to: GPD/debug/{slug}.md
 </debug_file>
 ```
 
@@ -156,36 +156,13 @@ task(
 
 ## 4. Handle Agent Return
 
-**If `## ROOT CAUSE FOUND`:**
+Handle the debugger return through the workflow-owned typed child-return contract. Do not branch on heading text here.
 
-- Display root cause and evidence summary
-- Classify the error type (sign error, missing factor, wrong convention, numerical issue, conceptual error)
-- Offer options:
-  - "Fix now" — spawn fix subagent
-  - "Plan fix" — suggest gpd:plan-phase --gaps
-  - "Manual fix" — done (provide the identified error location and correction)
+- `gpd_return.status: completed` -- Verify `GPD/debug/{slug}.md` exists and passes the artifact gate before presenting the confirmed root cause, evidence summary, and error classification, then offer: Fix now, Plan fix, Manual fix.
+- `gpd_return.status: checkpoint` -- Present the checkpoint details to the user, collect the response, and spawn a fresh continuation run.
+- `gpd_return.status: blocked` or `failed` -- Show what was checked, what was ruled out, and what remains unresolved, then offer: Continue investigating, Manual investigation, Add more context, Simplify the problem.
 
-**If `## CHECKPOINT REACHED`:**
-
-- Present checkpoint details to user
-- Common checkpoint reasons in physics debugging:
-  - "Need to know which convention you are using for X"
-  - "Found two candidate errors — which regime matters more to you?"
-  - "Numerical test requires running a simulation — should I proceed?"
-  - "Discrepancy might be a known issue in the literature — should I search?"
-- Get user response
-- Spawn continuation agent (see step 5)
-
-**If `## INVESTIGATION INCONCLUSIVE`:**
-
-- Show what was checked and eliminated
-- Offer options:
-  - "Continue investigating" — spawn new agent with additional context
-  - "Manual investigation" — done, provide summary of what was ruled out
-  - "Add more context" — gather more symptoms, spawn again
-  - "Simplify the problem" — suggest stripping to minimal reproducing case
-
-## 5. Spawn Continuation agent (After Checkpoint)
+## 5. Spawn Fresh Continuation agent (After Checkpoint)
 
 When user responds to checkpoint, spawn fresh agent:
 

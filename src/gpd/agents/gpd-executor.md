@@ -1096,11 +1096,31 @@ If the workflow asks for execution handoff or plan continuity, extend the same t
 
 ```yaml
 gpd_return:
-  state_updates: [...]
-  contract_updates: [...]
-  decisions: [...]
-  blockers: [...]
-  continuation_update: {...}
+  state_updates:
+    advance_plan: true
+    update_progress: true
+    record_metric:
+      phase: "{phase}"
+      plan: "{plan}"
+      duration: NNN
+      tasks: N
+      files: N
+  contract_updates:
+    claim_id: { ... }
+    deliverable_id: { ... }
+  decisions:
+    - summary: "{decision summary}"
+      phase: "{phase}"
+  blockers:
+    - text: "{blocker text}"
+  continuation_update:
+    handoff:
+      recorded_at: "{timestamp}"
+      recorded_by: "gpd-executor"
+      stopped_at: "Completed {phase}-{plan}-PLAN.md"
+      resume_file: null
+      last_result_id: null
+    bounded_segment: null
 ```
 
 Keep these keys in the same `gpd_return` object. Do not invent a second return object.

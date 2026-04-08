@@ -1,6 +1,12 @@
 # Agent Delegation Reference
 
-This document defines the standardized pattern for spawning GPD agents across runtimes.
+This is the canonical delegation contract for spawned GPD agents. Reuse these rules anywhere a workflow, runtime note, or continuation template needs to describe a handoff.
+
+## Delegation Invariants
+
+1. **One-shot handoff:** A spawned subagent runs once. If it needs human input, it returns `status: checkpoint` and stops.
+2. **Artifact gate:** Reported success is provisional until the orchestrator verifies every `expected_artifacts` entry exists on disk.
+3. **Fresh continuation ownership:** The orchestrator, not the child, presents the checkpoint and spawns any fresh continuation handoff.
 
 ## task() Delegation Block
 
@@ -51,10 +57,10 @@ Every runtime-specific delegation surface must preserve these workflow semantics
 2. **Model semantics:** The `model` parameter is omitted when `gpd resolve-model` returns empty.
 3. **Write access:** File-producing subagents must be spawned with write permissions (`readonly=false`). Without this, runtimes that default to read-only mode will silently discard all file writes.
 4. **Write-scope isolation:** Parallel subagents get disjoint writable targets.
-5. **Blocking completion semantics:** The orchestrator treats the handoff as incomplete until artifacts or structured return data are present.
-6. **Success-path artifact gate:** A reported success is not sufficient by itself. If `expected_artifacts` are missing, the handoff is incomplete even when the runtime says it finished cleanly.
+5. **Blocking completion semantics:** The orchestrator treats the handoff as incomplete until the required artifacts or structured return data are present and verified on disk.
+6. **Success-path artifact gate:** A reported success is not sufficient by itself. If `expected_artifacts` are missing on disk, the handoff is incomplete even when the runtime says it finished cleanly.
 7. **Return-envelope parity:** The subagent must return the same machine-readable outcome shape the shared workflows expect.
-8. **Checkpoint, don't idle:** `task()` is a single-run handoff. A spawned subagent must not "wait here for the user" inside the same handoff. If human input is required, return `status: checkpoint` with the proposal/blocker and enough state for the orchestrator to present the checkpoint and spawn a fresh continuation handoff.
+8. **Checkpoint, don't idle:** `task()` is a single-run handoff. A spawned subagent must not wait for the user inside the same handoff. If human input is required, return `status: checkpoint` with the proposal/blocker and enough state for the orchestrator to present the checkpoint and spawn a fresh continuation handoff.
 
 If a runtime cannot satisfy these invariants with native subagents, fall back to a sequential main-context execution that still preserves the same write scope, artifact checks, and return-envelope discipline.
 
