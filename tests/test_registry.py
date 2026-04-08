@@ -1562,6 +1562,24 @@ class TestRegistryPromptIncludeInlining:
             "references/publication/publication-pipeline-modes.md",
             "references/publication/figure-generation-templates.md",
             "templates/paper/author-response.md",
+            ):
+            lightweight = f"{{GPD_INSTALL_DIR}}/{path}"
+            eager = f"@{{GPD_INSTALL_DIR}}/{path}"
+            assert lightweight in skill.content
+            assert eager not in skill.content
+
+    def test_bibliographer_registry_surface_preserves_lightweight_path_mentions(self) -> None:
+        skill = registry.get_skill("gpd-bibliographer")
+
+        assert skill.source_kind == "agent"
+        assert skill.path.endswith("gpd-bibliographer.md")
+        for path in (
+            "references/shared/shared-protocols.md",
+            "references/physics-subfields.md",
+            "templates/notation-glossary.md",
+            "references/orchestration/agent-infrastructure.md",
+            "references/publication/bibtex-standards.md",
+            "references/publication/publication-pipeline-modes.md",
         ):
             lightweight = f"{{GPD_INSTALL_DIR}}/{path}"
             eager = f"@{{GPD_INSTALL_DIR}}/{path}"

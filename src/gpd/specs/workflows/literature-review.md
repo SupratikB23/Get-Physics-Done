@@ -435,13 +435,13 @@ For every reference listed in the Full Reference List and cited in the body:
 
 Write results to GPD/literature/{slug}-CITATION-AUDIT.md
 
-Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
+Return a typed `gpd_return` envelope. Use `status: completed` when the bibliography task finished, even if the human-readable heading is `## CITATION ISSUES FOUND`; use `status: checkpoint` only when researcher input is required to continue."
 )
 ```
 
 **If the bibliographer agent fails to spawn or returns an error:** Proceed without citation audit. Note in the review summary that citations are unverified. The user should manually check key references against INSPIRE-HEP/ADS.
 
-**If CITATION ISSUES FOUND:**
+**If the bibliographer completed with issues recorded in the audit report:**
 
 - Read the audit report
 - Fix or remove hallucinated citations from the review document

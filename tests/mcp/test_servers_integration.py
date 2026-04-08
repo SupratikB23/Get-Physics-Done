@@ -538,6 +538,21 @@ class TestSkillsServerIntegration:
         assert any(path.endswith("figure-generation-templates.md") for path in paper_writer_referenced_paths)
         assert any(path.endswith("author-response.md") for path in paper_writer_template_references)
 
+    def test_get_skill_surfaces_lightweight_bibliographer_reference_paths(self):
+        from gpd.mcp.servers.skills_server import get_skill
+
+        bibliographer = get_skill("gpd-bibliographer")
+        bibliographer_template_references = set(bibliographer["template_references"])
+        bibliographer_referenced_paths = {entry["path"] for entry in bibliographer["referenced_files"]}
+
+        assert "error" not in bibliographer
+        assert any(path.endswith("shared-protocols.md") for path in bibliographer_referenced_paths)
+        assert any(path.endswith("physics-subfields.md") for path in bibliographer_referenced_paths)
+        assert any(path.endswith("agent-infrastructure.md") for path in bibliographer_referenced_paths)
+        assert any(path.endswith("bibtex-standards.md") for path in bibliographer_referenced_paths)
+        assert any(path.endswith("publication-pipeline-modes.md") for path in bibliographer_referenced_paths)
+        assert any(path.endswith("notation-glossary.md") for path in bibliographer_template_references)
+
     def test_get_skill_index_complete(self):
         from gpd.mcp.servers.skills_server import get_skill_index
 

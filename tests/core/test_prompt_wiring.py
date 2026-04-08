@@ -362,6 +362,24 @@ def test_paper_writer_uses_lightweight_path_mentions_for_metadata_only_reference
         assert eager not in writer_text
 
 
+def test_bibliographer_uses_lightweight_path_mentions_for_metadata_only_reference_packs() -> None:
+    bibliographer_text = (AGENTS_DIR / "gpd-bibliographer.md").read_text(encoding="utf-8")
+
+    for path in (
+        "references/shared/shared-protocols.md",
+        "references/physics-subfields.md",
+        "templates/notation-glossary.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/publication/bibtex-standards.md",
+        "references/publication/publication-pipeline-modes.md",
+        "references/publication/bibliography-advanced-search.md",
+    ):
+        lightweight = f"{{GPD_INSTALL_DIR}}/{path}"
+        eager = f"@{{GPD_INSTALL_DIR}}/{path}"
+        assert lightweight in bibliographer_text
+        assert eager not in bibliographer_text
+
+
 def test_continuation_format_scopes_clear_to_resolved_runtime_followups() -> None:
     continuation = (REFERENCES_DIR / "orchestration" / "continuation-format.md").read_text(encoding="utf-8")
 
@@ -1346,6 +1364,10 @@ def test_reference_workflows_require_anchor_registry_propagation() -> None:
     assert "include `bibtex_key` as an optional preferred key" in literature_agent
     assert "Keep `bibtex_key` stable across reruns when present" in literature_agent
     assert "preferred `bibtex_key`, treat it as the manuscript bridge candidate" in bibliographer_agent
+    assert (
+        "For the full mode specification matrix, see `{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md`."
+        in bibliographer_agent
+    )
     assert "project_contract_load_info" in compare_workflow
     assert "project_contract_validation" in compare_workflow
     assert "active_reference_context" in compare_workflow

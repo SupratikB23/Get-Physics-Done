@@ -875,15 +875,15 @@ Tasks:
 
 Write audit report to ${PAPER_DIR}/CITATION-AUDIT.md
 
-Return BIBLIOGRAPHY UPDATED or CITATION ISSUES FOUND."
+Return a typed `gpd_return` envelope. Use `status: completed` when the bibliography task finished, even if the human-readable heading is `## CITATION ISSUES FOUND`; use `status: checkpoint` only when researcher input is required to continue."
 )
 ```
 
-**If the bibliographer agent fails to spawn or returns an error:** Proceed without bibliography verification — note in the paper status that citations are unverified. The user should run `gpd:literature-review` to verify citations after the paper is written.
+**If the bibliographer agent fails to spawn or returns an error:** Do not mark bibliography verification complete. Offer: 1) Retry the bibliographer, 2) Run the audit in the main context, 3) Stop and leave citation status unverified. Do not proceed to strict review, reproducibility-manifest generation, or final review until `${PAPER_DIR}/CITATION-AUDIT.md` and the refreshed `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` exist.
 
 Treat `${PAPER_DIR}/CITATION-AUDIT.md` and the refreshed `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` as the bibliography success gate. If the audit refresh did not regenerate the JSON artifact, do not count the bibliography pass as complete.
 
-**If CITATION ISSUES FOUND:**
+**If the bibliographer completed with issues recorded in the audit report or `GPD/references-status.json`:**
 
 - Read the audit report and `GPD/references-status.json`
 - If `derived_manuscript_reference_status` is present, use it as the first-pass manuscript-local citation-status summary instead of reconstructing citation state manually from `.tex` or `.bib` files.
@@ -897,7 +897,7 @@ Treat `${PAPER_DIR}/CITATION-AUDIT.md` and the refreshed `${PAPER_DIR}/BIBLIOGRA
 - Re-run `gpd paper-build` after bibliography changes so `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` and the derived reference bridge are regenerated before entering strict review or `pre_submission_review`.
 - Confirm `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` exists after the refresh before proceeding to reproducibility or strict review.
 
-**If BIBLIOGRAPHY UPDATED:**
+**If the bibliographer completed cleanly with no remaining citation issues:**
 
 - Corrections already applied to .bib by bibliographer
 - Re-run `gpd paper-build` so `${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json` reflects the current bibliography state and the derived reference bridge stays current for downstream strict review.

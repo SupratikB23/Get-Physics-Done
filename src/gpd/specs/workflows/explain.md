@@ -189,12 +189,11 @@ For every paper or book in the Literature Guide:
 3. Flag hallucinated, inaccurate, or weakly supported references
 4. Write the audit to `GPD/explanations/{slug}-CITATION-AUDIT.md`
 
-Return `BIBLIOGRAPHY UPDATED` if all references are verified or corrected.
-Return `CITATION ISSUES FOUND` if any references remain uncertain or invalid."
+Return a typed `gpd_return` envelope. Use `status: completed` when the audit finished, even if the human-readable heading is `## CITATION ISSUES FOUND`; use `status: checkpoint` only when researcher input is required to continue."
 )
 ```
 
-If `CITATION ISSUES FOUND`:
+If the bibliographer completed with issues recorded in the audit report:
 
 - Read the audit report
 - Correct metadata in the explanation file where the fix is straightforward
