@@ -40,7 +40,6 @@ def test_paper_writer_prompt_surfaces_builder_journal_boundary() -> None:
     assert "style-only calibration for prose and structure" in source
     assert "Do not write unsupported journal labels into machine-readable builder artifacts." in source
 
-
 def test_paper_writer_prompt_keeps_lazy_authoring_contract_paths_visible() -> None:
     source = _read_paper_writer()
 
@@ -56,3 +55,9 @@ def test_paper_writer_prompt_keeps_lazy_authoring_contract_paths_visible() -> No
     assert "@{GPD_INSTALL_DIR}/templates/notation-glossary.md" not in source
     assert "@{GPD_INSTALL_DIR}/templates/latex-preamble.md" not in source
     assert "@{GPD_INSTALL_DIR}/templates/paper/author-response.md" not in source
+
+def test_paper_writer_prompt_keeps_required_gpd_acknowledgment_visible() -> None:
+    source = _read_paper_writer()
+
+    assert "This research made use of Get Physics Done (GPD)" in source
+    assert "GPD Research Grant from Physical Superintelligence PBC (PSI)." in source

@@ -531,7 +531,7 @@ Uninstall removes GPD from the selected runtime config only. It does not delete 
 
 GPD takes its name in explicit analogy with [GSD (Get Shit Done)](https://github.com/gsd-build/get-shit-done), whose adoption demonstrates how AI-native command workflows can be genuinely useful. GPD takes inspiration from that system to build a sophisticated prompt-engineered agentic system specifically designed for physics research.
 
-## Citation
+## Citation and Acknowledgement
 
 If GPD contributes to published research, please cite the software using [`CITATION.cff`](https://github.com/psi-oss/get-physics-done/blob/main/CITATION.cff). Copy-ready formats:
 
@@ -550,11 +550,18 @@ If GPD contributes to published research, please cite the software using [`CITAT
 Physical Superintelligence PBC (2026). Get Physics Done (GPD) (Version 1.1.0). https://github.com/psi-oss/get-physics-done
 ```
 
+If your paper includes an acknowledgements section, use:
+
+```text
+This research made use of Get Physics Done (GPD) and was supported in part by a GPD Research Grant from Physical Superintelligence PBC (PSI).
+```
+
 ## Papers Using GPD
 
 Papers that cite or acknowledge use of GPD. If your paper should be listed here, open a pull request.
 
 - C. Ferko, J. Halverson, V. Jejjala and B. Robinson, *Topological Effects in Neural Network Field Theory* (2026), [arXiv:2604.02313](https://arxiv.org/abs/2604.02313).
+- V. G. Filev, *Holographic entanglement entropy, Wilson loops, and neural networks* (2026), [arXiv:2604.05970](https://arxiv.org/abs/2604.05970).
 
 ## Star History
 
