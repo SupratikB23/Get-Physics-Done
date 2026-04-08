@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,7 +42,21 @@ from tests.manuscript_test_support import (
     manuscript_relpath as canonical_manuscript_relpath,
 )
 
-runner = CliRunner()
+
+class _StableCliRunner(CliRunner):
+    def invoke(self, *args, **kwargs):
+        kwargs.setdefault("color", False)
+        return super().invoke(*args, **kwargs)
+
+
+runner = _StableCliRunner()
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def _normalize_cli_output(text: str) -> str:
+    return " ".join(_ANSI_ESCAPE_RE.sub("", text).split())
+
+
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "stage0"
 _RUNTIME_DESCRIPTORS = iter_runtime_descriptors()
 _PRIMARY_RAW_RUNTIME_DESCRIPTOR = _RUNTIME_DESCRIPTORS[0]
@@ -5569,38 +5584,42 @@ def test_cli_uninstall_and_resolution_paths(monkeypatch: pytest.MonkeyPatch, gpd
 
 def test_init_new_project_help_surfaces_stage_option() -> None:
     result = runner.invoke(app, ["init", "new-project", "--help"])
+    output = _normalize_cli_output(result.output)
 
     assert result.exit_code == 0
-    assert "--stage" in result.output
-    assert "Load the staged new-project context for a specific" in result.output
-    assert "stage id." in result.output
+    assert "--stage" in output
+    assert "Load the staged new-project context for a specific" in output
+    assert "stage id." in output
 
 
 def test_init_verify_work_help_surfaces_stage_option() -> None:
     result = runner.invoke(app, ["init", "verify-work", "--help"])
+    output = _normalize_cli_output(result.output)
 
     assert result.exit_code == 0
-    assert "--stage" in result.output
-    assert "Load the staged verify-work context for a specific" in result.output
-    assert "stage id." in result.output
+    assert "--stage" in output
+    assert "Load the staged verify-work context for a specific" in output
+    assert "stage id." in output
 
 
 def test_init_plan_phase_help_surfaces_stage_option() -> None:
     result = runner.invoke(app, ["init", "plan-phase", "--help"])
+    output = _normalize_cli_output(result.output)
 
     assert result.exit_code == 0
-    assert "--stage" in result.output
-    assert "Load the staged plan-phase context for a specific" in result.output
-    assert "stage id." in result.output
+    assert "--stage" in output
+    assert "Load the staged plan-phase context for a specific" in output
+    assert "stage id." in output
 
 
 def test_init_execute_phase_help_surfaces_stage_option() -> None:
     result = runner.invoke(app, ["init", "execute-phase", "--help"])
+    output = _normalize_cli_output(result.output)
 
     assert result.exit_code == 0
-    assert "--stage" in result.output
-    assert "Load the staged execute-phase context for a specific" in result.output
-    assert "stage id." in result.output
+    assert "--stage" in output
+    assert "Load the staged execute-phase context for a specific" in output
+    assert "stage id." in output
 
 
 class TestNoDuplicateTestMethods:
