@@ -2465,7 +2465,7 @@ def test_review_and_verification_prompts_explicitly_surface_schema_sources_and_c
     for text in (review_reader, review_literature, review_math, review_physics, review_significance):
         assert "Required schema for" not in text
         assert "closed schema; do not invent extra keys" not in text
-    assert "re-open `@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md`" in referee
+    assert "re-open `{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md`" in referee
 
 
 def test_peer_review_prompt_includes_concise_stage_map_for_users() -> None:
@@ -2728,6 +2728,8 @@ def test_skill_surface_exposes_contract_references_for_paper_and_review_workflow
 def test_review_and_execution_prompts_expand_required_schema_sources() -> None:
     src_root = REPO_ROOT / "src/gpd/specs"
 
+    review_reader_raw = (AGENTS_DIR / "gpd-review-reader.md").read_text(encoding="utf-8")
+    referee_raw = (AGENTS_DIR / "gpd-referee.md").read_text(encoding="utf-8")
     review_reader = expand_at_includes(
         (AGENTS_DIR / "gpd-review-reader.md").read_text(encoding="utf-8"),
         src_root,
@@ -2744,10 +2746,14 @@ def test_review_and_execution_prompts_expand_required_schema_sources() -> None:
         "/runtime/",
     )
 
-    assert "Peer Review Panel Protocol" in review_reader
+    assert "{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md" in review_reader_raw
+    assert "{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md" in referee_raw
+    assert "{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md" in referee_raw
+    assert "{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md" in referee_raw
+    assert "Peer Review Panel Protocol" not in review_reader
     assert "Peer Review Panel Protocol" in review_literature
-    assert "Review Ledger Schema" in referee
-    assert "Referee Decision Schema" in referee
+    assert "Review Ledger Schema" not in referee
+    assert "Referee Decision Schema" not in referee
 
 
 def test_verification_and_agent_reference_prompts_expand_or_stage_required_reference_bodies() -> None:

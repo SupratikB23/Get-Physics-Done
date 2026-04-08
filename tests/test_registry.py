@@ -1517,7 +1517,7 @@ class TestRegistryPromptIncludeInlining:
         assert "# Canonical Schema Discipline" in agent.system_prompt
         assert "<!-- [included:" not in agent.system_prompt
 
-    def test_write_paper_command_content_inlines_contract_schema_dependencies(self) -> None:
+    def test_write_paper_command_surface_uses_staged_loading_for_contract_schemas(self) -> None:
         command = registry.get_command("gpd:write-paper")
 
         assert command.staged_loading is not None
@@ -1536,6 +1536,18 @@ class TestRegistryPromptIncludeInlining:
         assert "templates/paper/referee-decision-schema.md" in command.staged_loading.stage(
             "publication_review"
         ).loaded_authorities
+
+    def test_publication_review_skills_keep_the_needed_contract_references_visible(self) -> None:
+        from gpd.mcp.servers.skills_server import get_skill
+
+        referee = get_skill("gpd-referee")
+        review_reader = get_skill("gpd-review-reader")
+
+        for skill in (referee, review_reader):
+            assert "error" not in skill
+            assert any(path.endswith("peer-review-panel.md") for path in skill["contract_references"])
+            assert any(path.endswith("review-ledger-schema.md") for path in skill["schema_references"])
+            assert any(path.endswith("referee-decision-schema.md") for path in skill["schema_references"])
 
 
 class TestNonMdFilesIgnored:

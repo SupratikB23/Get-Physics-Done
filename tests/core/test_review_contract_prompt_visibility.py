@@ -1260,7 +1260,7 @@ def test_prompt_visible_contracts_surface_literal_boolean_requirements() -> None
 
     assert "`required_in_proof` must be a literal JSON boolean (`true` or `false`)" in plan_schema
     assert "not a quoted string or synonym such as `\"yes\"` / `\"no\"`" in plan_schema
-    assert "@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md" in review_reader
+    assert "{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md" in review_reader
     assert "shared source of truth for the full `ClaimIndex` and `StageReviewReport` contracts" in review_reader
     assert "`blocking` in each finding must be a literal JSON boolean (`true` or `false`)" in panel
     assert "not a quoted string or synonym such as `\"yes\"` / `\"no\"`" in panel
