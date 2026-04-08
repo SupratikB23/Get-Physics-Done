@@ -25,8 +25,13 @@ from pydantic import (
     ValidationError as PydanticValidationError,
 )
 
+from gpd.core.continuation import ContinuationBoundedSegment, ContinuationHandoff
+
 __all__ = [
     "GPD_RETURN_BLOCK_RE",
+    "GpdReturnContinuationBoundedSegment",
+    "GpdReturnContinuationHandoff",
+    "GpdReturnContinuationUpdate",
     "GpdReturnEnvelope",
     "GpdReturnStatusContract",
     "GpdReturnValidationResult",
@@ -53,6 +58,27 @@ class GpdReturnStatusContract:
 
     required_fields: tuple[str, ...]
     structured_fields: tuple[str, ...]
+
+
+class GpdReturnContinuationHandoff(ContinuationHandoff):
+    """Durable handoff payload visible in ``gpd_return``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+
+class GpdReturnContinuationBoundedSegment(ContinuationBoundedSegment):
+    """Durable bounded-segment payload visible in ``gpd_return``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+
+class GpdReturnContinuationUpdate(BaseModel):
+    """Typed durable continuation update nested inside ``gpd_return``."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    handoff: GpdReturnContinuationHandoff | None = None
+    bounded_segment: GpdReturnContinuationBoundedSegment | None = None
 
 
 RETURN_ENVELOPE_STATUS_CONTRACTS: dict[str, GpdReturnStatusContract] = {
@@ -102,7 +128,7 @@ class GpdReturnEnvelope(BaseModel):
     contract_updates: dict[str, object] | None = None
     decisions: list[object] | None = None
     blockers: list[object] | None = None
-    continuation_update: dict[str, object] | None = None
+    continuation_update: GpdReturnContinuationUpdate | None = None
     conventions_used: dict[str, object] | None = None
     checkpoint_hashes: list[dict[str, object]] | None = None
 
@@ -143,7 +169,7 @@ class GpdReturnEnvelope(BaseModel):
             raise ValueError(f"{info.field_name} not a number: {value!r}")
         return value
 
-    @field_validator("state_updates", "contract_updates", "continuation_update", "conventions_used", mode="before")
+    @field_validator("state_updates", "contract_updates", "conventions_used", mode="before")
     @classmethod
     def _validate_yaml_mapping(cls, value: object, info) -> dict[str, object] | None:
         if value is None:

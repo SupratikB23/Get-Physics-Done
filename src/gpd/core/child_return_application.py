@@ -18,7 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as PydanticValidationError
 
-from gpd.core.return_contract import GpdReturnEnvelope
+from gpd.core.return_contract import GpdReturnContinuationUpdate, GpdReturnEnvelope
 from gpd.core.state import (
     StateUpdateResult,
     state_add_blocker,
@@ -74,23 +74,6 @@ class _BlockerPayload(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     text: str
-
-
-class _ContinuationHandoffPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    recorded_at: str | None = None
-    recorded_by: str | None = None
-    stopped_at: str | None = None
-    resume_file: str | None = None
-    last_result_id: str | None = None
-
-
-class _ContinuationUpdatePayload(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    handoff: _ContinuationHandoffPayload | None = None
-    bounded_segment: dict[str, object] | None = None
 
 
 class ApplyChildReturnResult(BaseModel):
@@ -314,11 +297,11 @@ def _validate_blockers(raw: object, errors: list[str]) -> list[_BlockerPayload]:
     return normalized
 
 
-def _validate_continuation_update(raw: object, errors: list[str]) -> _ContinuationUpdatePayload | None:
+def _validate_continuation_update(raw: object, errors: list[str]) -> GpdReturnContinuationUpdate | None:
     if raw is None:
         return None
     try:
-        return _ContinuationUpdatePayload.model_validate(raw)
+        return GpdReturnContinuationUpdate.model_validate(raw)
     except PydanticValidationError as exc:
         errors.extend(_format_validation_errors(exc, prefix="continuation_update"))
         return None

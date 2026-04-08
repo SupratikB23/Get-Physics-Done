@@ -651,14 +651,18 @@ class TestApplyReturnUpdates:
                 "    advance_plan: true\n"
                 "    update_progress: true\n"
                 "  continuation_update:\n"
-                "    resume_contract:\n"
-                "      next_step: continue\n"
-                "      required_artifacts:\n"
-                "        - GPD/STATE.md\n"
-                "    execution_segment:\n"
-                "      current_cursor: 3\n"
-                "      completed_tasks:\n"
-                "        - task-1\n"
+                "    handoff:\n"
+                "      recorded_at: 2026-04-08T12:00:00Z\n"
+                "      recorded_by: execute-plan\n"
+                "      stopped_at: Completed phase 01\n"
+                "      resume_file: GPD/phases/01-test-phase/.continue-here.md\n"
+                "    bounded_segment:\n"
+                "      resume_file: GPD/phases/01-test-phase/.continue-here.md\n"
+                "      phase: 01\n"
+                "      plan: 01\n"
+                "      segment_id: seg-01\n"
+                "      segment_status: paused\n"
+                "      checkpoint_reason: segment_boundary\n"
             ),
         )
 
@@ -667,7 +671,28 @@ class TestApplyReturnUpdates:
         assert result.passed is True
         assert result.fields["state_updates"]["advance_plan"] is True
         assert result.fields["state_updates"]["update_progress"] is True
-        assert result.fields["continuation_update"]["execution_segment"]["current_cursor"] == 3
+        assert result.fields["continuation_update"]["handoff"]["recorded_by"] == "execute-plan"
+        assert result.fields["continuation_update"]["bounded_segment"]["segment_id"] == "seg-01"
+
+    def test_rejects_transport_only_execution_segment_inside_continuation_update(self, tmp_path: Path):
+        f = self._write_return(
+            tmp_path,
+            (
+                "gpd_return:\n"
+                "  status: checkpoint\n"
+                "  files_written: [src/main.py]\n"
+                "  issues: []\n"
+                "  next_actions: [/gpd:resume-work]\n"
+                "  continuation_update:\n"
+                "    execution_segment:\n"
+                "      current_cursor: 3\n"
+            ),
+        )
+
+        result = cmd_validate_return(f)
+
+        assert result.passed is False
+        assert any("continuation_update" in error and "execution_segment" in error for error in result.errors)
 
     def test_rejects_scalar_and_nested_map_shape_errors(self, tmp_path: Path):
         scalar_file = self._write_return(
@@ -699,4 +724,4 @@ class TestApplyReturnUpdates:
         )
         nested_result = cmd_validate_return(nested_map_file)
         assert nested_result.passed is False
-        assert any("continuation_update" in error and "mapping" in error for error in nested_result.errors)
+        assert any("continuation_update" in error for error in nested_result.errors)

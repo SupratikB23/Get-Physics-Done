@@ -19,7 +19,7 @@ def test_paper_writer_prompt_keeps_contract_evidence_as_writing_block() -> None:
     assert "comparison_verdicts" in source
     assert "any decisive `comparison_verdicts` entry with an evidence path" not in source
     assert "any decisive `comparison_verdicts` entry when the manuscript claim depends on that comparison" in source
-    assert "the research is not paper-ready. Return WRITING BLOCKED." in source
+    assert "the research is not paper-ready. Return `gpd_return.status: blocked`" in source
 
 
 def test_paper_writer_prompt_treats_missing_confidence_tags_as_calibration_warning() -> None:

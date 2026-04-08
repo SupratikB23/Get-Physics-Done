@@ -1155,11 +1155,14 @@ grep -iE '(mathematica|matlab|maple|cadabra|FORM|gaussian|VASP|ABINIT|COMSOL|for
 
 For each hit: classify by dependency tier (standard/common/specialized/licensed/hardware/external), check if availability is confirmed or an alternative is provided, flag if not.
 
-## Step 17: Determine Overall Status
+## Step 17: Determine `gpd_return.status`
 
-**passed:** All research requirements covered, all tasks complete, dependencies valid, approximations justified, computations feasible, validation adequate, results wired, literature reviewed, path to publication clear.
+Headings such as `## VERIFICATION PASSED`, `## ISSUES FOUND`, and `## PLAN_BLOCKED — Escalation to User` are presentation only. Route on `gpd_return.status`.
 
-**issues_found:** One or more blockers or warnings. Plans need revision.
+- `gpd_return.status: completed` -- All research requirements are covered, tasks are complete, dependencies are valid, approximations are justified, computations are feasible, validation is adequate, results are wired, literature is covered, and the path to publication is clear.
+- `gpd_return.status: checkpoint` -- Some plans are approved and can proceed, but one or more plans still need revision. Return the approved and blocked plan sets explicitly.
+- `gpd_return.status: failed` -- No executable approval set is ready yet. One or more blockers or warnings require planner revision before execution.
+- `gpd_return.status: blocked` -- Blocker-level issues persisted through 3 revision rounds and must escalate to the user.
 
 Severities: `blocker` (must fix), `warning` (should fix), `info` (suggestions).
 
@@ -1175,7 +1178,7 @@ Round 3: {N''} blockers remaining → if any remain, trigger escalation
 
 **Persistent blocker escalation (after 3 rounds):**
 
-If BLOCKER-level issues persist after 3 revision rounds, return PLAN_BLOCKED with a structured escalation report. Do NOT simply repeat the same feedback — the planner has already failed to resolve it three times. Instead, provide the user with a diagnosis and concrete options.
+If BLOCKER-level issues persist after 3 revision rounds, return `gpd_return.status: blocked` with a structured escalation report. Do NOT simply repeat the same feedback — the planner has already failed to resolve it three times. Instead, provide the user with a diagnosis and concrete options.
 
 ```markdown
 ## PLAN_BLOCKED — Escalation to User
@@ -1445,26 +1448,22 @@ Plans verified. Run `gpd:execute-phase {phase}` to proceed.
 
 ### Machine-Readable Return Envelope
 
+Headings above are presentation only. Route on `gpd_return.status`, the approved/blocked plan lists, and `issues`.
+
 ```yaml
 gpd_return:
-  # base fields (status, files_written, issues, next_actions) per agent-infrastructure.md
-  # status: completed | checkpoint | blocked | failed
-  # Mapping: all_approved → completed, some_approved → checkpoint, revision_needed → failed, escalated → blocked
-  contract_gate_summary:
-    decisive_outputs_covered: true
-    missing_decisive_outputs: []
-    missing_acceptance_tests: []
-    missing_anchor_refs: []
-    forbidden_proxy_hits: []
-    missing_disconfirming_paths: []
-  approved_plans: [list of plan IDs that passed]  # present when status is checkpoint
-  blocked_plans: [list of plan IDs needing revision]  # present when status is checkpoint or failed
-  dimensions_checked: [list]
-  issues_found: [list with severity]
+  status: completed | checkpoint | blocked | failed
+  files_written: []
+  issues: [issue objects from Issue Format above]
+  next_actions: [list of recommended follow-up actions]
+  approved_plans: [list of plan IDs that passed]
+  blocked_plans: [list of plan IDs needing revision or escalation]
+  dimensions_checked: [list of dimensions evaluated]
   revision_round: 1-3  # current round number
   revision_guidance: "specific feedback for planner"
-  escalation: null | {pattern, options}  # present when status is blocked (after 3 rounds)
 ```
+
+When contract-gate failures or escalation diagnoses matter, represent them in the `issues` list and the markdown report above instead of inventing nested `gpd_return` payloads.
 
 Use only status names: `completed` | `checkpoint` | `blocked` | `failed`.
 
@@ -1613,7 +1612,7 @@ Plan verification complete when:
   - [ ] Locked decisions have implementing tasks
   - [ ] No tasks contradict locked decisions
   - [ ] Deferred ideas not included in plans
-- [ ] Overall status determined (passed | issues_found)
+- [ ] Overall `gpd_return.status` determined (completed | checkpoint | failed | blocked)
 - [ ] Structured issues returned (if any found)
 - [ ] Result returned to orchestrator
 

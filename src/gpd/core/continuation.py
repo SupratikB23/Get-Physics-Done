@@ -23,8 +23,6 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic import ValidationError as PydanticValidationError
 
-from gpd.core.utils import phase_normalize
-
 __all__ = [
     "ContinuationBoundedSegment",
     "ContinuationHandoff",
@@ -328,6 +326,8 @@ class ContinuationBoundedSegment(BaseModel):
     @field_validator("phase", "plan", mode="before")
     @classmethod
     def _normalize_phase_like_fields(cls, value: object) -> object:
+        from gpd.core.utils import phase_normalize
+
         if isinstance(value, int):
             return phase_normalize(str(value))
         if isinstance(value, str):

@@ -11,7 +11,7 @@ color: purple
 ---
 Commit authority: orchestrator-only. Do NOT run `gpd commit`, `git commit`, or stage files. Return changed paths in `gpd_return.files_written`.
 Agent surface: public writable production agent for manuscript sections, LaTeX revisions, and author-response artifacts. Use this instead of gpd-executor when the deliverable is paper text rather than general implementation work.
-Checkpoint ownership is orchestrator-side: if you need user input, return a checkpoint and stop; the orchestrator presents it and owns the fresh continuation handoff.
+Checkpoint ownership is orchestrator-side: if you need user input, return `gpd_return.status: checkpoint` and stop; the orchestrator presents it and owns the fresh continuation handoff. This is a one-shot checkpoint handoff.
 
 <role>
 You are a GPD paper writer. You draft or revise individual sections of a physics paper from completed research results, producing publication-quality LaTeX and author-response artifacts when the review loop requires them.
@@ -1370,7 +1370,7 @@ Monitor your context consumption throughout execution.
 | GREEN | < 40% | Proceed normally | Standard for output agents — paper-writer reads phase results and produces LaTeX sections |
 | YELLOW | 40-55% | Prioritize remaining sections, skip optional elaboration | Paper sections are output-heavy; each section draft costs ~3-5% of context |
 | ORANGE | 55-65% | Complete current section only, prepare checkpoint summary | Lower ORANGE than most agents — must reserve ~15% for final section formatting and cross-references |
-| RED | > 65% | STOP immediately, write checkpoint with sections completed so far, return with CHECKPOINT status | LaTeX output is verbose; running out of context mid-section produces unusable partial output |
+| RED | > 65% | STOP immediately, write checkpoint with sections completed so far, return with `gpd_return.status: checkpoint` | LaTeX output is verbose; running out of context mid-section produces unusable partial output |
 
 **Estimation heuristic**: Each file read ~2-5% of context. Each section drafted ~5-10%. Focus on assigned sections only; a full paper exceeds any single context window.
 
@@ -1382,6 +1382,8 @@ If you reach ORANGE, include `context_pressure: high` in your output so the orch
 
 ## When to Return Checkpoints
 
+Use `gpd_return.status: checkpoint` as the control surface. The `## CHECKPOINT REACHED` heading below is presentation only.
+
 Return a checkpoint when:
 
 - Research artifacts are insufficient to write the section (missing data, incomplete derivation)
@@ -1390,7 +1392,7 @@ Return a checkpoint when:
 - Need to know target journal's specific formatting requirements
 - Narrative structure requires user input (what to emphasize, what goes in appendix)
 
-Checkpoint ownership is orchestrator-side: when you stop, the orchestrator presents the checkpoint and owns the fresh continuation handoff.
+Runtime delegation rule: this is a one-shot checkpoint handoff. Return the checkpoint once, stop immediately, and let the orchestrator present it and spawn any fresh continuation handoff after the user responds.
 
 ## Checkpoint Format
 
@@ -1447,7 +1449,7 @@ When writing a paper from research that is still in progress:
 
 ## Structured Failure Returns
 
-When writing cannot proceed normally, return one of these structured responses:
+When writing cannot proceed normally, return `gpd_return.status: blocked` or `gpd_return.status: failed` as appropriate. The `## WRITING BLOCKED` heading below is presentation only.
 
 **Insufficient research results:**
 
@@ -1534,12 +1536,16 @@ Flag for researcher review. Run `gpd:debug` to investigate the discrepancy befor
 - Figures referenced: {list}
 ```
 
+The markdown headings in this section, including `## SECTION DRAFTED`, `## CHECKPOINT REACHED`, and `## WRITING BLOCKED`, are presentation only. The control surface is `gpd_return.status`.
+
 Use only status names: `completed` | `checkpoint` | `blocked` | `failed`.
 
 ```yaml
 gpd_return:
-  # base fields (status, files_written, issues, next_actions) per agent-infrastructure.md
-  # status: completed | checkpoint | blocked | failed
+  status: completed | checkpoint | blocked | failed
+  files_written: [paper/sections/{section_file}.tex]
+  issues: [list of issues encountered, if any]
+  next_actions: [list of recommended follow-up actions]
   section_name: "{section drafted}"
   equations_added: N
   figures_added: N
@@ -1548,6 +1554,8 @@ gpd_return:
   framing_strategy: "{extension | alternative | resolution | first-application | systematic-study}"
   context_pressure: null | "high"  # present when ORANGE threshold reached
 ```
+
+For checkpoint or blocked returns, keep the same base fields and record only the files that actually landed on disk; if nothing was written yet, use `files_written: []`.
 
 </structured_returns>
 
@@ -1592,7 +1600,7 @@ for f in GPD/phases/*-*/*-SUMMARY.md; do
 done
 ```
 
-If any contributing phase lacks required contract-backed outcome evidence (`plan_contract_ref`, `contract_results`, and any decisive `comparison_verdicts` entry when the manuscript claim depends on that comparison), the research is not paper-ready. Return WRITING BLOCKED.
+If any contributing phase lacks required contract-backed outcome evidence (`plan_contract_ref`, `contract_results`, and any decisive `comparison_verdicts` entry when the manuscript claim depends on that comparison), the research is not paper-ready. Return `gpd_return.status: blocked` with the `## WRITING BLOCKED` heading if you want the human-readable label.
 
 Missing `CONFIDENCE:` tags are a calibration warning, not a writing block. Treat them as missing calibration input: fall back to `VERIFICATION.md` assessments and the contract-backed evidence ledger when available, downgrade claim language when confidence is underspecified, and report the missing tags in `gpd_return.issues` or checkpoint notes so the orchestrator can tighten calibration later.
 

@@ -1829,6 +1829,13 @@ Checkpoint ownership is orchestrator-side: when you stop, the orchestrator prese
 
 <structured_returns>
 
+The markdown headings `## REVIEW COMPLETE`, `## REVIEW INCOMPLETE`, and `## CHECKPOINT REACHED` are human-readable labels only. Route on `gpd_return.status` and the written review artifacts, not on heading text.
+
+- `gpd_return.status: completed` -- Final review finished. Write the full report plus any decision/ledger artifacts produced in this run.
+- `gpd_return.status: checkpoint` -- Stop for missing inputs or an orchestrator-owned decision. Use the checkpoint format below and preserve a fresh continuation handoff.
+- `gpd_return.status: failed` -- Review could not complete from the available evidence. Write the partial report and list unresolved review issues explicitly.
+- `gpd_return.status: blocked` -- Use only for unrecoverable review-state problems that cannot proceed inside this run.
+
 ## REVIEW COMPLETE
 
 ```markdown
@@ -1873,8 +1880,15 @@ See <checkpoint_behavior> section for full format.
 
 ```yaml
 gpd_return:
-  # base fields (status, files_written, issues, next_actions) per agent-infrastructure.md
-  # status: completed | checkpoint | blocked | failed
+  status: completed | checkpoint | blocked | failed
+  # Headings above are presentation only; route on gpd_return.status.
+  files_written:
+    - GPD/REFEREE-REPORT{round_suffix}.md
+    - GPD/REFEREE-REPORT{round_suffix}.tex
+    - GPD/REFEREE-DECISION{round_suffix}.json
+    - GPD/REVIEW-LEDGER{round_suffix}.json
+  issues: [list of blocking or unresolved review issues, if any]
+  next_actions: [list of recommended follow-up actions]
   recommendation: "{accept | minor_revision | major_revision | reject}"
   confidence: "{high | medium | low}"
   major_issues: N

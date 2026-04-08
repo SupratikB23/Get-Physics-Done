@@ -2590,21 +2590,47 @@ class TestValidateReturn:
             "    advance_plan: true\n"
             "    update_progress: true\n"
             "  continuation_update:\n"
-            "    resume_contract:\n"
-            "      next_step: continue\n"
-            "      required_artifacts:\n"
-            "        - GPD/STATE.md\n"
-            "    execution_segment:\n"
-            "      current_cursor: 3\n"
-            "      completed_tasks:\n"
-            "        - task-1\n```\n"
+            "    handoff:\n"
+            "      recorded_at: 2026-04-08T12:00:00Z\n"
+            "      recorded_by: execute-plan\n"
+            "      stopped_at: Completed phase 01\n"
+            "      resume_file: GPD/phases/01-test-phase/.continue-here.md\n"
+            "    bounded_segment:\n"
+            "      resume_file: GPD/phases/01-test-phase/.continue-here.md\n"
+            "      phase: 01\n"
+            "      plan: 01\n"
+            "      segment_id: seg-01\n"
+            "      segment_status: paused\n"
+            "      checkpoint_reason: segment_boundary\n```\n"
         )
         result = _invoke("--raw", "validate-return", str(return_file))
         parsed = json.loads(result.output)
         assert parsed["passed"] is True
         assert parsed["fields"]["state_updates"]["advance_plan"] is True
         assert parsed["fields"]["state_updates"]["update_progress"] is True
-        assert parsed["fields"]["continuation_update"]["execution_segment"]["current_cursor"] == 3
+        assert parsed["fields"]["continuation_update"]["handoff"]["recorded_by"] == "execute-plan"
+        assert parsed["fields"]["continuation_update"]["bounded_segment"]["segment_id"] == "seg-01"
+
+    def test_validate_return_rejects_transport_only_execution_segment_in_continuation_update(
+        self, gpd_project: Path
+    ) -> None:
+        """Transport-only execution_segment payloads should fail the durable return contract."""
+        return_file = gpd_project / "bad_transport_return.md"
+        return_file.write_text(
+            "# Summary\n\n```yaml\ngpd_return:\n"
+            "  status: checkpoint\n"
+            "  files_written: [\"src/main.py\"]\n"
+            "  issues: []\n"
+            "  next_actions: [\"/gpd:resume-work\"]\n"
+            "  continuation_update:\n"
+            "    execution_segment:\n"
+            "      current_cursor: 3\n```\n"
+        )
+        result = _invoke("--raw", "validate-return", str(return_file), expect_ok=False)
+        assert result.exit_code == 1
+        parsed = json.loads(result.output)
+        assert parsed["passed"] is False
+        assert any("continuation_update" in error and "execution_segment" in error for error in parsed["errors"])
 
     def test_validate_return_rejects_malformed_nested_payloads(self, gpd_project: Path) -> None:
         """Wrong scalar/list and mapping/list shapes should fail closed."""

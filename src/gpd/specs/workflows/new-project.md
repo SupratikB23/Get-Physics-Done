@@ -1751,7 +1751,7 @@ Create research roadmap:
 4. Derive 2-5 success criteria per phase (concrete, verifiable results) that respect the decisive outputs, anchors, and forbidden proxies in the approved project contract
 5. Validate 100% requirement coverage and surface all contract-critical items
 6. Write files immediately (ROADMAP.md, STATE.md, update REQUIREMENTS.md traceability) while preserving any existing `GPD/state.json` fields, especially `project_contract` and previously recorded open questions
-7. Return ROADMAP CREATED with summary
+7. Return `gpd_return.status: completed` with summary
 
 Write files first, then return. This ensures artifacts persist even if context is lost.
 </instructions>
@@ -1774,15 +1774,15 @@ shared_state_policy: direct
 
 **If the roadmapper agent fails to spawn or returns an error:** Check whether both `GPD/ROADMAP.md` and `GPD/STATE.md` already exist and are non-trivial (the agent writes files first). If both artifacts exist, verify them and continue. Otherwise retry the roadmapper once. If either required artifact is still missing after the retry, STOP and surface the blocker. Do not create a second main-context roadmap implementation path, and do not continue with `REQUIREMENTS.md` but no canonical roadmap/state pair.
 
-**Artifact gate:** If the roadmapper reports `## ROADMAP CREATED` but `GPD/ROADMAP.md` or `GPD/STATE.md` is missing, treat the handoff as incomplete. Do not trust the runtime handoff status by itself.
+**Artifact gate:** If the roadmapper reports `gpd_return.status: completed` but `GPD/ROADMAP.md` or `GPD/STATE.md` is missing, treat the handoff as incomplete. Do not trust the runtime handoff status by itself.
 
-**If `## ROADMAP BLOCKED`:**
+**If `gpd_return.status: blocked`:**
 
 - Present blocker information
 - Work with user to resolve
 - Re-spawn when resolved
 
-**If `## ROADMAP CREATED`:**
+**If `gpd_return.status: completed`:**
 
 Read the created ROADMAP.md and present it nicely inline:
 

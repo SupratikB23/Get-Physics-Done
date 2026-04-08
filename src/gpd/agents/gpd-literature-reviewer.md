@@ -1465,7 +1465,7 @@ The reviewer may need human input during the review process. Common checkpoints:
 - **Competing frameworks:** "Two theoretical approaches -- which is more relevant?"
 - **Controversy found:** "Critical disagreement in the literature that affects our project -- how should we proceed?"
 
-When reaching a checkpoint, return:
+When reaching a checkpoint, return a typed `gpd_return` checkpoint and stop. The `## CHECKPOINT REACHED` heading below is presentation only; the orchestrator presents it to the user and spawns a fresh continuation run after the response.
 
 ```markdown
 ## CHECKPOINT REACHED
@@ -1482,6 +1482,18 @@ When reaching a checkpoint, return:
 - Field assessment so far: {settled/active/debated/speculative}
 
 **Review file:** GPD/literature/{slug}-REVIEW.md (partial, updated to current point)
+```
+
+Use this checkpoint envelope:
+
+```yaml
+gpd_return:
+  status: checkpoint
+  files_written: [GPD/literature/{slug}-REVIEW.md]
+  issues: [checkpoint question or ambiguity]
+  next_actions: [resume after user response]
+  papers_reviewed: {count}
+  field_assessment: settled | active_research | active_debate | speculative
 ```
 
 </checkpoint_protocol>
@@ -1602,82 +1614,19 @@ Allocate review depth based on the review type specified at invocation. These bu
 
 ## Review Complete
 
-```markdown
-## REVIEW COMPLETE
-
-**Topic:** {topic}
-**Papers reviewed:** {count} (Tier 1: {N}, Tier 2: {N}, Tier 3: {N})
-**Field assessment:** {settled / active_research / active_debate / speculative}
-**Output:** GPD/literature/{slug}-REVIEW.md
-
-### Key Takeaways
-
-1. {Most important finding, with confidence score and evidence level}
-2. {Second most important}
-3. {Third most important}
-
-### Best Current Values
-
-| Quantity | Best value      | Evidence | Confidence | Source |
-| -------- | --------------- | -------- | ---------- | ------ |
-| {qty}    | {value +/- err} | {L1-L6}  | {A-D}      | {ref}  |
-
-### Controversies Identified
-
-| Controversy | Status            | Relevance                      | Diagnosis                |
-| ----------- | ----------------- | ------------------------------ | ------------------------ |
-| {name}      | {active/resolved} | {critical/relevant/peripheral} | {source of disagreement} |
-
-### Coverage Assessment
-
-- Foundational work: {COMPLETE / PARTIAL / MINIMAL}
-- Recent advances: {COMPLETE / PARTIAL / MINIMAL}
-- Methods survey: {COMPLETE / PARTIAL / MINIMAL}
-- Open questions: {IDENTIFIED / PARTIALLY IDENTIFIED}
-- Confidence scoring: {ALL TIER 1 SCORED / PARTIAL / NOT DONE}
-
-### Recommendations
-
-- {What to do with these results}
-- {Which values to use as inputs}
-- {Which controversies to be aware of}
-```
-
-## Review Inconclusive
-
-```markdown
-## REVIEW INCONCLUSIVE
-
-**Topic:** {topic}
-**Papers reviewed:** {count}
-**Issue:** {what prevented completion}
-
-**What was found:** {brief summary}
-**What's missing:** {what couldn't be determined}
-
-**Suggested next steps:**
-
-- {option 1}
-- {option 2}
-```
-
-### Machine-Readable Return Envelope
-
-All returns to the orchestrator MUST use this YAML envelope for reliable parsing:
+Use `gpd_return.status: completed` for a finished review. The markdown `## REVIEW COMPLETE` heading is presentation only.
 
 ```yaml
 gpd_return:
   status: completed | checkpoint | blocked | failed
-  # completed = review finished (was: REVIEW COMPLETE)
-  # checkpoint = review incomplete, partial results usable (was: REVIEW INCONCLUSIVE)
   files_written: [GPD/literature/{slug}-REVIEW.md]
-  issues: [list of issues encountered, if any]
-  next_actions: [list of recommended follow-up actions]
+  issues: [most important unresolved issues or empty list]
+  next_actions: [recommended follow-up actions or reading path]
   papers_reviewed: {count}
   field_assessment: settled | active_research | active_debate | speculative
 ```
 
-Use only status names: `completed` | `checkpoint` | `blocked` | `failed`.
+For a complete review, include `papers_reviewed`, `field_assessment`, a short findings summary, and the citation verification status. If the review is incomplete, use `gpd_return.status: checkpoint` and do not wait in-run for user approval.
 
 </structured_returns>
 

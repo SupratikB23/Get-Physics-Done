@@ -59,8 +59,15 @@ def test_executor_completion_spawned_handoff_example_keeps_base_fields_and_exten
     assert 'files_written: ["GPD/phases/XX-name/{phase}-{plan}-SUMMARY.md"]' in completion
     assert "issues: [list of issues encountered, if any]" in completion
     assert "next_actions: [list of recommended follow-up actions]" in completion
-    assert "state_updates: [...]" in completion
-    assert "contract_updates: [...]" in completion
-    assert "decisions: [...]" in completion
-    assert "blockers: [...]" in completion
-    assert "continuation_update: {...}" in completion
+    assert "state_updates:" in completion
+    assert "advance_plan: true" in completion
+    assert "update_progress: true" in completion
+    assert "record_metric:" in completion
+    assert "contract_updates:" in completion
+    assert "decisions:" in completion
+    assert "blockers:" in completion
+    assert "continuation_update:" in completion
+    assert "handoff:" in completion
+    assert "bounded_segment:" in completion
+    assert "state_updates: [...]" not in completion
+    assert "continuation_update: {...}" not in completion

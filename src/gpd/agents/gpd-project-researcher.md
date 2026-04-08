@@ -690,10 +690,10 @@ Append this YAML block after the markdown return. Required per agent-infrastruct
 ```yaml
 gpd_return:
   status: completed | checkpoint | blocked | failed
-  # Mapping: RESEARCH COMPLETE → completed, RESEARCH BLOCKED → blocked
   files_written: [GPD/research/SUMMARY.md, GPD/research/METHODS.md, ...]
   issues: [list of issues encountered, if any]
   next_actions: [list of recommended follow-up actions]
+  # Headings above are presentation only; route on gpd_return.status.
   confidence: HIGH | MEDIUM | LOW
 ```
 

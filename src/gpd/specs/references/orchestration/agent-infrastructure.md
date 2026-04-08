@@ -266,8 +266,8 @@ gpd state add-blocker --text "<blocker description>"
 gpd state update "Current Plan" "<value>"
 gpd result add --description "<result description>"
 
-# Advance / transition phase status
-gpd state advance
+# Apply durable child-return state effects
+gpd apply-return-updates <summary-file>
 gpd phase complete <phase-number>
 ```
 
