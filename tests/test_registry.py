@@ -1520,10 +1520,22 @@ class TestRegistryPromptIncludeInlining:
     def test_write_paper_command_content_inlines_contract_schema_dependencies(self) -> None:
         command = registry.get_command("gpd:write-paper")
 
-        assert "Paper Config Schema" in command.content
-        assert "Review Ledger Schema" in command.content
-        assert "Referee Decision Schema" in command.content
-        assert "Stage 1 `CLAIMS{round_suffix}.json` must follow this compact `ClaimIndex` shape" in command.content
+        assert command.staged_loading is not None
+        assert "Paper Config Schema" not in command.content
+        assert "Review Ledger Schema" not in command.content
+        assert "Referee Decision Schema" not in command.content
+        assert "templates/paper/paper-config-schema.md" in command.staged_loading.stage(
+            "outline_and_scaffold"
+        ).loaded_authorities
+        assert "references/publication/peer-review-panel.md" in command.staged_loading.stage(
+            "publication_review"
+        ).loaded_authorities
+        assert "templates/paper/review-ledger-schema.md" in command.staged_loading.stage(
+            "publication_review"
+        ).loaded_authorities
+        assert "templates/paper/referee-decision-schema.md" in command.staged_loading.stage(
+            "publication_review"
+        ).loaded_authorities
 
 
 class TestNonMdFilesIgnored:

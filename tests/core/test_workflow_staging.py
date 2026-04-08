@@ -30,6 +30,8 @@ def _workflow_payload(workflow_id: str) -> dict[str, object]:
         ("new-project", NEW_PROJECT_STAGE_MANIFEST_PATH),
         ("plan-phase", NEW_PROJECT_STAGE_MANIFEST_PATH.parent / "plan-phase-stage-manifest.json"),
         ("verify-work", NEW_PROJECT_STAGE_MANIFEST_PATH.parent / "verify-work-stage-manifest.json"),
+        ("write-paper", NEW_PROJECT_STAGE_MANIFEST_PATH.parent / "write-paper-stage-manifest.json"),
+        ("peer-review", NEW_PROJECT_STAGE_MANIFEST_PATH.parent / "peer-review-stage-manifest.json"),
         ("execute-phase", EXECUTE_PHASE_STAGE_MANIFEST_PATH),
     ],
 )
@@ -169,6 +171,83 @@ def test_validate_workflow_stage_manifest_payload_loads_plan_phase_manifest() ->
     assert "experiment_design_content" in manifest.stages[2].required_init_fields
     assert "experiment_design_content" in manifest.stages[3].required_init_fields
     assert "GPD/phases" in manifest.stages[2].writes_allowed
+
+
+def test_validate_workflow_stage_manifest_payload_loads_write_paper_manifest() -> None:
+    manifest = validate_workflow_stage_manifest_payload(
+        _workflow_payload("write-paper"),
+        expected_workflow_id="write-paper",
+    )
+
+    assert manifest.workflow_id == "write-paper"
+    assert manifest.stage_ids() == (
+        "paper_bootstrap",
+        "outline_and_scaffold",
+        "figure_and_section_authoring",
+        "consistency_and_references",
+        "publication_review",
+    )
+    assert manifest.stages[0].loaded_authorities == ("workflows/write-paper.md",)
+    assert "references/publication/publication-pipeline-modes.md" in manifest.stages[0].must_not_eager_load
+    assert "references/publication/peer-review-panel.md" in manifest.stages[0].must_not_eager_load
+    assert "templates/paper/paper-config-schema.md" in manifest.stages[0].must_not_eager_load
+    assert manifest.stages[1].loaded_authorities == (
+        "workflows/write-paper.md",
+        "references/publication/publication-pipeline-modes.md",
+        "templates/paper/paper-config-schema.md",
+        "templates/paper/artifact-manifest-schema.md",
+    )
+    assert manifest.stages[2].loaded_authorities == (
+        "workflows/write-paper.md",
+        "references/shared/canonical-schema-discipline.md",
+        "templates/paper/figure-tracker.md",
+    )
+    assert manifest.stages[4].loaded_authorities == (
+        "workflows/write-paper.md",
+        "references/publication/peer-review-panel.md",
+        "references/publication/peer-review-reliability.md",
+        "templates/paper/review-ledger-schema.md",
+        "templates/paper/referee-decision-schema.md",
+    )
+
+
+def test_validate_workflow_stage_manifest_payload_loads_peer_review_manifest() -> None:
+    manifest = validate_workflow_stage_manifest_payload(
+        _workflow_payload("peer-review"),
+        expected_workflow_id="peer-review",
+    )
+
+    assert manifest.workflow_id == "peer-review"
+    assert manifest.stage_ids() == (
+        "bootstrap",
+        "preflight",
+        "artifact_discovery",
+        "panel_stages",
+        "final_adjudication",
+        "finalize",
+    )
+    assert manifest.stages[0].loaded_authorities == ("workflows/peer-review.md",)
+    assert "references/publication/peer-review-panel.md" in manifest.stages[0].must_not_eager_load
+    assert "references/publication/peer-review-reliability.md" in manifest.stages[0].must_not_eager_load
+    assert "templates/paper/paper-config-schema.md" in manifest.stages[0].must_not_eager_load
+    assert manifest.stages[1].loaded_authorities == (
+        "workflows/peer-review.md",
+        "references/publication/peer-review-reliability.md",
+        "templates/paper/paper-config-schema.md",
+        "templates/paper/artifact-manifest-schema.md",
+        "templates/paper/bibliography-audit-schema.md",
+        "templates/paper/reproducibility-manifest.md",
+    )
+    assert manifest.stages[3].loaded_authorities == (
+        "workflows/peer-review.md",
+        "references/publication/peer-review-panel.md",
+    )
+    assert manifest.stages[4].loaded_authorities == (
+        "workflows/peer-review.md",
+        "references/publication/peer-review-panel.md",
+        "templates/paper/review-ledger-schema.md",
+        "templates/paper/referee-decision-schema.md",
+    )
 
 
 def test_known_init_fields_for_execute_phase_include_bootstrap_and_wave_context() -> None:

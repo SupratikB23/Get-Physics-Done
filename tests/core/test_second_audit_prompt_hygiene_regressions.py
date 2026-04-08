@@ -87,6 +87,11 @@ def test_publication_commands_reference_one_shared_manuscript_root_preflight_blo
     for path in (
         COMMANDS_DIR / "write-paper.md",
         COMMANDS_DIR / "peer-review.md",
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert text.count("@{GPD_INSTALL_DIR}/templates/paper/publication-manuscript-root-preflight.md") == 0, path
+
+    for path in (
         COMMANDS_DIR / "arxiv-submission.md",
         COMMANDS_DIR / "respond-to-referees.md",
     ):
@@ -143,11 +148,12 @@ def test_research_phase_command_drops_dead_command_local_mode_labels() -> None:
 
 def test_write_paper_command_defers_the_route_list_to_the_workflow() -> None:
     write_paper = (COMMANDS_DIR / "write-paper.md").read_text(encoding="utf-8")
+    write_paper_workflow = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
 
     assert "Routes to the write-paper workflow:" not in write_paper
     assert "@{GPD_INSTALL_DIR}/workflows/write-paper.md" in write_paper
-    assert "bibliography_audit_clean" in write_paper
-    assert "reproducibility_ready" in write_paper
+    assert "bibliography_audit_clean" in write_paper_workflow
+    assert "reproducibility_ready" in write_paper_workflow
 
 
 def test_debug_workflow_path_note_is_not_self_contradictory() -> None:

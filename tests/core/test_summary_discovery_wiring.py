@@ -124,7 +124,7 @@ def test_command_surfaces_list_standalone_and_numbered_phase_artifacts() -> None
     regression_check = (COMMANDS_DIR / "regression-check.md").read_text(encoding="utf-8")
     show_phase = (COMMANDS_DIR / "show-phase.md").read_text(encoding="utf-8")
     audit = (COMMANDS_DIR / "audit-milestone.md").read_text(encoding="utf-8")
-    write_paper = (COMMANDS_DIR / "write-paper.md").read_text(encoding="utf-8")
+    write_paper = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
 
     assert "@{GPD_INSTALL_DIR}/workflows/progress.md" in progress
     assert "GPD/phases/[current-phase-dir]/PLAN.md" in progress_workflow
@@ -137,7 +137,7 @@ def test_command_surfaces_list_standalone_and_numbered_phase_artifacts() -> None
     assert "Discovery:" not in show_phase
     assert "find_files: GPD/phases/*/*SUMMARY.md" in audit
     assert "completed summary frontmatter (`SUMMARY.md` and `*-SUMMARY.md`)" in regression_check
-    assert "ls GPD/phases/*/*SUMMARY.md 2>/dev/null" in write_paper
+    assert "cat GPD/phases/*/*SUMMARY.md" in write_paper
 
 
 def test_respond_to_referees_prefers_canonical_markdown_report_path() -> None:

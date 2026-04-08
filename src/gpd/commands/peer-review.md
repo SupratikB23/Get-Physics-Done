@@ -87,14 +87,6 @@ Keep the wrapper focused on the manuscript target, review prerequisites, and fin
 
 <execution_context>
 @{GPD_INSTALL_DIR}/workflows/peer-review.md
-@{GPD_INSTALL_DIR}/references/publication/peer-review-panel.md
-@{GPD_INSTALL_DIR}/references/publication/peer-review-reliability.md
-@{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/artifact-manifest-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/bibliography-audit-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/reproducibility-manifest.md
-@{GPD_INSTALL_DIR}/templates/paper/review-ledger-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/referee-decision-schema.md
 </execution_context>
 
 <context>
@@ -115,11 +107,7 @@ If none of those roots exist, pass an explicit manuscript path or paper director
 </context>
 
 <process>
-@{GPD_INSTALL_DIR}/references/publication/publication-review-wrapper-guidance.md
-@{GPD_INSTALL_DIR}/templates/paper/publication-manuscript-root-preflight.md
-@{GPD_INSTALL_DIR}/references/shared/canonical-schema-discipline.md
-
-Follow `@{GPD_INSTALL_DIR}/workflows/peer-review.md` exactly.
+Follow the included workflow file exactly.
 </process>
 
 <success_criteria>
