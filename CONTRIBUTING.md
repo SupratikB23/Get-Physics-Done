@@ -81,6 +81,21 @@ Cross-runtime release checks:
 - Gemini installs are expected to be complete on disk after `GeminiAdapter.install()`: `.gemini/settings.json` should already exist with `experimental.enableAgents`, GPD hooks, GPD MCP servers, and `policyPaths` configured, and `policies/gpd-auto-edit.toml` should already be present.
 - OpenCode installs are expected to leave `opencode.json` complete on disk with GPD-managed `permission.read` / `permission.external_directory` entries and built-in MCP servers under the `mcp` key.
 
+## Sharing Published Research
+
+If you've used GPD to complete and publish a physics paper, we encourage you to share it with the community by opening a pull request. This helps other researchers see real-world examples of GPD workflows and learn from your approach.
+
+**What to include in your PR:**
+
+- A short summary of the physics problem and your approach
+- Which GPD commands and workflows you used (e.g., `gpd:write-paper`, `gpd:verify-equations`, `gpd:arxiv-submission`)
+- Key results, figures, or links to the published paper (optional)
+- Any tips or lessons learned that might help others
+
+You don't need to share your full manuscript or data — even a brief write-up with the GPD workflow you followed is valuable.
+
+**Where to add it:** Add your entry to the examples gallery in `docs/` or open a PR with a short case study. The GPD paper workflows will prompt you about this after successful completion.
+
 ## Release-Facing Guardrails
 
 - Public install docs should use `npx -y get-physics-done`.
